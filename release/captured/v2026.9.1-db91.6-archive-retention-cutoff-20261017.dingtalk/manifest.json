@@ -1,0 +1,1354 @@
+{
+  "release": "v2026.9.1-db91.6-archive-retention-cutoff-20261017.dingtalk",
+  "capturedAt": "2026-10-17T02:31:34.543Z",
+  "capturedFrom": {
+    "host": "v",
+    "runtimeDir": "/home/openclaw/.openclaw/npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector",
+    "baseDir": "none"
+  },
+  "upstream": "@dingtalk-real-ai/dingtalk-connector (version in package.json)",
+  "platformCommit": null,
+  "note": "Point-in-time capture of how the live runtime diverges from its upstream base. These bytes are the existing production state, not a reviewed source build. Entries with alsoInRepo=null had no copy anywhere except the server.",
+  "counts": {
+    "runtimeFiles": 166,
+    "baseFiles": 0,
+    "modified": 0,
+    "added": 166,
+    "removedFromBase": 0,
+    "alreadyInRepo": 4,
+    "capturedOnly": 162,
+    "residue": 0
+  },
+  "removedFromBase": [],
+  "files": [
+    {
+      "path": "./CHANGELOG.md",
+      "sha256": "65776b485564c8a21127b96ed088991d7576bcf4d96192c5e963320d74b769be",
+      "kind": "added",
+      "bytes": 84814,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./LICENSE",
+      "sha256": "1ac7dc187e28d6fff17d8296b0e7072231310363edb422f0d27f182fcb3ad3a2",
+      "kind": "added",
+      "bytes": 1075,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./README.en.md",
+      "sha256": "ddaa5a1b5c5d5e511756d6130707464e79562bec4e8a71eb9b58196008c0080f",
+      "kind": "added",
+      "bytes": 7751,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./README.md",
+      "sha256": "cb4eaa7eab6091208e97b7a780de8c476b8ee3d9a07a87f9f51079f3e1c8cb89",
+      "kind": "added",
+      "bytes": 7103,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./bin/dingtalk-connector.js",
+      "sha256": "5647a65afa03d2beaca73a2a08c90167b8cdd42361789c426ea2a3e22277755e",
+      "kind": "added",
+      "bytes": 30119,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/accounts-Dkl7e4kk.mjs",
+      "sha256": "19808f6d5e0187a74d3a2f6f1dc6c345ca60a9cc274357ad73ab1cfd169f5096",
+      "kind": "added",
+      "bytes": 9417,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/card-CVsxDMw1.mjs",
+      "sha256": "bb8ca3eb3710c605bc7f99633a12578ba5382a8e0e2c010bc16190c13d19b251",
+      "kind": "added",
+      "bytes": 15144,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/card-bridge-CpFveUcq.mjs",
+      "sha256": "1bbfa5c01e97502a74d439868c3e1a9894f32e7a567e4238e3f6b5bedda684eb",
+      "kind": "added",
+      "bytes": 8799,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/chunk-upload-aMOJxVgv.mjs",
+      "sha256": "61148841e17aea29fb57fc6886020c722ad3ae8fae47d4551dff7c53296a8989",
+      "kind": "added",
+      "bytes": 7154,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/common-jKYMZkAB.mjs",
+      "sha256": "09f936c3ffbb228238958b97d628f2a47a9959d5d9d0cf5dc84ddf3ee1d9a4da",
+      "kind": "added",
+      "bytes": 4811,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/connection-DCvu-l09.mjs",
+      "sha256": "397c42c3f66d0cd7898168de21be1607303723cd797d9174ad4b1d6694d44520",
+      "kind": "added",
+      "bytes": 19666,
+      "hostMtime": "2026-10-05T15:10:29.000Z",
+      "alsoInRepo": "lab/release-files/v-experience-channels/dingtalk/dist/connection-DCvu-l09.mjs"
+    },
+    {
+      "path": "./dist/entry-bundled.d.mts",
+      "sha256": "208b5b668d7f4da8ba37bcc5e4326d5b39534640870bd26c896959f5254aa387",
+      "kind": "added",
+      "bytes": 668,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/entry-bundled.mjs",
+      "sha256": "25c16791de58954474b144cc6edb75fa2cb23be1641a5c0e15878a714780b721",
+      "kind": "added",
+      "bytes": 1194,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/game-xiyou-c3iooNRR.mjs",
+      "sha256": "1b26f7ce9c5b6f3b2312bce1f5c9165c5890646e6f43c81a3c03bcbc25a52a8f",
+      "kind": "added",
+      "bytes": 121714,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/gateway-methods-BwC3QjM8.mjs",
+      "sha256": "5f9c54c2e9648aa0092799bb0accb51a0fbca831fbae41c033aec49eea9a4744",
+      "kind": "added",
+      "bytes": 29202,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/http-client-8_Hh4c4N.mjs",
+      "sha256": "9700315778b6aa0f39346160259c3f50c23fadbbaae5365195d53cdf0fea8e71",
+      "kind": "added",
+      "bytes": 1109,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/http-client-DiEgpycl.mjs",
+      "sha256": "1f402676b58bc500b4a885e3d22d47b1824c046c4e53e5c6413fe42db3b6a797",
+      "kind": "added",
+      "bytes": 130,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/index.d.mts",
+      "sha256": "73068d82a83e0ed4e2fcea11fbb33bdebb14badceb2858851b796597298b917f",
+      "kind": "added",
+      "bytes": 8654,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/index.mjs",
+      "sha256": "14fb4b92ad5d5a712a702a0caf33a0c1cb674706a847cac58cbca51221082849",
+      "kind": "added",
+      "bytes": 2631,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/logger-BmJkQkm1.mjs",
+      "sha256": "3d0f68eaefe73d33450e37dcd0a639c01a9f1c8e283bb2b6a03ce7d7df564740",
+      "kind": "added",
+      "bytes": 104,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/logger-mZ9OSbmD.mjs",
+      "sha256": "38db2496923c02a8cc99ed861e1a649c474b8b3749b16cf68da2db29185720ee",
+      "kind": "added",
+      "bytes": 1375,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/media-nyjwj7nU.mjs",
+      "sha256": "776fbc7c0a0ad0fc8689a5918bf5d82586bc7c00e5ac1a1d37ad428f7fa3fa23",
+      "kind": "added",
+      "bytes": 19518,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/message-handler-BUoLSylZ.mjs",
+      "sha256": "d914cbce8951f32e684ab6423d3977d35c62e3a39c5da23e6c42ca804cda0602",
+      "kind": "added",
+      "bytes": 86939,
+      "hostMtime": "2026-10-05T15:10:29.000Z",
+      "alsoInRepo": "lab/release-files/v-experience-channels/dingtalk/dist/message-handler-BUoLSylZ.mjs"
+    },
+    {
+      "path": "./dist/messaging-JY5zinFJ.mjs",
+      "sha256": "1d551eacb3893cd3811b3e08bf18451a71fe4655f338eccdbbe8776c45a139ee",
+      "kind": "added",
+      "bytes": 24124,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/rolldown-runtime-BCk198RA.mjs",
+      "sha256": "ad2724bdd59a141c4881f8bba0c9da01bae90f3943d14e3f44ecee878eb5ab5a",
+      "kind": "added",
+      "bytes": 485,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/runtime-C81EKBS1.mjs",
+      "sha256": "af93e1216049331bb24f0a4f91335d3b03c61004413603d0a454457b37307bed",
+      "kind": "added",
+      "bytes": 54380,
+      "hostMtime": "2026-10-05T15:10:29.000Z",
+      "alsoInRepo": "lab/release-files/v-experience-channels/dingtalk/dist/runtime-C81EKBS1.mjs"
+    },
+    {
+      "path": "./dist/secret-contract-CxZwnMdH.mjs",
+      "sha256": "7634796bb21aab45f88b3b2d6d4363e8ec3443580f5a011d6d87b2c5a4406e0f",
+      "kind": "added",
+      "bytes": 556,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/secret-contract-api.d.mts",
+      "sha256": "612ae453903c808c2042ff14d0458b70afdb9831989cb536366791e08d565397",
+      "kind": "added",
+      "bytes": 1103,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/secret-contract-api.mjs",
+      "sha256": "cb9d3c89940bdd21e70a602478143030f8b6b90969dcb0443696caf7bb4b8002",
+      "kind": "added",
+      "bytes": 231,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/session-CS6KnVQ8.mjs",
+      "sha256": "36b0103847409a0b8b2bd2c606538479aafcd6b4fa93917b44bbaf342caf2069",
+      "kind": "added",
+      "bytes": 2849,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/token-xUW84QQ8.mjs",
+      "sha256": "a05f75e2f8b829fcca1a3ce6c28be27ac491605c690405823e612debf3494f5e",
+      "kind": "added",
+      "bytes": 2126,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/utils-BSSNEdWa.mjs",
+      "sha256": "93fb8f02a49a88e4c7773535172c2e48d84c9667bae411d4b83d21eaa85fd618",
+      "kind": "added",
+      "bytes": 216,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/utils-D0ALDrCn.mjs",
+      "sha256": "23cb6ae96c16fcdace4e2ca33c546e92b81f468af13770ccdf7958eff09b04ca",
+      "kind": "added",
+      "bytes": 3169,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/utils-legacy-CRYCK3kF.mjs",
+      "sha256": "562f493ce20f7830a223727a2667e07ccd5b25605bda92cdf58f4ea1912194aa",
+      "kind": "added",
+      "bytes": 9241,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/v-experience.mjs",
+      "sha256": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+      "kind": "added",
+      "bytes": 74961,
+      "hostMtime": "2026-10-05T15:10:29.000Z",
+      "alsoInRepo": "lab/release-files/v-experience-channels/dingtalk/dist/v-experience.mjs"
+    },
+    {
+      "path": "./docs/DEAP_AGENT_GUIDE.en.md",
+      "sha256": "15daa0dbf89e701593732cfac32ec9913a30770daf8b2402ad6bd52cc816af19",
+      "kind": "added",
+      "bytes": 5624,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/DEAP_AGENT_GUIDE.md",
+      "sha256": "3634f83ed99ec0c86acec40abef1f11d023c338d2207d7c353c454e550be2e06",
+      "kind": "added",
+      "bytes": 5254,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/DINGTALK_MANUAL_SETUP.md",
+      "sha256": "89ae5b0de714341e466b5ab2468ab27c730e720e57693c91e2b815faf147edde",
+      "kind": "added",
+      "bytes": 1281,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/MULTI_AGENT_SETUP.md",
+      "sha256": "2cd02349f5971335ea68fbf2ce813a7bf01d073f4e00c841466b6a942fa04e31",
+      "kind": "added",
+      "bytes": 10430,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.7.10.md",
+      "sha256": "914666ddb96a5640ef82aa38e77c99ceac278c870603a0a0566d95e1c7e73c40",
+      "kind": "added",
+      "bytes": 2146,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.7.2.md",
+      "sha256": "21199b4dfb4a47afdaeb826a9aafd11a5e092f236c08a79ef1569913ef086876",
+      "kind": "added",
+      "bytes": 6918,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.7.3.md",
+      "sha256": "3a23ac180d5956ae28c09aaec28b2a80d58931af6c5228ef73036dcc0a00ee04",
+      "kind": "added",
+      "bytes": 8381,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.7.4.md",
+      "sha256": "da096cdc5ec823f3076e52d91a845584083b9f97b1462101d221cd4ca6592cfc",
+      "kind": "added",
+      "bytes": 9681,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.7.5.md",
+      "sha256": "26ef1f2d0858d91cb85e58daeec880a5bf4d6fa16c92a39a466145339fa15cf4",
+      "kind": "added",
+      "bytes": 11572,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.7.6.md",
+      "sha256": "ec19bbd509f67210bfdabc969d342bc66a71b9a4494a6ef175bc345111f0d076",
+      "kind": "added",
+      "bytes": 12480,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.7.7.md",
+      "sha256": "ef5f1c7e1d0dc54e678cea8b79c4990e5a2f5a7a9bde684c2b3909f722f6ae36",
+      "kind": "added",
+      "bytes": 8057,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.7.8.md",
+      "sha256": "4be16706604f4fa8fef35ccd935d358c122deabdd43a50f51cbda83df9aca97f",
+      "kind": "added",
+      "bytes": 7371,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.7.9.md",
+      "sha256": "b57c37f9e85fe309151f94c1520d7658a9f1287448c87069a895f582bd17db4e",
+      "kind": "added",
+      "bytes": 4306,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.0.md",
+      "sha256": "988d383dc96e080b8872a8ebc2215d06270836d4715d59a3622321e4d00ef135",
+      "kind": "added",
+      "bytes": 3442,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.1.md",
+      "sha256": "47484a16ecd8ab567ce73bc17c875df765eee2403c29a502ab26d7070761309b",
+      "kind": "added",
+      "bytes": 2825,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.10.md",
+      "sha256": "f9504d530d5d50b971e15337dac9809e07e196443745307504d988a952b796f6",
+      "kind": "added",
+      "bytes": 3559,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.11.md",
+      "sha256": "376770ebae06e061eae3d978b8cfe5335ff0baf6d11f8e85bda2abea5ce57bee",
+      "kind": "added",
+      "bytes": 3282,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.12.md",
+      "sha256": "afd832b56a06a01032c79a3d94f507bf32fcd044968d8f7d72bac1b2ad126827",
+      "kind": "added",
+      "bytes": 4441,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.13-beta.0.md",
+      "sha256": "365468fb5dfe20e39f776cc239760a8e85af7c851f6cb4301f7a7d43b6b173e9",
+      "kind": "added",
+      "bytes": 6093,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.13.md",
+      "sha256": "ef14ad3c2f78216d10dbeab35258c493cbc9e53182a682849699175868231fcb",
+      "kind": "added",
+      "bytes": 4533,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.14.md",
+      "sha256": "c45c49ece539a833ed1f6fe5d20ca50765d399b4a5bb55650f7c6224f8dacb77",
+      "kind": "added",
+      "bytes": 5666,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.16.md",
+      "sha256": "30fe78d1c0f8082bd63d49296f6c319185e2d97f5ed2baf4e2bb75fd5c377f08",
+      "kind": "added",
+      "bytes": 2627,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.17.md",
+      "sha256": "0b91220dc221bd2a5c6317c641563d38eb7af655b609d6b760fe9ef266c3c2a7",
+      "kind": "added",
+      "bytes": 5513,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.18.md",
+      "sha256": "9d3dec98c11d97495b6f8fd9b83eb485560d56d0d50225125ca4e8c9adbea0a3",
+      "kind": "added",
+      "bytes": 3563,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.19.md",
+      "sha256": "09d3556a12db8c7bb7a649c3fca23cec31e695f89a77f9cbb75dba0e75897d59",
+      "kind": "added",
+      "bytes": 3000,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.2.md",
+      "sha256": "29b238f1267457adb72e5803d2c02225074936b9a3543a01272d49bad40336be",
+      "kind": "added",
+      "bytes": 4216,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.20.md",
+      "sha256": "dfb2018b50875055121026e6812b67903807bda5390ae4dbf5886a7624ebc2cf",
+      "kind": "added",
+      "bytes": 2690,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.21-beta.0.md",
+      "sha256": "588068fb291c832adb17b640e622a9c5728df8a02be5ef7b376d0a35db47a0a0",
+      "kind": "added",
+      "bytes": 8502,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.21.md",
+      "sha256": "3f37652e59bccc8b858763efbdb56f444b42802da24e2aa169c79dc48632bbef",
+      "kind": "added",
+      "bytes": 8482,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.22-beta.0.md",
+      "sha256": "719f02ebf0ca6396e78b4174f2aa2d289f7102eb4bbe9db5658f2252a116e186",
+      "kind": "added",
+      "bytes": 7048,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.23.md",
+      "sha256": "806d793a0be9b9822bf400426ab29207a253ed71b3fc75df6b3580fb3f4f3ead",
+      "kind": "added",
+      "bytes": 6512,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.24-beta.0.md",
+      "sha256": "5bdeda0d48b456194ec4dd70c3d5a82a2437d4463474d9a2df8234f53ec9e016",
+      "kind": "added",
+      "bytes": 5174,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.24.md",
+      "sha256": "f31c4af0cd12de87059562c2ff5879c50b7da0c64f37caa8cec7f49cbf7aa6e7",
+      "kind": "added",
+      "bytes": 5585,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.25-beta.0.md",
+      "sha256": "6bf695de10257aea59da77e8b1b701e1dd84317f1d098dc1c05933e16c964fb3",
+      "kind": "added",
+      "bytes": 3398,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.25.md",
+      "sha256": "cd797e8adb9b1a3e5ed0e0f01235715696d02c89f4a3b0913d8a785359964248",
+      "kind": "added",
+      "bytes": 2818,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.26-beta.0.md",
+      "sha256": "446c1090d9c22adc38fd9733c46e464a0af457d85bd31e9c86ffd55c5965bb60",
+      "kind": "added",
+      "bytes": 3401,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.26-beta.1.md",
+      "sha256": "3aefe992e34040f9fd5c09f3dfbc1d61742999b669a51b1260e12654361b17a4",
+      "kind": "added",
+      "bytes": 3074,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.26.md",
+      "sha256": "30c674aec9fe3a7625619c6f21dc2b526f0e2e04d29434df87de05f6e9d197ca",
+      "kind": "added",
+      "bytes": 4461,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.3.md",
+      "sha256": "ce8c6fe48034a6fac1a59589b4f0f2389aeb2d3cc2d874d041e8b1277dc75240",
+      "kind": "added",
+      "bytes": 8425,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.4.md",
+      "sha256": "9f49480b17d3a4e2d853879e946becebc8d1d1fa6f1dcf5e435171955b5f9d1e",
+      "kind": "added",
+      "bytes": 4360,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.7.md",
+      "sha256": "be6b3669b7433681813ed75b4a132741a5cf82a6d019ae89505fd4fe7a954a07",
+      "kind": "added",
+      "bytes": 4033,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.8.md",
+      "sha256": "b8d6fab8ede719b44865aee1aee734b86b2e94337fb2b8bf6f5a4b0319360670",
+      "kind": "added",
+      "bytes": 6445,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_V0.8.9.md",
+      "sha256": "de4cc41e105917852d49694dbc5836f58b1a81c9e9d0057a7de05b479ed312cd",
+      "kind": "added",
+      "bytes": 7768,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_v0.7.0.md",
+      "sha256": "ca0f5e7a7147f525b843ced04da6d102508fba9963fb80791b00794e4bb21866",
+      "kind": "added",
+      "bytes": 9906,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/RELEASE_NOTES_v0.7.1.md",
+      "sha256": "a5ae5d18fff72a11f9188bc1f6e8db5b5047b9b389571e9ae54dfefdb2afffb7",
+      "kind": "added",
+      "bytes": 3371,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./docs/TROUBLESHOOTING.md",
+      "sha256": "98acedd536af025df264340fd4e0761e2619a7f9ae7235a5286d18157b41eee1",
+      "kind": "added",
+      "bytes": 4474,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./index.ts",
+      "sha256": "b08a7ce08f96ef9d81587f7126dd346610468ac481349ae7bf6bdf5ec275a63a",
+      "kind": "added",
+      "bytes": 3550,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./openclaw.plugin.json",
+      "sha256": "f4c9b43eb6ee3c1d9ca9b700bf713e03cea6bc32b542455c26cbed0fd8b191c6",
+      "kind": "added",
+      "bytes": 16530,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./package.json",
+      "sha256": "10ee583adc36fbfe5729a7e85d2294570c4790d5a55b9a6665b40bcd754edb51",
+      "kind": "added",
+      "bytes": 4500,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dingtalk-channel-rules/SKILL.md",
+      "sha256": "4abd7ff39fd8ab2370506b41c5fe44daec1c1433b16bed202ca8e0ae754a586f",
+      "kind": "added",
+      "bytes": 4349,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dingtalk-troubleshoot/SKILL.md",
+      "sha256": "831e1260e77bcf9b19c955608ba6735cbf01265317ebd450eca8399c18bd9db2",
+      "kind": "added",
+      "bytes": 3027,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dws-cli/SKILL.md",
+      "sha256": "e1e0cb89e56c9a8df212b8684484add3218b7056b5df581786feb791c601b3eb",
+      "kind": "added",
+      "bytes": 9031,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dws-cli/references/error-codes.md",
+      "sha256": "e047f2bfc6f8ddd79928457a63ec120718f8ec62ad04364cbe845abb00cae397",
+      "kind": "added",
+      "bytes": 5044,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dws-cli/references/field-rules.md",
+      "sha256": "1c6886f0ebcfaaf1b39fb5d8940595049b02acdef6c7442cce15b753e04815c6",
+      "kind": "added",
+      "bytes": 5065,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dws-cli/references/global-reference.md",
+      "sha256": "0470e1d59c664699b211319ea6890a750e7515f2418d1802f35d690d6253830d",
+      "kind": "added",
+      "bytes": 3155,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dws-cli/references/intent-guide.md",
+      "sha256": "3d9fcfbb54e9a1f202a81a0b6d17a9c3045f0aa1dd7f38499a5f7c91fbff128a",
+      "kind": "added",
+      "bytes": 4824,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dws-cli/references/products/aitable.md",
+      "sha256": "5401bf27c7908a8d4703ea05ba9c2ac0d1aaeb8877185fda68e5b08c47ec5c4e",
+      "kind": "added",
+      "bytes": 16083,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dws-cli/references/products/attendance.md",
+      "sha256": "0b112c5438815e7b4b6c4eeac077d1a7e9ff3977856c5fcff0cdbe75445e4836",
+      "kind": "added",
+      "bytes": 3269,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dws-cli/references/products/calendar.md",
+      "sha256": "eae21aa6f036fa3cb269a2dea7f63df918b61dd64bb1605194849790c7b8d5b0",
+      "kind": "added",
+      "bytes": 6624,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dws-cli/references/products/chat.md",
+      "sha256": "52c36777517590d3215199f72ec8e4d22de422a5e270614984c5046fdaad6d03",
+      "kind": "added",
+      "bytes": 9512,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dws-cli/references/products/contact.md",
+      "sha256": "d25c824cbc219a40a3744ec712f421023fd36b9b8922c999697efb5ef46d848e",
+      "kind": "added",
+      "bytes": 2732,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dws-cli/references/products/ding.md",
+      "sha256": "83900a9f441072ef18d47365843b7eb53fbed1c12665af1b42df6a15e84eb41c",
+      "kind": "added",
+      "bytes": 1910,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dws-cli/references/products/report.md",
+      "sha256": "99f3cef8a220c540ce3b353802e7cdf63d13400ecb68206cdb60a093ef87bf84",
+      "kind": "added",
+      "bytes": 5880,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dws-cli/references/products/simple.md",
+      "sha256": "c5658ea00ba9c7f8e7f148dc63eadc9f2c15bf4ed0001ad7da27f98c8f05c0c1",
+      "kind": "added",
+      "bytes": 3043,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dws-cli/references/products/todo.md",
+      "sha256": "1fff433d03db318ec79146fa2291e94b229085688099cfbcfe3eb3172d653ba7",
+      "kind": "added",
+      "bytes": 4523,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dws-cli/references/products/workbench.md",
+      "sha256": "c37c4ec7f293ffaf55b2e185040046c78dc27537fe645a88b48793eb83429c87",
+      "kind": "added",
+      "bytes": 793,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/dws-cli/references/recovery-guide.md",
+      "sha256": "aea0de6d8e7dd3cb5152ebe6602e6a360baebd0a4c1122d9a64cc5376c0479f1",
+      "kind": "added",
+      "bytes": 4300,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/channel.ts",
+      "sha256": "492356035241dcd2e24644c87a1f9e3d60f76831515f629bd833eb6f8c6b9fa9",
+      "kind": "added",
+      "bytes": 21694,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/config/accounts.ts",
+      "sha256": "4e31d3e98243a5fc53f3d7c2f9fead75728570b22297525c771fe0b6b2fec245",
+      "kind": "added",
+      "bytes": 7827,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/config/schema.ts",
+      "sha256": "f797c8e7760ae8398337a67afff4f108023119d14def4c9defcbb9c4f0e29435",
+      "kind": "added",
+      "bytes": 6644,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/core/connection.ts",
+      "sha256": "77723db90005132b9469fa38857a0e4db6f944d95a81f0d97faf98b6f4eb4d4d",
+      "kind": "added",
+      "bytes": 30864,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/core/message-handler.ts",
+      "sha256": "1fd4c06e7acc671d3b0df74386db1769ef77ac08718cb7cc3dae7501bde839ef",
+      "kind": "added",
+      "bytes": 59269,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/core/provider.ts",
+      "sha256": "50a9729b61d97f8c181de8c00f95d9da4ab49950fcf51cab4b3153a4da7a6461",
+      "kind": "added",
+      "bytes": 3675,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/core/state.ts",
+      "sha256": "e373ef0be7334b5934b3c927ee9ac44332eb56f33fbcb44a2f48ab78b39d0982",
+      "kind": "added",
+      "bytes": 1657,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/device-auth-config.ts",
+      "sha256": "577fbdaef6823c20874e717388577f112c8685a1dd15d377813763188bd2e4a6",
+      "kind": "added",
+      "bytes": 538,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/device-auth.ts",
+      "sha256": "617b2f3c1612e95c3abed3e1e35439c1b47a3935bdc08aecbe65258979672a80",
+      "kind": "added",
+      "bytes": 6389,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/directory.ts",
+      "sha256": "6baeed0973327e63916be4e9c50f60f1afdd3912878927cc33b7543bff385700",
+      "kind": "added",
+      "bytes": 2937,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/docs.ts",
+      "sha256": "b5d4f9d2bcfac17082b4954de1ea5aa94a2b40b0036757bbcd5abc9c9a86a86b",
+      "kind": "added",
+      "bytes": 8416,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/achievement-engine.ts",
+      "sha256": "53b213868145c55dd5d638765166aa9afa85499c3b9fcd356f511873a1f7710a",
+      "kind": "added",
+      "bytes": 13268,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/bounty-system.ts",
+      "sha256": "fda77597daadd840527fb93dc808837c2bae5368bf94a29cd58442ea8b2dcc0e",
+      "kind": "added",
+      "bytes": 11424,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/commands.ts",
+      "sha256": "df7e6ebbe1913e74763758a83c0e3558356a6e176bdab31b38c3571e0c16d24d",
+      "kind": "added",
+      "bytes": 6695,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/drop-engine.ts",
+      "sha256": "a988a5803515f3c6ef7fa7036564a18a3ee36313bec40f079d9cf3a2fb5358c5",
+      "kind": "added",
+      "bytes": 7427,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/encounter-system.ts",
+      "sha256": "c0c4907ef9929c49ea7f0590d82964cb1f9c327995c3996f763b1be5eaeec626",
+      "kind": "added",
+      "bytes": 5273,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/escape-engine.ts",
+      "sha256": "ca39aaf77978dac45075aa10c2964ab8eab9d0f457116e45e2eef86c7ef9bd4d",
+      "kind": "added",
+      "bytes": 5475,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/exp-calculator.ts",
+      "sha256": "2f1b50bf71706b99583ccff107638d63a9d48a8a2007edb94ad03f9d47db38c1",
+      "kind": "added",
+      "bytes": 3890,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/index.ts",
+      "sha256": "06997ea1533c0d486807d92911334bb6682f9893e1a708aa789f26fa91f9cf2d",
+      "kind": "added",
+      "bytes": 14984,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/level-system.ts",
+      "sha256": "23dd3ac913420ad4c1461cb9134e5e7f9c142bbb47a3d64208021d5e55ed91d3",
+      "kind": "added",
+      "bytes": 2488,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/monster-pool.ts",
+      "sha256": "2de9ae23cbdc3e92b16081392f72606d0749809391540b8ff6db2ed14692995f",
+      "kind": "added",
+      "bytes": 12942,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/pity-counter.ts",
+      "sha256": "b0fb3f89d5d8ef892c7c861de38b6e774b5966ef756a2b8644483be5801be145",
+      "kind": "added",
+      "bytes": 3803,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/random-event-engine.ts",
+      "sha256": "c79e66239d34cea6f54e258bf02cd8c83e826ed8bfdd02ccc683e3084c0ce0e4",
+      "kind": "added",
+      "bytes": 22357,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/renderer.ts",
+      "sha256": "6dfa0fb3863f10c51eaa1c566732d8dd0c0a8110d51f036994dee6dcd65de1d5",
+      "kind": "added",
+      "bytes": 26491,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/storage.ts",
+      "sha256": "e7538bcb533d0b0230b69d7956be145d4f2591e0539278663a0af200ee8cb615",
+      "kind": "added",
+      "bytes": 6444,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/treasure-system.ts",
+      "sha256": "c1ac6d7ee73bf454101b2339ce1afa87b38aa278a310fc2d5fe1c9d4f237215b",
+      "kind": "added",
+      "bytes": 4594,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/types.ts",
+      "sha256": "ea0734a83f802e5b29d359d030e54ccf7958dddb48cd22d41f8f8bc5cbfc86c8",
+      "kind": "added",
+      "bytes": 14043,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/game-xiyou/uid-resolver.ts",
+      "sha256": "c81a39ec428b8c5e469864cc49f2a45b2b3040a1581e2d18edce2e291fd03eb0",
+      "kind": "added",
+      "bytes": 1149,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/gateway-methods.ts",
+      "sha256": "4d6d05525c8fa2aadc203eba4d976d7611fe292da8340198d8997e3d5ab05727",
+      "kind": "added",
+      "bytes": 27271,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/onboarding.ts",
+      "sha256": "07e0de9a5d385763f4fb51add63d6fcb7e8009112cf6a2dacaa9135330e60602",
+      "kind": "added",
+      "bytes": 17276,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/policy.ts",
+      "sha256": "2712b07ebc2a6599f62349da0664c19fa52c26d6711cd8cdba8f40b930e25659",
+      "kind": "added",
+      "bytes": 775,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/probe.ts",
+      "sha256": "cb544c7d51dc1c58a0fb5f741744e144983962dfbd89f80645b3fef240a742a5",
+      "kind": "added",
+      "bytes": 5403,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/reply-dispatcher.ts",
+      "sha256": "55c4a811b46d89dd22dbfad7891a8668c9fdd13cba998e04c71f72b4cd75d8da",
+      "kind": "added",
+      "bytes": 42069,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/runtime.ts",
+      "sha256": "9500bf43b6db26185ff149c6adfc89a3e1b27e1b1b17f2dae8994eb930fcebb0",
+      "kind": "added",
+      "bytes": 366,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/sdk/helpers.ts",
+      "sha256": "32f7c0135cf92bdcae5602d72bb072b0423ceddd5cd7116e1873729386f24b71",
+      "kind": "added",
+      "bytes": 8008,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/sdk/types.ts",
+      "sha256": "776cbbf56531930cea3d67ffc21fc10736158c7deffc8ba79d0806b9c473f402",
+      "kind": "added",
+      "bytes": 12511,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/secret-contract.ts",
+      "sha256": "65c097d7b2c34153a0e2ecfa494b0c8f5c5d66fcf99bc2fe06d9ab59d801661a",
+      "kind": "added",
+      "bytes": 433,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/secret-input.ts",
+      "sha256": "d4e0c2332580a4fcc2907fdb42951706b96ef0eec04370c75aa8263a9a382c48",
+      "kind": "added",
+      "bytes": 868,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/services/card-bridge.ts",
+      "sha256": "431a7055af3da15d623acd87c5386e4af077b7a54d0ee14f7088226f32bf01b2",
+      "kind": "added",
+      "bytes": 11630,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/services/media.ts",
+      "sha256": "04edbc55da09c31ad385ff269bf4a8160bd3944dbaf4e0aca4ae09c0dd260878",
+      "kind": "added",
+      "bytes": 37490,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/services/media/audio.ts",
+      "sha256": "ef4632c0b02b4efa65b5931c5b8e617faef1ed2086cdcf95528699398609c5ee",
+      "kind": "added",
+      "bytes": 1707,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/services/media/chunk-upload.ts",
+      "sha256": "33bbd72ad97b6ba6113a49b344bbd8b5209c17d87944b6db936fd8e9e0aeff97",
+      "kind": "added",
+      "bytes": 8809,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/services/media/common.ts",
+      "sha256": "17d16b6b7039c06c46ce0b64ad7748a9bc33a3e3eab08ed2b18ecd88cb81b5f9",
+      "kind": "added",
+      "bytes": 5614,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/services/media/file.ts",
+      "sha256": "d24dbc547e045c410ff5071675f118134154124e47343a2114d934f42444f7ce",
+      "kind": "added",
+      "bytes": 2534,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/services/media/image.ts",
+      "sha256": "8cfae16c719dcb488cc3ace4428e74757cab15b309f28d20f11450ea80851b90",
+      "kind": "added",
+      "bytes": 3135,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/services/media/index.ts",
+      "sha256": "e97614277b84785a8b160f550f9e77c8656aaefb7f744c74bda1aa6313c310d1",
+      "kind": "added",
+      "bytes": 217,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/services/media/video.ts",
+      "sha256": "db40cac2fffa7d503c93b981b39fdf483f5ed59e32e29f80dcfbed703fdea71e",
+      "kind": "added",
+      "bytes": 5067,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/services/messaging.ts",
+      "sha256": "9b1189d4a70cf77f65c3e99ef28b7385651daee58fc80a7fe12178b9a240728d",
+      "kind": "added",
+      "bytes": 36366,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/services/messaging/card.ts",
+      "sha256": "667912d32f21013caf92032caee0a250173d20ea7bb31b7f3ebe127573e59161",
+      "kind": "added",
+      "bytes": 19850,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/services/messaging/index.ts",
+      "sha256": "ce682e193a121dccfd1262fdd3e171297cbac58e4d9471568e5e585fd69dd96c",
+      "kind": "added",
+      "bytes": 455,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/services/messaging/mentions.ts",
+      "sha256": "c1f19a1007662e4ab1adb6ccdfc93406e06b1aa02a4c9d521d4ba2f65b7179aa",
+      "kind": "added",
+      "bytes": 9899,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/services/messaging/send.ts",
+      "sha256": "6807e1b14470a4c2f20458f3d34c0fbdd1da17ac53379bcc294133e0a5eef751",
+      "kind": "added",
+      "bytes": 2909,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/targets.ts",
+      "sha256": "6bf2378eb76e784a17573357496020d1ada87bdc9d54fb00f013e8add008d08e",
+      "kind": "added",
+      "bytes": 1151,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/types/index.ts",
+      "sha256": "2e5d2caafb7b9ac39734f6035d8321af62b2f817290166bec8a499af9e19f8c8",
+      "kind": "added",
+      "bytes": 1501,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/utils/async.ts",
+      "sha256": "33be312c0b0801a97cac3c43ad4cb4f5e11b9cbffc12487fffd5181bba2e87bd",
+      "kind": "added",
+      "bytes": 1570,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/utils/constants.ts",
+      "sha256": "b9e28ed19282a7656cd965a7c898a17f08cf919211811513657695529492a7c2",
+      "kind": "added",
+      "bytes": 1099,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/utils/empty-reply.ts",
+      "sha256": "226d46052d2e68fe0e670906aaa34292a89dd38ce9bad43459d2651da0aa7d00",
+      "kind": "added",
+      "bytes": 3214,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/utils/http-client.ts",
+      "sha256": "5831f12f4b6c8ce3879e94932eed435ad00a293e6b12889aa1342155ef618dfa",
+      "kind": "added",
+      "bytes": 1119,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/utils/index.ts",
+      "sha256": "c0e8434cc7f5d415c86b0652d360645b344b919706a133b91dde8f4a3270e48b",
+      "kind": "added",
+      "bytes": 196,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/utils/logger.ts",
+      "sha256": "94b8720174e61436779d746340592512ff291f391bdec33dedf1fa0a635f13fd",
+      "kind": "added",
+      "bytes": 1684,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/utils/session.ts",
+      "sha256": "e678328fc34702fae430cf1e4fc2d46bcf40c3e260adb49bf7dc54933a84839b",
+      "kind": "added",
+      "bytes": 4695,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/utils/token.ts",
+      "sha256": "6bb7a26f7c89dd4387c6e7f63bd27cddf22d27e67bb464a617176732da4d150f",
+      "kind": "added",
+      "bytes": 2649,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./src/utils/utils-legacy.ts",
+      "sha256": "b2a3dcad5de577025b5c072c374aa72d18323c9057fdb7c4c4865acb9c7c247c",
+      "kind": "added",
+      "bytes": 14466,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./tsconfig.json",
+      "sha256": "988310eca256ce5462502e2b6ee3328e08cf6dd17a7a4edff589f2eced993c9b",
+      "kind": "added",
+      "bytes": 515,
+      "hostMtime": "2026-09-04T18:57:06.000Z",
+      "alsoInRepo": null
+    }
+  ],
+  "residue": []
+}
