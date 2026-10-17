@@ -56,8 +56,13 @@ if (!rollback) {
     const src = PLUGIN_SOURCE + f, dst = `${PRODUCTION_PLUGIN_PATH}/${f}`;
     fs.mkdirSync(dst.slice(0, dst.lastIndexOf('/')), {recursive: true, mode: 0o755});
     fs.copyFileSync(src, dst); fs.chmodSync(dst, 0o644);
+    // OpenClaw refuses plugin files not owned by root or the service user ("suspicious ownership"):
+    // copies of an uploaded checkout keep the uploader's uid, which silently unloads the plugin.
+    fs.chownSync(dst, 0, 0);
     assert.equal(hash(dst), hash(src));
   }
+  for (const dir of [PRODUCTION_PLUGIN_PATH.slice(0, PRODUCTION_PLUGIN_PATH.lastIndexOf('/')), PRODUCTION_PLUGIN_PATH, `${PRODUCTION_PLUGIN_PATH}/core`]) fs.chownSync(dir, 0, 0);
+  for (const f of PLUGIN_FILES) assert.equal(fs.statSync(`${PRODUCTION_PLUGIN_PATH}/${f}`).uid, 0, `${f} not owned by root`);
   console.log(JSON.stringify({phase: 'plugin-files', path: PRODUCTION_PLUGIN_PATH, files: PLUGIN_FILES.map((f) => ({f, sha256: hash(`${PRODUCTION_PLUGIN_PATH}/${f}`).slice(0, 16)}))}));
 }
 const token = cfg.gateway.auth.token.replace(/\$\{([^}]+)\}/g, (_, key) => { assert(env[key]); return env[key]; });
