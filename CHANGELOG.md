@@ -29,6 +29,11 @@
 - worker 池 5/5 空闲；语音入口 200；夜班在线；
 - parity ALIGNED，`vlab.mjs align` 已完成。
 
+**生产验收**（22:35，web-search 线用两条 `web-search-deepseek-acceptance-*` 测试会话经 Gateway 跑真实回合，未投递渠道）：
+- 搜索：provider=deepseek，单次 0.33 / 0.38 s，结果 7.4–7.6K 字符，在 Codex 的 1 万字符上限以内，答案正确且附来源；
+- 抓取：百度百科经 deepseek 兜底（extractor=deepseek，8.7 s），链路生效，但 DeepSeek Fetch 返回的可能是它那边的旧缓存词条；
+- suspicious ownership / unknown provider 为 0。
+
 相对上一版 `v2026.9.1-db91.6-workboard-projection-20261017`：2 个文件变化。
 
 **经 VLab 发版 `disk-budget-stall-20261017`**（monitor-v-production，dev `17afd21b`）
