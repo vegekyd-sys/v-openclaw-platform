@@ -15,7 +15,8 @@ import assert from 'node:assert/strict';
 //     receivedAtMs, dispatcherAtMs, runId / runStartAtMs (onAgentRunStart), typingShownAtMs, firstReasoningAtMs / firstAnswerTokenAtMs
 //     (first reasoning / answer text reaching the channel), cardStartAtMs, cardCreatedAtMs,
 //     firstPushAtMs (first card content pushed), firstAnswerPushAtMs (first push carrying
-//     answer text, not only reasoning/status), visibleAtMs (first non-streaming visible reply),
+//     answer text, not only reasoning/status), firstStatusPushAtMs (first push carrying a
+//     status line, e.g. the tool or compaction status), visibleAtMs (first non-streaming visible reply),
 //     endAtMs, provider/model/agentRuntime, queuedFinal, finalCount}
 // No message text is logged. Logging never throws into the reply path.
 
@@ -57,7 +58,7 @@ export function patchFeishuMonitor(source) {
     'streaming start success');
   out = replaceExactlyOnce(out,
     '\t\t\tstartPromise: streamingStartPromise\n\t\t};',
-    '\t\t\tstartPromise: streamingStartPromise,\n\t\t\thasAnswer: Boolean(streamText)\n\t\t};',
+    '\t\t\tstartPromise: streamingStartPromise,\n\t\t\thasAnswer: Boolean(streamText),\n\t\t\thasStatus: Boolean(statusLine)\n\t\t};',
     'streaming update record');
   out = replaceExactlyOnce(out,
     '\t\t\t\t\tif (next.generation !== void 0 && next.session?.isActive()) await next.session.update(next.combined);\n',
@@ -65,6 +66,7 @@ export function patchFeishuMonitor(source) {
 						await next.session.update(next.combined);
 						vFirsttextMark("firstPushAtMs");
 						if (next.hasAnswer) vFirsttextMark("firstAnswerPushAtMs");
+						if (next.hasStatus) vFirsttextMark("firstStatusPushAtMs");
 					}
 `, 'streaming update push');
   out = replaceExactlyOnce(out,

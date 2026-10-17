@@ -12,7 +12,7 @@ test('release file is V\'s Feishu monitor with only the firsttext-e2e marks', ()
   assert.equal(patchFeishuMonitor(original), released);
   assert.throws(() => patchFeishuMonitor(released), /Expected exactly one/);
   // every mark the report reads is recorded somewhere
-  for (const key of ['runStartAtMs', 'typingShownAtMs', 'firstReasoningAtMs', 'firstAnswerTokenAtMs', 'cardStartAtMs', 'cardCreatedAtMs', 'firstPushAtMs', 'firstAnswerPushAtMs', 'visibleAtMs']) {
+  for (const key of ['runStartAtMs', 'typingShownAtMs', 'firstReasoningAtMs', 'firstAnswerTokenAtMs', 'cardStartAtMs', 'cardCreatedAtMs', 'firstPushAtMs', 'firstAnswerPushAtMs', 'firstStatusPushAtMs', 'visibleAtMs']) {
     assert.match(released, new RegExp(`vFirsttextMark\\("${key}"\\)`), key);
   }
   assert.match(released, /onAgentRunStart: \(runId\) => \{\n\t*if \(typeof runId === "string" && vFirsttextE2e\.runId === void 0\) vFirsttextE2e\.runId = runId;/);
