@@ -11,6 +11,36 @@
 
 ---
 
+## v2026.9.1-db91.6-sharing-feishu-catchup-20261018
+
+上线：2026-10-18 12:36 CST v-self-restart 生效（PID 2055157 → 2096230）  ·  tag `v2026.9.1-db91.6-sharing-feishu-catchup-20261018`
+
+**摘要**：两项改动，一次重启。
+
+- **#428**：sessions.list 的共享可见性解析改为只读所选页。以前每次调用都要把整库 4301 行的共享元数据读一遍，跟页大小无关。VLab A/B 的结果：
+  - 70 个可见性用例逐行一致；
+  - sharing 段（同步执行，期间占住主线程）：25 行 639 → 11 ms，全量 690 → 220 ms；
+  - 共享 VLab 实测 limit 50 的服务端耗时为 188 ms。
+  - 用户感知：Control UI、看板、/sessions 这类列会话的调用，每次少占主线程约 0.4–0.6 s。
+  - 这 4 个文件按 V 当前字节重建，#404、#418 的改动都保留。
+- **#415**：飞书 WebSocket 重连后，或事件循环停顿超过 15 s 后，主动通过 `im/v1/messages` 拉取空档期的消息补处理，不用再等飞书 5–70 分钟后重推。补拉到的消息与飞书随后的重推按消息 id 去重，只处理一次。
+  - **前提未验证**：V 的飞书应用需要有读取会话历史消息的权限。没有权限时每个会话记一行 `ingress catch-up list … code=…`，功能不生效，但没有副作用。
+
+**重启**：v-self-restart 在 12:35:47 确认空闲后停服，清理 2 条 Codex 孤儿登记，66 s 就绪。
+- stream 1/1、worker 5/5；Cannot reap / InvalidConfig / claim / stream-ack / Cannot inspect Codex / rebuilding 均为 0；
+- 启动后 JS 报错为 0，语音入口 200，夜班在线；
+- parity ALIGNED，align 已完成。
+
+相对上一版 `v2026.9.1-db91.6-codex-followup-admission-20261018`：5 个文件变化。
+
+**经 VLab 发版 `sharing-feishu-catchup-20261018`**（monitor-v-production，dev `ede1a7bb`）
+> 验收：共享 VLab 11:50 部署 #428（session-sharing 4 文件，before=V 线上 792b1c75/a15b1426/26adfeba/36c5a27b）+ #415（飞书 monitor.account 31238429→ffdf7072），dev ede1a7bb。部署后 TypeError/ReferenceError/SyntaxError/InvalidConfig/飞书或 catch-up 报错均为 0；sessions.list limit 50 返回 50 行且带 sharingRole，服务端 188 ms；deepseek-flash 真实回合 bash echo sf-ok 正确。合入前：#428 candidate a4ab58da（70 个可见性用例逐行一致，sharing 639→11 ms）；#415 candidate 断线/停顿…
+- `core` session-accessor.sqlite-entry-BlklNPKQ.js  a15b1426 → 789fca01
+- `core` session-accessor.sqlite-transcript-state-Cz9g7S9v.js  792b1c75 → 2583a789
+- `core` session-utils-store-Dlphca2N.js  26adfeba → b566c7e9
+- `core` sessions-read-C6mAMxyQ.js  36c5a27b → 2d2d0fb1
+- `feishu` dist/monitor.account-WFdlCDhR.js  31238429 → ffdf7072
+
 ## v2026.9.1-db91.6-codex-followup-admission-20261018
 
 上线：2026-10-18 00:07 CST v-self-restart 生效（PID 1460897 → 1541775）；同时 #425 升级后的 v-self-restart 首次实战  ·  tag `v2026.9.1-db91.6-codex-followup-admission-20261018`
