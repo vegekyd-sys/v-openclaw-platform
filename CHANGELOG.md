@@ -11,6 +11,36 @@
 
 ---
 
+## v2026.9.1-db91.6-sharing-feishu-catchup-r2-20261018
+
+上线：2026-10-18 17:02 CST v-self-restart 生效（PID 2220979 → 2279279）  ·  tag `v2026.9.1-db91.6-sharing-feishu-catchup-r2-20261018`
+
+**摘要**：重新上线 #428 + #415，内容和 `v2026.9.1-db91.6-sharing-feishu-catchup-20261018` 是同一批字节。中午那次发版在 15:47 被**误判回滚**，这次补上。
+
+**下午的回滚是误判**：
+- 12:36 上线后 3 小时，received message 为 0；前一天同一时段是 29 条。监控 session 据此判断 #415 弄坏了飞书入站，15:47 用 `promote-to-v --undo` 整体回滚，多重启了一次；
+- 回滚之后旧代码同样 1 小时为 0 条。实际情况是：当天的飞书消息几乎都是 Tianyi 发的，他 12:21 之后没再找 V，也没有哪条消息发出后 V 没回；
+- 回滚时漏了重装漂移哨兵的期望，V 因此报了版本漂移。已用 `install-v-release-drift.sh` 按 `codex-followup-admission-20261018` 补上，0 findings；
+- 教训记在 memory `judge-ingress-by-senders-not-volume` 和 `post-release-self-acceptance-via-lark`。
+
+**这次上线后的端到端验收**：用 Tianyi 的 lark-cli 发了真实的飞书消息。
+- 私聊 `oc_e76c5073`：17:02 发出，V 回复「收到」（vds-deepseek-flash），日志依次为 received → dispatch complete (replies=1)；
+- 测试群 `oc_ede0fdc8`：17:03 发出，V 回复「收到」（deepseek-flash）。
+
+**重启**：v-self-restart 17:01:18 判定空闲，停服后清理了 1 条 Codex 孤儿登记，56 s 就绪。
+- stream 1/1、worker 5/5，各项告警均为 0；
+- parity ALIGNED，align 已完成；哨兵期望为 r2。
+
+相对上一版 `v2026.9.1-db91.6-codex-followup-admission-20261018`：5 个文件变化。
+
+**经 VLab 发版 `sharing-feishu-catchup-20261018`**（monitor-v-production，dev `ede1a7bb`）
+> 验收：共享 VLab 11:50 部署 #428（session-sharing 4 文件，before=V 线上 792b1c75/a15b1426/26adfeba/36c5a27b）+ #415（飞书 monitor.account 31238429→ffdf7072），dev ede1a7bb。部署后 TypeError/ReferenceError/SyntaxError/InvalidConfig/飞书或 catch-up 报错均为 0；sessions.list limit 50 返回 50 行且带 sharingRole，服务端 188 ms；deepseek-flash 真实回合 bash echo sf-ok 正确。合入前：#428 candidate a4ab58da（70 个可见性用例逐行一致，sharing 639→11 ms）；#415 candidate 断线/停顿…
+- `core` session-accessor.sqlite-entry-BlklNPKQ.js  a15b1426 → 789fca01
+- `core` session-accessor.sqlite-transcript-state-Cz9g7S9v.js  792b1c75 → 2583a789
+- `core` session-utils-store-Dlphca2N.js  26adfeba → b566c7e9
+- `core` sessions-read-C6mAMxyQ.js  36c5a27b → 2d2d0fb1
+- `feishu` dist/monitor.account-WFdlCDhR.js  31238429 → ffdf7072
+
 ## v2026.9.1-db91.6-sharing-feishu-catchup-20261018
 
 上线：2026-10-18 12:36 CST v-self-restart 生效（PID 2055157 → 2096230）  ·  tag `v2026.9.1-db91.6-sharing-feishu-catchup-20261018`
