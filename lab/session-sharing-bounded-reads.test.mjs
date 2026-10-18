@@ -27,12 +27,35 @@ test('four release chunks contain only the reviewed mechanical changes', () => {
   // The one-line key helper has no following closing-line anchor.
   assert(cacheKey);
   beforeUtils = beforeUtils.replace(keyHelper + '\n', '').replace('const cacheKey = cache ? gatewaySessionLookupCacheKey(storePath, clone, agentId, options) : "";', `const cacheKey = cache ? ${cacheKey} : "";`).replaceAll('(params.lookupStore ?? loadGatewaySessionLookupStore)(', 'loadGatewaySessionLookupStore(').replaceAll('\n\t\tlookupStore: params.lookupStore,', '');
-  let beforeRpc = rpc.replace('import { createGatewaySessionStoreBatchCache } from "./session-utils-store-Dlphca2N.js";\n', '').replace(/\t{4}\/\/ session-sharing-bounded-reads-v1: read only[\s\S]*?\n\t{4}\}\);\n/, '').replace('\t\t\tconst { sharingTargets, membershipKeys } = await measureDiagnosticsTimelineSpan("gateway.sessions.list.sharing", () => {\n', '\t\t\tconst { sharingTargets, membershipKeys } = await measureDiagnosticsTimelineSpan("gateway.sessions.list.sharing", () => {\n\t\t\t\tconst sharingStoreCache = /* @__PURE__ */ new Map();\n');
+  let beforeRpc = rpc.replace('import { createGatewaySessionStoreBatchCache } from "./session-utils-store-Dlphca2N.js";\n', '').replace(/\t{4}\/\/ session-sharing-bounded-reads-v1: read only[\s\S]*?\n\t{4}\}\);\n/, '').replace('await measureDiagnosticsTimelineSpan("gateway.sessions.list.sharing", () => {\n', 'await measureDiagnosticsTimelineSpan("gateway.sessions.list.sharing", () => {\n\t\t\t\tconst sharingStoreCache = /* @__PURE__ */ new Map();\n');
   for (const [source, baseline, patch, index] of [[state, beforeState, patchState, 0], [entry, beforeEntry, patchEntry, 1], [utils, beforeUtils, patchUtils, 2], [rpc, beforeRpc, patchRead, 3]]) {
     assert.equal(createHash('sha256').update(baseline).digest('hex'), plan.files[index].before);
     assert.equal(patch(baseline), source);
     assert.throws(() => patch(source));
   }
+});
+
+// Release chunks are whole-file replacements: every patch already on V must survive.
+test('rebuilt chunks keep every patch marker present in the V bytes they replace', () => {
+  for (const [source, markers] of [
+    [entry, ['oc64-session-races-v2', 'subagent-lazy-session-store-v1']],
+    [rpc, ['v-workboard-sweep-light-v1']],
+  ]) for (const marker of markers) assert(source.includes(marker), marker);
+  assert(rpc.includes('const lifecycleOnly = p.lifecycleOnly === true && !visibilityFilter;'));
+  assert(rpc.includes('} : await measureDiagnosticsTimelineSpan("gateway.sessions.list.sharing", () => {'));
+  assert(rpc.includes('const projectPlacement = lifecycleOnly ? () => ({}) : createSessionPlacementBatchProjector(context, result.sessions);'));
+  assert(entry.includes('createSessionEntryLookupReadOnly as z'));
+});
+
+// V's current bytes for the two changed chunks are the shipped #404 and #418 release files.
+test('rebuilding from the #404 and #418 release files reproduces the chunks exactly', () => {
+  const shipped = (dir, name) => fs.readFileSync(new URL(`./release-files/${dir}/${name}`, import.meta.url), 'utf8');
+  const entryV = shipped('subagent-lazy-store', 'session-accessor.sqlite-entry-BlklNPKQ.js');
+  const readV = shipped('workboard-sweep-light', 'sessions-read-C6mAMxyQ.js');
+  assert.equal(createHash('sha256').update(entryV).digest('hex'), plan.files[1].before);
+  assert.equal(createHash('sha256').update(readV).digest('hex'), plan.files[3].before);
+  assert.equal(patchEntry(entryV), entry);
+  assert.equal(patchRead(readV), rpc);
 });
 
 test('native cache peek detects other-connection COMMIT and same-connection raw writes', () => {

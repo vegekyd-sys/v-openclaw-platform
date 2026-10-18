@@ -59,12 +59,15 @@ test("release files are exactly the patched V bytes", () => {
   assert.equal(release(ADMISSION_FILE), patchAdmission(fixture(ADMISSION_FILE)));
 });
 
-test("the entry patch stacks on PR #403's chunk without touching its bounded reader", () => {
+// #404 shipped first; PR #403 was rebuilt on V's #404 bytes (session-sharing-bounded-reads). Both
+// stacking orders give the same chunk apart from where the #404 marker line sits.
+test("PR #403's chunk rebuilt on the entry patch keeps the lookup and its bounded reader", () => {
   const pr403 = readFileSync(path.join(here, "release-files/session-sharing-bounded-reads", ENTRY_FILE), "utf8");
-  const after = patchEntryLookup(pr403);
-  assert.equal(after, release(`on-pr403/${ENTRY_FILE}`));
-  assert.match(after, /function loadExactSessionEntriesReadOnly\(scope, requestedKeys\) \{/u);
-  assert.match(after, /^export \{ loadExactSessionEntriesReadOnly \};$/mu);
-  assert.match(after, /createSessionEntryLookupReadOnly as z \};$/mu);
-  parses(after);
+  assert.throws(() => patchEntryLookup(pr403), "the rebuilt #403 chunk already carries the entry patch");
+  const withoutMarker = (source) => source.replace(`// ${MARKER}\n`, "");
+  assert.equal(withoutMarker(pr403), withoutMarker(release(`on-pr403/${ENTRY_FILE}`)));
+  assert.match(pr403, /function loadExactSessionEntriesReadOnly\(scope, requestedKeys\) \{/u);
+  assert.match(pr403, /^export \{ loadExactSessionEntriesReadOnly \};$/mu);
+  assert.match(pr403, /createSessionEntryLookupReadOnly as z \};$/mu);
+  parses(pr403);
 });
