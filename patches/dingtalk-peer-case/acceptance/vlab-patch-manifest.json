@@ -1,0 +1,52 @@
+{
+  "patch": "v-dingtalk-peer-case-v1",
+  "version": "2026.9.1",
+  "generatedAt": "2026-10-15T22:22:35+08:00",
+  "isolatedCoreCopy": "/home/openclaw/src/dt-patch-core-215343",
+  "changedFiles": [
+    {
+      "name": "session-key-CRjxKW0X.js",
+      "path": "dist/session-key-CRjxKW0X.js",
+      "before": "6a9c3f33eca880313ea1e5854ef7c50bba86864a29e20d42fcc0884573b44ae5",
+      "after": "fa59b6e0fe90e90a72a96c63121f2a64d942775ec5bfe049b931aeadd0552d55"
+    },
+    {
+      "name": "worker.mjs",
+      "path": "dist/worker/worker.mjs",
+      "before": "4087283ddf36ca0706044e7d018f6b069d3f3526bf9d38edfb38b90ce48f17e3",
+      "after": "173b4cc4d69f781c6983d75d30542abdb4ba00dd97affea78c560ef29ad34581"
+    }
+  ],
+  "tests": {
+    "command": "DINGTALK_PATCH_CORE=<isolated copy> node --test tests/patch-openclaw91-dingtalk-peer-case.test.mjs",
+    "tests": 4,
+    "pass": 4,
+    "fail": 0,
+    "covers": [
+      "baseline reproduces folding",
+      "apply preserves exact case",
+      "other channels still fold",
+      "folded legacy key still resolves as alias",
+      "second apply is a no-op",
+      "rollback restores baseline",
+      "rollback refuses after later drift",
+      "raw inbound ids keep case for both group and channel peer kinds",
+      "feishu control case still folds"
+    ]
+  },
+  "apiEvidence": {
+    "note": "Independent of the patch: DingTalk API accepts the exact-case id and rejects the folded id.",
+    "foldedId": {
+      "openConversationId": "cidvcos13fzqxfw5znrtumu2q==",
+      "result": "HTTP 400 invalid.openConversationId"
+    },
+    "exactCaseId": {
+      "openConversationId": "cidvcoS13FzQXFw5ZNRTUMU2Q==",
+      "result": "HTTP 200 processQueryKey (text + sampleFile)"
+    }
+  },
+  "peerKinds": [
+    "group",
+    "channel"
+  ]
+}

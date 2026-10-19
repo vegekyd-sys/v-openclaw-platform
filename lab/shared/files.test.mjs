@@ -11,6 +11,8 @@ test('reject traversal, state, external symlink, duplicate and corrupt payloads'
  const root=fixture(t),f={target:'openclaw/dist/a.mjs',before:sha('export const a=1;'),after:sha('export const a=2;'),content:Buffer.from('export const a=2;').toString('base64')};
  validateFiles(root,[f]);
  for(const p of ['../a.mjs','openclaw/../../a.mjs','openclaw/.env','openclaw/state/a.json','openclaw/auth.json','/tmp/a.js'])assert.throws(()=>target(root,p));
+ for(const p of ['openclaw/sessions/a.js','production-worker/state/a.js','npm/projects/x/browser/a.js','openclaw/dist/config/sessions/.env','openclaw/dist/auth.json'])assert.throws(()=>target(root,p),undefined,p);
+ target(root,'openclaw/dist/config/sessions/session-transcript-reconcile.worker.js');target(root,'openclaw/dist/browser/a.js');
  fs.symlinkSync(os.tmpdir(),root+'/openclaw/external');assert.throws(()=>target(root,'openclaw/external/a.js'));
  assert.throws(()=>validateFiles(root,[f,f]));assert.throws(()=>validateFiles(root,[{...f,content:Buffer.from('bad').toString('base64')}]));
 });

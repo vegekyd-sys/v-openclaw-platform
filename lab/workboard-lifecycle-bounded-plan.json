@@ -1,0 +1,19 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/workboard-lifecycle-bounded/runtime-api-1CCazqtv.js",
+      "target": "openclaw/dist/runtime-api-1CCazqtv.js",
+      "before": "95373b6edb1e79b0ebb0b3f6f79970983f634ebcf3503765d39a77cf09431984"
+    },
+    {
+      "source": "lab/release-files/workboard-lifecycle-bounded/sqlite-store-CH-caj1l.js",
+      "target": "openclaw/dist/sqlite-store-CH-caj1l.js",
+      "before": "9043747801b1f3e590f8194da6bb33e41322abc36f32ace8abad07f87a5149a0"
+    },
+    {
+      "source": "lab/release-files/workboard-lifecycle-bounded/index.js",
+      "target": "openclaw/dist/extensions/workboard/index.js",
+      "before": "5ac1a060a7572562b3163b2039ab9c870643df7d4a8f1f563f45029b6b4c1df7"
+    }
+  ]
+}

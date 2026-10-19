@@ -31,6 +31,10 @@ const MODEL = "deepseek/deepseek-flash";
 const REAL_TURN = process.env.REAL_TURN === "1";
 const V_SECRET_REFS = process.env.V_SECRET_REFS === "1";
 const SAFETY = process.env.SAFETY === "1";
+// SECRETS_PROBE=1: in the last restart, resolve the Worker runtime config's SecretRefs from a
+// Worker-like process while the Gateway is starting (after http listening, before ready) and
+// once more after ready.
+const SECRETS_PROBE = process.env.SECRETS_PROBE === "1";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const redact = (s) => String(s).replace(/(token|api.?key|authorization|secret|bearer|password)([=: ]+)[^\s"]+/giu, "$1$2[redacted]");
 const dist = path.join(runtime, "openclaw", "dist");
@@ -183,14 +187,27 @@ const MARKS = [
   ["firstPoolReady", /"stage":"pool-ready"/u],
   ["gatewayReady", /\[gateway\] ready/u],
 ];
-async function measuredStart(prof) {
+function secretsProbe(t0) {
+  const workerCfg = workerPlugin.workerConfigPath;
+  const started = Date.now();
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [path.join(process.cwd(), "lab/candidate/secrets-resolve-probe.mjs"), dist], { env: { ...env, VLAB_WORKER_CHILD: "1", OPENCLAW_CONFIG_PATH: workerCfg }, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "", err = "";
+    child.stdout.on("data", (c) => { out += c; });
+    child.stderr.on("data", (c) => { err += c; });
+    child.on("exit", () => { let r; try { r = JSON.parse(out.trim().split("\n").pop()); } catch { r = { raw: out.slice(-300), stderr: redact(err).split("\n").filter((l) => !/ExperimentalWarning|trace-warnings/u.test(l)).join("\n").slice(-600) }; } resolve({ startedAtS: Math.round((started - t0) / 100) / 10, wallMs: Date.now() - started, ...r }); });
+  });
+}
+async function measuredStart(prof, probe = false) {
   const from = lines.length;
   const t0 = startGateway(prof);
   let hello = null;
+  const probes = [];
   const deadline = t0 + 1_800_000;
   while (Date.now() < deadline) {
     if (gateway.exitCode !== null) throw new Error(`Gateway exited ${gateway.exitCode}\n${redact(lines.slice(-60).map((l) => l.line).join("\n"))}`);
     const seen = lines.slice(from);
+    if (probe && probes.length === 0 && seen.some((l) => /http server listening/u.test(l.line)) && !seen.some((l) => /\[gateway\] ready/u.test(l.line))) probes.push(secretsProbe(t0));
     if (hello === null && seen.some((l) => /http server listening/u.test(l.line)) && await helloOnce()) hello = Date.now() - t0;
     if (seen.some((l) => /\[gateway\] ready/u.test(l.line)) && seen.filter((l) => /"stage":"pool-ready"/u.test(l.line)).length >= WORKERS) break;
     await sleep(250);
@@ -205,7 +222,8 @@ async function measuredStart(prof) {
   const prewarm = seen.filter((l) => l.line.includes("[worker-runtime-prewarm")).map((l) => { try { const j = JSON.parse(l.line.slice(l.line.indexOf("{"))); return { ms: j.ms, preparedMs: j.preparedMs, pid: j.pid, fastPath: j.distResolveFastPath, compileCache: j.compileCache, status: j.status, secrets: j.secretsPrepared }; } catch { return null; } }).filter(Boolean);
   const preflight = seen.find((l) => /preflight passed in (\d+)ms/u.test(l.line))?.line.match(/passed in (\d+)ms/u)?.[1];
   const carry = seen.find((l) => l.line.includes("clean-restart carry"))?.line.replace(/^.*clean-restart carry: /u, "") ?? null;
-  return { t0, marks, prewarm, preflightMs: preflight ? Number(preflight) : null, carry, receipts: receipts() };
+  if (probe) { await sleep(5_000); probes.push(secretsProbe(t0)); }
+  return { t0, marks, prewarm, preflightMs: preflight ? Number(preflight) : null, carry, receipts: receipts(), secretsProbes: probe ? await Promise.all(probes) : undefined };
 }
 // receipts of the current lifecycle: who produced each one (full check, carried, verifier)
 function receipts() {
@@ -296,7 +314,7 @@ try {
   results.push({ warmupStop: await stopGateway() });
   for (let run = 1; run <= RUNS; run += 1) {
     if (CPU_PROF) fs.rmSync(profDir, { recursive: true, force: true });
-    const start = await measuredStart(CPU_PROF && run === RUNS);
+    const start = await measuredStart(CPU_PROF && run === RUNS, SECRETS_PROBE && run === RUNS);
     await sleep(CPU_PROF && run === RUNS ? 2_000 : 20_000);
     const turn = REAL_TURN && run === RUNS ? await realTurn() : undefined;
     const gatewayPid = gateway.pid;
@@ -350,4 +368,4 @@ try {
 } finally {
   await stopGateway();
 }
-console.log(JSON.stringify({ built, workers: WORKERS, db: DB, safety: results.find((r) => r.safety)?.safety, runs: results.filter((r) => r.run).map((r) => ({ run: r.run, preflightMs: r.preflightMs, carry: r.carry, receipts: r.receipts, ...r.marks, stopMs: r.stop?.stopMs, prewarmMs: r.prewarm.map((p) => p.ms), preparedMs: r.prewarm.map((p) => p.preparedMs), turn: r.turn, workerFlags: [...new Set(r.prewarm.map((p) => `${p.status}/${p.fastPath}/${p.compileCache}/${p.secrets}`))] })) }, null, 1));
+console.log(JSON.stringify({ built, workers: WORKERS, db: DB, safety: results.find((r) => r.safety)?.safety, runs: results.filter((r) => r.run).map((r) => ({ run: r.run, preflightMs: r.preflightMs, carry: r.carry, receipts: r.receipts, ...r.marks, stopMs: r.stop?.stopMs, prewarmMs: r.prewarm.map((p) => p.ms), preparedMs: r.prewarm.map((p) => p.preparedMs), turn: r.turn, secretsProbes: r.secretsProbes, workerFlags: [...new Set(r.prewarm.map((p) => `${p.status}/${p.fastPath}/${p.compileCache}/${p.secrets}`))] })) }, null, 1));

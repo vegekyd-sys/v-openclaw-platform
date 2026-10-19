@@ -1,0 +1,104 @@
+{
+  "release": "subagent-settle-completion-20261016e",
+  "sourceCommit": "24ad9998da030cfafb51089b6c1a62d43ea73793",
+  "artifactSha": "a465dd0a42bea1e8b040373de17cc51399179e7c335bf05bca92130c8054149e",
+  "runtimeSha": "1496f7d693b00056d3777c777aa6fe23d13f2e6308885593f515bcdac9c93d7e",
+  "configSha": "7dc9330b7877afd259b3ba3c87a3e461d67d4810f42ed4756dbc5fe43baa5af8",
+  "environment": "shared VLab only",
+  "productionChanged": false,
+  "localAndMergedTests": 67,
+  "realSessionCopyTests": 17,
+  "cases": [
+    {
+      "case": "R1",
+      "sentMessageId": "om_x100b6217304a94a4cf4214e8b3a5897",
+      "finalMessageId": "om_x100b6217cf7794acce9c7c9360a363e",
+      "finalText": "COMPLETION_E_R1_1016_OK A+B",
+      "visibleFinalCount": 1,
+      "yieldCalls": 2,
+      "children": [
+        {
+          "sessionKey": "agent:makaron:subagent:9dfee693-419c-454c-ad45-09501ba5ced6",
+          "command": "printf COMPLETION_E_R1_1016_A",
+          "output": "COMPLETION_E_R1_1016_A"
+        },
+        {
+          "sessionKey": "agent:makaron:subagent:0a55f28d-963e-4216-983a-c7f80f8b92c8",
+          "command": "printf COMPLETION_E_R1_1016_B",
+          "output": "COMPLETION_E_R1_1016_B"
+        }
+      ]
+    },
+    {
+      "case": "R2",
+      "sentMessageId": "om_x100b6217cc35c8a8ce933f305988662",
+      "finalMessageId": "om_x100b6217cb52a8a0cf37149591a566d",
+      "finalText": "COMPLETION_E_R2_1016_OK A+B",
+      "visibleFinalCount": 1,
+      "yieldCalls": 2,
+      "children": [
+        {
+          "sessionKey": "agent:makaron:subagent:1ba6c826-e170-4319-a729-c8df6a69a3d0",
+          "command": "printf COMPLETION_E_R2_1016_A",
+          "output": "COMPLETION_E_R2_1016_A"
+        },
+        {
+          "sessionKey": "agent:makaron:subagent:da89c1f0-4058-4a40-9a51-731a3132db1f",
+          "command": "sleep 8; printf COMPLETION_E_R2_1016_B",
+          "output": "COMPLETION_E_R2_1016_B"
+        }
+      ]
+    },
+    {
+      "case": "SINGLE",
+      "sentMessageId": "om_x100b6217c6e8e8a0b4a289b20c5bd6b",
+      "finalMessageId": "om_x100b6217c77a44a0ce41a575f234a03",
+      "finalText": "COMPLETION_E_SINGLE_1016_OK",
+      "visibleFinalCount": 1,
+      "yieldCalls": 1,
+      "children": [
+        {
+          "sessionKey": "agent:makaron:subagent:b193328f-6d89-4acf-aa48-86ca7a2889f5",
+          "command": "printf COMPLETION_E_SINGLE_1016_CHILD",
+          "output": "COMPLETION_E_SINGLE_1016_CHILD"
+        }
+      ]
+    }
+  ],
+  "normalMessageId": "om_x100b6217c34bbcacb0f88ab08853376",
+  "registry": {
+    "registryRows": 35,
+    "pendingSettleWakes": 0,
+    "quietPendingSettleWakes": 0,
+    "runningRows": 0
+  },
+  "criticalLogMarkers": {
+    "SessionTranscriptProjectionUnavailableError": 0,
+    "Turn yielded without a continuation source": 0,
+    "SQLite session state changed while preparing session-entry.patch": 0,
+    "SQLITE_FULL": 0
+  },
+  "remainingObservedDiagnostics": [
+    "Two first-child completion turns intentionally yielded without a visible reply; delivery layer logged visible_reply_missing before the second child produced the final summary.",
+    "One sessions_yield abort-settle timeout at 2000 ms; this run subsequently completed correctly.",
+    "One remote skills node connectivity probe timeout."
+  ],
+  "evidenceHashes": {
+    "completion-e-final-replies.json": "2695459c71cf537d6757249d5936724259c8329760585492de2e648379e1832d",
+    "completion-e-final-history.json": "75cf09684246a32a22ebf517a08d6dcfee90e70d35e9512c7b6686b807459a87",
+    "completion-e-final-journal.log": "77efca1660c9a67991d5ed5b1249b8718142e2d7f72551497e65c2cb228775b3",
+    "completion-e-registry-end.json": "a5a98ff42ca6f2c625a64d3c887b8d1661b0e51213cf32b35a0c5e9519e037d5"
+  },
+  "acceptanceScope": "Two-child immediate and delayed completion, intermediate re-yield, single child, ordinary Feishu reply, no visible diagnostic or duplicate final message. Does not establish production Night Shift load performance or removal of all backend diagnostics.",
+  "rollback": {
+    "at": "2026-10-16T14:50:06.056Z",
+    "restoredRelease": "voice-batch-shared-20261016e",
+    "restoredRuntimeSha": "a9578e93ea3b86d50b48e4b8ca561394cba8424fa87e7200e3fb3d8fada544b3",
+    "statePreserved": true,
+    "aligned": true,
+    "pending": null,
+    "healthOk": true,
+    "healthDurationMs": 54,
+    "leaseReleased": true
+  }
+}

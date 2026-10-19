@@ -1,0 +1,81 @@
+{
+  "schema": "v-voice-production-registration-v1",
+  "status": "active",
+  "platformRelease": "v2026.9.1-db91.6-voice-task-continuity-20261016-r3",
+  "sourceRepository": "https://github.com/vegekyd-sys/v-voice",
+  "sourceCommit": "a9ac516860a8856470262957ad6ea0cc2670cb0e",
+  "filesSha256": "5caf0813a241cde4968eb9a8c2b76e7dd43abcc77235be53224cfb9474c23c6c",
+  "fileCount": 177,
+  "entryDirectory": "/opt/openclaw-voice-h5/releases/gpt-live-a9ac516860a8856470262957ad6ea0cc2670cb0e",
+  "pluginDirectory": "/opt/openclaw-voice-h5/releases/gpt-live-a9ac516860a8856470262957ad6ea0cc2670cb0e/plugins/v-voice-gpt-live",
+  "entryService": "openclaw-rtc-h5.service",
+  "entryServer": "lab/gpt-live-h5/server.mjs",
+  "url": "https://openclaw.tianyi.live/voice/",
+  "sharedRelease": "voice-batch-shared-20261016e",
+  "sharedArtifactSha": "61e1b151b919e281b558a87f06543474278ad3297e18fc85e09d74a7bade8ca4",
+  "platformRuntimePRs": [
+    371,
+    374,
+    385
+  ],
+  "voiceMergedPRs": [
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    21,
+    22
+  ],
+  "driftSentinelCoversVoice": false,
+  "artifactManifest": "artifact-manifest.json",
+  "gatewayRestartPolicy": "Existing production systemd policy; no no-force-kill overrides",
+  "databaseBackup": "Existing verified snapshot only, on /dev/vdb; no second database copy",
+  "excluded": [
+    "Voice #2 multi-account unaccepted",
+    "Voice #20 separate draft",
+    "Platform #386 closed unmerged",
+    "Grok model acceptance not requested"
+  ],
+  "activation": {
+    "gatewayRestartRequest": "20261016-084228-af39",
+    "gatewayReadyAt": "2026-10-16T08:43:53+08:00",
+    "gatewayStartupSeconds": 71,
+    "entryActivationAttempt": "E2",
+    "entryProfile": "entry-profile.conf",
+    "gatewayRestartCountThisCompletion": 1,
+    "previousEntryAttempt": "E1 rolled back before changing the Voice profile; no further Gateway restart"
+  },
+  "acceptance": {
+    "status": "background-task-paths-passed-with-known-ui-followup",
+    "productionNaturalSpeech": true,
+    "syntheticMicrophone": true,
+    "rawUserAudioRecorded": false,
+    "models": [
+      "gpt-live",
+      "seeduplex"
+    ],
+    "gptAfterHangupMs": 47448,
+    "seedAfterHangupMs": 49074,
+    "independentFeishuReadback": true,
+    "nativeChildSpawnYieldExecParentResumeVerified": true,
+    "steerAndFollowupVerified": true,
+    "foreignOwnerRejected": true,
+    "mobileViewportReportLayoutVerified": true,
+    "realIPhoneSafariRetested": false,
+    "knownIssue": "GPT native farewell wording variant can remain ending; isolated frontend follow-up, not deployed"
+  },
+  "operations": {
+    "sharedVlabAligned": true,
+    "sharedVlabLeaseReleased": true,
+    "productionCandidateUnitsStopped": 6,
+    "gatewayJournalErrorLines": 0,
+    "gatewayCriticalMarkerCount": 0,
+    "nightshiftGatewayRestartStatus": "up"
+  }
+}

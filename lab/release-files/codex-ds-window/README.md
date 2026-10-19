@@ -191,6 +191,24 @@ candidate Y 段（candidate-421f9a72，上限临时调到 300 KB）：线程过�
 7. **关闭**：`OPENCLAW_V_CODEX_DS_WINDOW=0`（Gateway 环境变量，需要重启），或用 promote-to-v 回滚这三个文件。
    关掉后 DeepSeek app-server 的启动参数回到 V 现在的样子，线程照常续用。
 
+## 共享 VLab 验收（2026-10-13 22:26–22:40 CST，release `codex-ds-window-20261013`）
+
+基线 `tooling-prepare-20261013`（= V，含 #358/#360）。从 dev ebca7d5c 打包 v1 产物（run-attempt bb0b0354 → 8ab51650，加两个新文件，
+artifact 97832da5），Gateway 实际加载的 `state/npm` 副本另外同步（备份在 `shared-workflow/codex-ds-window-20261013/state-npm-backup`，
+回滚用 `lab/codex-ds-window-shared-accept.mjs unsync`）。脚本 `lab/codex-ds-window-shared-accept.mjs`，记录在
+`shared-workflow/codex-ds-window-20261013/log.jsonl`。
+
+| | 部署前（V 字节） | 部署后 |
+|---|---|---|
+| 大 /vds 会话（7 段垫底） | 5 次压缩，压缩轮首字 12–17 s，窗口 258,400 | 同一会话换新线程重放 42.4 万（命中 6k），之后 3 轮 424k 全命中，0 压缩，窗口 950,000，首字 3.1–4.3 s，rollout 1.6 MB |
+| 小 /vds 会话首字（4 轮） | 6.7（冷）/ 2.3 / 2.4 / 2.2 s | 2.75 / 1.86 / 1.84 / 2.28 s |
+| /vcodex（gpt-6.1-sol） | 窗口 475,000，10.8 / 5.2 s，暗号对 | 窗口 475,000，7.6 / 3.9 s，暗号对 |
+| app-server 启动参数 | DeepSeek、GPT 各一个进程，都没有 catalog | DeepSeek 进程带 `model_catalog_json` + `instructions`（16,979 字），GPT 进程不变 |
+| #358 toolset（`codex-firsttext-shared-accept.mjs toolset`） | — | 2 个线程，成员 3 次续用主人线程，`conversations_list` 被拒，暗号全对；成员线程单次 51.6 万不压缩 |
+
+- 部署后大会话问「开头的暗号」答不出：垫底合计约 108 万 token，超过插件新线程投影的 100 万字符上限，第一段被截掉，与本补丁无关（V 字节下同一会话本来就靠压缩摘要）。
+- 请求体：重放 42.4 万的线程 rollout 1.6 MB，请求体同量级，远低于 48 MiB；#322 之后 V 上 DeepSeek 线程一生最大约 16 MB。
+
 ## 发版
 
 依赖：无（只改 Codex 插件的 run-attempt，另加两个文件）。#358（codex-toolset-cover，thread-lifecycle）在 dev 上、

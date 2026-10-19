@@ -1,0 +1,35 @@
+{
+  "id": "v-deepseek-web",
+  "name": "V DeepSeek Web",
+  "description": "web_search on DeepSeek Search, and DeepSeek Fetch as the web_fetch fallback.",
+  "activation": {
+    "onStartup": false
+  },
+  "contracts": {
+    "webSearchProviders": ["deepseek"],
+    "webFetchProviders": ["deepseek"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiKey": { "type": "string" },
+      "baseUrl": { "type": "string" },
+      "webSearch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "count": { "type": "integer", "minimum": 1, "maximum": 8 },
+          "snippetMaxChars": { "type": "integer", "minimum": 100, "maximum": 2000 }
+        }
+      },
+      "webFetch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 60 }
+        }
+      }
+    }
+  }
+}

@@ -6,6 +6,7 @@
 // verifier's result. Requires the caller to hold the shared VLab lease (or V authorization).
 //
 //   node lab/restart-speed-accept.mjs --target vlab [--tag RS1] [--skip-verifier true]
+//   node lab/restart-speed-accept.mjs --target v --self-restart true --requested-by "who, where, when"
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 
@@ -75,7 +76,8 @@ try {
   const t0 = Date.now() / 1000;
   // V restarts through its own entry (docs/v-self-restart.md): stop, clear dead Codex
   // registrations, start. The clock starts when the request is made.
-  if (args["self-restart"] === "true") remote(`sudo v-self-restart --reason ${sq(`restart-speed 计时验收 ${tag}`)} --requested-by ${sq("Tianyi 在 Claude 会话「V重启速度优化」说：发吧，新重启速度注意计时")} --delay 0 --force`, { timeoutMs: 120_000 });
+  if (args["self-restart"] === "true") assert(String(args["requested-by"] ?? "").length > 0, "--requested-by is required for v-self-restart");
+  if (args["self-restart"] === "true") remote(`sudo v-self-restart --reason ${sq(`restart-speed 计时验收 ${tag}`)} --requested-by ${sq(String(args["requested-by"] ?? ""))} --delay 0 --force`, { timeoutMs: 120_000 });
   else remote(`sudo systemctl restart ${target.unit}`, { timeoutMs: 600_000 });
   const marker = `${tag}-R-OK`;
   let sent = null;
@@ -114,7 +116,7 @@ try {
 
   // 3. the native verifier, 5 minutes after start: full check of every database, receipts refreshed
   if (args["skip-verifier"] !== "true") {
-    const until = (t0 + 900) * 1000;
+    const until = (t0 + Number(args["verifier-timeout-s"] ?? 2400)) * 1000; // V: 5 min delay + 8-27 min scan
     let v = [];
     while (Date.now() < until) {
       v = journal(t0 - 1).filter((l) => /database-verify/u.test(l.line));

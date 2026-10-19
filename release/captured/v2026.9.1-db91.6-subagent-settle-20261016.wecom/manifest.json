@@ -1,0 +1,1842 @@
+{
+  "release": "v2026.9.1-db91.6-subagent-settle-20261016.wecom",
+  "capturedAt": "2026-10-16T15:51:43.761Z",
+  "capturedFrom": {
+    "host": "v",
+    "runtimeDir": "/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin",
+    "baseDir": "none"
+  },
+  "upstream": "@wecom/wecom-openclaw-plugin (version in package.json)",
+  "platformCommit": null,
+  "note": "Point-in-time capture of how the live runtime diverges from its upstream base. These bytes are the existing production state, not a reviewed source build. Entries with alsoInRepo=null had no copy anywhere except the server.",
+  "counts": {
+    "runtimeFiles": 227,
+    "baseFiles": 0,
+    "modified": 0,
+    "added": 227,
+    "removedFromBase": 0,
+    "alreadyInRepo": 3,
+    "capturedOnly": 224,
+    "residue": 0
+  },
+  "removedFromBase": [],
+  "files": [
+    {
+      "path": "./README.md",
+      "sha256": "6df6dcf6fce0dfdc046295f48adb05ea3b1d8410c1eddc4914df44bf6b61aab3",
+      "kind": "added",
+      "bytes": 23033,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/index.d.ts",
+      "sha256": "0c0d1429fa9509e0a363eb4ff87592bf5103fe23be28d16143b69f64c2edd6ac",
+      "kind": "added",
+      "bytes": 263,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/index.js",
+      "sha256": "3f3d4222b4874c86af19cef1da4c1d8e76e7500c1822279cd375c2544dba81d7",
+      "kind": "added",
+      "bytes": 4482,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/accounts.d.ts",
+      "sha256": "4a4b5f1a4a47ae3360ecf66620bde3be15814e73819b12b158ce8abf2552ddc4",
+      "kind": "added",
+      "bytes": 2219,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/accounts.js",
+      "sha256": "c3cb47d2c9331fb447f1a36a82aca69c88d1e08968ad93390c82a1f1ba17a7cd",
+      "kind": "added",
+      "bytes": 8719,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/agent/api-client.d.ts",
+      "sha256": "3ea6d6eab791b5f861788fafbe36a3e16e5f69fe9ccb13e08de75513b26ccd07",
+      "kind": "added",
+      "bytes": 2889,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/agent/api-client.js",
+      "sha256": "1a3d19a6c20d124e50e8414efda83a1f89c424c7afa5e8b00e61ee58ee4978d8",
+      "kind": "added",
+      "bytes": 13345,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/agent/handler.d.ts",
+      "sha256": "2e2a5f6db36301281940464512ddfc82544dcc642ec752f0fd459ba941e48a24",
+      "kind": "added",
+      "bytes": 2183,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/agent/handler.js",
+      "sha256": "b56bf6f118317dbbcdaba5442043e8d510fe7c6a91c0bdce44b6e958957df5b5",
+      "kind": "added",
+      "bytes": 26144,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/agent/index.d.ts",
+      "sha256": "76816f58edad069fec52aac4f05593745681af06cff3e534b1ca2b3dc158320e",
+      "kind": "added",
+      "bytes": 212,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/agent/index.js",
+      "sha256": "fc410ac6e252b69cd6001bcb05a56fbf71dd07237412eaeca3919c416435e516",
+      "kind": "added",
+      "bytes": 187,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/agent/webhook.d.ts",
+      "sha256": "f73d085b0f014a3c9784454aa511b1e767a6cbae11d2421c7e341a66e547a875",
+      "kind": "added",
+      "bytes": 1129,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/agent/webhook.js",
+      "sha256": "c0f8983372c4223c93b5234f0058bf5f97566f7a4a4b8363dc36318fa93da341",
+      "kind": "added",
+      "bytes": 9144,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/agent/xml.d.ts",
+      "sha256": "f121c69c0c462d4aa1fd87e863068d1df3b266dcb727ab10f6a5de313c9e33a4",
+      "kind": "added",
+      "bytes": 520,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/agent/xml.js",
+      "sha256": "3d274e5d1fb368f198e2d58c10a439fdf62dcf0ec9bb5d49ba8feb422adb8566",
+      "kind": "added",
+      "bytes": 1198,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/channel.d.ts",
+      "sha256": "5fea6b8c2858ad3a137b3d4f912b75a6e9a8e30467300517a50228599b99bceb",
+      "kind": "added",
+      "bytes": 190,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/channel.js",
+      "sha256": "30eb4a171604a2ac998cd3217a0f68cde723d940a9291b5f57d52486046783fa",
+      "kind": "added",
+      "bytes": 29811,
+      "hostMtime": "2026-10-05T15:10:29.000Z",
+      "alsoInRepo": "lab/release-files/v-experience-channels/wecom/dist/src/channel.js"
+    },
+    {
+      "path": "./dist/src/chat-queue.d.ts",
+      "sha256": "8218c2458a120706a279cb0e98a53c60a69c684ec554210a6f77be08e9479bb5",
+      "kind": "added",
+      "bytes": 1024,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/chat-queue.js",
+      "sha256": "7b8a3aa49abd854d171101ea9a485406ed8d895ceca423c2f35947ceb9911677",
+      "kind": "added",
+      "bytes": 1516,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/argv.d.ts",
+      "sha256": "731af650e9b8545da285b35d818223d59eb0845e39c97913c14503b94a94a95a",
+      "kind": "added",
+      "bytes": 1627,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/argv.js",
+      "sha256": "8ce8854434c8c912aee0739bc7467d515132a9b70bdd17406386c3b5a0717bef",
+      "kind": "added",
+      "bytes": 6638,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/const.d.ts",
+      "sha256": "30d5341185a3ab933c37a7aaf82529a75f190122bba9b107943f2b729c3c8784",
+      "kind": "added",
+      "bytes": 4472,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/const.js",
+      "sha256": "c633c02531018b011775b7c51696846a08a9182154f92067435543adb93f455e",
+      "kind": "added",
+      "bytes": 4919,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/credentials.d.ts",
+      "sha256": "97e80c888d63d6c863e9ba25cc53561b8672bf38dd6e0d762e66c974447c5841",
+      "kind": "added",
+      "bytes": 2926,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/credentials.js",
+      "sha256": "760531c4d625fa01db88fdcc4534c3c056e786c69122b9ae00b196554616327e",
+      "kind": "added",
+      "bytes": 16101,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/index.d.ts",
+      "sha256": "a237209b90240980fa59a74f6b0772e3d087eb00ba1028b3669d930f8d4262cd",
+      "kind": "added",
+      "bytes": 320,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/index.js",
+      "sha256": "0edf05209c4c91fb3af2b0d37e654ea6eeb458ba562126e514f6fcdcecdef0d0",
+      "kind": "added",
+      "bytes": 288,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/legacy-tool-warning.d.ts",
+      "sha256": "198355a4cec55600283c9e60b26375f6e3bc988e9a91fbc8416250a08dc1b8a2",
+      "kind": "added",
+      "bytes": 473,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/legacy-tool-warning.js",
+      "sha256": "d3f570fa2d63197168545c09452b76a72cbceb56810ba3c691ee6245915d92e7",
+      "kind": "added",
+      "bytes": 1003,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/locate.d.ts",
+      "sha256": "6f2c86387a6c4964769691d6b360f5447dede83c4f071fa5706f7c09be73d70d",
+      "kind": "added",
+      "bytes": 1287,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/locate.js",
+      "sha256": "eed82c844850bfb51a41a73fec4a1dae593b7ecaa158aa704debeabd7d06101e",
+      "kind": "added",
+      "bytes": 7593,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/process-launcher.d.ts",
+      "sha256": "a1a8e4df153f26542d2478ba3eff608ff9ce2d6c0e5f3edbd1cdd726a5d9d0d5",
+      "kind": "added",
+      "bytes": 44,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/process-launcher.js",
+      "sha256": "a1a8e4df153f26542d2478ba3eff608ff9ce2d6c0e5f3edbd1cdd726a5d9d0d5",
+      "kind": "added",
+      "bytes": 44,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/process-output.d.ts",
+      "sha256": "248360b70729cd149fdc7633e3b583f2951002a4f1fb65c9b77727e2b1f789ca",
+      "kind": "added",
+      "bytes": 389,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/process-output.js",
+      "sha256": "82301d712fabc8dd0692df067e0ee085f47b1a8875fff5f41da14aaf7eb31a0f",
+      "kind": "added",
+      "bytes": 1440,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/tool.d.ts",
+      "sha256": "3185ff7dea90d829c6c0eb0ed62f54d1c75986e5004a9693dfec04136803585d",
+      "kind": "added",
+      "bytes": 1644,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/cli/tool.js",
+      "sha256": "c7b703958019ead892f06ad94f29aa1a6f3b2ff3bc6bc2a6fcfa9c728817d651",
+      "kind": "added",
+      "bytes": 18257,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/const.d.ts",
+      "sha256": "923f7a06c154d5bf31510b7fe1af734b350b95916c7c8161a5e6547abf4a1fa8",
+      "kind": "added",
+      "bytes": 4953,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/const.js",
+      "sha256": "8014442bc01a6d7d88fb94c32cd1973e82914c6cb79753cf3b20d94024a01e3b",
+      "kind": "added",
+      "bytes": 6345,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/dm-policy.d.ts",
+      "sha256": "3ffeecd9122f5238d40174cbd900bca71c1210c6a7b9a56ecc6b6a5db24a7b7a",
+      "kind": "added",
+      "bytes": 854,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/dm-policy.js",
+      "sha256": "c8e34eb601448f95f967c0afe05e64dbe428b083b3179c279351fc3f6192afc3",
+      "kind": "added",
+      "bytes": 3557,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/dynamic-agent.d.ts",
+      "sha256": "657b0bb728d4ed9e65bf9855f713b0f41e46d8cea42948163823ba3ef396bd34",
+      "kind": "added",
+      "bytes": 1298,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/dynamic-agent.js",
+      "sha256": "e9cecc7feecfc701ad2dc8d9399550804b4a9f295f40b50f92a4a8845667d45d",
+      "kind": "added",
+      "bytes": 2123,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/dynamic-routing.d.ts",
+      "sha256": "a0c480ce4414e6dced78a02c521b7053ac779310b32405dd97c368aa2c8d5151",
+      "kind": "added",
+      "bytes": 1902,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/dynamic-routing.js",
+      "sha256": "a491afd8cb3a69035d8d28a375c286abe6756a6f9a1cfbb7ccce3499677ecee4",
+      "kind": "added",
+      "bytes": 2260,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/group-policy.d.ts",
+      "sha256": "8e8df59eb32163beb253485ec9891f353c8c00cac7aebc2c9cd771fa8bdfcef1",
+      "kind": "added",
+      "bytes": 933,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/group-policy.js",
+      "sha256": "fbb799c8ad21bd47b6340b253903c5760c8b353d6d38b8dd21896adf8b6de19b",
+      "kind": "added",
+      "bytes": 4079,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/http.d.ts",
+      "sha256": "dcb1d33f346c03f598afabb56725d60fbba92a37b3e22e6c338b3fc64ce1f6ec",
+      "kind": "added",
+      "bytes": 899,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/http.js",
+      "sha256": "a20b59412428f0d425f94314ccf6615ec52e0712826c74c247b93cd85eb959a2",
+      "kind": "added",
+      "bytes": 3179,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/interface.d.ts",
+      "sha256": "e025c967e491e1107c2a5b50e56a3358a2abc6c552f8520662f575bf8de58560",
+      "kind": "added",
+      "bytes": 5126,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/interface.js",
+      "sha256": "ae19a102176427d6ac894924fdc8b2adc1b7dc4dc522ae15eb3bf255e62ca58e",
+      "kind": "added",
+      "bytes": 53,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/media-handler.d.ts",
+      "sha256": "5c2587aa4081cff19c29ceb71b03d1597078e35aef3fbf0bfeb472a02d1e686a",
+      "kind": "added",
+      "bytes": 1797,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/media-handler.js",
+      "sha256": "c5779f7e1899ac34c5ae67235ebc906fd6f00b5ed3dfcfd3ce304bab2bffe25d",
+      "kind": "added",
+      "bytes": 8938,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/media-uploader.d.ts",
+      "sha256": "a9046a93501797a6bed3c5630025543921f659bc53ea97c050ef40e8529908f2",
+      "kind": "added",
+      "bytes": 5018,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/media-uploader.js",
+      "sha256": "ac672a45908913754ac2f5204a30661341f33f2a31e8b09b91c2377b8d2310ab",
+      "kind": "added",
+      "bytes": 12990,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/message-parser.d.ts",
+      "sha256": "911dc5b8d1d7ef03c6dbf52bef11d38a4b79293b320ada29f771389232a02523",
+      "kind": "added",
+      "bytes": 2581,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/message-parser.js",
+      "sha256": "6ce4020646bbc70ebc881d2986fd482db1d0405d08090b81d2cf6258f754a220",
+      "kind": "added",
+      "bytes": 9815,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/message-sender.d.ts",
+      "sha256": "7552f3391fd61d6ad37363f79ffdf9798928070833e9d73c01849cc97fedcd55",
+      "kind": "added",
+      "bytes": 1802,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/message-sender.js",
+      "sha256": "75ae987666e31e74c0d7661b6c80e14dd98e8c08389a1bc6e4cbbb9b7343945c",
+      "kind": "added",
+      "bytes": 5076,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/monitor.d.ts",
+      "sha256": "bde84ae65d1c663cedb5c103359adade71da20a718f7da0e0080743e2ecb8be2",
+      "kind": "added",
+      "bytes": 1176,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/monitor.js",
+      "sha256": "d4fe3561255428b5446127e2b686319feb5879bae181cc7f38058858f6974f8d",
+      "kind": "added",
+      "bytes": 55123,
+      "hostMtime": "2026-10-05T15:10:29.000Z",
+      "alsoInRepo": "lab/release-files/v-experience-channels/wecom/dist/src/monitor.js"
+    },
+    {
+      "path": "./dist/src/onboarding.d.ts",
+      "sha256": "ef23a0ee1ea3e4cd6f7c609f9baaa34872128b0aa37856773c17c2900c52fa64",
+      "kind": "added",
+      "bytes": 429,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/onboarding.js",
+      "sha256": "bcfdfcaadc254dcf5436675e9a7f6ab7f8be59e273d89927125f669d9c98db9a",
+      "kind": "added",
+      "bytes": 8132,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/openclaw-compat.d.ts",
+      "sha256": "96a17cf002c4a31dac175f599daef74ee98a0a19513c4603f10bec052b07d7b7",
+      "kind": "added",
+      "bytes": 5359,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/openclaw-compat.js",
+      "sha256": "87b11e503b32c47245edd7d64a45ef6bfb52c39075edbd4c48a031ebd7f8072c",
+      "kind": "added",
+      "bytes": 17880,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/reqid-store.d.ts",
+      "sha256": "c59f45f0cef295336137738414425c479cb84570f6b41505627002cd3f9fba38",
+      "kind": "added",
+      "bytes": 922,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/reqid-store.js",
+      "sha256": "3d66cb86e0ed596fe084c4fba47f2565c8a1036bbef7a73931d142941f24e167",
+      "kind": "added",
+      "bytes": 2791,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/runtime.d.ts",
+      "sha256": "33ccbeba08a45ef26f552a48b7e957b8ff1a074da5dee6eafee52889d9a738f5",
+      "kind": "added",
+      "bytes": 208,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/runtime.js",
+      "sha256": "10ba87e305f8c31a1a308e5423e7b4b67433b074d2a8d28cef0c2b3cb382c636",
+      "kind": "added",
+      "bytes": 251,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/sender-name.d.ts",
+      "sha256": "9911b9707df4a285d9abca6f4f5aff9c82db819df58a3aa1368d5b56f21cb84a",
+      "kind": "added",
+      "bytes": 937,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/sender-name.js",
+      "sha256": "95a90ab47b6219ca059e22f4e7542f887bf93445c881ec0e376758bf1f8bcc85",
+      "kind": "added",
+      "bytes": 3010,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/shared/command-auth.d.ts",
+      "sha256": "d2ae0275f1ac1c278e47dffd1e274ada2b9e636a8e0888fa0e0780ec68c39949",
+      "kind": "added",
+      "bytes": 964,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/shared/command-auth.js",
+      "sha256": "0f5cca317819a65ced5bfad8ffcd2dd6688b2fb0d58da98752dc0cc0e5dcd2da",
+      "kind": "added",
+      "bytes": 3639,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/shared/xml-parser.d.ts",
+      "sha256": "3adef7ff57aedd5da493d8a8e1be900366e33548116a52006db2b98292618234",
+      "kind": "added",
+      "bytes": 1585,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/shared/xml-parser.js",
+      "sha256": "e126ce857d81abb88fc39761567a9955953efc34d91c8a4dc6fd566fe146e4aa",
+      "kind": "added",
+      "bytes": 6818,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/state-dir-resolve.d.ts",
+      "sha256": "df83f8361ee766911256025dfc0bd1212d1cc675d86349dd6b764e9d879f4a80",
+      "kind": "added",
+      "bytes": 87,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/state-dir-resolve.js",
+      "sha256": "8818fabfd0a25a52b4975e53976311ec725dd0088d3029fcc72a202e79b2b03a",
+      "kind": "added",
+      "bytes": 350,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/state-manager.d.ts",
+      "sha256": "3b04c56816d91b8fb9edea7d292cb14969a97e4c5182e4c7c99aab3961e99f28",
+      "kind": "added",
+      "bytes": 2750,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/state-manager.js",
+      "sha256": "d609f6157dd8a4cdc821c5a2b7a9ee06b00e12a802113d62e9a728b8045c9636",
+      "kind": "added",
+      "bytes": 8525,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/target.d.ts",
+      "sha256": "f711abe756a751bcabceb9b45782d18386285b973d6c59ea20336dea6a738834",
+      "kind": "added",
+      "bytes": 1647,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/target.js",
+      "sha256": "7b2dabd690df915e4ced3e6aee9b4afd0269939a1b97f82da0761a057519c5c9",
+      "kind": "added",
+      "bytes": 2980,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/template-card-manager.d.ts",
+      "sha256": "b52a18126d6a79b10b1232d5e083528e2d0e0700293c5eb23411e66ae88fced1",
+      "kind": "added",
+      "bytes": 1924,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/template-card-manager.js",
+      "sha256": "aaa590aab5befa056292c65925ca1db157952d0ee4b8978a29c235db5ec7f21c",
+      "kind": "added",
+      "bytes": 8672,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/template-card-parser.d.ts",
+      "sha256": "9ddb34b93afdddfaa77ffa904460810982806b7a89a470438023f2df5aff9c95",
+      "kind": "added",
+      "bytes": 1661,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/template-card-parser.js",
+      "sha256": "dc3e5dbf0b23502368fad7abf93940bce20dada8db0ed2829794fbf48b2934be",
+      "kind": "added",
+      "bytes": 29996,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/timeout.d.ts",
+      "sha256": "86a2eae1a61f6878f905298640cb92e6b5dca6f6e66b8e72694e609eb99931cc",
+      "kind": "added",
+      "bytes": 522,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/timeout.js",
+      "sha256": "971b681bb565bbe74edaa42e454c90be9e91a85fa87d5a541a582137754ba699",
+      "kind": "added",
+      "bytes": 957,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/types/account.d.ts",
+      "sha256": "48affb9fe6caabeaabd94d0714e7601aac0730dba9c0773199fa071344b7c723",
+      "kind": "added",
+      "bytes": 730,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/types/account.js",
+      "sha256": "f8c554d80dea80c3a0bc391ebe9dba0a6cd80683dad03a3a86232c233bba6173",
+      "kind": "added",
+      "bytes": 47,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/types/config.d.ts",
+      "sha256": "9fb7f8a55a0d985398441f933e283608d7272ccb6839295aa73ea1d43a069478",
+      "kind": "added",
+      "bytes": 3393,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/types/config.js",
+      "sha256": "0811732f0dce41ee6f937ae530338261642a4dfe207c1e0d81c537fd1c72e6c1",
+      "kind": "added",
+      "bytes": 236,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/types/constants.d.ts",
+      "sha256": "5b2dd864449af56bf88a44ed098281da6559a7e8bddd94bf74ce932f7d498220",
+      "kind": "added",
+      "bytes": 1586,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/types/constants.js",
+      "sha256": "9943d16d831f1f2b72bfd748e5f58419562b31c2b8ef6b88db5825f2bede030f",
+      "kind": "added",
+      "bytes": 1421,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/types/index.d.ts",
+      "sha256": "298ed78c22f15a1234e25a19d443e458f1371972e5dbd44fe3ff321ba92d9e99",
+      "kind": "added",
+      "bytes": 520,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/types/index.js",
+      "sha256": "e333203c6a42dd31d8337650d53828e3dd9c2a8418cabd5ea7a7058281439f94",
+      "kind": "added",
+      "bytes": 78,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/types/message.d.ts",
+      "sha256": "49ca5685402f005b5c142136e83ac3bb6915adc08dec55569c5c7b25a5036490",
+      "kind": "added",
+      "bytes": 5737,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/types/message.js",
+      "sha256": "cf44494a96e542d59e2dab418603a95d6f7915a4a41b4e4c08fefecfbf5ac5c2",
+      "kind": "added",
+      "bytes": 77,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/utils.d.ts",
+      "sha256": "60faf06b71c646e0c14ed3b71b1684865248f523fc4b48ac1c9424b874fdb1eb",
+      "kind": "added",
+      "bytes": 4583,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/utils.js",
+      "sha256": "5db18a80e409d182ca3b080dde80417e48599329d3b365cd23861843951106db",
+      "kind": "added",
+      "bytes": 2644,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/v-experience.mjs",
+      "sha256": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+      "kind": "added",
+      "bytes": 74961,
+      "hostMtime": "2026-10-05T15:10:29.000Z",
+      "alsoInRepo": "lab/release-files/v-experience-channels/dingtalk/dist/v-experience.mjs"
+    },
+    {
+      "path": "./dist/src/version.d.ts",
+      "sha256": "e2590eb83d294fd67b8a97bd27eba0c51e2750d33761b89225877896c120fd4c",
+      "kind": "added",
+      "bytes": 103,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/version.js",
+      "sha256": "17f26c1ec359ba27b9474a1d0b4d4139b5ea0d44921d33cf50fc764ef4b5d1b1",
+      "kind": "added",
+      "bytes": 945,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/command-auth.d.ts",
+      "sha256": "ad967caf6dee6e8bfc6b3fd424e397e892907e00bee4f94978523a26a9b16485",
+      "kind": "added",
+      "bytes": 1642,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/command-auth.js",
+      "sha256": "be966e0c493897e7890b8ac990f4efe0452c23ef81318a54b9863cbc9f4d7741",
+      "kind": "added",
+      "bytes": 4400,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/gateway.d.ts",
+      "sha256": "787e937efe1fd1e47342736ba3255ae5cf98ee2172726c0de09d57b6755e76d9",
+      "kind": "added",
+      "bytes": 1420,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/gateway.js",
+      "sha256": "062163a4e49cb8aed263da2c027fcc34d8b25c0d265dc03acb10bd815e1a62ab",
+      "kind": "added",
+      "bytes": 9448,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/handler.d.ts",
+      "sha256": "cb921b83fdc3f93d3ac896b0c44a1bd3f4caa00213b1ed18778c181b5460c006",
+      "kind": "added",
+      "bytes": 664,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/handler.js",
+      "sha256": "405874b5b79826f7790413d56b3d60887b1b56e6693504e7efc614f253c14885",
+      "kind": "added",
+      "bytes": 19499,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/helpers.d.ts",
+      "sha256": "85df1442b17efb9a54528bd6b34144f24ca0949b56bb3044e47ee9d9b9dd60da",
+      "kind": "added",
+      "bytes": 6235,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/helpers.js",
+      "sha256": "100e4412cec288c653db9283f82e8de5f388077a409e3226fbeb4be25793befe",
+      "kind": "added",
+      "bytes": 33209,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/http.d.ts",
+      "sha256": "dcb1d33f346c03f598afabb56725d60fbba92a37b3e22e6c338b3fc64ce1f6ec",
+      "kind": "added",
+      "bytes": 899,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/http.js",
+      "sha256": "fe7fb05fcf6fedc5945a6ee90f85935e1bcb8445303a10d7acc04b6e768d25d8",
+      "kind": "added",
+      "bytes": 3246,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/index.d.ts",
+      "sha256": "48fd4b287a5e0114ff86604ccd41f2849543e3e6518d32b2b72fe976ce07edf0",
+      "kind": "added",
+      "bytes": 866,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/index.js",
+      "sha256": "f3ddb0a935bd658ed2b6ecc25bb52269f2b2ed41ebe7b5b4093ba80bde722298",
+      "kind": "added",
+      "bytes": 1403,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/media.d.ts",
+      "sha256": "434208a7c85062c6127870faca3788ce69b0370b3122399581986e0bf928cde2",
+      "kind": "added",
+      "bytes": 1184,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/media.js",
+      "sha256": "bc9a7418f9ad057b8393499e430ad5390428ae9902af094afd2362dae8068639",
+      "kind": "added",
+      "bytes": 3680,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/monitor.d.ts",
+      "sha256": "b2cb4b70540c3b703479b9aff110a995f674b9fd9f7bc33ba4ad64bf5e1bb4c5",
+      "kind": "added",
+      "bytes": 2499,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/monitor.js",
+      "sha256": "747ba4ddbaad02e60d68ea32e68d3cfa034e867d7f7cf0e1abef56540899dd70",
+      "kind": "added",
+      "bytes": 63575,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/state.d.ts",
+      "sha256": "b2d124f5416cb535f55c4681de6ec9dcc04418039843e9fe889c4527093f19b1",
+      "kind": "added",
+      "bytes": 7656,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/state.js",
+      "sha256": "63a09da9cacf68b103a7ba2dc4039394e10a03db353f9e9d0331f74225cdf4f5",
+      "kind": "added",
+      "bytes": 18771,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/target.d.ts",
+      "sha256": "b7626a884524021a82d57d7d08da755d686ba7088ce5de1267639fb4fb2dd1d2",
+      "kind": "added",
+      "bytes": 1452,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/target.js",
+      "sha256": "243cbec81b0093330adcbc6f98fdaaf872380fb79f2536ad925f65f6ceae3ead",
+      "kind": "added",
+      "bytes": 4152,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/types.d.ts",
+      "sha256": "408baebdcba600ff90a7fc22e2b55010bbbf524dc6a09f3f7aae2fc7c5e6dde7",
+      "kind": "added",
+      "bytes": 10700,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/types.js",
+      "sha256": "de9da8412138ded35c37291d8792cceb9595f6fa41648306846bf5a78622b74e",
+      "kind": "added",
+      "bytes": 1235,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/video-frame.d.ts",
+      "sha256": "bac0b84a6721024b9961d24e86709eb1cc7d427b4706a3694bf0887896a54338",
+      "kind": "added",
+      "bytes": 505,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/src/webhook/video-frame.js",
+      "sha256": "8565b18026a6e1578b5eeb0e02ed3b1d76d0e5e96a6ff0d782ee27fd23f26458",
+      "kind": "added",
+      "bytes": 1098,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./openclaw.plugin.json",
+      "sha256": "c54e10d98ae608014514cb15ec3d3405681544638d5f9538f5205221e5376120",
+      "kind": "added",
+      "bytes": 267,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./package.json",
+      "sha256": "fb2bbf0e3abd3c4e28e6c9e6b8a1efec3f50ceb0a0d80fe3bcb5a7db0bfcc28d",
+      "kind": "added",
+      "bytes": 2119,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecom-send-media/SKILL.md",
+      "sha256": "06b353c7808f2b52a0787647acf6beaa4d4d3bd11bce569857223b342d94f8dc",
+      "kind": "added",
+      "bytes": 3817,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecom-send-template-card/SKILL.md",
+      "sha256": "220ab4eb00490e06a24a9d9f682593468628954c6265b7b7b352eb022d7c07c5",
+      "kind": "added",
+      "bytes": 5255,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecom-send-template-card/references/api-template-card-types.md",
+      "sha256": "8fdf3c8ae9b73ccc6d7b16f005fb1d60bfd38a4a1b474eb6c5c917fff8623b68",
+      "kind": "added",
+      "bytes": 11753,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-calendar/SKILL.md",
+      "sha256": "6c458102f3a9689bd5ee1a62cc02314d8f055e1d2ec186e91509185076e1d8f7",
+      "kind": "added",
+      "bytes": 29669,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-calendar/references/calendar-agenda.md",
+      "sha256": "189e38d39e7b55a378d0fabd900be7a77fa6c50f5b6ef32f5bbdfcfb40c3ba16",
+      "kind": "added",
+      "bytes": 15173,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-calendar/references/calendar-cancel.md",
+      "sha256": "ee66e125670337afa225c13d0e1fef5fb5bdd22c1129e26e8f434e1a299ec9cb",
+      "kind": "added",
+      "bytes": 7019,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-calendar/references/calendar-create.md",
+      "sha256": "9f39e8c036c89bee2e98f52d9f7cdfe88f5a8944a41ae815012d1dcadf3ad81f",
+      "kind": "added",
+      "bytes": 26189,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-calendar/references/calendar-freebusy.md",
+      "sha256": "b96cf285e603713cb041a848cfb22dbf66d277175c4515910f9c66a80fe44418",
+      "kind": "added",
+      "bytes": 13269,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-calendar/references/calendar-meeting-room.md",
+      "sha256": "ce6949a1a85e6a75bbee177066659c91e1dcc63a9d19a2f7ece5c5a7bf4f186c",
+      "kind": "added",
+      "bytes": 11509,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-calendar/references/calendar-search.md",
+      "sha256": "560c3c5b399f8c38a37c750af5a9b24352d64fd9b04fd5d7d5a84ce5feca5fcf",
+      "kind": "added",
+      "bytes": 11558,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-calendar/references/calendar-update.md",
+      "sha256": "ac4a7568e1a8ba7f7a30ff563e99bc9c1d95118eb2a8f60d65e709c1719d9de4",
+      "kind": "added",
+      "bytes": 21268,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-contact/SKILL.md",
+      "sha256": "16efc58bd1e2c1ddccbc39ca27a9624b46a6d1ead76e9e00b1dadd312ed49d4a",
+      "kind": "added",
+      "bytes": 3608,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-disk/SKILL.md",
+      "sha256": "8b2ed553e5ef09bd4b1968604392bbaf798f911640b5d74cd837f5ff254f42f6",
+      "kind": "added",
+      "bytes": 28213,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-doc-manage/SKILL.md",
+      "sha256": "b5ca1601122c5823735001f6d8d54b8b57a047abd0ceab2c71fc61be4d550cbb",
+      "kind": "added",
+      "bytes": 11504,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-doc-manage/references/doc-members-update.md",
+      "sha256": "78b3cbe99aa98bac37c61542c9cbbd428d9bd60cd765885b1f213392ddd44522",
+      "kind": "added",
+      "bytes": 900,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-doc-manage/references/doc-names-update.md",
+      "sha256": "ba28f9d940863d48b79865f6f5c8bbdd34534d254133b603609359b595cfee2b",
+      "kind": "added",
+      "bytes": 479,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-doc-manage/references/doc-rules-update.md",
+      "sha256": "e35aaf415a1e35183dd49ba4a01ae5d39a6f5753771f99b3b3d45201fb7fb7bf",
+      "kind": "added",
+      "bytes": 989,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-doc/SKILL.md",
+      "sha256": "d907dcc1535bd1bf262713dc52e5efcb0aa03faaa6035215bfdc7c290ff01546",
+      "kind": "added",
+      "bytes": 7363,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-doc/references/doc-contents-append.md",
+      "sha256": "ebf8c95432a914589463aa42a5a812b0b099118a0bd6d47627918d780966f3b5",
+      "kind": "added",
+      "bytes": 612,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-doc/references/doc-contents-overwrite.md",
+      "sha256": "021230f50847b6370ac4e015bacbcf117ffa2770e3940ab271bfd5aa5c656ccc",
+      "kind": "added",
+      "bytes": 1071,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-doc/references/doc-create.md",
+      "sha256": "9f8c3f0c7a1f1452c0264659b8f6904f672ff581a1520ad4383806e4332541bb",
+      "kind": "added",
+      "bytes": 7662,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-doc/scripts/build_docx.py",
+      "sha256": "d2cd102123523fdc49a008daa7b6642b2fc32944b2d8761a426a431fe23f5264",
+      "kind": "added",
+      "bytes": 50969,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-email/SKILL.md",
+      "sha256": "40e1c6c2c7c204272841fb1adf3d8dc87f6687314f480036735725c38e99661b",
+      "kind": "added",
+      "bytes": 13551,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-email/references/forward-mail.md",
+      "sha256": "329c250b7f50189002eb428a2ef5e6cd93682db1e011dd537c6741e824d654f0",
+      "kind": "added",
+      "bytes": 7200,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-email/references/get-mail.md",
+      "sha256": "524d65699c6e1dbd0453b62631139d2997a5f0cab10fb9508e6aa2ce2c67ef9b",
+      "kind": "added",
+      "bytes": 11788,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-email/references/reply-mail.md",
+      "sha256": "29db12434569a2fd184fd13feb25c58639df83a09dab110fcb112d7949bf6012",
+      "kind": "added",
+      "bytes": 10783,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-email/references/search-mail.md",
+      "sha256": "8e1fc35402c1e7073d3c074a5d6a7b4f2cf0a21030c632bd93a5c00d789fef07",
+      "kind": "added",
+      "bytes": 14015,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-email/references/security.md",
+      "sha256": "829e6c5e5790b723aac610f96e5f0414712e811aca946c6ab6b3b7eabf14ba8a",
+      "kind": "added",
+      "bytes": 2690,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-email/references/send-mail.md",
+      "sha256": "714e975b243f036de0a8ac20b94eaf1f2ecc506b2807337c1ce881fcd9623432",
+      "kind": "added",
+      "bytes": 13196,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-email/references/send-schedule.md",
+      "sha256": "0a28c5d765b21ec82ae47d1601ab7a49a31771abc0d9ec5a2c071568f14ea906",
+      "kind": "added",
+      "bytes": 5799,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-media/SKILL.md",
+      "sha256": "b8a7d3e5756c8acf8ef127cd780f378dab82bd8182f41460940a218ee74b0331",
+      "kind": "added",
+      "bytes": 5596,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-meeting/SKILL.md",
+      "sha256": "60fa6c63fa8ac2849da21a8b782ca33b950b0fb5edf611229132bf27e60b6c18",
+      "kind": "added",
+      "bytes": 36875,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-meeting/references/meeting-cancel.md",
+      "sha256": "b826e111852a4f8fdd05be0d7446a6c0d1dee8edd3959ae6b661fb9af6cc4a5a",
+      "kind": "added",
+      "bytes": 6847,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-meeting/references/meeting-create.md",
+      "sha256": "e6c256eeb57c58c86b2183d77a852a9c1fc0ae23fe548f409827cf3d92c6635b",
+      "kind": "added",
+      "bytes": 21246,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-meeting/references/meeting-list.md",
+      "sha256": "928e8b0736c8c6858f32b0e67ca59c3677894690026ed0708ea5ee42c3dce985",
+      "kind": "added",
+      "bytes": 21398,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-meeting/references/meeting-original-get.md",
+      "sha256": "805d1dd5c532d227ad85d783ee2c00c62e2bb1f0bf720ae6ecc0d5d528ea8648",
+      "kind": "added",
+      "bytes": 6381,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-meeting/references/meeting-search.md",
+      "sha256": "f0f97f4704d685596b8e00ab05fd1016dc41093babb24f98df890415de23b868",
+      "kind": "added",
+      "bytes": 10132,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-meeting/references/meeting-update.md",
+      "sha256": "f51722ddcf8c61b4ea094c0112f2c917d37d22eafa25e512712a771bf3749fb7",
+      "kind": "added",
+      "bytes": 14837,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-message/SKILL.md",
+      "sha256": "a2e0becccb5ebab50167401a59a6c0a1707f24157c548a7b0b5547e82eb8da3e",
+      "kind": "added",
+      "bytes": 8545,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-preflight/SKILL.md",
+      "sha256": "9166001711c18e33ca4b8d7a160de63266fc56718a51d1d3b19497f1265afe40",
+      "kind": "added",
+      "bytes": 6970,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-sheet/SKILL.md",
+      "sha256": "59da51edb231279a9f9926882409cc3c6b51a727a0d572a8229cdeba90e70489",
+      "kind": "added",
+      "bytes": 7889,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-sheet/references/sheet-contents-update.md",
+      "sha256": "0bdc89ef4d80b8927615e656138ce97a1a5da778e30b362f336f9da216b1c172",
+      "kind": "added",
+      "bytes": 2059,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-sheet/references/sheet-ranges-get.md",
+      "sha256": "32896f10231b2055490de5e78ede612cb6a7b3c0d0611fb6b0278dfa75c0a2d0",
+      "kind": "added",
+      "bytes": 2234,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-sheet/references/sheet-rows-append.md",
+      "sha256": "5cdedecadfa63eb86e06349a5952ec01c57f009109955adf81771d00442148ff",
+      "kind": "added",
+      "bytes": 1981,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-sheet/references/sheet-subsheets-add.md",
+      "sha256": "7368dc8019f8b1804a4e749e80a6bb954788d81443e43398b98ba53a101a70ac",
+      "kind": "added",
+      "bytes": 919,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-sheet/references/sheet-subsheets-delete.md",
+      "sha256": "6522044639502978a07270106ccd563d5d5d26a5b06b97a8c6687162ccbfa01d",
+      "kind": "added",
+      "bytes": 538,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartpage/SKILL.md",
+      "sha256": "60efb736d8c3de6da3aeb76b0267324b94c0ecc7d6e2a41ab0c4863e22e90e6d",
+      "kind": "added",
+      "bytes": 12963,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartpage/references/data-driven-pages.md",
+      "sha256": "32deac027a74f5a7546540fddf019698b53291265d3663a7b30c6671078a7043",
+      "kind": "added",
+      "bytes": 4234,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartpage/references/formula-reference.md",
+      "sha256": "b0e4f4e440db553b641e4c7f4d78905f6d48c3c396dbc83a2d9c7d67f953edbe",
+      "kind": "added",
+      "bytes": 7045,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartpage/references/formula/arraylist.md",
+      "sha256": "706d188d56a4c6295b496ab6a32a4ab0d46404ef26612a59a08830d0e56f59e3",
+      "kind": "added",
+      "bytes": 11006,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartpage/references/formula/datetime.md",
+      "sha256": "a632e43cac1afb559408920fbb2bf5f64227453d6c31582dc48a1ac90f4e81f3",
+      "kind": "added",
+      "bytes": 7681,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartpage/references/formula/logic.md",
+      "sha256": "27dfbffac8658fefeca7b82caa918aa70b97cbccfbd5403bac455d2255633430",
+      "kind": "added",
+      "bytes": 7461,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartpage/references/formula/math.md",
+      "sha256": "b2ae1fa98ed3fc099f93e8a48900819788f7ba3b219989a4c475ff1dc7872354",
+      "kind": "added",
+      "bytes": 8708,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartpage/references/formula/operators.md",
+      "sha256": "99c877b03290a4a34d80f5ba95466b312884ffac7aebaa0c9c43f338bde070a9",
+      "kind": "added",
+      "bytes": 4931,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartpage/references/formula/pageblock.md",
+      "sha256": "d4e3d72f3edfd1ebb3b4d850a201088fe597c529df48d595fdfd6999aa9dc52b",
+      "kind": "added",
+      "bytes": 3466,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartpage/references/formula/templates.md",
+      "sha256": "4e5182193eb625715159be2ba06b5b2236437d08691a5a63909ed64d143dd045",
+      "kind": "added",
+      "bytes": 12175,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartpage/references/formula/text.md",
+      "sha256": "148e2791bf889e42a5c1c98cc11e4a75916a38a86fce9f75122eb4f12c0fac54",
+      "kind": "added",
+      "bytes": 9557,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartpage/references/formula/user.md",
+      "sha256": "91a57ddb5ca1f60a30aa58750653d7a3bfc55e9bb6fbeda6b1f8ef3c1436c81d",
+      "kind": "added",
+      "bytes": 607,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartpage/references/mdx-syntax.md",
+      "sha256": "0739fea5cf78f80923ffea941afca7cc5cdc858dfb908717164ca4d990a425f5",
+      "kind": "added",
+      "bytes": 27979,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartpage/references/smartpage-edit.md",
+      "sha256": "eb52c27844a5e028f3b6d7ded05a87c33a559ed44a2aa3ac2fdc94b4691bfd34",
+      "kind": "added",
+      "bytes": 28216,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/SKILL.md",
+      "sha256": "78db6b27baf669fdf9774e744aa52f5c3164fa4301d659e2f7b4676532cb8329",
+      "kind": "added",
+      "bytes": 15505,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/README.md",
+      "sha256": "51632f78960a0a1206c6dfe772e4ced126ece963f1e0028469dd695653b4c07a",
+      "kind": "added",
+      "bytes": 4751,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/ai_efficiency.md",
+      "sha256": "8cae2d0c802c73bbbd7c975fcdf644d491ebe2485dc3ce26ab36be3d5f47ad93",
+      "kind": "added",
+      "bytes": 24277,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/connect_to_app.md",
+      "sha256": "dc050477b0f2cbd7966319f64c81f90857d273791eb819b4377b1043a94295ed",
+      "kind": "added",
+      "bytes": 15041,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/financial_accounting.md",
+      "sha256": "a0e53f19e905aa826c299f66c2f91d13f541c424c99a18e5217df4019a403b4b",
+      "kind": "added",
+      "bytes": 12451,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/hr_and_administration.md",
+      "sha256": "47d43f828874c612cb0b72b8615ed559859bdc98d68647ed1b6c32b14e79e3b7",
+      "kind": "added",
+      "bytes": 18742,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/ledger_records.md",
+      "sha256": "3ac77c6e0f59fcf3b808829e2f3b30cf3c2b8a5fd00e9643c42dc93fe9c575d7",
+      "kind": "added",
+      "bytes": 5347,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/manufacturing.md",
+      "sha256": "da11195d4668ee9c5730d882316c9adb5fb2a198da1edeccca1f3de0cdfd6a81",
+      "kind": "added",
+      "bytes": 14226,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/marketing.md",
+      "sha256": "0171ea30af1de50c047a6f35fbf67fe31a329b81f6bbb97e635510c21142406d",
+      "kind": "added",
+      "bytes": 6757,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/office_essentials.md",
+      "sha256": "816d8c239f95f64457054fbafbd183f809c4b9429af703e53e9985d3c6a21a00",
+      "kind": "added",
+      "bytes": 10103,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/personal_efficiency.md",
+      "sha256": "60edfda5962ba29a3ddf4b637798a70e721ab24309e82a07586fcb0fd4309e49",
+      "kind": "added",
+      "bytes": 2462,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/procurement_logistics.md",
+      "sha256": "3688ed9583f0859a391acff02095f5d9b19e72b246556da73cadc1eb63e7d1ba",
+      "kind": "added",
+      "bytes": 11323,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/project_management.md",
+      "sha256": "3d101477c50b635af7d1c7ba873a01fa9537c63199367c5e447f25b0a00dd114",
+      "kind": "added",
+      "bytes": 18903,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/rd_process_customer.md",
+      "sha256": "5b5d4bae53983777ec8168683409e5df937026807be0739c1b5b47bd0663381f",
+      "kind": "added",
+      "bytes": 8909,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/rd_process_ops.md",
+      "sha256": "61f11c30a5b026c75cb903006d251b57cd9c92b93edcee1d9e530e18c66cc48c",
+      "kind": "added",
+      "bytes": 4026,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/rd_process_project.md",
+      "sha256": "b33d3c10e3269c94bf7f97b5fa669ab01c22da1897418dee2a00ec062c48d8c7",
+      "kind": "added",
+      "bytes": 3867,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/rd_process_research.md",
+      "sha256": "ab936b92614c95d62734950c256a07cffc5ddc2d3fdca01b1a8f9f1569626639",
+      "kind": "added",
+      "bytes": 3173,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/sales_and_operations.md",
+      "sha256": "038468fc31bf4230b22becf4da55a20abbe5b13c30fdec2676f864b9eeb2cff4",
+      "kind": "added",
+      "bytes": 15666,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/store_management.md",
+      "sha256": "02abc1175ffacd7f9138bae2f514f53a5cf7b4db4a51292d4b4b042ee980a978",
+      "kind": "added",
+      "bytes": 15105,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/team_tasks.md",
+      "sha256": "99061040dcba1b541e9c173dcaf8df10ca4bdc0e79257da48bfba16d95668acc",
+      "kind": "added",
+      "bytes": 9658,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/wechat_customer.md",
+      "sha256": "d1e9b2e7aa8738d7638461d2d04182b4e096368fee03e0d41cec407ec3a29a99",
+      "kind": "added",
+      "bytes": 12878,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/assets/templates/work_report.md",
+      "sha256": "471a898c0687599a8a4b8324183504111ae76e17ebcf5e20624a626f14f36999",
+      "kind": "added",
+      "bytes": 3233,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/references/common.md",
+      "sha256": "1dec27714e5e91120517bbc6667cfbbb459603a5c9b47e4289e08cd414f6b403",
+      "kind": "added",
+      "bytes": 7847,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/references/smart-sheet-chart-types.md",
+      "sha256": "b7fb72370789f21dccdc3fe8809f942e09ec8ee741b1f960fb52ff78c7ea76f5",
+      "kind": "added",
+      "bytes": 5547,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/references/smart-sheet-edit.md",
+      "sha256": "9645efbb159974b0a8f23da1cad67d1392e620b95df7b2fb7d1aaa1a06d3f9b5",
+      "kind": "added",
+      "bytes": 30591,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/references/smart-sheet-field-types.md",
+      "sha256": "083f9c2c34bfd43a26bd3fd009cee1e32cb2bc34c0d8fe07c4e3641b2e592087",
+      "kind": "added",
+      "bytes": 14989,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/references/smart-sheet-formula.md",
+      "sha256": "756a18d9eac0a553b9c1616f8252c225df75911f8b370cdc1c8b3f7801b709d2",
+      "kind": "added",
+      "bytes": 36038,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/references/smart-sheet-read.md",
+      "sha256": "6f696a4eb7605e0f9706c164da40e5793dc4677f1a2d3cb7544bd5c91ae7d029",
+      "kind": "added",
+      "bytes": 26544,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/references/smart-sheet-record-values.md",
+      "sha256": "4f970bb643515591818aa0790b0a4f5f79375288c4fc0eb28da51596b52bf8cc",
+      "kind": "added",
+      "bytes": 7956,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/references/smart-sheet-view-types.md",
+      "sha256": "4582b1fd9697352bb9e640dc14631d01f762044c77f64672998562b73b40974c",
+      "kind": "added",
+      "bytes": 13153,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/references/smart-sheet-webhook-examples.md",
+      "sha256": "f208c134e3dd9e4b7714b56482c000d07daa98a705e15dfc8467097a9d0f39e5",
+      "kind": "added",
+      "bytes": 4425,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-smartsheet/references/smart-sheet-webhook.md",
+      "sha256": "3d57de64d5e23601f0c953b645107bff90e8ea273cfa2ad9a8596df6eb09967a",
+      "kind": "added",
+      "bytes": 7296,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-todo/SKILL.md",
+      "sha256": "c8d52191f6cfb77235f69569df6de5871dc613ae5e7b4e1548b26f9313826d8d",
+      "kind": "added",
+      "bytes": 5388,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-todo/references/todo-create.md",
+      "sha256": "9bc3bc22e1fc2facc0fb97a43742156c3c55a5a1e47944a0bc2e423fba7cc76b",
+      "kind": "added",
+      "bytes": 8864,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-todo/references/todo-delete.md",
+      "sha256": "9329c40120b77cf826e9eb3ddf0331b6ff1f0741c73895655aa42630d481c03d",
+      "kind": "added",
+      "bytes": 2579,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-todo/references/todo-finish.md",
+      "sha256": "efd2dbc7390b64076559ef9fd7c9e57e417724fd0ed29ad9ea6f25a88f109eda",
+      "kind": "added",
+      "bytes": 4025,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-todo/references/todo-get.md",
+      "sha256": "f403ad4569b177e07751265636a838bd04dfe61a59b7f3b2a5c8e2c2c995349a",
+      "kind": "added",
+      "bytes": 2544,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-todo/references/todo-list.md",
+      "sha256": "a54e525f00071b67558c0bbefc62d4bc18c6824de71029091db7dd1ea14084ee",
+      "kind": "added",
+      "bytes": 8848,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/wecomcli-todo/references/todo-update.md",
+      "sha256": "176a7f9ededd1230cc6430189e2f738ffb3d5ace0f3bdcb65a11418def030d90",
+      "kind": "added",
+      "bytes": 7030,
+      "hostMtime": "2026-09-05T18:10:10.000Z",
+      "alsoInRepo": null
+    }
+  ],
+  "residue": []
+}

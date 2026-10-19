@@ -65,6 +65,19 @@ test('a status line pushed before the answer counts as 首字 (inferred for olde
   assert.equal(m.cardReadyBeforeAnswer, false);
 });
 
+test('text written before a tool call is delivered as a block, so the partial-reply mark is not its text time', () => {
+  // the first answer push carries the pre-tool text; onPartialReply only fires for the final answer
+  const r = { ...sample, firstAnswerTokenAtMs: t0 + 40_000, firstPushAtMs: t0 + 4780, firstAnswerPushAtMs: t0 + 4780 };
+  const withModel = measure(r, { firstTextAt: t0 + 4100, textCallEnterAt: t0 + 1000, firstCallEnterAt: t0 + 1000 });
+  assert.equal(withModel.deliveryMs, 4780 - 4100);
+  assert.equal(withModel.agentMs, 4100 - 458);
+  assert.equal(withModel.cardReadyBeforeAnswer, false);
+  // without the Worker's mark there is no text time before the push: leave it out, never negative
+  assert.equal(measure(r).deliveryMs, undefined);
+  // the earlier of the two marks wins either way
+  assert.equal(measure(sample, { firstTextAt: t0 + 3500, textCallEnterAt: t0 + 1000, firstCallEnterAt: t0 + 1000 }).deliveryMs, 4780 - 2900);
+});
+
 test('the recorded status push wins over the inference', () => {
   const m = measure({ ...sample, firstReasoningAtMs: t0 + 900, firstPushAtMs: t0 + 1000, firstStatusPushAtMs: t0 + 2000, firstAnswerPushAtMs: t0 + 4780 });
   assert.equal(m.firstTextMs, 2000);

@@ -1,0 +1,30 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/history-image-e3/embedded-agent-helpers-CzpaLpCq.js",
+      "target": "openclaw/dist/embedded-agent-helpers-CzpaLpCq.js",
+      "before": "342e6269ad41e2db113ed35ef4499e7a7ea051a8285ea68baf495d38c2ccbfc2"
+    },
+    {
+      "source": "lab/release-files/history-image-e3/history-image-prune-Dg0CDQ4a.js",
+      "target": "openclaw/dist/history-image-prune-Dg0CDQ4a.js",
+      "before": "2811753f28022063d0e23275d1fbf0680ef32b3d4922091079234171b2df880c"
+    },
+    {
+      "source": "lab/release-files/history-image-e3/embedded-agent-DaSvA-Yk.js",
+      "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
+      "before": "22dad1eff94b82345bcfb4c0b5da5ba4c72f436b4e81ad94d7ceb611961c3cee"
+    },
+    {
+      "source": "lab/release-files/history-image-e3/agent-runner.runtime-CAdsMsQt.js",
+      "target": "openclaw/dist/agent-runner.runtime-CAdsMsQt.js",
+      "before": "75b5b4b1a6ff870da0b42a1c8a7108700dae6da12aa6b015c966eca597d318cb"
+    },
+    {
+      "source": "lab/release-files/history-image-e3/openai-completions-D0QZ0AyB.mjs",
+      "target": "openclaw/node_modules/@openclaw/ai/dist/openai-completions-D0QZ0AyB.mjs",
+      "before": "6a34cb7901a9d82e05150662bdf028fce0ecc316b7058f198247d8041d82ea08"
+    }
+  ]
+}

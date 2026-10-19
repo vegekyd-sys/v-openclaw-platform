@@ -1,0 +1,65 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/context-overflow-recovery/embedded-agent-DaSvA-Yk.js",
+      "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
+      "before": "a53fe92d1c6d1a1690587ade48271f7d1c960922716bc84935e6511242215e54",
+      "after": "682bb94ac2546047d5df4997e7b9a6c213ad2d7b0f026990d04691ce513dbef3"
+    },
+    {
+      "source": "lab/release-files/context-overflow-recovery/embedded-agent-helpers-CzpaLpCq.js",
+      "target": "openclaw/dist/embedded-agent-helpers-CzpaLpCq.js",
+      "before": "63002d77d5d5b24601e3294e64331784ef855bb8019fad6c2316614f184672b2",
+      "after": "47fdc33b8b87c94a32d7c84cbd7de6f7b71b4054a6352e25c7c344638bab2954"
+    },
+    {
+      "source": "lab/release-files/context-overflow-recovery/agent-runner.runtime-CAdsMsQt.js",
+      "target": "openclaw/dist/agent-runner.runtime-CAdsMsQt.js",
+      "before": "8c192b9d68e51450cd820352fc610d8ba8ab21cc716b05ea682275e312f95a54",
+      "after": "8b64a58b1ee0f5fa2d82840c7ae86e5cbfeeceb4d5969131b60875f76b87aaa0"
+    },
+    {
+      "source": "lab/release-files/v-experience-dingtalk-empty-reply/dist/message-handler-BUoLSylZ.mjs",
+      "target": "npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/message-handler-BUoLSylZ.mjs",
+      "before": "d914cbce8951f32e684ab6423d3977d35c62e3a39c5da23e6c42ca804cda0602",
+      "after": "a973a1b6bcf42529fbe90dcde50cc3c71e289f18e4aa949d5c799e5a6baae7db"
+    },
+    {
+      "source": "lab/release-files/v-experience-dingtalk-empty-reply/dist/runtime-C81EKBS1.mjs",
+      "target": "npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/runtime-C81EKBS1.mjs",
+      "before": "af93e1216049331bb24f0a4f91335d3b03c61004413603d0a454457b37307bed",
+      "after": "fa36036c441ceddf187c4102d5cf4934e42ba16f98067b7cf12e976ed55f577d"
+    },
+    {
+      "source": "lab/release-files/v-experience-dingtalk-empty-reply/dist/v-experience.mjs",
+      "target": "npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/v-experience.mjs",
+      "before": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+      "after": "a85c1d37db7a88d3556349c3a9a7bceb35b56f3fa431f36f76d1accd331a3850"
+    },
+    {
+      "source": "lab/release-files/v-experience-wecom-empty-reply/dist/src/monitor.js",
+      "target": "extensions/wecom-openclaw-plugin/dist/src/monitor.js",
+      "before": "d4fe3561255428b5446127e2b686319feb5879bae181cc7f38058858f6974f8d",
+      "after": "f015717ebe8bd9371d37a252341c4e8a8089a32285997182d82e9886e6bd075c"
+    },
+    {
+      "source": "lab/release-files/v-experience-wecom-empty-reply/dist/src/channel.js",
+      "target": "extensions/wecom-openclaw-plugin/dist/src/channel.js",
+      "before": "30eb4a171604a2ac998cd3217a0f68cde723d940a9291b5f57d52486046783fa",
+      "after": "4b21464a5d55d728d1e6a51594d636b4153a8b88b7da0b88821567ac3edb1941"
+    },
+    {
+      "source": "lab/release-files/v-experience-wecom-empty-reply/dist/src/v-experience.mjs",
+      "target": "extensions/wecom-openclaw-plugin/dist/src/v-experience.mjs",
+      "before": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+      "after": "a85c1d37db7a88d3556349c3a9a7bceb35b56f3fa431f36f76d1accd331a3850"
+    },
+    {
+      "source": "lab/release-files/dingtalk-peer-case/session-key-CRjxKW0X.js",
+      "target": "openclaw/dist/session-key-CRjxKW0X.js",
+      "before": "6a9c3f33eca880313ea1e5854ef7c50bba86864a29e20d42fcc0884573b44ae5",
+      "after": "fa59b6e0fe90e90a72a96c63121f2a64d942775ec5bfe049b931aeadd0552d55"
+    }
+  ]
+}

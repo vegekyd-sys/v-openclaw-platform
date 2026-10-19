@@ -1,0 +1,11 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/archive-retention-cutoff/session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+      "target": "openclaw/dist/session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+      "before": "adeb44f25e003032ee706629063dbf6545bc45aa0265d7f0191a9194db25ab22",
+      "after": "ea381f9d45af70ff7bd47d2613e0b70974421ab375e273b77c870212a1666f07"
+    }
+  ]
+}

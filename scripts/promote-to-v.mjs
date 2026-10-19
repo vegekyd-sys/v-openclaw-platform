@@ -14,13 +14,12 @@
 //      checked against the recorded after-hash, and are mapped to V's paths by
 //      scripts/lib/runtime-components.mjs (core dist, worker plugin, Feishu,
 //      DingTalk and WeCom plugins, the npm-managed Codex plugin; anything else
-//      is refused). The Codex plugin is not in the recapture of step 5, so the
-//      drift sentinel does not watch it.
+//      is refused).
 //   3. Every target on V must still hold the release's `before` bytes, i.e. V
 //      is exactly what VLab was before this release. Otherwise refuse.
 //   4. Old files go to /opt/v-release-backups/<name>/ with undo.json; new bytes
 //      are installed as fresh inodes with the old owner and mode.
-//   5. Recapture V into release/captured/<name>{,.worker,.feishu,.dingtalk,.wecom}
+//   5. Recapture V into release/captured/<name>{,.worker,.feishu,.codex,.dingtalk,.wecom}
 //      (every captured component of the table), install the drift sentinel's
 //      expectations, and run `vlab.mjs align`.
 //
@@ -243,6 +242,12 @@ try {
     }
     process.exit(0);
   }
+  if (verdict.kind === 'hand-copy') {
+    // The release channel wrote VLab's runtime/ copy; its Gateway loads another.
+    console.log(`\n${args.name} is on V. VLab's Gateway copy of the Codex plugin still differs from V (${verdict.handCopy.length} files, e.g. ${verdict.handCopy[0].kind} ${verdict.handCopy[0].target}).`);
+    console.log(`Copy V's bytes into it (cp -a from the runtime/ copy, which matches V), restart the shared Gateway if it should run them, then: node lab/vlab.mjs align --owner ${args.owner}`);
+    process.exit(0);
+  }
   if (verdict.kind === 'parity-aligned') {
     console.error(`${args.name} is on V and parity is ${parity.state}, but align was refused:\n${e.stdout || e.message}`);
     console.error(`Fix that cause, then: node lab/vlab.mjs align --owner ${args.owner}`);
@@ -256,6 +261,7 @@ console.log(`\nDone. Commit release/captured/${args.name}*, add its CHANGELOG.md
 }
 
 // Why `vlab.mjs align` refused after the install. `mine` = this release's targets.
+//   hand-copy only VLab's Gateway copy of Codex differs: copy it by hand
 //   undo      this release's own files differ: V did not get the same bytes
 //   sidecars  only sidecars differ (and maybe lagging files): install them on V
 //   lagging   only files this release did not touch, V ahead: sync VLab from V
@@ -263,8 +269,13 @@ console.log(`\nDone. Commit release/captured/${args.name}*, add its CHANGELOG.md
 //   unknown   anything else (or parity unavailable): undo
 export function classifyAlignFailure(parity, mine) {
   if (!parity) return { kind: 'unknown' };
-  const blocking = parity.findings.filter((f) => f.kind !== 'pending' && !f.advisory);
-  if (blocking.length === 0) return { kind: 'parity-aligned' };
+  const all = parity.findings.filter((f) => f.kind !== 'pending' && !f.advisory);
+  if (all.length === 0) return { kind: 'parity-aligned' };
+  // Only VLab's second copy (the Codex plugin its Gateway loads, outside the
+  // release channel) lags: V and the runtime copy agree, copy it by hand.
+  const handCopy = all.filter((f) => f.copy);
+  const blocking = all.filter((f) => !f.copy);
+  if (blocking.length === 0) return { kind: 'hand-copy', handCopy };
   if (blocking.some((f) => mine.has(f.target))) return { kind: 'undo' };
   const isSidecar = (f) => f.target.startsWith('sidecar:');
   const sidecars = [...Map.groupBy(blocking.filter(isSidecar), (f) => f.component ?? f.target.split(/[:/]/)[1])];

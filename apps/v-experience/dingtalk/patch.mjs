@@ -305,6 +305,7 @@ import { sendPayloadWithChunkedTextAndMedia as vSendTextAndMedia } from "opencla
 \t\t\tif (!card.image && !card.buttons.some((b) => b.command)) {
 \t\t\t\tconst result = await vSendProactive(config, target, JSON.stringify(vExperience.dingtalkActionCard(card)), { msgType: "actionCard", useAICard: false });
 \t\t\t\tif (!result.ok) throw new Error(result.error || "DingTalk actionCard delivery failed");
+\t\t\t\tvExperience.noteChannelSend(CHANNEL_ID, to);
 \t\t\t\treturn { channel: CHANNEL_ID, messageId: result.processQueryKey ?? "unknown", target: { kind: "conversation", id: to } };
 \t\t\t}
 \t\t\t// ${MARKER}: V's 「电脑」 card — the desktop picture (uploaded as robot media; a
@@ -334,6 +335,7 @@ import { sendPayloadWithChunkedTextAndMedia as vSendTextAndMedia } from "opencla
 \t\t\t}, { headers: { "x-acs-dingtalk-access-token": await vGetAccessToken(config), "Content-Type": "application/json" } });
 \t\t\tconst data = resp?.data ?? {};
 \t\t\tif (!data.processQueryKey || data.invalidStaffIdList?.length || data.flowControlledStaffIdList?.length) throw new Error(\`DingTalk \${msgKey} not sent: \${JSON.stringify(data).slice(0, 200)}\`);
+\t\t\tvExperience.noteChannelSend(CHANNEL_ID, to);
 \t\t\treturn { channel: CHANNEL_ID, messageId: data.processQueryKey, target: { kind: "conversation", id: to } };
 \t\t},
 `,
@@ -460,6 +462,52 @@ function vCommandAuthorized({ core, cfg, config, senderId, text }) {
     name: "command-auth",
     anchor: "\t\t\tCommandAuthorized: true,\n\t\t\tOriginatingChannel: \"dingtalk-connector\",\n",
     replace: "\t\t\tCommandAuthorized: vCommandAuthorized({ core, cfg, config, senderId, text: userContent }),\n\t\t\tOriginatingChannel: \"dingtalk-connector\",\n",
+  },
+  {
+    // The message tool, a file or the 「电脑」 card reached the chat: the reply
+    // dispatcher of that chat learns it (see noteChannelSend).
+    file: "runtime",
+    name: "outbound-note-text",
+    anchor: "\t\t\tif (!result.ok) throw new Error(result.error || \"DingTalk text delivery failed\");\n",
+    insert: "after",
+    code: `\t\t\tvExperience.noteChannelSend(CHANNEL_ID, to); // ${MARKER}\n`,
+  },
+  {
+    file: "runtime",
+    name: "outbound-note-media",
+    anchor: "\t\t\tif (!result.ok) throw new Error(result.error || \"DingTalk media delivery failed\");\n",
+    insert: "after",
+    code: `\t\t\tvExperience.noteChannelSend(CHANNEL_ID, to); // ${MARKER}\n`,
+  },
+  {
+    // A turn whose content went out with the message tool (final empty) closes
+    // its pre-created card with 「✅ 已发送」 instead of the connector's
+    // placeholder, and the visibleReplies hint only shows when that setting is
+    // really missing. DingTalk has no API to recall an AI card.
+    name: "empty-reply-helpers",
+    anchor: "\tlet outboundUserVisibleThisTurn = false;\n",
+    insert: "after",
+    code: `\t// ${MARKER}: what an empty reply shows.
+\tconst vTurnStartedAt = Date.now();
+\tconst vSentSeparately = () => vExperience.channelSentSince(CHANNEL_ID, [conversationId, senderId], vTurnStartedAt);
+\tconst vLacksVisibleReplies = () => !isDirect && groupChatLacksVisibleRepliesAutomatic(cfg);
+\tconst vEmptyReplyText = (isGroup) => vSentSeparately() ? vExperience.SENT_SEPARATELY_TEXT : pickEmptyReplyFallbackText(isGroup && vLacksVisibleReplies());
+`,
+  },
+  {
+    name: "empty-reply-card",
+    anchor: "\t\t\t\tfinalText = pickEmptyReplyFallbackText(isGroup);\n\t\t\t\tlog.info(`[DingTalk][closeStreaming] 累积文本为空，使用默认提示文案 (isGroup=${isGroup})`);\n\t\t\t\tif (isGroup) log.warn?.(`[DingTalk][closeStreaming] ${emptyGroupReplyLogHint()}`);\n",
+    replace: "\t\t\t\tfinalText = vEmptyReplyText(isGroup);\n\t\t\t\tlog.info(`[DingTalk][closeStreaming] 累积文本为空，${vSentSeparately() ? \"本轮内容已单独发出，卡片只标已发送\" : \"使用默认提示文案\"} (isGroup=${isGroup})`);\n\t\t\t\tif (!vSentSeparately() && vLacksVisibleReplies()) log.warn?.(`[DingTalk][closeStreaming] ${emptyGroupReplyLogHint()}`);\n",
+  },
+  {
+    name: "empty-reply-final",
+    anchor: "\t\t\t\t\ttext = pickEmptyReplyFallbackText(isGroup);\n\t\t\t\t\tlog.info(`[DingTalk][deliver] final 响应无文本，使用默认提示文案 (isGroup=${isGroup})`);\n\t\t\t\t\tif (isGroup) log.warn?.(`[DingTalk][deliver] ${emptyGroupReplyLogHint()}`);\n",
+    replace: "\t\t\t\t\tif (vSentSeparately()) {\n\t\t\t\t\t\tlog.info(`[DingTalk][deliver] final 响应无文本，本轮内容已单独发出，不再发提示文案 (isGroup=${isGroup})`);\n\t\t\t\t\t\tawait closeStreaming();\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t\ttext = vEmptyReplyText(isGroup);\n\t\t\t\t\tlog.info(`[DingTalk][deliver] final 响应无文本，使用默认提示文案 (isGroup=${isGroup})`);\n\t\t\t\t\tif (vLacksVisibleReplies()) log.warn?.(`[DingTalk][deliver] ${emptyGroupReplyLogHint()}`);\n",
+  },
+  {
+    name: "empty-reply-watchdog",
+    anchor: "\t\tconst timeoutText = accumulatedText.trim() || pickEmptyReplyFallbackText(!isDirect);\n",
+    replace: "\t\tconst timeoutText = accumulatedText.trim() || vEmptyReplyText(!isDirect);\n",
   },
 ];
 

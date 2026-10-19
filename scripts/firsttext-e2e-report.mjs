@@ -87,6 +87,14 @@ export function measure(r, model) {
   const firstTextCandidates = [firstAnswerAt, firstStatusAt].filter(Number.isFinite);
   const firstTextAt = firstTextCandidates.length ? Math.min(...firstTextCandidates) : undefined;
   const modelToTextMs = delta(model?.firstTextAt, model?.textCallEnterAt);
+  // firstAnswerTokenAtMs is stamped only by onPartialReply. Text the model writes before a tool
+  // call reaches the card as a block reply instead, so on those turns the mark is the final
+  // answer's first token, long after the first answer push (10/14: half the records, P50 -5.8 s).
+  // The Worker's own first-text mark covers that case; a text time after the push is no
+  // delivery time at all.
+  const textCandidates = [r.firstAnswerTokenAtMs, model?.firstTextAt].filter(Number.isFinite);
+  const answerTextAt = textCandidates.length ? Math.min(...textCandidates) : undefined;
+  const deliveryMs = delta(firstAnswerAt, answerTextAt);
   const overheadMs = Number.isFinite(modelToTextMs) && Number.isFinite(firstAnswerMs) && model.firstTextAt <= firstAnswerAt ? firstAnswerMs - modelToTextMs : undefined;
   return {
     firstTextMs: delta(firstTextAt, r.sentAtMs),
@@ -97,9 +105,9 @@ export function measure(r, model) {
     queueMs: delta(r.runStartAtMs, r.receivedAtMs),
     preDispatchMs: delta(r.dispatcherAtMs, r.receivedAtMs),
     dispatchToRunMs: delta(r.runStartAtMs, r.dispatcherAtMs),
-    agentMs: delta(r.firstAnswerTokenAtMs, r.receivedAtMs),
+    agentMs: delta(answerTextAt, r.receivedAtMs),
     reasoningMs: delta(r.firstReasoningAtMs, r.receivedAtMs),
-    deliveryMs: delta(firstAnswerAt, r.firstAnswerTokenAtMs),
+    deliveryMs: deliveryMs >= 0 ? deliveryMs : undefined,
     cardCreateMs: delta(r.cardCreatedAtMs, r.cardStartAtMs),
     toModelMs: delta(model?.firstCallEnterAt, r.sentAtMs),
     modelFirstEventMs: delta(model?.firstEventAt, model?.firstCallEnterAt),
@@ -107,7 +115,7 @@ export function measure(r, model) {
     afterTextMs: overheadMs === undefined ? undefined : delta(firstAnswerAt, model.firstTextAt),
     overheadMs,
     overheadNoToolsMs: overheadMs !== undefined && model.textCallEnterAt === model.firstCallEnterAt ? overheadMs : undefined,
-    cardReadyBeforeAnswer: Number.isFinite(r.cardCreatedAtMs) && Number.isFinite(r.firstAnswerTokenAtMs) ? r.cardCreatedAtMs <= r.firstAnswerTokenAtMs : undefined,
+    cardReadyBeforeAnswer: Number.isFinite(r.cardCreatedAtMs) && Number.isFinite(answerTextAt) ? r.cardCreatedAtMs <= answerTextAt : undefined,
     harness: r.agentRuntime ?? 'unknown',
     model: r.model ?? 'unknown',
     chat: /:feishu:(group|direct|dm):/u.exec(r.sessionKey ?? '')?.[1] ?? 'other',

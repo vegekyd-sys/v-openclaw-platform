@@ -218,6 +218,8 @@
     "lab/gpt-live-voice-confirmation.mjs",
     "lab/patch-gpt-live-voice-confirmation.mjs",
     "lab/patch-voice-spoken-confirmation-switch.mjs",
+    "lab/patch-voice-task-lifetime.mjs",
+    "lab/voice-task-lifetime.mjs",
     "release/captured/v2026.9.1-db91.6-gpt-live-voice-20261005/dist/agent-tools.before-tool-call-g2OT63u5.js",
     "lab/patch-gpt-live-native-confirmation.mjs",
     "lab/release-files/gpt-live-completion-context/index.mjs",

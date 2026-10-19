@@ -1,0 +1,33 @@
+{
+  "tests": [
+    "lab/subagent-settle-backlog.test.mjs",
+    "lab/candidate/subagent-settle-backlog.sqlite.test.mjs"
+  ],
+  "support": [
+    "lab/subagent-settle-backlog.helpers.mjs",
+    "lab/patch-subagent-settle-backlog.mjs",
+    "lab/fixtures/subagent-settle-backlog/subagent-announce.requester-settle-wake-B2NSziIo.js",
+    "lab/fixtures/gpt-live-continuation/subagent-registry-C24yr_PF.js",
+    "lab/fixtures/subagent-settle-backlog/subagent-registry-read-UaDFTyfW.js",
+    "lab/fixtures/subagent-settle-backlog/subagent-registry.store.sqlite-hzGu4QSk.js",
+    "lab/fixtures/subagent-settle-backlog/subagent-run-liveness-CrhVXF5Y.js"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/subagent-settle-backlog/subagent-announce.requester-settle-wake-B2NSziIo.js",
+      "target": "openclaw/dist/subagent-announce.requester-settle-wake-B2NSziIo.js",
+      "before": "be8a3f7f0834943f234d42c9fe14ddfb7cd67fe52791fae99908a4edfda35f5d"
+    },
+    {
+      "source": "lab/release-files/subagent-settle-backlog/subagent-registry-read-UaDFTyfW.js",
+      "target": "openclaw/dist/subagent-registry-read-UaDFTyfW.js",
+      "before": "dfcf09faf5ede448fe967bff7195b690d670ec36abfd559c32d66e5a24e9a9c8"
+    },
+    {
+      "source": "lab/release-files/subagent-settle-backlog/subagent-registry.store.sqlite-hzGu4QSk.js",
+      "target": "openclaw/dist/subagent-registry.store.sqlite-hzGu4QSk.js",
+      "before": "bc42d6c4712e7e38dffe1682b4f68bb00e67ac3d0b9b9f5015ecb1d9b6f04a96"
+    }
+  ],
+  "timeoutSeconds": 180
+}

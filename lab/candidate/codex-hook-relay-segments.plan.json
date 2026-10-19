@@ -1,0 +1,17 @@
+{
+  "support": [
+    "lab/candidate/codex-hook-relay-latency.mjs",
+    "lab/release-files/codex-native-followup-admission/patch-codex-followup-admission.mjs",
+    "lab/release-files/codex-hook-relay-timeout/patch-codex-hook-timeout.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/codex-hook-relay-latency.mjs"
+  ],
+  "timeoutSeconds": 3000,
+  "user": "lab-db91-parity",
+  "env": {
+    "FA_MODE": "segments",
+    "FA_EXPECT": "baseline"
+  }
+}

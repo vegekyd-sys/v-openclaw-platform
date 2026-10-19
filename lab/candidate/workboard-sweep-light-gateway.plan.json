@@ -1,0 +1,35 @@
+{
+  "support": [
+    "lab/candidate/workboard-sweep-light-gateway.mjs"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/workboard-sweep-light/src-B9mb84px.js",
+      "target": "openclaw/dist/src-B9mb84px.js"
+    },
+    {
+      "source": "lab/release-files/workboard-sweep-light/sessions-read-C6mAMxyQ.js",
+      "target": "openclaw/dist/sessions-read-C6mAMxyQ.js"
+    },
+    {
+      "source": "lab/release-files/workboard-sweep-light/runtime-api-1CCazqtv.js",
+      "target": "openclaw/dist/runtime-api-1CCazqtv.js"
+    },
+    {
+      "source": "lab/release-files/workboard-sweep-light/extensions/workboard/index.js",
+      "target": "openclaw/dist/extensions/workboard/index.js"
+    }
+  ],
+  "databases": [
+    "agents/dealclaw/agent/openclaw-agent.sqlite",
+    "agents/short-v/agent/openclaw-agent.sqlite",
+    "agents/xiaoai/agent/openclaw-agent.sqlite",
+    "plugins/workboard/workboard.sqlite"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/workboard-sweep-light-gateway.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity"
+}
