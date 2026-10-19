@@ -1,0 +1,28 @@
+{
+  "support": [
+    "lab/candidate/projection-fixed-cost.mjs",
+    "lab/candidate/projection-fixed-cost-direct.mjs",
+    "lab/candidate/projection-fixed-cost-instrument.mjs",
+    "lab/transcript-projection-incremental-plan.json",
+    "lab/release-files/transcript-projection-incremental/session-transcript-index-9itOio9h.js",
+    "lab/release-files/transcript-projection-incremental/session-transcript-reconcile-j5qhAafV.js",
+    "lab/release-files/transcript-projection-incremental/session-transcript-reconcile.worker.js",
+    "lab/patch-transcript-projection-fixed-cost.mjs",
+    "lab/transcript-projection-fixed-cost-plan.json",
+    "lab/release-files/transcript-projection-fixed-cost/session-transcript-reconcile-j5qhAafV.js",
+    "lab/release-files/transcript-projection-fixed-cost/session-transcript-reconcile.worker.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/projection-fixed-cost.mjs"
+  ],
+  "timeoutSeconds": 5400,
+  "user": "lab-db91-parity",
+  "env": {
+    "SOURCE_DB": "/var/tmp/projection-fixed-20261017/sessions.sqlite",
+    "ROUNDS": "2",
+    "VARIANTS": "A,B,TA,TB",
+    "SESSIONS": "[{\"sessionId\":\"7da00997-3bc2-40bf-a9ff-1cd153c43ff0\",\"sessionKey\":\"agent:makaron:feishu:direct:ou_98a55d9a29169414f9a7f66339cea580\"},{\"sessionId\":\"3c3fab41-f6de-4fa9-98de-679038ec5c9d\",\"sessionKey\":\"agent:makaron:feishu:group:oc_88d96b7e42cbdfd33e6d096477a8cac8\"},{\"sessionId\":\"7612daa9-e753-44fd-82fb-1d722b52b8ff\",\"sessionKey\":\"agent:makaron:feishu:direct:ou_cb133fd4414f0607e8b46a3195c7b9d8\"},{\"sessionId\":\"06d45f08-ceee-49a4-9e42-2ce88c4ca9dc\",\"sessionKey\":\"agent:makaron:feishu:group:oc_e76c5073a8c95255ac90a148b6e183fe\"}]",
+    "SCENARIO_LIMIT_MS": "120000"
+  }
+}

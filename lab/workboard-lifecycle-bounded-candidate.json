@@ -1,0 +1,34 @@
+{
+  "command": [
+    "node",
+    "lab/candidate/workboard-lifecycle-bounded.mjs"
+  ],
+  "support": [
+    "lab/candidate/workboard-lifecycle-bounded.mjs",
+    "lab/candidate/workboard-lifecycle-snapshot.py",
+    "lab/release-files/workboard-start-context/runtime-api-1CCazqtv.js",
+    "lab/release-files/workboard-start-context/sqlite-store-CH-caj1l.js",
+    "lab/release-files/workboard-sweep-links/index.js",
+    "lab/candidate/workboard-lifecycle-consumer.mjs"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/workboard-lifecycle-bounded/runtime-api-1CCazqtv.js",
+      "target": "openclaw/dist/runtime-api-1CCazqtv.js",
+      "before": "95373b6edb1e79b0ebb0b3f6f79970983f634ebcf3503765d39a77cf09431984"
+    },
+    {
+      "source": "lab/release-files/workboard-lifecycle-bounded/sqlite-store-CH-caj1l.js",
+      "target": "openclaw/dist/sqlite-store-CH-caj1l.js",
+      "before": "9043747801b1f3e590f8194da6bb33e41322abc36f32ace8abad07f87a5149a0"
+    },
+    {
+      "source": "lab/release-files/workboard-lifecycle-bounded/index.js",
+      "target": "openclaw/dist/extensions/workboard/index.js",
+      "before": "5ac1a060a7572562b3163b2039ab9c870643df7d4a8f1f563f45029b6b4c1df7"
+    }
+  ],
+  "databases": [],
+  "timeoutSeconds": 300,
+  "user": "lab-db91-parity"
+}

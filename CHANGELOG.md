@@ -11,6 +11,263 @@
 
 ---
 
+## v2026.9.1-db91.6-codex-ds-window-20261019
+
+上线：2026-10-19 12:49 CST v-self-restart 生效（PID 2279279 → 3202008）  ·  tag `v2026.9.1-db91.6-codex-ds-window-20261019`
+
+**摘要**：/vds（Codex + DeepSeek）对话记录累计到 40 MiB 时自动换一个新线程，不再撞上 DeepSeek 48 MiB 的请求体上限报 413。
+
+**为什么会逼近 48 MiB**：之前的修复（night-batch-20261010）只限住了单张图（2048 px、≤1 MB），没有限累计量。DeepSeek 是无状态接口，每一轮都要把整段历史连同所有图片重发。10/19 08:54 出事的线程累计调了 100 次 view_image，图片共 48.4 MiB（对话记录 102 MiB），用户的「ok，再跑一条」收到英文 413 报错。
+
+**合入前 candidate**（用 V 字节）：旧代码在 48.72 MiB 报 413；新代码换线程两次，最大请求 24.95 MiB，0 次 413；纯文字线程不受影响。
+
+**上线后端到端验收**（Tianyi 的 lark-cli，测试群 `oc_ede0fdc8`）：
+- 12:50 `/vds` 后 shell `echo ds362-prod-ok`，V 回复 `ds362-prod-ok`（vds-deepseek-flash，runtime codex）；
+- 12:52 `/vcodex` 后 shell `echo gpt362-prod-ok`，V 回复 `gpt362-prod-ok`（gpt-6.1-sol，runtime codex）；
+- 之后 `/deepseek` 切回群原来的 deepseek-flash。日志 413、run-attempt 报错、TypeError、Native hook relay timed out 均为 0。
+
+**重启**：v-self-restart 12:47 发起（`--if-busy abort --idle-timeout 1800`），81 s 就绪；worker 5/5，Cannot reap / InvalidConfig / claim / stream-ack / Codex inspect / rebuilding 均为 0。
+
+相对上一版 `v2026.9.1-db91.6-sharing-feishu-catchup-r2-20261018`：1 个文件变化。
+
+**经 VLab 发版 `codex-ds-window-20261019`**（monitor-v-production，dev `17c29ece`）
+> 验收：共享 VLab 12:04 部署 #362（dev 17c29ece，codex 插件 run-attempt-D1hJO4fX.js 8ab51650→80875cf3，before=V 线上字节）。共享 VLab 实际加载的 state/npm 副本部署前同步为同一字节（备份 .bak-before-362）。/vds 会话（runtime=codex，provider=deepseek，model=vds-deepseek-flash）连续两轮 shell echo ds362-ok / ds362-second 均 ok、输出正确，同线程续用；部署后 run-attempt 报错、TypeError/ReferenceError/SyntaxError、Native hook relay timed out、413 均为 0。线程换代路径由 #362 candidate 覆盖（V …
+- `codex` dist/run-attempt-D1hJO4fX.js  8ab51650 → 80875cf3
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #362 fix(codex): /vds 线程在 DeepSeek 48 MiB 请求体上限前换线程（v1 → v2，按 V 线上字节）
+- #431 release: 捕获 V（sharing-feishu-catchup-r2-20261018，#428 + #415 重新上线）+ CHANGELOG
+
+## v2026.9.1-db91.6-sharing-feishu-catchup-r2-20261018
+
+上线：2026-10-18 17:02 CST v-self-restart 生效（PID 2220979 → 2279279）  ·  tag `v2026.9.1-db91.6-sharing-feishu-catchup-r2-20261018`
+
+**摘要**：重新上线 #428 + #415，内容和 `v2026.9.1-db91.6-sharing-feishu-catchup-20261018` 是同一批字节。中午那次发版在 15:47 被**误判回滚**，这次补上。
+
+**下午的回滚是误判**：
+- 12:36 上线后 3 小时，received message 为 0；前一天同一时段是 29 条。监控 session 据此判断 #415 弄坏了飞书入站，15:47 用 `promote-to-v --undo` 整体回滚，多重启了一次；
+- 回滚之后旧代码同样 1 小时为 0 条。实际情况是：当天的飞书消息几乎都是 Tianyi 发的，他 12:21 之后没再找 V，也没有哪条消息发出后 V 没回；
+- 回滚时漏了重装漂移哨兵的期望，V 因此报了版本漂移。已用 `install-v-release-drift.sh` 按 `codex-followup-admission-20261018` 补上，0 findings；
+- 教训记在 memory `judge-ingress-by-senders-not-volume` 和 `post-release-self-acceptance-via-lark`。
+
+**这次上线后的端到端验收**：用 Tianyi 的 lark-cli 发了真实的飞书消息。
+- 私聊 `oc_e76c5073`：17:02 发出，V 回复「收到」（vds-deepseek-flash），日志依次为 received → dispatch complete (replies=1)；
+- 测试群 `oc_ede0fdc8`：17:03 发出，V 回复「收到」（deepseek-flash）。
+
+**重启**：v-self-restart 17:01:18 判定空闲，停服后清理了 1 条 Codex 孤儿登记，56 s 就绪。
+- stream 1/1、worker 5/5，各项告警均为 0；
+- parity ALIGNED，align 已完成；哨兵期望为 r2。
+
+相对上一版 `v2026.9.1-db91.6-codex-followup-admission-20261018`：5 个文件变化。
+
+**经 VLab 发版 `sharing-feishu-catchup-20261018`**（monitor-v-production，dev `ede1a7bb`）
+> 验收：共享 VLab 11:50 部署 #428（session-sharing 4 文件，before=V 线上 792b1c75/a15b1426/26adfeba/36c5a27b）+ #415（飞书 monitor.account 31238429→ffdf7072），dev ede1a7bb。部署后 TypeError/ReferenceError/SyntaxError/InvalidConfig/飞书或 catch-up 报错均为 0；sessions.list limit 50 返回 50 行且带 sharingRole，服务端 188 ms；deepseek-flash 真实回合 bash echo sf-ok 正确。合入前：#428 candidate a4ab58da（70 个可见性用例逐行一致，sharing 639→11 ms）；#415 candidate 断线/停顿…
+- `core` session-accessor.sqlite-entry-BlklNPKQ.js  a15b1426 → 789fca01
+- `core` session-accessor.sqlite-transcript-state-Cz9g7S9v.js  792b1c75 → 2583a789
+- `core` session-utils-store-Dlphca2N.js  26adfeba → b566c7e9
+- `core` sessions-read-C6mAMxyQ.js  36c5a27b → 2d2d0fb1
+- `feishu` dist/monitor.account-WFdlCDhR.js  31238429 → ffdf7072
+
+## v2026.9.1-db91.6-sharing-feishu-catchup-20261018
+
+上线：2026-10-18 12:36 CST v-self-restart 生效（PID 2055157 → 2096230）  ·  tag `v2026.9.1-db91.6-sharing-feishu-catchup-20261018`
+
+**摘要**：两项改动，一次重启。
+
+- **#428**：sessions.list 的共享可见性解析改为只读所选页。以前每次调用都要把整库 4301 行的共享元数据读一遍，跟页大小无关。VLab A/B 的结果：
+  - 70 个可见性用例逐行一致；
+  - sharing 段（同步执行，期间占住主线程）：25 行 639 → 11 ms，全量 690 → 220 ms；
+  - 共享 VLab 实测 limit 50 的服务端耗时为 188 ms。
+  - 用户感知：Control UI、看板、/sessions 这类列会话的调用，每次少占主线程约 0.4–0.6 s。
+  - 这 4 个文件按 V 当前字节重建，#404、#418 的改动都保留。
+- **#415**：飞书 WebSocket 重连后，或事件循环停顿超过 15 s 后，主动通过 `im/v1/messages` 拉取空档期的消息补处理，不用再等飞书 5–70 分钟后重推。补拉到的消息与飞书随后的重推按消息 id 去重，只处理一次。
+  - **前提未验证**：V 的飞书应用需要有读取会话历史消息的权限。没有权限时每个会话记一行 `ingress catch-up list … code=…`，功能不生效，但没有副作用。
+
+**重启**：v-self-restart 在 12:35:47 确认空闲后停服，清理 2 条 Codex 孤儿登记，66 s 就绪。
+- stream 1/1、worker 5/5；Cannot reap / InvalidConfig / claim / stream-ack / Cannot inspect Codex / rebuilding 均为 0；
+- 启动后 JS 报错为 0，语音入口 200，夜班在线；
+- parity ALIGNED，align 已完成。
+
+相对上一版 `v2026.9.1-db91.6-codex-followup-admission-20261018`：5 个文件变化。
+
+**经 VLab 发版 `sharing-feishu-catchup-20261018`**（monitor-v-production，dev `ede1a7bb`）
+> 验收：共享 VLab 11:50 部署 #428（session-sharing 4 文件，before=V 线上 792b1c75/a15b1426/26adfeba/36c5a27b）+ #415（飞书 monitor.account 31238429→ffdf7072），dev ede1a7bb。部署后 TypeError/ReferenceError/SyntaxError/InvalidConfig/飞书或 catch-up 报错均为 0；sessions.list limit 50 返回 50 行且带 sharingRole，服务端 188 ms；deepseek-flash 真实回合 bash echo sf-ok 正确。合入前：#428 candidate a4ab58da（70 个可见性用例逐行一致，sharing 639→11 ms）；#415 candidate 断线/停顿…
+- `core` session-accessor.sqlite-entry-BlklNPKQ.js  a15b1426 → 789fca01
+- `core` session-accessor.sqlite-transcript-state-Cz9g7S9v.js  792b1c75 → 2583a789
+- `core` session-utils-store-Dlphca2N.js  26adfeba → b566c7e9
+- `core` sessions-read-C6mAMxyQ.js  36c5a27b → 2d2d0fb1
+- `feishu` dist/monitor.account-WFdlCDhR.js  31238429 → ffdf7072
+
+## v2026.9.1-db91.6-codex-followup-admission-20261018
+
+上线：2026-10-18 00:07 CST v-self-restart 生效（PID 1460897 → 1541775）；同时 #425 升级后的 v-self-restart 首次实战  ·  tag `v2026.9.1-db91.6-codex-followup-admission-20261018`
+
+**摘要**：/vcodex、/vds 里 Codex 原生子 agent 的后续任务，不再必然被「Native hook relay timed out」拦下。
+
+- **原因**：子 agent 第一轮结束时会释放父中继对它的认领；父回合之后再用 `followup_task` 或 `send_input` 派新活，没有人重新认领它。工具前钩子会一直等认领，直到 Codex 的 9 s 期限，然后工具被拦。10/17 21:11 Memory Librarian 的 8 次超时都属于这一类。
+- **修法**：父回合给自己登记过的子线程派后续任务时，重新认领该子线程。审批、策略照常执行，规则不放松。
+- **效果**：VLab 上，后续任务的 exec 从 9.7 s 后被拦，变成 0.7–1.0 s 成功（#426）。
+- **不在本次修复范围**：Gateway 主线程饱和时的排队超时（B 类）。
+
+**重启**：用 #425 升级后的 v-self-restart 执行，这是它第一次实际使用。
+- 00:06:02 检测到「90 秒内有新消息」，没有立刻停服，等了 69 s，空闲后才停；
+- 起来后核对通过：GrokBot stream 1/1 恢复 running，worker 5/5 就绪；Cannot reap、InvalidConfig、claim、stream-ack、Cannot inspect Codex、rebuilding 均为 0；
+- 语音入口 200，夜班在线，DeepSeek 搜索配置保持；parity ALIGNED，align 完成。
+
+相对上一版 `v2026.9.1-db91.6-disk-budget-websearch-20261017`：1 个文件变化。
+
+**经 VLab 发版 `codex-followup-admission-20261018`**（monitor-v-production，dev `7a35038a`）
+> 验收：共享 VLab 00:02 部署 #426（发版产物 #427，dev 7a35038a，codex 插件 native-subagent-monitor-CnH147jH.js 33bde1f3→b899ca81，before=V 线上字节）。共享 VLab 实际加载的 state/npm 副本在部署前同步为同一字节（备份 .bak-before-426）。/vds 回合（harness=codex，provider=deepseek，model=vds-deepseek-flash）执行 shell echo codex426-ok 正确，钩子转发正常；部署后 native-subagent-monitor 报错、TypeError/ReferenceError/SyntaxError、Native hook relay timed out 均为 0。子 agent 跟进回合路径由 #…
+- `codex` dist/native-subagent-monitor-CnH147jH.js  33bde1f3 → b899ca81
+
+## v2026.9.1-db91.6-disk-budget-websearch-20261017
+
+上线：2026-10-17 21:58 CST 装入 #383 文件，22:18 由 web-search-deepseek 激活脚本的一次受控重启同时生效（PID 1283757 → 1460897）  ·  tag `v2026.9.1-db91.6-disk-budget-websearch-20261017`
+
+**摘要**：两件事，一次重启。
+
+- **#383**：会话存储超过 `session.maintenance.maxDiskBytes` 之后，维护任务不再整轮占住 session 写队列。10/15 21:11–21:40 飞书入站卡死 30 分钟，就是这个原因（`docs/incidents/2026-10-15-feishu-ingress-stall.md`）。上线时 V 用了预算的 70.7%（48 GB），按当前增速约 12 天后撞线。
+- **#422/#423**：web_search 从 Parallel 免 key 档换成 DeepSeek Search；web_fetch 在内置抓取失败时由 DeepSeek Fetch 兜底。新增插件 `v-deepseek-web`，装在 `/opt/v-deepseek-web/plugin`，root 属主；两份配置都改了，内容不在下面的文件捕获范围内。
+  - 基准测试：回答得分 5.77 → 7.25，单次搜索 p50 1.23 s → 0.33 s。
+  - 回退：`activate-production.mjs --rollback`。
+
+**激活时发现的问题**：GrokBot 双向桥的 stream cron（`42775b92`）一直处于 running。Gateway 的 `getSuspensionBlockerCount` 会把运行中的 stream 监听器算成 cron-run，导致 `acquireIdleFence` 永远排空不了。第一次激活因此在写配置之前放弃，没有改动任何东西。第二次先用 `cron.update` 暂停这个 stream，激活完立刻恢复，22:18:34 已经回到 running。
+
+**重启后检查**：
+- Cannot reap / InvalidConfig / claim / stream-ack / Cannot inspect Codex / rebuilding / orphan sweep failed / suspicious ownership / not registered 均为 0；
+- worker 池 5/5 空闲；语音入口 200；夜班在线；
+- parity ALIGNED，`vlab.mjs align` 已完成。
+
+**生产验收**（22:35，web-search 线用两条 `web-search-deepseek-acceptance-*` 测试会话经 Gateway 跑真实回合，未投递渠道）：
+- 搜索：provider=deepseek，单次 0.33 / 0.38 s，结果 7.4–7.6K 字符，在 Codex 的 1 万字符上限以内，答案正确且附来源；
+- 抓取：百度百科经 deepseek 兜底（extractor=deepseek，8.7 s），链路生效，但 DeepSeek Fetch 返回的可能是它那边的旧缓存词条；
+- suspicious ownership / unknown provider 为 0。
+
+相对上一版 `v2026.9.1-db91.6-workboard-projection-20261017`：2 个文件变化。
+
+**经 VLab 发版 `disk-budget-stall-20261017`**（monitor-v-production，dev `17afd21b`）
+> 验收：共享 VLab 21:54 部署 #383（dev 17afd21b，2 个文件：disk-budget-BzLS0kmH.js 9e5c3708→aa6aaf56、session-history-eviction-d5aiCsHS.js 014136ce→0c43970f，before=V 线上字节）。哈希=after；Gateway ready，部署后 InvalidConfig/suspicious ownership/not registered/TypeError 及 disk budget 错误均为 0。deepseek-flash 真实回合（共享 VLab 已是 DeepSeek web_search 配置，#422/#423 已于 21:12–21:20 验收 5/5）：调用 web_search + bash echo dbs-ok，状态 ok、输出正确。#383 合入前…
+- `core` disk-budget-BzLS0kmH.js  9e5c3708 → aa6aaf56
+- `core` session-history-eviction-d5aiCsHS.js  014136ce → 0c43970f
+
+## v2026.9.1-db91.6-workboard-projection-20261017
+
+上线：2026-10-17 18:25 CST 装入，18:26 v-self-restart 生效  ·  tag `v2026.9.1-db91.6-workboard-projection-20261017`
+
+**摘要**：两处修复一起上线。
+
+- **#418**：V 每 10 分钟一次的 workboard 全量对账不再长时间卡住主线程。会话列表对它改用只返回生命周期字段的轻量模式（只对没有可见性过滤的系统调用方生效），对账时先在内存里判断，只读写真要变的卡。V 上 18:27–18:49 的 profile 显示：两次全量对账里列会话 3.6–3.9 s → 0.32–0.35 s，逐卡写入基本消失，整段 11–13 s → 约 1.4 s（剩下的是读全部卡片约 1 s）。用户感知：消息正好落在对账窗口时，不再多等 7–13 s。
+- **#420**：投影重建窗口去掉整库扫描和 Worker 启动，固定开销 2.2 s → 0.02–0.2 s。大会话在回退、分叉、连续写入后，下一轮能更快接上。
+
+重启后 Cannot reap / InvalidConfig / claim / stream-ack / Cannot inspect Codex / rebuilding / orphan sweep failed / workboard lifecycle failed 均为 0，语音入口 200，夜班在线，parity ALIGNED。还剩的主线程长段是整表读会话条目（会话生命周期清理一次 5.9 s，整表加载 2.7–3.7 s），见 PR #419 的报告，不在本次范围内。
+
+相对上一版 `v2026.9.1-db91.6-archive-retention-cutoff-20261017`：6 个文件变化。
+
+**经 VLab 发版 `workboard-projection-20261017`**（monitor-v-production，dev `0c59dc8d`）
+> 验收：共享 VLab 18:07 部署 #418+#420（dev 0c59dc8d，6 个文件，before=V 线上字节）。六个文件哈希=after；Gateway ready，部署后 workboard lifecycle sync/recovery failed、orphan sweep failed、unexpected property、InvalidConfig 均为 0（仅既有 Codex 孤儿 838314 告警）。sessions.list 按 workboard 参数对比 968 个会话：lifecycleOnly 与普通调用的 key/updatedAt/status/hasActiveRun/abortedLastRun 逐行一致，轻量模式无 sharingRole；服务端耗时普通 1671–1838 ms、轻量 713–742 ms（交替两轮）。deepseek-fl…
+- `core` config/sessions/session-transcript-reconcile.worker.js  2fa289dd → fdce59ff
+- `core` extensions/workboard/index.js  5ac1a060 → 610d45fe
+- `core` runtime-api-1CCazqtv.js  95373b6e → 64c75937
+- `core` session-transcript-reconcile-j5qhAafV.js  9fac1d4a → 85455fa4
+- `core` sessions-read-C6mAMxyQ.js  f681c2da → 36c5a27b
+- `core` src-B9mb84px.js  c3a060a7 → 24cc77ba
+
+## v2026.9.1-db91.6-archive-retention-cutoff-20261017
+
+上线：2026-10-17 10:34 CST 装入，10:49 v-self-restart 生效  ·  tag `v2026.9.1-db91.6-archive-retention-cutoff-20261017`
+
+**摘要**：V 的 Gateway 不再每 30–40 分钟卡一次约 7 秒。原因是每次会话 reset / delete / `/new` 都会跑一遍转录归档保留期清理，它读最老的 256 份归档，而要读的列排在 archive_blob 之后，每行都要走完整个 blob 溢出链。V 上这些归档都还没到 14 天保留期，所以每次读完都一份也删不掉。现在扫描限定在 `created_at < now - 最短保留期`，读了候选却一份没删时 1 小时内不再扫；能删的集合与原版一致。V 上 10:49 重启后 Cannot reap / InvalidConfig / claim / stream-ack / Cannot inspect Codex / rebuilding / liveness 延迟均为 0，parity ALIGNED。
+
+相对上一版 `v2026.9.1-db91.6-projection-incremental-20261017`：1 个文件变化。
+
+**经 VLab 发版 `archive-retention-cutoff-20261017`**（monitor-v-production，dev `52f9eb60`）
+> 验收：共享 VLab 10:04 部署 #416（session-accessor.sqlite-lifecycle-state-CrB_K2kA.js，before=V 线上 adeb44f2）。Gateway ready、错误 0。真实函数 A/B（VLab 库副本 3120 份归档，原版与补丁版模块各跑两次）：全部 5 天内（V 现状）两版均删 0；10% 设为 20 天前且文件不存在，两版均先删 256 再删 56，剩 2808，结果一致。单测 4/4：40 组随机数据可删集合逐一相同，查询走 retention 索引范围。冷缓存 SQL：旧 158–164 ms 读 256 行，新 6–10 ms 读 0 行（V 上旧查询 profile 6.9 s）。
+- `core` session-accessor.sqlite-lifecycle-state-CrB_K2kA.js  adeb44f2 → ea381f9d
+
+## v2026.9.1-db91.6-projection-incremental-20261017
+
+上线：2026-10-17 05:04 CST 装入，05:06 v-self-restart 生效  ·  tag `v2026.9.1-db91.6-projection-incremental-20261017`
+
+**摘要**：会话分叉、回退、旁路追加之后，投影不再整段重建：从旧投影的有效前缀接着算，只重放新增行并找到与旧活跃路径的交汇点，主线程用一个写事务应用增量；无法证明安全的情况一律退回全量。用 V 数据副本测了马晴私聊、夜班群、Tianyi 主会话等 4 个会话：写入后到投影可读 4–7 s → 1.3–2.4 s，主线程最长停顿 2.8 s → ≤179 ms，投影与全量重建逐行一致，模型视图 A/B 零差异。
+
+相对上一版 `v2026.9.1-db91.6-codex-inspection-budget-20261017`：3 个文件变化。
+
+**经 VLab 发版 `projection-incremental-20261017`**（monitor-v-production，dev `f36d4a84`）
+> 验收：共享 VLab 05:02 部署 #411。Gateway ready，错误 0、rebuilding 0；deepseek-flash 回合 exec echo 正确，/vds 回合 bash echo vds-f4-ok 正确。V 上 05:06 重启后 Cannot reap / InvalidConfig / claim / stream-ack / Cannot inspect Codex / rebuilding 均为 0，drift 0 findings。
+- `core` session-transcript-index-9itOio9h.js  d0e05a56 → 7d14a3c0
+- `core` session-transcript-reconcile-j5qhAafV.js  b63bdf05 → 9fac1d4a
+- `core` config/sessions/session-transcript-reconcile.worker.js  95b9ddcd → 2fa289dd
+
+## v2026.9.1-db91.6-codex-inspection-budget-20261017
+
+上线：2026-10-17 04:11 CST 装入，04:13 v-self-restart 生效  ·  tag `v2026.9.1-db91.6-codex-inspection-budget-20261017`
+
+**摘要**：大会话的 /vds（Codex 运行时）回合，空闲后第一句话不再报「Cannot inspect Codex processes. Process inspection exceeded its deadline」。原因是 Codex app-server 启动时登记子进程的身份读取沿用了 containment 的 2 s 时限，而同一时刻主线程正被有界历史读取占住约 2.6 s（Tianyi 主会话 10/17 03:28 复现）。现在这一步有独立的 15 s 时限并在超时时重试一次；containment 的 2 s 语义不变。共享 VLab 的 state/npm Codex 副本另行同步为同一字节后 align。
+
+相对上一版 `v2026.9.1-db91.6-projection-checkpoint-20261017`：1 个文件变化。
+
+**经 VLab 发版 `codex-inspection-budget-20261017`**（monitor-v-production，dev `0801d006`）
+> 验收：共享 VLab 03:58 部署 #409（Codex 插件 transport-stdio-CyPldczm.js，before=V 线上字节）。Gateway ready，错误 0、Cannot inspect Codex 0；/vds 回合 bash(uname -m) → x86_64。candidate：主线程阻塞 2.6 s / 5 s 修复前 0/3、修复后 3/3，16 s 走重试 2/2（PR #409）。注意：VLab 当时加载的是 state/npm 副本，回合本身未覆盖新代码，已于 04:28 同步并重新 align。
+- `codex` transport-stdio-CyPldczm.js  513e62dd → cd3d59c5
+
+## v2026.9.1-db91.6-projection-checkpoint-20261017
+
+上线：2026-10-17 03:39 CST 装入，03:40 v-self-restart 生效（51 s 就绪）  ·  tag `v2026.9.1-db91.6-projection-checkpoint-20261017`
+
+**摘要**：大会话（马晴私聊 2.6 万行、夜班群 1.3 万行等）每轮回合开始的用户消息注解、媒体送达后的助手展示改写，不再让投影整段重建：之前每次改写都要在写锁里把整会话求和 1–5 s，然后后台整段重建 3–7 s，期间新消息（如生图完成后的续跑）直接报“正在重建”失败。现在投影原地保持最新，结果与全量重建逐行一致；仍需重建的分叉/回退期间，回合会等待而不是失败。V 上验收：专用会话 flash 与 /vds 回合正常，投影保持最新，重启后“重建中”报错 0。
+
+相对上一版 `v2026.9.1-db91.6-subagent-lazy-store-20261017`：3 个文件变化。
+
+**经 VLab 发版 `projection-checkpoint-20261017`**（projection-checkpoint，dev `b5c8ddff`）
+> 验收：共享 VLab 03:35 部署 #405（3 个 core dist：session-transcript-index、session-accessor.sqlite-transcript-store、builtin-openclaw；before 均等于 V 线上字节）。Gateway ready。专用会话 agent:makaron:explicit:vlab-dev-projection-checkpoint-1792179366 真实回合：deepseek-flash(vlab-worker) exec echo flash-ok → 回复 flash-ok（12 s）；/vds 切换后 Codex 回合 exec echo vds-ok → 回复 vds-ok（15 s）。回合开始的 Codex 原生注解改写已写入（user seq 9 mirrorOrigin=codex-a…
+- `core` builtin-openclaw-zQV8Wwjr.js  71c2310a → a44b846a
+- `core` session-accessor.sqlite-transcript-store-DV0WFe1a.js  0592e1cd → 74fba951
+- `core` session-transcript-index-9itOio9h.js  5504f5de → d0e05a56
+
+## v2026.9.1-db91.6-subagent-lazy-store-20261017
+
+上线：2026-10-17 02:44 CST（V 与 VLab 对齐时间）  ·  tag `v2026.9.1-db91.6-subagent-lazy-store-20261017`
+
+**摘要**：子代理相关查询改为按 key 只读需要的行，不再每次整表解析会话库（#404），去掉每次 1.4–1.6 s 的 Gateway 主线程读取。本节由 #405 的上线会话代为补记，捕获内容为 promote-to-v 生成的原样文件。
+
+相对上一版 `v2026.9.1-db91.6-subagent-settle-20261016`：3 个文件变化。
+
+**经 VLab 发版 `subagent-lazy-store-20261017`**（monitor-v-production，dev `56721d76`）
+> 验收：共享 VLab 02:27 部署 #404（F1，3 个 core dist：session-accessor.sqlite-entry、subagent-capabilities、subagent-completion-admission.store；before 均等于 V 线上字节）。Gateway ready，journal 错误 0、Cannot inspect Codex 0、SessionCanonicalKeyMigration 0。真实回合 vlab-dev-1792175398784：exec(date) → sessions_spawn 子代理(exec echo sub-ok-1017) → sessions_yield → 子代理完成回传 → 最终回复 2026-10-17 / sub-ok-1017，子代理深度/权限/完成清理路径全部走到且行为不变。等价性与耗时…
+- `core` session-accessor.sqlite-entry-BlklNPKQ.js  6b12190c → a15b1426
+- `core` subagent-capabilities-CPAHEjL-.js  76ac1cc6 → 4ee0a32e
+- `core` subagent-completion-admission.store-JmpNDYTF.js  ee0d42e6 → c106a6ce
+
+**这期间合入 dev 的 PR**（7 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #406 release: 投影检查点上线计划与真实回合 A/B 记录（#405 后续）
+- #405 fix(sessions): 原地改写不再让大会话整段重建投影（投影检查点）
+- #404 perf(sessions): 子代理查询只读需要的行，不再整表读会话库
+- #402 fix(v-gateway): Gateway 单元禁用 swap，消除 10/16 的 50–70 秒冻结
+- #403 perf(sessions): bound sharing metadata reads to the selected page
+- #401 release: record PR399 production deployment and acceptance
+- #400 Avoid full Workboard histories during lifecycle reconciliation
+
+## v2026.9.1-db91.6-subagent-settle-20261016
+
+上线：2026-10-16 23:33 CST。生产已部署；发布留档与标签状态以对应 PR 为准。
+
+**摘要**：已结束、无需用户通知的子任务会正确结算；原生子任务完成通知和父会话让出等待的凭据完整穿过 Worker 回传，避免后续完成通知无法续接或出现错误提示。
+
+相对上一版 `v2026.9.1-db91.6-voice-task-continuity-20261016-r3`：6 个运行时文件变化。全部来自已验收 VLab 发版 `subagent-settle-completion-20261016e`，源提交 `24ad9998da030cfafb51089b6c1a62d43ea73793`；artifact SHA `a465dd0a42bea1e8b040373de17cc51399179e7c335bf05bca92130c8054149e`。PR #399 经 CI 通过后合入 dev。#398 与 Night Shift #12 不在此次生产字节变更中。
+
+- `core` builtin-openclaw-zQV8Wwjr.js  5638a3b7 → 71c2310a
+- `core` embedded-agent-DaSvA-Yk.js  a53fe92d → bcb20f5d
+- `core` subagent-announce.requester-settle-wake-B2NSziIo.js  be8a3f7f → ec4c192b
+- `core` subagent-registry-read-UaDFTyfW.js  dfcf09fa → 142bb515
+- `core` subagent-registry.store.sqlite-hzGu4QSk.js  bc42d6c4 → f37ed94d
+- `worker` harness-result.mjs  76840da2 → 0c52961a
+
+本次补齐 Codex 插件 72 文件的发版存档及漂移检测覆盖。其字节与 `v2026.9.1-db91.6-codex-ds-window-20261013.codex` 完全相同；不表示本次修改了 Codex 插件。
+
+**验证**：`v-self-restart` 请求 `20261016-233206-0495`，56 秒就绪，5 个 Worker ready；配置未改，Night Shift 服务未重启。安装前静默待结算积压 194，重启后为 0；逐 runId 验证 194/194 原行仍在，待结算字段全部清除。生产飞书普通、双子任务、单子任务最终消息各一条，三个实际 exec 输出已核验。Night Shift 自动接续 10 卡、转交人工 0，已有新的执行与成功结果。
+
+**边界**：部分卡片仍 blocked，原因待核实；压力 hold 与夜班峰值性能没有被本轮验收证明已解决。运行时回滚备份、逐文件 SHA、真实消息与执行证据见 [生产验证](docs/experiments/subagent-completion-projection.md#生产推广2026-10-16) 和 [结构化回执](docs/experiments/subagent-completion-projection.production.json)。
+
 ## v2026.9.1-db91.6-voice-task-continuity-20261016-r3
 
 上线：2026-10-16 08:43 CST  ·  tag `v2026.9.1-db91.6-voice-task-continuity-20261016-r3`

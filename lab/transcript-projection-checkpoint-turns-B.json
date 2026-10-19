@@ -1,0 +1,33 @@
+{
+  "support": [
+    "lab/candidate/projection-checkpoint-turns.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/projection-checkpoint-turns.mjs"
+  ],
+  "timeoutSeconds": 5400,
+  "user": "lab-db91-parity",
+  "env": {
+    "SOURCE_DB": "/var/tmp/projection-checkpoint-20261017/sessions.sqlite",
+    "TURNS": "2",
+    "TURN_PLAN": "[{\"sessionId\": \"7da00997-3bc2-40bf-a9ff-1cd153c43ff0\", \"sessionKey\": \"agent:makaron:feishu:direct:ou_98a55d9a29169414f9a7f66339cea580\", \"model\": \"flash\"}, {\"sessionId\": \"06d45f08-ceee-49a4-9e42-2ce88c4ca9dc\", \"sessionKey\": \"agent:makaron:feishu:group:oc_e76c5073a8c95255ac90a148b6e183fe\", \"model\": \"flash\"}, {\"sessionId\": \"3c3fab41-f6de-4fa9-98de-679038ec5c9d\", \"sessionKey\": \"agent:makaron:feishu:group:oc_88d96b7e42cbdfd33e6d096477a8cac8\", \"model\": \"vds\"}, {\"sessionId\": \"2b21b4a0-9553-4da1-b622-76767bb24e1b\", \"sessionKey\": \"agent:makaron:feishu:direct:ou_0674d5a6f80bab12568b1435f290d619\", \"model\": \"vds\"}]"
+  },
+  "files": [
+    {
+      "source": "lab/release-files/transcript-projection-checkpoint/session-transcript-index-9itOio9h.js",
+      "target": "openclaw/dist/session-transcript-index-9itOio9h.js",
+      "before": "5504f5decee060251f991e658a809a53e2548e4727cfb2838499a5a7c2ce84b1"
+    },
+    {
+      "source": "lab/release-files/transcript-projection-checkpoint/session-accessor.sqlite-transcript-store-DV0WFe1a.js",
+      "target": "openclaw/dist/session-accessor.sqlite-transcript-store-DV0WFe1a.js",
+      "before": "0592e1cd88d5cb2261b94dc972b12baa591099f6f6da2f7042bdc6e0e6bfa397"
+    },
+    {
+      "source": "lab/release-files/transcript-projection-checkpoint/builtin-openclaw-zQV8Wwjr.js",
+      "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
+      "before": "71c2310a73dbfa66d70fe560ff13132c620f0033439e604417842412758a67bc"
+    }
+  ]
+}

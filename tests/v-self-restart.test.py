@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """V restarting itself must never leave production down: changes are validated
 before the Gateway stops, a Gateway that does not come back gets its old config
-and another start, and only stale Codex registrations are removed."""
+and another start, and only stale Codex registrations are removed. It must not
+cut off somebody else's turn either: it waits for V to be idle first, and after
+the start it checks that stream crons and the Worker pool came back."""
 import importlib.util
 import json
 import os
@@ -17,12 +19,41 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("v_self_restart", os.path.join(HERE, "..", "scripts", "v-self-restart.py"))
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
+REAL_NOTIFY = mod.notify
+
+
+class FakeClock:
+    """time.sleep advances the clock, so waits with deadlines finish at once."""
+
+    def __init__(self):
+        self.now = 0.0
+        self.epoch0 = 1792240000.0
+
+    def sleep(self, s):
+        self.now += max(0, s)
+
+    def monotonic(self):
+        return self.now
+
+    def time(self):
+        return self.epoch0 + self.now
+
+
+STREAM = {"id": "42775b92", "name": "GrokBot bridge", "enabled": True, "kind": "stream",
+          "runningAtMs": None, "streamStatus": "running"}
+
+
+def idle_workers(*active, queued=0, pending=0, min_workers=1):
+    return {"minWorkers": min_workers, "pending": pending, "workers": [
+        {"slot": 0, "ready": True, "retiring": False, "activeCount": len(active), "queued": queued,
+         "active": [{"sessionKey": k, "kind": "agent"} for k in active]}]}
 
 
 class FakeHost:
-    """systemctl, journalctl and `openclaw config set` against in-memory state."""
+    """systemctl, journalctl, `openclaw config set/validate` and the Gateway's
+    read-only RPC against in-memory state."""
 
-    def __init__(self, config_path, ready=True, crash=False, bad_paths=()):
+    def __init__(self, config_path, ready=True, crash=False, bad_paths=(), clock=None):
         self.config_path = config_path
         self.ready = ready
         self.crash = crash
@@ -36,6 +67,27 @@ class FakeHost:
         self.launched = []
         self.wakes = []
         self.no_channel = False
+        self.clock = clock
+        self.recent = []          # [(epoch, message)] for journalctl -u
+        self.busy_until = None    # clock time until which `busy_query` is answered
+        self.busy_query = None
+        self.queries = 0
+        self.streams_after_start = ["running"]  # streamStatus per poll after a start; last repeats
+        self.stream_polls = 0
+        self.last_env = {}
+
+    def gateway_query(self):
+        self.queries += 1
+        if not self.active:
+            return {"error": "Gateway endpoint unknown (unit inactive)"}
+        if self.busy_query is not None and (self.busy_until is None or self.clock.now < self.busy_until):
+            return self.busy_query
+        status = STREAM["streamStatus"]
+        if self.pid > 100:  # restarted at least once
+            seq = self.streams_after_start
+            status = seq[min(self.stream_polls, len(seq) - 1)]
+            self.stream_polls += 1
+        return {"workers": idle_workers(), "cron": {"jobs": [dict(STREAM, streamStatus=status)]}}
 
     def result(self, out="", rc=0, err=""):
         return subprocess.CompletedProcess([], rc, out, err)
@@ -43,14 +95,20 @@ class FakeHost:
     def sh(self, argv, timeout=60, input_text=None, check=False):
         if argv[:1] == ["runuser"]:
             argv = argv[argv.index("--") + 1:]
-            while argv and "=" in argv[0] and not argv[0].startswith("/"):
-                argv = argv[1:]
             if argv[:1] == ["env"]:
-                argv = [a for a in argv[1:] if "=" not in a or a.startswith("/")]
+                argv = argv[1:]
+            self.last_env = {}
+            while argv and "=" in argv[0] and not argv[0].startswith("/"):
+                k, v = argv[0].split("=", 1)
+                self.last_env[k] = v
+                argv = argv[1:]
         self.calls.append(argv)
         if argv[0] == "systemctl":
             return self.systemctl(argv[1:])
         if argv[0] == "journalctl":
+            if argv[1] == "-u":
+                since = float(argv[argv.index("--since") + 1][1:])
+                return self.result("".join("%.6f host node[1]: %s\n" % (ts, m) for ts, m in self.recent if ts >= since))
             inv = argv[1].split("=", 1)[1]
             return self.result(self.journal.get(inv, ""))
         if argv[0] == "systemd-run":
@@ -63,6 +121,10 @@ class FakeHost:
             return self.result('{"ok":true}')
         if argv[0] == "python3":  # orphan cleanup as the run-as user
             return self.result('{"deleted": [], "kept": []}')
+        if argv[1:3] == ["config", "validate"]:
+            with open(self.last_env["OPENCLAW_CONFIG_PATH"]) as f:
+                bad = json.load(f).get("invalid")
+            return self.result("", 1, "× invalid: unknown key") if bad else self.result("Config valid")
         if argv[1:3] == ["config", "set"]:
             path, value = argv[3], argv[4]
             if path in self.bad_paths:
@@ -107,15 +169,21 @@ class Base(unittest.TestCase):
         self.config = os.path.join(self.tmp.name, "openclaw.json")
         with open(self.config, "w") as f:
             json.dump({"keep": 1}, f)
+        self.worker_config = os.path.join(self.tmp.name, "worker-openclaw.json")
+        with open(self.worker_config, "w") as f:
+            json.dump({"worker": 1}, f)
+        self.clock = FakeClock()
+        self.notified = []
         self.patches = [
             mock.patch.object(mod, "CONFIG", self.config),
+            mock.patch.object(mod, "WORKER_CONFIG", self.worker_config),
+            mock.patch.object(mod, "time", self.clock),
             mock.patch.object(mod, "STATE_DIR", os.path.join(self.tmp.name, "state")),
             mock.patch.object(mod, "RUN_AS", pwd.getpwuid(os.getuid()).pw_name),
-            mock.patch.object(mod.time, "sleep", lambda s: None),
             mock.patch.object(mod, "log", lambda m: None),
             mock.patch.object(mod.os, "geteuid", lambda: 0),
             mock.patch.object(mod.os, "chown", lambda *a: None),
-            mock.patch.object(mod, "notify", lambda rec, text: None),
+            mock.patch.object(mod, "notify", lambda rec, text: self.notified.append(text)),
         ]
         for p in self.patches:
             p.start()
@@ -126,14 +194,14 @@ class Base(unittest.TestCase):
         self.tmp.cleanup()
 
     def host(self, **kw):
-        h = FakeHost(self.config, **kw)
-        p = mock.patch.object(mod, "sh", h.sh)
-        p.start()
-        self.patches.append(p)
+        h = FakeHost(self.config, clock=self.clock, **kw)
+        for p in (mock.patch.object(mod, "sh", h.sh), mock.patch.object(mod, "gateway_query", h.gateway_query)):
+            p.start()
+            self.patches.append(p)
         return h
 
-    def read_config(self):
-        with open(self.config) as f:
+    def read_config(self, path=None):
+        with open(path or self.config) as f:
             return json.load(f)
 
     def request(self, *extra):
@@ -226,7 +294,7 @@ class Execute(Base):
     def test_deactivating_stop_waits_for_pid_zero_before_config_write(self):
         h = self.host()
         self.request("--set", 'plugins.t={"mac":1}')
-        with mock.patch.object(mod, "unit_active", side_effect=["deactivating", "inactive", "active", "active"]):
+        with mock.patch.object(mod, "unit_active", side_effect=["active", "deactivating", "inactive", "active", "active"]):
             rec = self.run_last()
         self.assertEqual(rec["outcome"], "ok", rec)
         self.assertEqual(self.read_config()["plugins.t"], {"mac": 1})
@@ -341,6 +409,305 @@ class Execute(Base):
         self.assertEqual(rec["outcome"], "failed")
         self.assertNotIn(["systemctl", "stop", "--no-block", mod.UNIT], h.calls)
         self.assertTrue(h.active)
+
+
+OWN = "agent:makaron:feishu:group:oc_" + "a" * 32
+OTHER = "agent:makaron:feishu:group:oc_" + "b" * 32
+
+
+class BusyReasons(unittest.TestCase):
+    """The idle definition, one condition at a time."""
+
+    NOW = 1792240000.0
+
+    def reasons(self, query=None, journal=(), session_key=OWN, requested=None):
+        rec = {"sessionKey": session_key, "requestedEpoch": self.NOW - 60 if requested is None else requested}
+        q = query if query is not None else {"workers": idle_workers(), "cron": {"jobs": [STREAM]}}
+        return mod.busy_reasons(rec, q, list(journal), self.NOW)
+
+    def test_idle(self):
+        self.assertEqual(self.reasons(), ([], False))
+
+    def test_other_worker_turn_is_busy_but_the_requesters_own_is_not(self):
+        r, own = self.reasons({"workers": idle_workers(OWN), "cron": {"jobs": []}})
+        self.assertEqual((r, own), ([], True))
+        r, _ = self.reasons({"workers": idle_workers(OWN, OTHER), "cron": {"jobs": []}})
+        self.assertEqual(r, ["worker 有 1 个回合在跑"])
+
+    def test_without_a_requester_every_turn_counts(self):
+        r, _ = self.reasons({"workers": idle_workers(OWN), "cron": {"jobs": []}}, session_key=None)
+        self.assertEqual(r, ["worker 有 1 个回合在跑"])
+
+    def test_queued_and_pending_turns_are_busy(self):
+        r, _ = self.reasons({"workers": idle_workers(queued=1, pending=2), "cron": {"jobs": []}})
+        self.assertEqual(r, ["worker 有 3 个回合在排队"])
+
+    def test_running_cron_turn_is_busy_but_a_resident_stream_is_not(self):
+        self.assertEqual(self.reasons({"workers": idle_workers(), "cron": {"jobs": [STREAM]}})[0], [])
+        job = {"id": "x", "name": "daily report", "enabled": True, "kind": "cron", "runningAtMs": 1, "streamStatus": None}
+        r, _ = self.reasons({"workers": idle_workers(), "cron": {"jobs": [STREAM, job]}})
+        self.assertEqual(r, ["cron 回合在跑：daily report"])
+
+    def test_query_failure_is_busy_but_a_gateway_without_workers_is_not(self):
+        r, _ = self.reasons({"error": "connect timeout"})
+        self.assertEqual(len(r), 2)
+        r, _ = self.reasons({"workers": {"error": "unknown method: vlab.workers.status"}, "cron": {"jobs": []}})
+        self.assertEqual(r, [])
+
+    def test_dispatch_without_complete_is_busy(self):
+        t = self.NOW - 120
+        busy = [(t, "[feishu] feishu[default]: dispatching to agent (session=%s)" % OTHER)]
+        self.assertEqual(self.reasons(journal=busy)[0], ["最近 4 分钟有 1 条消息分发后还没完成"])
+        done = busy + [(t + 5, "[feishu] feishu[default]: dispatch complete (queuedFinal=true, replies=1)")]
+        self.assertEqual(self.reasons(journal=done)[0], [])
+        # the [diagnostic] line is a different event and must not close a dispatch
+        diag = busy + [(t + 5, "[diagnostic] message dispatch completed: channel=feishu outcome=error")]
+        self.assertEqual(len(self.reasons(journal=diag)[0]), 1)
+
+    def test_requesters_own_dispatch_before_the_request_is_not_busy(self):
+        own = [(self.NOW - 150, "dispatching to agent (session=%s)" % OWN)]
+        self.assertEqual(self.reasons({"workers": idle_workers(OWN), "cron": {"jobs": []}}, journal=own)[0], [])
+        # its completion must not hide somebody else's open dispatch
+        mixed = own + [(self.NOW - 140, "dispatching to agent (session=%s)" % OTHER),
+                       (self.NOW - 130, "dispatch complete (queuedFinal=true, replies=1)")]
+        self.assertEqual(len(self.reasons(journal=mixed)[0]), 1)
+
+    def test_new_message_in_the_requesters_chat_after_the_request_is_busy(self):
+        later = [(self.NOW - 30, "received message from ou_x in oc_%s (group)" % ("a" * 32))]
+        self.assertEqual(self.reasons(journal=later)[0], ["90 秒内有新消息进来"])
+        earlier = [(self.NOW - 70, "received message from ou_x in oc_%s (group)" % ("a" * 32))]
+        self.assertEqual(self.reasons(journal=earlier, requested=self.NOW - 60)[0], [])
+
+    def test_inbound_quiet_window(self):
+        self.assertEqual(self.reasons(journal=[(self.NOW - 89, "received message from ou_y in oc_z (p2p)")])[0],
+                         ["90 秒内有新消息进来"])
+        self.assertEqual(self.reasons(journal=[(self.NOW - 91, "received message from ou_y in oc_z (p2p)")])[0], [])
+
+
+class IdleGate(Base):
+    def stop_index(self, h):
+        return h.calls.index(["systemctl", "stop", "--no-block", mod.UNIT])
+
+    def test_waits_for_another_turn_then_restarts(self):
+        h = self.host()
+        h.busy_query = {"workers": idle_workers(OTHER), "cron": {"jobs": [STREAM]}}
+        h.busy_until = 100
+        self.request("--delay", "5")
+        rec = self.run_last()
+        self.assertEqual(rec["outcome"], "ok", rec)
+        self.assertEqual(rec["idleGate"]["result"], "idle")
+        self.assertGreaterEqual(rec["idleGate"]["waitedS"], 95)
+        self.assertGreater(rec["idleGate"]["checks"], 1)
+        busy = next(x for x in rec["steps"] if x["step"] == "busy")
+        self.assertEqual(busy["reasons"], ["worker 有 1 个回合在跑"])
+        names = [x["step"] for x in rec["steps"]]
+        self.assertLess(names.index("idle"), names.index("stopped"))
+        self.assertEqual(rec["warnings"], [])
+
+    def test_still_busy_wait_then_proceed_restarts_with_a_warning(self):
+        h = self.host()
+        h.busy_query = {"workers": idle_workers(OTHER), "cron": {"jobs": [STREAM]}}
+        h.busy_until = 10 ** 6
+        self.request("--idle-timeout", "120")
+        rec = self.run_last()
+        self.assertEqual(rec["outcome"], "ok")
+        self.assertEqual(rec["idleGate"]["result"], "timeout")
+        self.assertIn("照常重启", rec["warnings"][0])
+        self.assertIn(["systemctl", "stop", "--no-block", mod.UNIT], h.calls)
+
+    def test_still_busy_abort_leaves_everything_untouched(self):
+        h = self.host()
+        h.busy_query = {"workers": idle_workers(OTHER), "cron": {"jobs": [STREAM]}}
+        h.busy_until = 10 ** 6
+        self.request("--if-busy", "abort", "--idle-timeout", "3600", "--set", 'plugins.t=1',
+                     "--while-stopped", "true")
+        rec = self.run_last()
+        self.assertEqual(rec["outcome"], "busy-aborted")
+        self.assertEqual(rec["idleGate"]["waitedS"], 3600)
+        self.assertNotIn(["systemctl", "stop", "--no-block", mod.UNIT], h.calls)
+        self.assertEqual(self.read_config(), {"keep": 1})
+        self.assertNotIn("whileStoppedResult", rec)
+        self.assertTrue(self.notified and "放弃" in self.notified[0])
+        # nothing was restarted, so the ten-minute spacing does not apply
+        h.busy_query = None
+        self.assertEqual(self.request(), 0)
+
+    def test_zero_timeout_skips_the_gate(self):
+        h = self.host()
+        h.busy_query = {"workers": idle_workers(OTHER), "cron": {"jobs": [STREAM]}}
+        h.busy_until = 10 ** 6
+        self.request("--idle-timeout", "0")
+        rec = self.run_last()
+        self.assertEqual(rec["idleGate"], {"result": "skipped"})
+        self.assertIn(["systemctl", "stop", "--no-block", mod.UNIT], h.calls)
+
+    def test_gate_runs_only_after_the_delay(self):
+        h = self.host()
+        seen = []
+        orig = h.gateway_query
+        h.gateway_query = None
+
+        def query():
+            seen.append(self.clock.now)
+            return orig()
+        with mock.patch.object(mod, "gateway_query", query):
+            self.request("--delay", "30")
+            self.run_last()
+        self.assertGreaterEqual(min(seen), 30)
+
+    def test_busy_again_after_the_dry_runs_waits_again(self):
+        h = self.host()
+        answers = iter([[], ["worker 有 1 个回合在跑"], [], []])
+        with mock.patch.object(mod, "check_idle", lambda rec: (next(answers), {})):
+            self.request("--set", 'plugins.t=1')
+            rec = self.run_last()
+        self.assertEqual(rec["outcome"], "ok", rec)
+        self.assertIn("busy-again", [x["step"] for x in rec["steps"]])
+
+
+class WhileStopped(Base):
+    def edit(self, path, data):
+        return "python3 -c 'import json,sys; json.dump(%s, open(sys.argv[1], \"w\"))' %s" % (data, path)
+
+    def test_command_runs_while_stopped_and_both_configs_are_backed_up(self):
+        h = self.host()
+        cmd = self.edit(self.config, '{"keep": 1, "web": "deepseek"}') + " && " + self.edit(self.worker_config, '{"worker": 2}')
+        self.assertEqual(self.request("--while-stopped", cmd), 0)
+        rec = self.run_last()
+        self.assertEqual(rec["outcome"], "ok", rec)
+        self.assertEqual(self.read_config()["web"], "deepseek")
+        self.assertEqual(self.read_config(self.worker_config), {"worker": 2})
+        backups = rec["configBackups"]
+        self.assertEqual(set(backups), {self.config, self.worker_config})
+        self.assertEqual(self.read_config(backups[self.worker_config]["backup"]), {"worker": 1})
+        self.assertEqual(rec["whileStoppedResult"]["rc"], 0)
+        self.assertEqual(rec["whileStoppedResult"]["command"], cmd)
+        names = [x["step"] for x in rec["steps"]]
+        self.assertLess(names.index("stopped"), names.index("while-stopped"))
+        self.assertLess(names.index("while-stopped"), names.index("start"))
+        self.assertTrue(all(v["ok"] for v in rec["configValidation"]))
+        self.assertTrue(any("停服期间命令" in t and "退出码 0" in t for t in self.notified))
+
+    def assert_rolled_back(self, rec, h):
+        self.assertEqual(rec["outcome"], "rolled-back", rec)
+        self.assertEqual(self.read_config(), {"keep": 1})
+        self.assertEqual(self.read_config(self.worker_config), {"worker": 1})
+        self.assertTrue(h.active)
+        self.assertIn("config-restored", [x["step"] for x in rec["steps"]])
+
+    def test_failing_command_restores_both_configs_and_starts_on_them(self):
+        h = self.host()
+        cmd = self.edit(self.config, '{"half": 1}') + " && " + self.edit(self.worker_config, '{"half": 1}') + " && exit 3"
+        self.request("--while-stopped", cmd)
+        rec = self.run_last()
+        self.assert_rolled_back(rec, h)
+        self.assertEqual(rec["whileStoppedResult"]["rc"], 3)
+        self.assertIn("exited 3", rec["error"])
+        starts = [c for c in h.calls if c[:2] == ["systemctl", "start"]]
+        self.assertEqual(len(starts), 1)   # only the rollback start; never started on the half-written config
+
+    def test_invalid_config_after_the_command_rolls_back(self):
+        h = self.host()
+        self.request("--while-stopped", self.edit(self.worker_config, '{"invalid": True}'))
+        rec = self.run_last()
+        self.assert_rolled_back(rec, h)
+        self.assertEqual(rec["whileStoppedResult"]["rc"], 0)
+        self.assertIn("config invalid", rec["error"])
+        self.assertIn(self.worker_config, rec["error"])
+
+    def test_gateway_not_ready_after_the_command_rolls_back(self):
+        h = self.host()
+        self.request("--while-stopped", self.edit(self.config, '{"web": "broken"}'))
+        with mock.patch.object(mod, "wait_ready", side_effect=[(False, "unit failed"), (True, "ready")]):
+            rec = self.run_last()
+        self.assert_rolled_back(rec, h)
+
+    def test_command_that_hangs_is_killed_and_rolled_back(self):
+        h = self.host()
+        self.request("--while-stopped", "sleep 30", "--while-stopped-timeout", "10")
+        with mock.patch.object(mod.subprocess.Popen, "communicate",
+                               side_effect=[subprocess.TimeoutExpired("sh", 10), ("", "")]), \
+                mock.patch.object(mod.os, "killpg") as killpg:
+            rec = self.run_last()
+        killpg.assert_called_once()
+        self.assertTrue(rec["whileStoppedResult"]["timedOut"])
+        self.assert_rolled_back(rec, h)
+
+    def test_unknown_command_is_refused_at_request(self):
+        h = self.host()
+        self.assertEqual(self.request("--while-stopped", "/nonexistent/activate.mjs"), 2)
+        self.assertEqual(self.request("--while-stopped", "no-such-tool-xyz --x"), 2)
+        self.assertEqual(h.launched, [])
+
+    def test_restores_ownership_a_root_command_changed(self):
+        rec = {"configBackups": {self.config: {"backup": "x", "uid": 4242, "gid": 4242, "mode": 0o600}}}
+        with mock.patch.object(mod.os, "chown") as chown, mock.patch.object(mod.os, "chmod"):
+            self.assertEqual(mod.keep_config_owners(rec), [self.config])
+        chown.assert_called_once_with(self.config, 4242, 4242)
+
+
+class AfterStart(Base):
+    def test_waits_for_streams_to_come_back(self):
+        h = self.host()
+        h.streams_after_start = ["stopped", "starting", "running"]
+        self.request()
+        rec = self.run_last()
+        self.assertEqual(rec["outcome"], "ok")
+        self.assertEqual(rec["streams"]["running"], 1)
+        self.assertEqual(rec["warnings"], [])
+        self.assertTrue(any("stream cron：1/1 已恢复 running" in t for t in self.notified))
+
+    def test_stream_that_never_comes_back_is_a_warning(self):
+        h = self.host()
+        h.streams_after_start = ["stopped"]
+        self.request("--settle-timeout", "60")
+        rec = self.run_last()
+        self.assertEqual(rec["outcome"], "ok")
+        self.assertFalse(rec["streams"]["ok"])
+        self.assertIn("stream cron 没有恢复：GrokBot bridge（stopped）", rec["warnings"])
+        self.assertIn("有 1 项告警", rec["outcomeText"])
+        self.assertTrue(any("⚠️ stream cron 没有恢复" in t for t in self.notified))
+
+    def test_stream_that_disappeared_is_a_warning(self):
+        state = mod.stream_state({"cron": {"jobs": []}}, ["42775b92"])
+        self.assertFalse(state["ok"])
+        self.assertEqual(state["missing"], ["42775b92"])
+
+    def test_post_check_errors_are_warnings(self):
+        h = self.host()
+        orig = h.systemctl
+
+        def systemctl(args):
+            r = orig(args)
+            if args[0] == "start":
+                h.journal[h.invocation] = ("[gateway] ready\nError: Cannot inspect Codex processes. Process inspection exceeded\n"
+                                           "Worker stream acknowledgement timed out\nInvalidConfigError: x\n")
+            return r
+        h.systemctl = systemctl
+        self.request()
+        rec = self.run_last()
+        pc = rec["postChecks"]
+        self.assertEqual((pc["codexInspectFailed"], pc["streamAckTimeout"], pc["invalidConfig"]), (1, 1, 1))
+        self.assertIn("启动后日志：InvalidConfig 1 次、stream-ack 超时 1 次、Cannot inspect Codex 1 次", rec["warnings"])
+
+    def test_worker_pool_short_is_a_warning(self):
+        state = mod.worker_state({"workers": idle_workers(min_workers=5)})
+        self.assertEqual(state, {"ok": False, "ready": 1, "minWorkers": 5})
+        self.assertEqual(mod.worker_state({"workers": {"error": "unknown method: vlab.workers.status"}})["ok"], True)
+
+
+class Notify(Base):
+    def test_quiet_without_chat_unless_something_is_wrong(self):
+        sent = []
+        fake = mock.MagicMock(feishu=lambda text: sent.append(text) or True, ALERT_CHAT="default")
+        with mock.patch.dict(sys.modules, {"sentinel": fake}):
+            notify = REAL_NOTIFY
+            self.assertIsNone(notify({"outcome": "ok", "warnings": []}, "x"))
+            self.assertTrue(notify({"outcome": "ok", "warnings": ["stream"]}, "y"))
+            self.assertEqual(fake.ALERT_CHAT, "default")
+            self.assertTrue(notify({"outcome": "ok", "chat": "oc_c", "warnings": []}, "z"))
+            self.assertEqual(fake.ALERT_CHAT, "oc_c")
+        self.assertEqual(sent, ["y", "z"])
 
 
 class CodexOrphans(unittest.TestCase):

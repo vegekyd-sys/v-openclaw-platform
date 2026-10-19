@@ -1,0 +1,36 @@
+{
+  "tests": [
+    "lab/subagent-completion-projection.test.mjs",
+    "lab/candidate/subagent-completion-projection.sqlite.test.mjs"
+  ],
+  "support": [
+    "lab/candidate/subagent-completion-snapshot.py",
+    "release/captured/v2026.9.1-db91.6-voice-task-continuity-20261016-r3/dist/openclaw-tools-BODVdJQD.js",
+    "lab/patch-subagent-completion-projection.mjs",
+    "lab/release-files/upstream-5xx-fallback/builtin-openclaw-zQV8Wwjr.js",
+    "lab/release-files/subagent-completion-projection/builtin-openclaw-zQV8Wwjr.js",
+    "experiments/agent-worker-isolation-v1/harness-result.mjs",
+    "experiments/agent-worker-isolation-v1/runtime-path.mjs",
+    "release/captured/v2026.9.1-db91.6-voice-task-continuity-20261016-r3/dist/embedded-agent-DaSvA-Yk.js",
+    "lab/release-files/subagent-completion-projection/embedded-agent-DaSvA-Yk.js"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/subagent-completion-projection/builtin-openclaw-zQV8Wwjr.js",
+      "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
+      "before": "5638a3b7071bbbfa20da7b7c2098facdbd3c15bedf723e922c2f68a3f550f5e9"
+    },
+    {
+      "source": "lab/release-files/subagent-completion-projection/embedded-agent-DaSvA-Yk.js",
+      "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
+      "before": "a53fe92d1c6d1a1690587ade48271f7d1c960922716bc84935e6511242215e54"
+    },
+    {
+      "source": "experiments/agent-worker-isolation-v1/harness-result.mjs",
+      "target": "production-worker/harness-result.mjs",
+      "before": "76840da2ca08f0227dfceaa4c034dc1e1c5ead0dc3c6af290c95d5a544ceb65c"
+    }
+  ],
+  "databases": [],
+  "timeoutSeconds": 180
+}
