@@ -165,6 +165,57 @@ candidate Y 段（candidate-421f9a72，上限临时调到 300 KB）：线程过�
 同一 candidate 的 W 段用最终产物 80875cf3 重跑：结果与 d8fb6f5b 相同（V 字节 2 次压缩；修复版 0 次、窗口 950,000；
 提示 3b08633f、developer 相同、工具只差 `multi_agent_v1`）。
 
+## 真实图片 candidate（2026-10-19，`lab/candidate/codex-ds-window-bytes.mjs`）
+
+起因：10/19 08:57 V 群 oc_6f7b86ef 的 /vds 线程 01a14d23 从 10/18 11:52 起累计 100 张 view_image（48.4 MiB），
+请求体超过 DeepSeek 上限 413，自动压缩也 413，这一轮报错结束。单张图的上限（≤1 MB）是生效的，缺的是累计上限。
+
+做法：私有 Gateway，Codex 插件取共享 VLab `state/npm` 副本（与 V 逐字节相同，run-attempt 8ab51650）；修复版是在这份副本上
+跑本目录的补丁脚本（即 V 上线时走的 v1 → v2 路径），产物必须等于 80875cf3。DeepSeek 请求经记录代理**原样转发到真实
+DeepSeek**，413 是 DeepSeek 自己回的。每轮生成 8 张新图（每张不同暗号），要求逐张 view_image 后列出暗号。上限用默认 40 MiB，不调小。
+
+| | V 字节 8ab51650（candidate-efba7d66） | v2 80875cf3（candidate-83e84472） |
+|---|---|---|
+| 换线程 | 0 次（直到 413） | 2 次（第 4、7 轮开始前，旧线程 rollout 49.9 MiB） |
+| 最大请求体 | 48.72 MiB | 24.95 MiB |
+| DeepSeek 413 | 第 6 轮 6 次（47 张图，rollout 97.6 MiB），这一轮失败「Context overflow」 | 0 |
+| 失败回合 | 1（第 7 轮靠 #322 清绑定恢复） | 0 |
+| 暗号 | 失败那轮 0/8，其余 8/8 | 7 轮全部 8/8 |
+| 开头暗号（换线程后） | OTTER-4 | OTTER-4 |
+
+- V 字节那一列就是 V 上 01a14d23 的现象（rollout 约 100 MiB、请求体约 48.7 MiB 时 413），说明夹具确实能触发这个故障。
+- rollout 约等于请求体的 2 倍（每张图在 rollout 里存两份）：40 MiB 的 rollout 对应约 20 MiB 请求体。一轮 8 张图让请求体
+  增加约 8.3 MiB，所以离 48 MiB 还有约 28 MiB 余量（一轮之内再多读约 27 张 1 MB 的图才会 413）。
+- 换出来的新线程第一个请求 0.15 MiB（重放不带图），之后照常读新图。
+- 纯文字 /vds 线程（4 段 2.2 万词 + 回忆，text-v / text-fixed）：两版都是 1 个线程、0 次换线程、0 次压缩，每轮请求体逐轮
+  相同（0.24 → 0.56 MiB），都答对 LARCH-7。
+- GPT：candidate 里没有 ChatGPT 登录（不能复制 OAuth），没有跑 GPT 回合。改为用产物里原样取出的
+  `resolveCodexDeepSeekTranscriptByteLimit` 判定共享 VLab 的 362 个真实线程 binding：gpt-5.5 / gpt-5.6-sol /
+  gpt-6-astra / gpt-6.1-sol 共 317 个全部得到 `undefined`（与 V 现在相同），deepseek-flash 45 个全部得到 40 MiB；
+  `OPENCLAW_V_CODEX_DS_WINDOW=0` 时 DeepSeek 也是 `undefined`。V 的主配置和 worker 配置都没有 `maxActiveTranscriptBytes`，
+  所以 GPT 线程的字节上限前后都是「无」。GPT 回合的端到端确认留到共享 VLab / V 验收（/vcodex 一轮）。
+
+## v1 → v2 发版（2026-10-19）
+
+V 现在跑的是 v1：`run-attempt-D1hJO4fX.js` 8ab5165003ca21852beded6455a029cce521df48fadb56ea509ca156d45beeba（10/19 只读核对，
+与 dev 上 `dist/` 的 v1 产物相同，两个附带文件也已在 V 上：6df9d13d / 3b08633f）。补丁脚本遇到 v1 模块时把三处
+`v-codex-ds-window-v1` 标记改成 v2、加上 `resolveCodexDeepSeekTranscriptByteLimit`，再按原锚点加字节保险的调用点；
+从 8ab51650 和从 bb0b0354 跑出来都是 80875cf3。
+
+与 V 字节的差异只在 ds-window 补丁范围内（改 4 行、新增 5 行）：三处标记改名、`maxBytes` 一行加 `?? resolveCodexDeepSeekTranscriptByteLimit(binding)`、
+新函数 5 行。V 上该文件其他补丁标记全部保留、数量不变：`v-codex-bounded-history-v1` ×5、`v-codex-firsttext-v1` ×6、
+`-v2` ×1、`-v5` ×1、`v-vds-view-image-v1` ×1（`v-codex-ds-window` 由 v1 ×3 变成 v2 ×4，多的一处是调用点）。
+
+`release-bytes.plan.json`：
+
+| 目标（`/home/openclaw/.openclaw/` 下） | before | after |
+|---|---|---|
+| `npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js` | 8ab5165003ca21852beded6455a029cce521df48fadb56ea509ca156d45beeba | 80875cf3cab593453d4f1c1014c47105d0ce1657e955ed510ff93d754f56457f |
+
+两个附带文件 V 上已有且相同，不在 plan 里。需要重启 Gateway（9.1 插件重载不换代码）。共享 VLab 实际加载的 Codex 插件在
+`state/npm/projects/openclaw-codex-8902d781d4/` 副本里（10/19 与 V 逐字节相同），发版工具改不到它，要另外同步同一个文件。
+上线后验收：/vds 一轮正常；/vcodex 一轮正常；日志里 `exceeded active byte limit` 只出现在 DeepSeek 线程。
+
 ## 什么时候仍然压缩
 
 - Codex 自己：上下文到 900,000（窗口 90%）时压缩，可用 950,000，DeepSeek 上限 1,048,576，余 9.8 万给输出和一轮内的增量。
