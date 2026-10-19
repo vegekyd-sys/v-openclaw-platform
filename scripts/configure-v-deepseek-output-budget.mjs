@@ -15,10 +15,13 @@
 // The Gateway reads openclaw.json; turns run in Workers, which read worker-openclaw.json (a second
 // file). Both get the same values.
 //
-// Usage (root):  node configure-v-deepseek-output-budget.mjs check|apply|restore
-// apply/restore refuse while the Gateway is running: writing openclaw.json under a running Gateway
-// triggers a config hot reload, which has closed the worker pool for good before (2026-09-20).
-// Use it as v-self-restart --while-stopped, or stop the Gateway, apply, start it.
+// Usage (root):  node configure-v-deepseek-output-budget.mjs check|apply|restore|apply-hot|restore-hot
+// apply/restore write both files and refuse while the Gateway is running (use them as
+// v-self-restart --while-stopped).
+// apply-hot/restore-hot write only openclaw.json with the Gateway running: 9.1 hot-applies
+// `models.*`, the Worker plugin derives worker-openclaw.json, and since that path does not roll the
+// Worker generation, finish with scripts/v-workers-roll.mjs (lab/candidate/deepseek-budget-hot-reload.mjs:
+// no restart, an in-flight 45 s turn completed, new turns sent max_tokens 64000).
 // Runs on production V and on shared VLab (picked by hostname).
 
 import fs from "node:fs";
@@ -72,11 +75,12 @@ const targets = {
 
 function main() {
   const [mode = "check"] = process.argv.slice(2);
-  assert(["check", "apply", "restore"].includes(mode), "mode must be check|apply|restore");
+  assert(["check", "apply", "restore", "apply-hot", "restore-hot"].includes(mode), "mode must be check|apply|restore|apply-hot|restore-hot");
+  const hot = mode.endsWith("-hot");
   assert.equal(process.getuid(), 0, "run as root");
   const target = targets[os.hostname()];
   assert(target, `unknown host ${os.hostname()}: this configures production V or shared VLab only`);
-  const want = mode === "restore" ? OLD : NEW;
+  const want = mode.startsWith("restore") ? OLD : NEW;
   // is-active exits non-zero when stopped, so read the property instead
   const state = execFileSync("systemctl", ["show", target.service, "-p", "ActiveState", "--value"], { encoding: "utf8" }).trim();
   const active = !["inactive", "failed"].includes(state);
@@ -85,10 +89,13 @@ function main() {
     assert.equal(fs.realpathSync(file), file, `${file} is a symlink`);
     return JSON.parse(fs.readFileSync(file, "utf8"));
   };
-  const pending = target.files.filter((file) => setBudget(read(file), want).length > 0);
+  // Hot: only the Gateway file; the Worker plugin derives the Worker file from it.
+  const writable = hot ? target.files.slice(0, 1) : target.files;
+  const pending = writable.filter((file) => setBudget(read(file), want).length > 0);
   const changes = [];
   if (mode !== "check" && pending.length) {
-    assert(!active, `${target.service} is running; stop it first (a config write under a running Gateway hot-reloads and can close the worker pool)`);
+    if (!hot) assert(!active, `${target.service} is running; stop it first, or use ${mode}-hot`);
+    if (hot) assert(active, `${target.service} is not running; use ${mode.replace("-hot", "")}`);
     const stamp = new Date().toISOString().replace(/[-:]/gu, "").replace(/\..*/u, "");
     for (const file of pending) {
       const raw = fs.readFileSync(file, "utf8");
@@ -108,10 +115,11 @@ function main() {
   }
 
   const after = target.files.map((file) => ({ file, budgets: budgets(read(file)) }));
-  if (mode !== "check") assert(target.files.every((file) => setBudget(read(file), want).length === 0), "not every config file has the expected values");
+  if (mode !== "check") assert(writable.every((file) => setBudget(read(file), want).length === 0), "not every config file has the expected values");
   console.log(JSON.stringify({
     mode, host: os.hostname(), service: target.service, gatewayState: state, want,
-    files: after, changes, restartRequired: changes.length > 0,
+    files: after, changes, restartRequired: !hot && changes.length > 0,
+    next: hot && changes.length ? "wait ~10 s for the Worker file to be derived, then node v-workers-roll.mjs deepseek-output-budget" : undefined,
   }, null, 1));
 }
 
