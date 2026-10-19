@@ -1,0 +1,20 @@
+{
+  "support": [
+    "lab/candidate/session-info-subagent-ab.mjs",
+    "lab/release-files/session-info-subagent-index/session-utils-list-BUP03AzS.js",
+    "<v-fixtures>/v-main.json.gz",
+    "<v-fixtures>/v-subagent-runs.json.gz",
+    "<v-fixtures>/v-subagent-children.json.gz"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/session-info-subagent-ab.mjs"
+  ],
+  "timeoutSeconds": 5400,
+  "user": "lab-db91-parity",
+  "env": {
+    "ARMS": "base,patched",
+    "OPENS": "2",
+    "COMPARE_KEYS": "40"
+  }
+}
