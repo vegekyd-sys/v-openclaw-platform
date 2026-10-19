@@ -11,6 +11,10 @@
 //   post   new turns after the roll, several sessions                → max_tokens 64000 everywhere
 // Checks: Gateway reload log, derived worker-openclaw.json values, Worker generation roll,
 // models.list from the live Gateway, no "pool is closing" / failed turns.
+//
+// HOT_DIRECTION=reverse starts from the NEW budget (V since 2026-10-19 17:44) and hot-applies the OLD
+// one, so the next real change on V (either way) is covered. HOT_OPERATOR_ROLL=0 leaves the roll to
+// the plugin's config watch (worker-config-roll.1, PR for lab/release-files/worker-config-roll).
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
@@ -47,6 +51,9 @@ const log = (...args) => console.error(new Date().toISOString(), ...args);
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const { setBudget, budgets, NEW, OLD } = await import(path.join(repoRoot, "scripts/configure-v-deepseek-output-budget.mjs"));
 const installed = [];
+const REVERSE = process.env.HOT_DIRECTION === "reverse";
+const FROM = REVERSE ? NEW : OLD;
+const TO = REVERSE ? OLD : NEW;
 
 // ---- recording proxy in front of real DeepSeek ----
 const upstream = JSON.parse(fs.readFileSync(configPathB, "utf8")).models.providers.deepseek.baseUrl.replace(/\/$/u, "");
@@ -121,7 +128,7 @@ for (;;) {
 const proxyBase = `http://127.0.0.1:${proxy.address().port}/v1`;
 
 // ---- V's model and compaction setup on both config copies ----
-const V_FLASH = { id: "deepseek-flash", name: "DeepSeek V4.1 Flash", reasoning: true, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: OLD.contextWindow, maxTokens: OLD.maxTokens, api: "openai-completions", compat: { supportsUsageInStreaming: true, supportsReasoningEffort: true, maxTokensField: "max_tokens", thinkingFormat: "deepseek" } };
+const V_FLASH = { id: "deepseek-flash", name: "DeepSeek V4.1 Flash", reasoning: true, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: FROM.contextWindow, maxTokens: FROM.maxTokens, api: "openai-completions", compat: { supportsUsageInStreaming: true, supportsReasoningEffort: true, maxTokensField: "max_tokens", thinkingFormat: "deepseek" } };
 const asV = (config, runtimeId) => {
   config.channels = {};
   // The mirrored session was last active more than 30 days ago: V's idle reset (43200 min) and
@@ -421,7 +428,10 @@ const sk = (name) => `agent:makaron:feishu:direct:ou_hot_${name}`;
 try {
   restoreDb(stateB);
   await startGateway(arm);
+  out.direction = { from: FROM, to: TO };
   out.before = snap("before");
+  const workers = async () => { try { const s = await arm.client.request("vlab.workers.status", {}); return { generation: s.generation, workerConfigSha256: s.workerConfigSha256 ?? null, workers: s.workers?.length }; } catch (error) { return { error: error.message }; } };
+  out.workersBefore = await workers();
   // pre: old budget
   let t0 = Date.now();
   await turnResult("pre", await send(sk("pre"), "[ovf H pre 1] 回复 ok", "pre"), t0);
@@ -433,7 +443,7 @@ try {
   {
     const raw = fs.readFileSync(configPathB, "utf8");
     const config = JSON.parse(raw);
-    const changed = setBudget(config, NEW);
+    const changed = setBudget(config, TO);
     const tmp = `${configPathB}.tmp-hot`;
     fs.writeFileSync(tmp, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
     fs.renameSync(tmp, configPathB);
@@ -450,6 +460,7 @@ try {
   }
   out.roll = rolled ? { afterS: (rolled.at - writeAt) / 1000, line: redact(rolled.line).slice(0, 300) } : null;
   out.after = snap("after");
+  out.workersAfter = await workers();
   // The watch can miss the change: on a `models` hot reload the plugin registers again and derives
   // the Worker file itself (no roll), so the watch then finds it "already current". V has an
   // operator roll for exactly this: vlab.workers.roll re-derives and drains to a new generation.
@@ -473,7 +484,10 @@ try {
     await turnResult(`post${n}`, await send(sk(`post${n}`), `[ovf H post${n} 1] 回复 ok`, `post${n}`), t0);
   }
   out.postMaxTokens = [...new Set(out.steps.filter((s) => s.label.startsWith("post")).flatMap((s) => s.requests.map((q) => q.maxTokens)))];
+  out.preMaxTokens = [...new Set(out.steps.filter((s) => s.label === "pre").flatMap((s) => s.requests.map((q) => q.maxTokens)))];
   out.failures = arm.lines.filter((l) => /pool is closing|incomplete turn|Context overflow|did not roll|InvalidConfig|config invalid/iu.test(l.line)).map((l) => redact(l.line).slice(0, 240));
+  out.pass = out.longOk && out.preMaxTokens.join() === String(FROM.maxTokens) && out.postMaxTokens.join() === String(TO.maxTokens)
+    && out.failures.length === 0 && (process.env.HOT_OPERATOR_ROLL !== "0" || !!out.roll);
   out.gatewayPid = arm.proc.pid; out.gatewayAlive = arm.proc.exitCode === null; out.gatewayStarts = arm.lines.filter((l) => /listening on|Gateway ready|gateway started/iu.test(l.line)).length;
 } finally {
   if (arm.proc && arm.proc.exitCode === null) await stopGateway(arm);
