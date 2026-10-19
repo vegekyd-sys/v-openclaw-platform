@@ -145,6 +145,7 @@
         "lab/worker-runtime-readiness.test.mjs",
         "tests/worker-config-derive-release.test.mjs",
         "tests/worker-generations.test.mjs",
+        "tests/worker-config-roll.test.mjs",
         "lab/voice-resume-projection.test.mjs"
       ]
     },
