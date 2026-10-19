@@ -61,3 +61,19 @@ Gateway restart.
 - Candidates: `lab/candidate/worker-config-roll.plan.json` (OLD → NEW budget)
   and `lab/candidate/worker-config-roll-reverse.plan.json` (NEW → OLD, V's state
   since 2026-10-19), both with `HOT_OPERATOR_ROLL=0`.
+
+## Candidate evidence (2026-10-19, VLab, real DeepSeek, `HOT_OPERATOR_ROLL=0`)
+
+Both runs hit the losing order from PR #434: the re-registration rewrote the
+Worker file about 2 s after the write, and the watch's own derivation at about
+9 s found it "already current". The watch still rolled, because the file
+differed from what generation 1 was spawned with.
+
+| Run | Direction | Roll | pre | in-flight 45 s turn | post ×3 |
+|---|---|---|---|---|---|
+| `candidate-62c017e9` @ `a151b11c` | 384000 → 64000 | gen 1 → 2, 16.2 s after the write | 384000 | ok, finished in gen 1 | 64000 |
+| `candidate-bca53d70` @ `e90a7827` | 64000 → 384000 | gen 1 → 2, 18.2 s after the write | 64000 | ok, finished in gen 1 | 384000 |
+
+No Gateway restart, no `pool is closing`, no failed turns. `workerConfigSha256`
+changed with the generation in both runs. Control: `b11377d3` (PR #434, V's
+current watch, same script without the operator roll) kept 384000.
