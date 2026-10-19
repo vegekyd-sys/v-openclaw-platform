@@ -11,6 +11,34 @@
 
 ---
 
+## v2026.9.1-db91.6-subagent-index-20261020
+
+上线：2026-10-20 02:38 CST v-self-restart 生效（新 PID 374689）  ·  tag `v2026.9.1-db91.6-subagent-index-20261020`
+
+**摘要**：修复 iOS App 打开 main 会话（包括语音通话模式）时，Gateway 冻结 1–2 分钟。
+
+**故障**：10/20 02:22:38 iOS App 连上并打开 `agent:makaron:main`。chat.history 用了 61.7 s 和 122 s，主线程一直被占住：语音不可用，钉钉掉线。10/14 以来每次打开都慢，从 21 s 到 94 s 不等。
+
+**根因**：chat.history 构造会话信息时，对 main 名下的每个子运行都单独调一次全局 subagent 查询，每次都要整表重载并重建索引。夜班从 10/08 起把卡片作为 main 名下的子运行派出，每天 150–900 个，跑完的运行一直不清理。现在 main 名下有 4,345 个运行，登记表一共 4,569 个，51 MB，耗时 ≈ 子运行数 × 表大小。
+
+**修复**：#437，单行构造只建一次读索引，所有子运行共用。V 规模 candidate：打开 main 88.7 s→0.87 s；等价比对 16,810 次，0 差异。
+
+**上线后实测**：V 上 chat.history(main) 服务端两次分别 779 ms 和 638 ms，修复前 61.7 s / 122 s。测试群用 lark-cli 发消息，V 回复「收到」。夜班恢复，语音入口 200。parity ALIGNED，align 完成，lease 已释放。
+
+**重启**：02:37:32 发起 v-self-restart（`--if-busy abort --idle-timeout 1800`），66 s 就绪；worker 5/5，各项检查均为 0。
+
+**遗留**：已结束的子运行一直不清理，修复后打开 main 仍要整表读一次，约 0.7 s。
+
+相对上一版 `v2026.9.1-db91.6-hold-roll-20261020`：1 个文件变化。
+
+**经 VLab 发版 `subagent-index-20261020`**（monitor-v-production，dev `49e47d82`）
+> 验收：共享 VLab 02:35 部署 #437（dev 49e47d82，session-utils-list-BUP03AzS.js 353e0f21→2f30da37，before 等于 V 线上字节）。部署后哈希等于 after；TypeError/ReferenceError/SyntaxError/InvalidConfig 均为 0。chat.history(agent:makaron:main, limit 50) 服务端 240 ms，返回 sessionInfo；sessions.list 正常。VLab 只有 108 个子运行，测不出加速，加速证据来自 PR 内用 V 规模数据做的 candidate 0480bf24：打开 main 88.7 s→0.87 s，sessions.describe×41 97 s→2.5 s；16,810 次等价比对 0 差异。V 上 10…
+- `core` session-utils-list-BUP03AzS.js  353e0f21 → 2f30da37
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #437 perf(sessions): 单行会话只建一次 subagent 读索引（10/19 02:20 43 s 停顿）
+- #436 release: 捕获 V（hold-roll-20261020，#397 + #435 上线）+ CHANGELOG
+
 ## v2026.9.1-db91.6-hold-roll-20261020
 
 上线：2026-10-20 00:53 CST v-self-restart 生效（PID 3202008 → 287808）  ·  tag `v2026.9.1-db91.6-hold-roll-20261020`
