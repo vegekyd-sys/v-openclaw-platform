@@ -71,9 +71,10 @@ const codexDist = path.join(codexRoot, "dist");
 const runAttempt = path.join(codexDist, "run-attempt-D1hJO4fX.js");
 const pristine = path.join(scratch, "codex-pristine");
 function installBytes(variant) {
-  if (!fs.existsSync(pristine)) spawnSync("cp", ["-a", path.join(sharedNpm, codexProject), pristine]);
+  const cp = (from, to) => { const r = spawnSync("cp", ["-a", from, to], { encoding: "utf8" }); assert(fs.existsSync(path.join(to, "node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js")), `cp ${from} -> ${to} failed (${r.status}): ${r.stderr.slice(0, 400)}`); };
+  if (!fs.existsSync(path.join(pristine, "node_modules"))) { fs.rmSync(pristine, { recursive: true, force: true }); cp(path.join(sharedNpm, codexProject), pristine); }
   fs.rmSync(path.join(npmProjects, codexProject), { recursive: true, force: true });
-  spawnSync("cp", ["-a", pristine, path.join(npmProjects, codexProject)]);
+  cp(pristine, path.join(npmProjects, codexProject));
   assert.equal(sha(runAttempt), V_RUN_ATTEMPT, "shared copy is not V's run-attempt");
   if (variant === "fixed") {
     const r = spawnSync(process.execPath, [path.join(repoRoot, "lab/release-files/codex-ds-window/patch-codex-ds-window.mjs"), "--codex", codexRoot], { encoding: "utf8" });

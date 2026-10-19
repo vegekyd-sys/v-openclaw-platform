@@ -11,7 +11,7 @@
     "lab/candidate/codex-ds-window-bytes.mjs"
   ],
   "env": {
-    "PHASES": "classify,img-fixed,text-fixed"
+    "PHASES": "img-fixed,text-fixed"
   },
   "timeoutSeconds": 7200,
   "user": "lab-db91-parity"
