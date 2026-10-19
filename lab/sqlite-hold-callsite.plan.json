@@ -1,0 +1,10 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/sqlite-hold-callsite/node-sqlite-CL-d6drd.js",
+      "target": "openclaw/dist/node-sqlite-CL-d6drd.js",
+      "before": "b4516f85c6e5dc59d8eccd454773af12bac73e9363e32fb1ad34eaa98b7cbdb5"
+    }
+  ]
+}
