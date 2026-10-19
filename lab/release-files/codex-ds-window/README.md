@@ -1,9 +1,11 @@
 # /vds 按 DeepSeek 真实窗口压缩（2026.9.1，run-attempt + 两个附带文件）
 
 `patch-codex-ds-window.mjs --codex <@openclaw/codex 目录>`，幂等。基线是 V 在 2026-10-13 运行的
-`run-attempt-D1hJO4fX.js` bb0b0354（`vds-view-image` 发版产物），产物 `dist/run-attempt-D1hJO4fX.js` 80875cf3（v2：加了 DeepSeek 字节保险；#361 合入的 v1 是 8ab51650，未部署过），
-外加 `dist/v-deepseek-model-catalog.json`、`dist/v-deepseek-base-instructions.md`（由
-`build-deepseek-model-files.mjs` 从 Codex rust-v0.159.2 的 `prompt.md` 生成）。发版 plan 见 `release.plan.json`。
+`run-attempt-D1hJO4fX.js` bb0b0354（`vds-view-image` 发版产物）。v1（#361）的产物 8ab51650 已于 2026-10-13 随
+`codex-ds-window-20261013` 上 V；当前产物 `dist/run-attempt-D1hJO4fX.js` 80875cf3 是 v2（加 DeepSeek 请求体字节保险），
+脚本遇到 v1 模块会原地升级到 v2（见「v1 → v2 发版」）。外加 `dist/v-deepseek-model-catalog.json`、
+`dist/v-deepseek-base-instructions.md`（由 `build-deepseek-model-files.mjs` 从 Codex rust-v0.159.2 的 `prompt.md` 生成）。
+发版 plan：10/13 的 v1 是 `release.plan.json`，v1 → v2 是 `release-bytes.plan.json`。
 关闭开关：Gateway 环境变量 `OPENCLAW_V_CODEX_DS_WINDOW=0`（窗口和字节保险一起关）。
 
 这是 `codex-firsttext` README C 段末尾「没有上线的另一半：把 DeepSeek 窗口提到 100 万」。
@@ -214,11 +216,13 @@ artifact 97832da5），Gateway 实际加载的 `state/npm` 副本另外同步（
 依赖：无（只改 Codex 插件的 run-attempt，另加两个文件）。#358（codex-toolset-cover，thread-lifecycle）在 dev 上、
 还没上 V；两者改不同文件，可以合成一个发版，也可以先后发。需要重启 Gateway（9.1 插件重载不换代码）。
 
+以下是 10/13 v1 的发版记录（已上线）；v2 见下一节。
+
 `release.plan.json`（before = V 2026-10-13 的字节，只读核对过）：
 
 | 目标（`/home/openclaw/.openclaw/` 下） | before | after |
 |---|---|---|
-| `npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js` | bb0b0354… | 80875cf3… |
+| `npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js` | bb0b0354… | 8ab51650… |
 | 同目录 `v-deepseek-model-catalog.json` | 不存在 | 6df9d13d… |
 | 同目录 `v-deepseek-base-instructions.md` | 不存在 | 3b08633f… |
 

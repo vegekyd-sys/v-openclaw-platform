@@ -255,7 +255,8 @@ function classify() {
   // The two functions the guard uses, taken verbatim from the release artifact.
   const src = fs.readFileSync(path.join(repoRoot, "lab/release-files/codex-ds-window/dist/run-attempt-D1hJO4fX.js"), "utf8");
   const take = (name) => { const i = src.indexOf(`function ${name}(`); assert(i >= 0, name); return src.slice(i, src.indexOf("\n}\n", i) + 2); };
-  const limitFor = new Function(`${take("parseCodexAppServerByteLimit")}\n${take("resolveCodexDeepSeekTranscriptByteLimit")}\nreturn resolveCodexDeepSeekTranscriptByteLimit;`)();
+  const units = src.slice(src.indexOf("const CODEX_APP_SERVER_BYTE_UNITS = {"), src.indexOf("\n};\n", src.indexOf("const CODEX_APP_SERVER_BYTE_UNITS = {")) + 3);
+  const limitFor = new Function(`${units}\n${take("parseCodexAppServerByteLimit")}\n${take("resolveCodexDeepSeekTranscriptByteLimit")}\nreturn resolveCodexDeepSeekTranscriptByteLimit;`)();
   const rows = spawnSync("sqlite3", [`file:${path.join(sharedState, "state", "openclaw.sqlite")}?mode=ro`, "select value_json from plugin_state_entries where namespace='app-server-thread-bindings';"], { encoding: "utf8", maxBuffer: 256 * MiB }).stdout.split("\n").filter(Boolean);
   const groups = {};
   for (const row of rows) {
