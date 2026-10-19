@@ -1,10 +1,12 @@
 # /vds 按 DeepSeek 真实窗口压缩（2026.9.1，run-attempt + 两个附带文件）
 
 `patch-codex-ds-window.mjs --codex <@openclaw/codex 目录>`，幂等。基线是 V 在 2026-10-13 运行的
-`run-attempt-D1hJO4fX.js` bb0b0354（`vds-view-image` 发版产物），产物 `dist/run-attempt-D1hJO4fX.js` 8ab51650，
-外加 `dist/v-deepseek-model-catalog.json`、`dist/v-deepseek-base-instructions.md`（由
-`build-deepseek-model-files.mjs` 从 Codex rust-v0.159.2 的 `prompt.md` 生成）。发版 plan 见 `release.plan.json`。
-关闭开关：Gateway 环境变量 `OPENCLAW_V_CODEX_DS_WINDOW=0`。
+`run-attempt-D1hJO4fX.js` bb0b0354（`vds-view-image` 发版产物）。v1（#361）的产物 8ab51650 已于 2026-10-13 随
+`codex-ds-window-20261013` 上 V；当前产物 `dist/run-attempt-D1hJO4fX.js` 80875cf3 是 v2（加 DeepSeek 请求体字节保险），
+脚本遇到 v1 模块会原地升级到 v2（见「v1 → v2 发版」）。外加 `dist/v-deepseek-model-catalog.json`、
+`dist/v-deepseek-base-instructions.md`（由 `build-deepseek-model-files.mjs` 从 Codex rust-v0.159.2 的 `prompt.md` 生成）。
+发版 plan：10/13 的 v1 是 `release.plan.json`，v1 → v2 是 `release-bytes.plan.json`。
+关闭开关：Gateway 环境变量 `OPENCLAW_V_CODEX_DS_WINDOW=0`（窗口和字节保险一起关）。
 
 这是 `codex-firsttext` README C 段末尾「没有上线的另一半：把 DeepSeek 窗口提到 100 万」。
 
@@ -142,12 +144,84 @@ V 上 /vds 两天（10/12–10/13 18:00，只读统计 codex-home rollout）：8
 - 新线程重放的成本不变：重放量由插件的投影上限（100 万渲染字符，V 上约 30–48 万 token）决定，与窗口无关；
   区别只是重放后不再立刻压缩。
 
+## 请求体字节保险（v2）
+
+压缩线从 24.48 万移到 90 万后，图片在线程里留得久得多；DeepSeek 请求体超过 48 MiB 就 413，而 #322 的 413 处理是
+「这一轮失败、清绑定、下一条消息恢复」，不会同轮重试。V 10/10–10/13 的 137 个 DeepSeek 线程里 13 个带图，
+图片最多的 4 个线程一生中图片 56 / 48 / 26 / 21 MB（旧压缩线下每次压缩都把图清掉，所以没出事）。
+
+做法：DeepSeek 线程在回合开始前若 rollout 文件 ≥ 40 MiB，就走插件已有的「native transcript exceeded active byte
+limit; starting a fresh thread」换新线程（`compaction.maxActiveTranscriptBytes` 有配置时仍以配置为准；V 上没配，
+所以这条保险今天对所有 provider 都是关的）。请求体基本是 rollout 内容的子集加约 200 KB 的说明和工具，所以 40 MiB 的
+rollout 给一轮新增留了约 8 MiB。纯文字线程不受影响：V 上 45 万 token 的纯文字 rollout 约 3 MB，工具多的最多约
+34 字节/token（90 万时约 30 MB）。上限可用 `OPENCLAW_V_CODEX_DS_MAX_TRANSCRIPT_BYTES` 调。
+
+换出来的新线程重放的是插件投影（图片渲染成 `[image omitted]`、文字最多 100 万字符），起始 rollout 只有几 MB，
+所以 40 MiB 不会连环换线程；上限只有调到低于重放本身的大小时才会每轮都换。
+
+candidate Y 段（candidate-421f9a72，上限临时调到 300 KB）：线程过线后每轮都在回合开始前换新线程
+（日志 `native transcript exceeded active byte limit; starting a fresh thread`），5 轮全部成功、最后答对开头暗号 OTTER-4。
+这里每轮都换是因为 300 KB 小于重放本身（新线程起始 376 KB → 1 MB），正说明上面那个条件。
+同一 candidate 的 W 段用最终产物 80875cf3 重跑：结果与 d8fb6f5b 相同（V 字节 2 次压缩；修复版 0 次、窗口 950,000；
+提示 3b08633f、developer 相同、工具只差 `multi_agent_v1`）。
+
+## 真实图片 candidate（2026-10-19，`lab/candidate/codex-ds-window-bytes.mjs`）
+
+起因：10/19 08:57 V 群 oc_6f7b86ef 的 /vds 线程 01a14d23 从 10/18 11:52 起累计 100 张 view_image（48.4 MiB），
+请求体超过 DeepSeek 上限 413，自动压缩也 413，这一轮报错结束。单张图的上限（≤1 MB）是生效的，缺的是累计上限。
+
+做法：私有 Gateway，Codex 插件取共享 VLab `state/npm` 副本（与 V 逐字节相同，run-attempt 8ab51650）；修复版是在这份副本上
+跑本目录的补丁脚本（即 V 上线时走的 v1 → v2 路径），产物必须等于 80875cf3。DeepSeek 请求经记录代理**原样转发到真实
+DeepSeek**，413 是 DeepSeek 自己回的。每轮生成 8 张新图（每张不同暗号），要求逐张 view_image 后列出暗号。上限用默认 40 MiB，不调小。
+
+| | V 字节 8ab51650（candidate-efba7d66） | v2 80875cf3（candidate-83e84472） |
+|---|---|---|
+| 换线程 | 0 次（直到 413） | 2 次（第 4、7 轮开始前，旧线程 rollout 49.9 MiB） |
+| 最大请求体 | 48.72 MiB | 24.95 MiB |
+| DeepSeek 413 | 第 6 轮 6 次（47 张图，rollout 97.6 MiB），这一轮失败「Context overflow」 | 0 |
+| 失败回合 | 1（第 7 轮靠 #322 清绑定恢复） | 0 |
+| 暗号 | 失败那轮 0/8，其余 8/8 | 7 轮全部 8/8 |
+| 开头暗号（换线程后） | OTTER-4 | OTTER-4 |
+
+- V 字节那一列就是 V 上 01a14d23 的现象（rollout 约 100 MiB、请求体约 48.7 MiB 时 413），说明夹具确实能触发这个故障。
+- rollout 约等于请求体的 2 倍（每张图在 rollout 里存两份）：40 MiB 的 rollout 对应约 20 MiB 请求体。一轮 8 张图让请求体
+  增加约 8.3 MiB，所以离 48 MiB 还有约 28 MiB 余量（一轮之内再多读约 27 张 1 MB 的图才会 413）。
+- 换出来的新线程第一个请求 0.15 MiB（重放不带图），之后照常读新图。
+- 纯文字 /vds 线程（4 段 2.2 万词 + 回忆，text-v / text-fixed）：两版都是 1 个线程、0 次换线程、0 次压缩，每轮请求体逐轮
+  相同（0.24 → 0.56 MiB），都答对 LARCH-7。
+- GPT：candidate 里没有 ChatGPT 登录（不能复制 OAuth），没有跑 GPT 回合。改为用产物里原样取出的
+  `resolveCodexDeepSeekTranscriptByteLimit` 判定共享 VLab 的 362 个真实线程 binding：gpt-5.5 / gpt-5.6-sol /
+  gpt-6-astra / gpt-6.1-sol 共 317 个全部得到 `undefined`（与 V 现在相同），deepseek-flash 45 个全部得到 40 MiB；
+  `OPENCLAW_V_CODEX_DS_WINDOW=0` 时 DeepSeek 也是 `undefined`。V 的主配置和 worker 配置都没有 `maxActiveTranscriptBytes`，
+  所以 GPT 线程的字节上限前后都是「无」。GPT 回合的端到端确认留到共享 VLab / V 验收（/vcodex 一轮）。
+
+## v1 → v2 发版（2026-10-19）
+
+V 现在跑的是 v1：`run-attempt-D1hJO4fX.js` 8ab5165003ca21852beded6455a029cce521df48fadb56ea509ca156d45beeba（10/19 只读核对，
+与 dev 上 `dist/` 的 v1 产物相同，两个附带文件也已在 V 上：6df9d13d / 3b08633f）。补丁脚本遇到 v1 模块时把三处
+`v-codex-ds-window-v1` 标记改成 v2、加上 `resolveCodexDeepSeekTranscriptByteLimit`，再按原锚点加字节保险的调用点；
+从 8ab51650 和从 bb0b0354 跑出来都是 80875cf3。
+
+与 V 字节的差异只在 ds-window 补丁范围内（改 4 行、新增 5 行）：三处标记改名、`maxBytes` 一行加 `?? resolveCodexDeepSeekTranscriptByteLimit(binding)`、
+新函数 5 行。V 上该文件其他补丁标记全部保留、数量不变：`v-codex-bounded-history-v1` ×5、`v-codex-firsttext-v1` ×6、
+`-v2` ×1、`-v5` ×1、`v-vds-view-image-v1` ×1（`v-codex-ds-window` 由 v1 ×3 变成 v2 ×4，多的一处是调用点）。
+
+`release-bytes.plan.json`：
+
+| 目标（`/home/openclaw/.openclaw/` 下） | before | after |
+|---|---|---|
+| `npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js` | 8ab5165003ca21852beded6455a029cce521df48fadb56ea509ca156d45beeba | 80875cf3cab593453d4f1c1014c47105d0ce1657e955ed510ff93d754f56457f |
+
+两个附带文件 V 上已有且相同，不在 plan 里。需要重启 Gateway（9.1 插件重载不换代码）。共享 VLab 实际加载的 Codex 插件在
+`state/npm/projects/openclaw-codex-8902d781d4/` 副本里（10/19 与 V 逐字节相同），发版工具改不到它，要另外同步同一个文件。
+上线后验收：/vds 一轮正常；/vcodex 一轮正常；日志里 `exceeded active byte limit` 只出现在 DeepSeek 线程。
+
 ## 什么时候仍然压缩
 
 - Codex 自己：上下文到 900,000（窗口 90%）时压缩，可用 950,000，DeepSeek 上限 1,048,576，余 9.8 万给输出和一轮内的增量。
   工具输出在兜底元数据里本来就按 10,000 字节截断，单轮很难一次增加 10 万以上。
-- 请求体字节：DeepSeek 48 MiB。图片多的线程可能在 token 远没到 90 万时先撞字节上限，由 #322 的 413 清绑定换线程兜底；
-  压缩线变高后这种情况会比以前多（以前 24.48 万就压缩，图片跟着被清掉）。
+- 请求体字节：图片多的线程在 token 远没到 90 万时 rollout 先到 40 MiB，回合开始前换新线程（上一节）；一轮内新增
+  超过约 8 MiB 时仍可能 413，由 #322 清绑定兜底。
 - 如果更在意首字而不是少压缩，可以只改 catalog 的 `auto_compact_token_limit`（例如 600,000；Codex 取它与窗口 90% 的较小值），
   不用改代码。按上表，60 万时缓存命中首字约 3 s，仍然不会让新线程重放（≤ 48 万）立刻压缩。
 
@@ -158,7 +232,7 @@ V 上 /vds 两天（10/12–10/13 18:00，只读统计 codex-home rollout）：8
    也约 17 KB（存在插件状态里，只做字符串比较；插件只记录参数的 sha256，不打日志）。
 2. **长上下文的首字和费用**：上下文不再在 24 万压回 11 万。90 万时每个模型请求的缓存首字约 3.8 s（20 万时约 2 s），
    工具调用多的回合会累加；命中部分费用估计 ×2.6（约 +$1.3/天非高峰）。要折中就改 catalog 的 `auto_compact_token_limit`。
-3. **请求体字节先到上限**：图片多的线程更可能在压缩前碰到 DeepSeek 48 MiB，靠 #322 的 413 清绑定兜底（会换线程重放一次）。
+3. **请求体字节先到上限**：已用字节保险处理（见下节）。一轮之内新增超过 8 MiB 图片的极端情况仍会 413，由 #322 清绑定，下一条消息恢复。
 4. **Codex 升级**：catalog 和提示文本固定在 0.159.2。升级 Codex 后不重新生成，DeepSeek 会一直收到 0.159.2 的基础提示，
    不会报错。`build-deepseek-model-files.mjs` 会校验 prompt.md 的 sha256，升级时要换成新版本的 prompt.md 重新生成，
    并重跑 W 段对比。
@@ -192,6 +266,8 @@ artifact 97832da5），Gateway 实际加载的 `state/npm` 副本另外同步（
 
 依赖：无（只改 Codex 插件的 run-attempt，另加两个文件）。#358（codex-toolset-cover，thread-lifecycle）在 dev 上、
 还没上 V；两者改不同文件，可以合成一个发版，也可以先后发。需要重启 Gateway（9.1 插件重载不换代码）。
+
+以下是 10/13 v1 的发版记录（已上线）；v2 见下一节。
 
 `release.plan.json`（before = V 2026-10-13 的字节，只读核对过）：
 
