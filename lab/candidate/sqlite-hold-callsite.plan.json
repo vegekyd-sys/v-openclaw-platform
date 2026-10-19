@@ -1,0 +1,25 @@
+{
+  "support": [
+    "lab/candidate/sqlite-hold-callsite.mjs",
+    "release/captured/v2026.9.1-db91.6-voice-task-continuity-20261016-r3/dist/node-sqlite-CL-d6drd.js"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/sqlite-hold-callsite/node-sqlite-CL-d6drd.js",
+      "target": "openclaw/dist/node-sqlite-CL-d6drd.js",
+      "before": "b4516f85c6e5dc59d8eccd454773af12bac73e9363e32fb1ad34eaa98b7cbdb5"
+    }
+  ],
+  "databases": [
+    "agents/dealclaw/agent/openclaw-agent.sqlite"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/sqlite-hold-callsite.mjs"
+  ],
+  "env": {
+    "ROUNDS": "3"
+  },
+  "timeoutSeconds": 1800,
+  "user": "lab-db91-parity"
+}
