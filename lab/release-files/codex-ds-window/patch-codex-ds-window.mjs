@@ -27,7 +27,7 @@
 // OPENCLAW_V_CODEX_DS_WINDOW=0 in the Gateway environment turns both off.
 //
 // Idempotent: a replacement that is already present is left alone; otherwise its anchor must
-// match exactly once. Copies the two sidecar files from ./dist next to the patched module.
+// match exactly once. A v1 module (V since 2026-10-13) is upgraded in place to v2. Copies the two sidecar files from ./dist next to the patched module.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -56,6 +56,12 @@ function moduleIn(dir, re, marker) {
   return hits[0];
 }
 
+const BYTE_GUARD_ANCHOR = "let codexDeepSeekBaseInstructions;\n";
+const BYTE_GUARD = "function resolveCodexDeepSeekTranscriptByteLimit(binding) {\n"
+  + "\tif (process.env.OPENCLAW_V_CODEX_DS_WINDOW === \"0\") return;\n"
+  + "\tconst deepSeek = String(binding?.modelProvider ?? \"\").trim().toLowerCase() === \"deepseek\" || /deepseek/iu.test(String(binding?.model ?? \"\"));\n"
+  + "\treturn deepSeek ? parseCodexAppServerByteLimit(process.env.OPENCLAW_V_CODEX_DS_MAX_TRANSCRIPT_BYTES ?? \"40mb\") : void 0;\n"
+  + "}\n";
 const runAttempt = moduleIn(codexDist, /^run-attempt-.*\.js$/u, "const resolveFinalAppServer = (configured, selection) => {");
 const PATCHES = [
   ["\tconst maxBytes = parseCodexAppServerByteLimit(readCompactionConfig(params.config)?.maxActiveTranscriptBytes);\n",
@@ -70,12 +76,8 @@ const PATCHES = [
     `// ${MARK}: DeepSeek app-servers start with DeepSeek's context window (patch-codex-ds-window.mjs).\n`
     + "const CODEX_DEEPSEEK_WINDOW_FILES = [\"v-deepseek-model-catalog.json\", \"v-deepseek-base-instructions.md\"].map((name) => fileURLToPathDeepSeekWindow(new URL(`./${name}`, import.meta.url)));\n"
     + "let codexDeepSeekWindowLogged = false;\n"
-    + "let codexDeepSeekBaseInstructions;\n"
-    + "function resolveCodexDeepSeekTranscriptByteLimit(binding) {\n"
-    + "\tif (process.env.OPENCLAW_V_CODEX_DS_WINDOW === \"0\") return;\n"
-    + "\tconst deepSeek = String(binding?.modelProvider ?? \"\").trim().toLowerCase() === \"deepseek\" || /deepseek/iu.test(String(binding?.model ?? \"\"));\n"
-    + "\treturn deepSeek ? parseCodexAppServerByteLimit(process.env.OPENCLAW_V_CODEX_DS_MAX_TRANSCRIPT_BYTES ?? \"40mb\") : void 0;\n"
-    + "}\n"
+    + BYTE_GUARD_ANCHOR
+    + BYTE_GUARD
     + "function withCodexDeepSeekModelWindow(appServer, selection) {\n"
     + "\tconst provider = String(selection?.modelProvider ?? \"\").trim().toLowerCase();\n"
     + "\tconst deepSeek = provider === \"deepseek\" || !provider && /^deepseek/iu.test(String(selection?.model ?? \"\"));\n"
@@ -107,15 +109,26 @@ const PATCHES = [
 ];
 
 let src = fs.readFileSync(runAttempt, "utf8");
-// v1 (PR #361, never deployed) had no byte guard; patch V's bytes, not a v1 file.
-assert(!src.includes("v-codex-ds-window-v1"), `${path.basename(runAttempt)} carries the v1 patch; start from the unpatched module`);
 let changed = 0;
+// v1 (PR #361, on V since 2026-10-13 as 8ab51650) is v2 without the byte guard: rename its three
+// markers and add the guard function; the loop below then adds the guard's call site and finds
+// every other v2 replacement already present. Nothing else in the module is touched.
+const V1 = "v-codex-ds-window-v1";
+if (src.includes(V1)) {
+  assert.equal(src.split(V1).length - 1, 3, `expected the three v1 markers in ${path.basename(runAttempt)}`);
+  assert(!src.includes(MARK), `${path.basename(runAttempt)} mixes v1 and v2 markers`);
+  assert.equal(src.split(BYTE_GUARD_ANCHOR).length, 2, `v1 anchor must match once: ${JSON.stringify(BYTE_GUARD_ANCHOR)}`);
+  src = src.replaceAll(V1, MARK).replace(BYTE_GUARD_ANCHOR, BYTE_GUARD_ANCHOR + BYTE_GUARD);
+  changed += 1;
+}
 for (const [anchor, replacement] of PATCHES) {
   if (src.includes(replacement)) continue;
   assert.equal(src.split(anchor).length, 2, `anchor must match once in ${path.basename(runAttempt)}: ${JSON.stringify(anchor.slice(0, 80))}`);
   src = src.replace(anchor, replacement);
   changed += 1;
 }
+for (const [, replacement] of PATCHES) assert(src.includes(replacement), `replacement missing after patch: ${JSON.stringify(replacement.slice(0, 80))}`);
+assert(!src.includes(V1));
 const sidecarsCurrent = SIDECARS.every((name) => fs.existsSync(path.join(codexDist, name))
   && fs.readFileSync(path.join(codexDist, name)).equals(fs.readFileSync(path.join(here, "dist", name))));
 if (checkOnly) {

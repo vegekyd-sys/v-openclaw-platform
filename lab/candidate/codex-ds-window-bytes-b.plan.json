@@ -1,0 +1,18 @@
+{
+  "support": [
+    "lab/candidate/codex-ds-window-bytes.mjs",
+    "lab/release-files/codex-ds-window/patch-codex-ds-window.mjs",
+    "lab/release-files/codex-ds-window/dist/run-attempt-D1hJO4fX.js",
+    "lab/release-files/codex-ds-window/dist/v-deepseek-model-catalog.json",
+    "lab/release-files/codex-ds-window/dist/v-deepseek-base-instructions.md"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/codex-ds-window-bytes.mjs"
+  ],
+  "env": {
+    "PHASES": "img-v,text-v"
+  },
+  "timeoutSeconds": 7200,
+  "user": "lab-db91-parity"
+}
