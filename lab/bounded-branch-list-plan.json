@@ -1,0 +1,10 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/bounded-branch-list/session-accessor-K0XuW6ln.js",
+      "target": "openclaw/dist/session-accessor-K0XuW6ln.js",
+      "before": "30c7b9d6e3d9baf842e51f4811708b0f21a95c5cd36ebc150b2dd7a2fed2c15d",
+      "after": "a141e64696854e92c16a0a5e85598c033b1c0ec699072995b242984f3cf91b30"
+    }
+  ]
+}

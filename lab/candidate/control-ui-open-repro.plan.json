@@ -1,0 +1,14 @@
+{
+  "support": [
+    "lab/candidate/control-ui-open-repro.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/control-ui-open-repro.mjs"
+  ],
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity",
+  "env": {
+    "KEYS": "[\"agent:makaron:main\",\"agent:makaron:main\",\"agent:makaron:feishu:group:oc_ecabb6515bef5df53bf5fd1dbeca79db\",\"agent:makaron:feishu:group:oc_3093c03dab8938387ebc87ad047ea773\"]"
+  }
+}

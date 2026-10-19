@@ -1,0 +1,17 @@
+{
+  "support": [
+    "lab/candidate/big-session-history-ab.mjs",
+    "lab/candidate/big-session-history-fixture.mjs",
+    "lab/candidate/big-session-history-arm.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/big-session-history-ab.mjs"
+  ],
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity",
+  "env": {
+    "ONLY_V": "1",
+    "PROFILE": "1"
+  }
+}

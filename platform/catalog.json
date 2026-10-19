@@ -253,6 +253,7 @@
         "lab/dreaming-session-ingestion-build.test.mjs",
         "lab/exact-sharing-lookup.test.mjs",
         "lab/session-sharing-bounded-reads.test.mjs",
+        "lab/bounded-branch-list.test.mjs",
         "lab/gateway-concurrency-profiler.test.mjs",
         "lab/gateway-self-config-authority.test.mjs",
         "lab/gateway-self-config-realpath.test.mjs",
