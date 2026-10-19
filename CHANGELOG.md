@@ -11,6 +11,39 @@
 
 ---
 
+## v2026.9.1-db91.6-hold-roll-20261020
+
+上线：2026-10-20 00:53 CST v-self-restart 生效（PID 3202008 → 287808）  ·  tag `v2026.9.1-db91.6-hold-roll-20261020`
+
+**摘要**：两项改动，都要重启才能生效，这次一起上。
+- #435：配置热更新后一定换代 worker。10/19 热更新 DeepSeek 输出上限时发现，改 `models` 有时会让正在运行的 worker 继续用旧值，见 #434。原因是插件重新注册时先改写了 worker 配置文件，监视器再看就以为「已是最新」。现在每一代 worker 记下自己启动时用的配置，只要文件和它不一致就换代。
+- #397：慢事务日志带上调用方。持锁 ≥1 s 时，`slow SQLite transaction hold` 那条日志会附上进入事务的前 8 帧调用栈。用来查 10/19 18:00 那次 Gateway 持写锁 7 s、私聊回复中断。低于阈值的事务不执行任何新增代码。
+
+**另外，这次没有改动文件、只改了配置的一项**：10/19 17:44 热更新上 V 的 #434，DeepSeek 四个模型改为窗口 980,000 + 输出上限 64,000，用的是 `/opt/v-ops/configure-v-deepseek-output-budget.mjs apply-hot`，不在发版存档的文件里。
+
+**重启**：00:51:35 发起 v-self-restart（`--if-busy abort --idle-timeout 1800`），76 s 就绪。worker 5/5，Cannot reap / InvalidConfig / claim / stream-ack / Codex inspect / rebuilding 均为 0。
+
+**上线后的端到端验收**：
+- 测试群 `oc_ede0fdc8` 用 lark-cli 发消息，V 回复 `hr-prod-ok`（deepseek-flash / vlab-worker）。
+- 飞书通道 running。
+- 夜班 00:52:53 进入 resuming，00:54:20 恢复：0 个需要接回。
+- 语音入口 200。
+- parity ALIGNED（18,812 个文件），align 完成，lease 已释放。
+
+相对上一版 `v2026.9.1-db91.6-codex-ds-window-20261019`：3 个文件变化。
+
+**经 VLab 发版 `hold-roll-20261020`**（monitor-v-production，dev `9c6af8c3`）
+> 验收：共享 VLab 00:46 部署 #397+#435（dev 9c6af8c3）。改动 3 个文件：node-sqlite-CL-d6drd.js b4516f85→da24951c；worker index.mjs cfa0e687→e657c62b；worker-config-watch.mjs 88354155→d1d8ace1。三份 before 都等于 V 线上字节。部署后哈希与预期一致，00:48:07 Gateway ready；TypeError/ReferenceError/SyntaxError/InvalidConfig/Worker config watch failed/did not roll 均为 0。真实回合（bash echo hr-ok）状态 ok、输出正确。#435 热重载换代路径由 PR 内 candidate 覆盖：VLab 上不手动换代，两个方向…
+- `core` node-sqlite-CL-d6drd.js  b4516f85 → da24951c
+- `worker` index.mjs  cfa0e687 → e657c62b
+- `worker` worker-config-watch.mjs  88354155 → d1d8ace1
+
+**这期间合入 dev 的 PR**（4 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #435 fix(worker): hot config changes always roll the Worker generation
+- #397 慢事务日志带上进入事务的调用方（sqlite-hold-callsite-v1）
+- #434 fix(config): DeepSeek 输出上限 38.4 万→6.4 万、窗口 100 万→98 万，大会话不再整轮被拒
+- #433 release: 捕获 V（codex-ds-window-20261019，#362 上线）+ CHANGELOG
+
 ## v2026.9.1-db91.6-codex-ds-window-20261019
 
 上线：2026-10-19 12:49 CST v-self-restart 生效（PID 2279279 → 3202008）  ·  tag `v2026.9.1-db91.6-codex-ds-window-20261019`

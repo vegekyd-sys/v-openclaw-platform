@@ -145,6 +145,7 @@
         "lab/worker-runtime-readiness.test.mjs",
         "tests/worker-config-derive-release.test.mjs",
         "tests/worker-generations.test.mjs",
+        "tests/worker-config-roll.test.mjs",
         "lab/voice-resume-projection.test.mjs"
       ]
     },
@@ -175,7 +176,8 @@
       "files": [
         "scripts/astra-codex-cli-policy.test.mjs",
         "scripts/astra-model-policy.test.mjs",
-        "scripts/patch-openclaw91-astra.test.mjs"
+        "scripts/patch-openclaw91-astra.test.mjs",
+        "scripts/configure-v-deepseek-output-budget.test.mjs"
       ]
     },
     {
@@ -341,6 +343,7 @@
         "lab/deepseek-budget-completions.test.mjs",
         "lab/history-image-e3.test.mjs",
         "lab/upstream-5xx-fallback.test.mjs",
+        "lab/sqlite-hold-callsite.test.mjs",
         "lab/context-overflow-recovery.test.mjs",
         "lab/feishu-empty-card-discard.test.mjs",
         "lab/feishu-ingress-catchup.test.mjs",
