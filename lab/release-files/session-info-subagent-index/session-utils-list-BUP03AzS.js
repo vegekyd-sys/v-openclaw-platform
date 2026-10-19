@@ -45,7 +45,8 @@ import { n as resolveAgentIdentity } from "./identity-Dit6aFLf.js";
 import { a as resolveModelCostConfig, t as estimateAggregateUsageCost } from "./usage-format-G8w2sGOz.js";
 import { a as hasInterSessionUserProvenance } from "./input-provenance-CCQsDhUy.js";
 import { a as projectPluginSessionExtensionsSync } from "./host-hook-state-CqMIyt2W.js";
-import { c as getSessionDisplaySubagentRunByChildSessionKey, d as isSubagentRunLive, f as isSubagentRunQueued, h as listSubagentRunsForController, i as countActiveDescendantRuns, r as buildSubagentSessionListReadIndex } from "./subagent-registry-read-UaDFTyfW.js";
+import { T as buildSubagentRunReadIndexFromRuns, b as getSubagentRunsSnapshotForRead, c as getSessionDisplaySubagentRunByChildSessionKey, d as isSubagentRunLive, f as isSubagentRunQueued, h as listSubagentRunsForController, i as countActiveDescendantRuns, r as buildSubagentSessionListReadIndex } from "./subagent-registry-read-UaDFTyfW.js";
+import { w as subagentRunRegistry } from "./subagent-registry.store.sqlite-hzGu4QSk.js";
 import { a as shouldKeepSubagentRunChildLink, l as resolveSubagentSessionStatus, o as getSubagentSessionRuntimeMs, s as getSubagentSessionStartedAt } from "./subagent-run-liveness-CrhVXF5Y.js";
 import { S as resolveCurrentUserProfileDisplay, d as sqliteMessageEventWithSeq, f as toTranscriptReadScope, j as projectSessionDisplayMessage, r as readRecentSessionUsageFromTranscript, u as resolveTranscriptReadTarget } from "./session-transcript-readers-Bry9KBsD.js";
 import { n as buildControlUiChannelAvatarUrl, r as buildControlUiResourcePath } from "./control-ui-contract-CgrOMhfo.js";
@@ -763,7 +764,19 @@ function buildSingleRowStoreChildSessionsByKey(params) {
 		store: params.store,
 		keys: [params.key],
 		now: params.now,
-		requireCurrentController: true
+		requireCurrentController: true,
+		...params.subagentRuns ? { subagentRuns: params.subagentRuns } : {}
+	});
+}
+// v-session-info-subagent-index-v1: one read index for a single session row. Without it every child
+// run of the row (4,345 under agent:makaron:main on V) re-read the whole registry snapshot (reloaded
+// from SQLite once it is 500 ms old) and rebuilt the index over all runs: 43-95 s of main thread per
+// chat.history. Same snapshot and in-memory runs the global lookups read, so the row is unchanged.
+function buildSingleRowSubagentRunIndex(now) {
+	return buildSubagentRunReadIndexFromRuns({
+		runs: getSubagentRunsSnapshotForRead(subagentRunRegistry),
+		inMemoryRuns: subagentRunRegistry.values(),
+		now
 	});
 }
 function resolveSessionSelectedModelRef(params) {
@@ -889,10 +902,11 @@ function buildGatewaySessionRow(params) {
 	const sessionAgentId = normalizeAgentId(parsedAgent?.agentId ?? params.agentId ?? resolveSessionStoreAgentId(cfg, key));
 	const skipTranscriptUsage = params.skipTranscriptUsageFallback === true;
 	const rowContext = params.rowContext;
-	const subagentRun = rowContext ? rowContext.subagentRuns.getDisplaySubagentRun(key) : getSessionDisplaySubagentRunByChildSessionKey(key);
+	const subagentIndex = rowContext?.subagentRuns ?? params.subagentRuns ?? buildSingleRowSubagentRunIndex(now);
+	const subagentRun = subagentIndex ? subagentIndex.getDisplaySubagentRun(key) : getSessionDisplaySubagentRunByChildSessionKey(key);
 	const subagentOwner = normalizeOptionalString(subagentRun?.controllerSessionKey) || normalizeOptionalString(subagentRun?.requesterSessionKey);
 	const liveSubagentRunActive = isSubagentRunLive(subagentRun) || isSubagentRunQueued(subagentRun);
-	const hasActiveSubagentRun = liveSubagentRunActive || (rowContext?.subagentRuns.countActiveDescendantRuns(key) ?? countActiveDescendantRuns(key)) > 0;
+	const hasActiveSubagentRun = liveSubagentRunActive || (subagentIndex?.countActiveDescendantRuns(key) ?? countActiveDescendantRuns(key)) > 0;
 	const persistedSessionStatus = entry?.status;
 	const persistedSessionEndedAt = entry?.endedAt;
 	const persistedSessionStartedAt = entry?.startedAt;
@@ -930,7 +944,7 @@ function buildGatewaySessionRow(params) {
 		totalTokensFresh,
 		totalTokensVersion: totalTokensFresh ? 1 : void 0
 	}, now, { adoptFreshBaseline: false }) : void 0;
-	const childSessions = params.storeChildSessionsByKey ? mergeChildSessionKeys(resolveRuntimeChildSessionKeys(key, now, rowContext?.subagentRuns), params.storeChildSessionsByKey.get(key)) : resolveChildSessionKeys(key, store, now, rowContext?.subagentRuns);
+	const childSessions = params.storeChildSessionsByKey ? mergeChildSessionKeys(resolveRuntimeChildSessionKeys(key, now, subagentIndex), params.storeChildSessionsByKey.get(key)) : resolveChildSessionKeys(key, store, now, subagentIndex);
 	const compactionCheckpoints = resolveProjectableCompactionCheckpoints(entry);
 	const compactionCheckpointCount = Array.isArray(entry?.compactionCheckpoints) ? compactionCheckpoints.length : void 0;
 	const latestCompactionCheckpoint = buildCompactionCheckpointPreview(resolveLatestCompactionCheckpoint(compactionCheckpoints));
@@ -1230,10 +1244,12 @@ function loadGatewaySessionSnapshot(sessionKey, options, lightweight = false) {
 		...options?.agentId ? { agentId: options.agentId } : {}
 	});
 	if (!entry) return { row: null };
+	const subagentRuns = buildSingleRowSubagentRunIndex(now);
 	const storeChildSessionsByKey = buildSingleRowStoreChildSessionsByKey({
 		store,
 		key: canonicalKey,
-		now
+		now,
+		subagentRuns
 	});
 	const lifecycleRunId = entry.lifecycleRunId;
 	return {
@@ -1249,6 +1265,7 @@ function loadGatewaySessionSnapshot(sessionKey, options, lightweight = false) {
 			includeLastMessage: options?.includeLastMessage,
 			transcriptUsageMaxBytes: options?.transcriptUsageMaxBytes,
 			storeChildSessionsByKey,
+			subagentRuns,
 			skipTranscriptUsageFallback: lightweight,
 			lightweightListRow: lightweight,
 			...options?.agentId ? { agentId: options.agentId } : {}
@@ -1263,10 +1280,12 @@ function loadGatewaySessionRow(sessionKey, options) {
 }
 function buildGatewaySessionInfo(params) {
 	const now = params.now ?? Date.now();
+	const subagentRuns = buildSingleRowSubagentRunIndex(now);
 	const storeChildSessionsByKey = buildSingleRowStoreChildSessionsByKey({
 		store: params.store,
 		key: params.key,
-		now
+		now,
+		subagentRuns
 	});
 	return buildGatewaySessionRow({
 		cfg: params.cfg,
@@ -1278,6 +1297,7 @@ function buildGatewaySessionInfo(params) {
 		modelCatalog: params.modelCatalog,
 		now,
 		storeChildSessionsByKey,
+		subagentRuns,
 		skipTranscriptUsageFallback: true,
 		lightweightListRow: true
 	});

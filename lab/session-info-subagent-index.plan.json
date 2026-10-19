@@ -1,0 +1,11 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/session-info-subagent-index/session-utils-list-BUP03AzS.js",
+      "target": "openclaw/dist/session-utils-list-BUP03AzS.js",
+      "before": "353e0f211194c77e233f071c4080e107bda00b5f14fbb991c1ff102834628e79",
+      "after": "2f30da37be847e6b5df22fdb154f9aa471f355acc3dd67ace90c90abea3a8b6d"
+    }
+  ]
+}
