@@ -11,6 +11,33 @@
 
 ---
 
+## v2026.9.1-db91.6-codex-ds-window-20261019
+
+上线：2026-10-19 12:49 CST v-self-restart 生效（PID 2279279 → 3202008）  ·  tag `v2026.9.1-db91.6-codex-ds-window-20261019`
+
+**摘要**：/vds（Codex + DeepSeek）对话记录累计到 40 MiB 时自动换一个新线程，不再撞上 DeepSeek 48 MiB 的请求体上限报 413。
+
+**为什么会逼近 48 MiB**：之前的修复（night-batch-20261010）只限住了单张图（2048 px、≤1 MB），没有限累计量。DeepSeek 是无状态接口，每一轮都要把整段历史连同所有图片重发。10/19 08:54 出事的线程累计调了 100 次 view_image，图片共 48.4 MiB（对话记录 102 MiB），用户的「ok，再跑一条」收到英文 413 报错。
+
+**合入前 candidate**（用 V 字节）：旧代码在 48.72 MiB 报 413；新代码换线程两次，最大请求 24.95 MiB，0 次 413；纯文字线程不受影响。
+
+**上线后端到端验收**（Tianyi 的 lark-cli，测试群 `oc_ede0fdc8`）：
+- 12:50 `/vds` 后 shell `echo ds362-prod-ok`，V 回复 `ds362-prod-ok`（vds-deepseek-flash，runtime codex）；
+- 12:52 `/vcodex` 后 shell `echo gpt362-prod-ok`，V 回复 `gpt362-prod-ok`（gpt-6.1-sol，runtime codex）；
+- 之后 `/deepseek` 切回群原来的 deepseek-flash。日志 413、run-attempt 报错、TypeError、Native hook relay timed out 均为 0。
+
+**重启**：v-self-restart 12:47 发起（`--if-busy abort --idle-timeout 1800`），81 s 就绪；worker 5/5，Cannot reap / InvalidConfig / claim / stream-ack / Codex inspect / rebuilding 均为 0。
+
+相对上一版 `v2026.9.1-db91.6-sharing-feishu-catchup-r2-20261018`：1 个文件变化。
+
+**经 VLab 发版 `codex-ds-window-20261019`**（monitor-v-production，dev `17c29ece`）
+> 验收：共享 VLab 12:04 部署 #362（dev 17c29ece，codex 插件 run-attempt-D1hJO4fX.js 8ab51650→80875cf3，before=V 线上字节）。共享 VLab 实际加载的 state/npm 副本部署前同步为同一字节（备份 .bak-before-362）。/vds 会话（runtime=codex，provider=deepseek，model=vds-deepseek-flash）连续两轮 shell echo ds362-ok / ds362-second 均 ok、输出正确，同线程续用；部署后 run-attempt 报错、TypeError/ReferenceError/SyntaxError、Native hook relay timed out、413 均为 0。线程换代路径由 #362 candidate 覆盖（V …
+- `codex` dist/run-attempt-D1hJO4fX.js  8ab51650 → 80875cf3
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #362 fix(codex): /vds 线程在 DeepSeek 48 MiB 请求体上限前换线程（v1 → v2，按 V 线上字节）
+- #431 release: 捕获 V（sharing-feishu-catchup-r2-20261018，#428 + #415 重新上线）+ CHANGELOG
+
 ## v2026.9.1-db91.6-sharing-feishu-catchup-r2-20261018
 
 上线：2026-10-18 17:02 CST v-self-restart 生效（PID 2220979 → 2279279）  ·  tag `v2026.9.1-db91.6-sharing-feishu-catchup-r2-20261018`
