@@ -2,6 +2,7 @@
   "support": [
     "lab/candidate/inter-session-cross-channel.mjs",
     "lab/candidate/telegram-fake-bot-api.mjs",
+    "lab/candidate/inter-session-r2-scenarios.mjs",
     "lab/candidate/dingtalk-fake-open-api.mjs",
     "lab/candidate/inter-session-r2-lib.mjs",
     "lab/candidate/inter-session-workspace.mjs",

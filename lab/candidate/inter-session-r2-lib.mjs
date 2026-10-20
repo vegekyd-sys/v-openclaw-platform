@@ -427,11 +427,26 @@ export async function transcript(rpc, sessionKey, limit = 80) {
     return {
       role: m.role, at: Number(m.timestamp ?? 0) || null,
       provenance: prov?.kind ?? null, origin: prov?.originSessionId ?? null,
-      tools, toolName: m.toolName ?? null, model: m.model ?? null, provider: m.provider ?? null,
+      tools, toolName: m.toolName ?? null, model: m.model ?? null, provider: m.provider ?? null, senderLabel: m.senderLabel ?? null,
       text: (typeof content === "string" ? content : blocks.map(blockText).join(" ")).slice(0, 1500),
     };
   });
   return { items };
+}
+
+/**
+ * What the plugin itself reads (runtime.subagent.getSessionMessages = sessions.get, unprojected):
+ * [{role, at, origin, text}] of the last `limit` records.
+ */
+export async function rawMessages(rpc, sessionKey, limit = 20) {
+  let res;
+  try { res = await rpc("sessions.get", { key: sessionKey, limit }, 60_000); } catch (e) { return [{ error: String(e?.message ?? e).slice(0, 200) }]; }
+  return (res?.messages ?? []).map((m) => {
+    const content = m.content ?? m.message?.content;
+    const prov = m.provenance ?? m.message?.provenance ?? m.inputProvenance ?? null;
+    const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((b) => (b?.type === "text" ? b.text : b?.type ? `[${b.type}${b.name ? `:${b.name}` : ""}]` : "")).join(" ") : "";
+    return { role: m.role ?? m.message?.role, at: Number(m.timestamp ?? m.message?.timestamp ?? 0) || null, prov: prov?.kind ?? null, origin: prov?.originSessionId ?? null, text: text.slice(0, 200) };
+  });
 }
 
 /** Tool names called by assistant messages in [from, to). */

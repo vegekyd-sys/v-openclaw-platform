@@ -2,6 +2,7 @@
   "support": [
     "lab/candidate/inter-session-wecom.mjs",
     "lab/candidate/wecom-fake-aibot.mjs",
+    "lab/candidate/inter-session-r2-scenarios.mjs",
     "lab/candidate/inter-session-r2-lib.mjs",
     "lab/candidate/inter-session-workspace.mjs",
     "apps/v-session-relay/plugin/core/contracts.js",

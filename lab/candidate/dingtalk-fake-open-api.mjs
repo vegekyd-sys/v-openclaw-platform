@@ -44,8 +44,9 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
   const robotSend = (path, body) => {
     let msgParam = body.msgParam;
     try { msgParam = JSON.parse(body.msgParam); } catch {}
-    robotMessages.push({ at: Date.now(), path, userIds: body.userIds, openConversationId: body.openConversationId, robotCode: body.robotCode, msgKey: body.msgKey, msgParam });
-    return { processQueryKey: `candidate-pqk-${robotMessages.length}`, invalidStaffIdList: [], flowControlledStaffIdList: [] };
+    const processQueryKey = `candidate-pqk-${robotMessages.length + 1}`;
+    robotMessages.push({ at: Date.now(), path, userIds: body.userIds, openConversationId: body.openConversationId, robotCode: body.robotCode, msgKey: body.msgKey, msgParam, processQueryKey });
+    return { processQueryKey, invalidStaffIdList: [], flowControlledStaffIdList: [] };
   };
   const routes = {
     "POST /v1.0/gateway/connections/open": () => ({ endpoint: `ws://127.0.0.1:${port}/connect`, ticket: "candidate-ticket" }),
@@ -169,12 +170,12 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
         }, 100);
       });
     },
-    /** A user writes to the robot (direct chat unless `group`). */
-    sendUserText({ userId, text, group = false, conversationId, senderNick = "Tianyi" }) {
+    /** A user writes to the robot (direct chat unless `group`); groups may carry their own title. */
+    sendUserText({ userId, text, group = false, conversationId, senderNick = "Tianyi", conversationTitle = "VLab candidate group" }) {
       const conv = conversationId ?? (group ? `cidGroup${userId}` : `cidDirect${userId}`);
       const msgId = `msg${Date.now()}${nextMsg++}`;
       const data = {
-        conversationId: conv, conversationType: group ? "2" : "1", conversationTitle: group ? "VLab candidate group" : undefined,
+        conversationId: conv, conversationType: group ? "2" : "1", conversationTitle: group ? conversationTitle : undefined,
         msgId, msgtype: "text", text: { content: text },
         senderId: `$:LWCP_v1:$${userId}`, senderStaffId: userId, senderNick,
         chatbotUserId: "$:LWCP_v1:$candidate-bot", chatbotCorpId: "dingcandidate", robotCode: "candidate-robot",
