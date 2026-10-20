@@ -41,12 +41,6 @@ const ROOM_KEYS = ROOMS.map(groupKey);
 const MAIN_KEY = `agent:${S.AGENT}:main`;
 const label = (chatId) => CHAT_NAMES[chatId];
 
-const mode = process.argv[2] && !process.argv[2].startsWith("-") ? process.argv[2] : "run";
-if (mode === "run") await runInCandidate();
-else if (mode === "verify") await verify(process.argv.slice(3));
-else if (mode === "watch") await watch(process.argv.slice(3));
-else if (mode === "plans") writePlans();
-else throw new Error(`unknown mode ${mode}`);
 
 // =====================================================================================================
 // inside the candidate
@@ -996,3 +990,11 @@ async function controlScenario(ctx, kind, { fallback = false } = {}) {
   rb(r, { id: "legacy-2-target-answer-not-in-chat", chat: GROUP_B, kind: "count", from: t0, to: end, textRe: `^(?!【测试).*${tag}(?!-H)`, senderType: "app", equals: 0, optional: kind === "busy" });
   rb(r, { id: "info-dm-messages", chat: DM_CHAT, kind: "count", from: t0, to: end, senderType: "app", min: 0, optional: true });
 }
+
+// ---------------------------------------------------------------- entry (last: SCENARIOS must be initialized)
+const mode = process.argv[2] && !process.argv[2].startsWith("-") ? process.argv[2] : "run";
+if (mode === "run") await runInCandidate();
+else if (mode === "verify") await verify(process.argv.slice(3));
+else if (mode === "watch") await watch(process.argv.slice(3));
+else if (mode === "plans") writePlans();
+else throw new Error(`unknown mode ${mode}`);
