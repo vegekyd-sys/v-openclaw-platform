@@ -27,8 +27,12 @@ sudo rm -rf /var/lib/v-memory-vector-warm
 # The transient stop-gap has the same unit name, so it has to stop (releasing its locks)
 # before the installed unit can start; the pages stay cached and are re-locked within seconds.
 sudo systemctl stop v-memory-vector-pin.service 2>/dev/null || true
+sudo systemctl reset-failed v-memory-vector-pin.service 2>/dev/null || true
 sudo install -m 0644 -o root -g root $stage/v-memory-vector-pin.service /etc/systemd/system/v-memory-vector-pin.service
 sudo systemctl daemon-reload
+# A leftover transient definition (/run/systemd/transient) would shadow the installed one.
+fragment=\$(systemctl show v-memory-vector-pin.service -p FragmentPath --value)
+[ \"\$fragment\" = /etc/systemd/system/v-memory-vector-pin.service ] || { echo \"unit still resolves to \$fragment\" >&2; exit 1; }
 sudo systemctl enable --now v-memory-vector-pin.service
 sleep 60
 sudo journalctl -u v-memory-vector-pin.service -n 3 --no-pager -o cat
