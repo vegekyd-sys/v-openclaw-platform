@@ -48,3 +48,12 @@ R2 和 WP6/WP7/WP13 一起走 candidate → Tianyi 授权合 dev → 共享 VLab
   长答复分段、自回声丢弃、真人消息仍走原来的流式路径，以及整个过程没有对合成 `req_id` 的任何回复。
 - candidate 冒烟：`lab/candidate/inter-session-wecom-smoke.plan.json`（私有 Gateway + 假企微机器人 + 真实 Worker 回合；
   一个只在 candidate 里加载的探针插件按 v-session-relay 的方式驱动桥）。没有 WP1 的核心守卫，所以不测 BUSY。
+  2026-10-20 在 vlab91 跑了两次，都通过（`candidate-d37aba30-…` @34e10add，`candidate-a5621f83-…` @a7b10ec8，
+  共享 VLab 未受影响，基线命中缓存）：
+  - 真人消息照常流式回复，回复都挂在它自己的 `req_id` 上；
+  - 协作请求（已有会话、从未入站的新会话各一次）：锚点和终稿都是主动 markdown，没有开流，
+    没有任何对合成 `req_id` 或未知 `req_id` 的 `aibot_respond_msg`；
+  - 企微链路上 A1/A2 成立：`onAgentRunStart` 报回的就是预设 runId（会话 `lastRunId` 也是它），回合跑在
+    `vlab-worker` 上；transcript 里的 user 消息带 `provenance.kind = inter_session` 和
+    `originSessionId = v-a2a:<chain>:1:req:<sendId>`；会话的 `deliveryContext.to` 是 `wecom:<chatId>`，正是 `resolveRoute` 用的格式；
+  - `done` 的 finals 就是模型的答复，`visibleReplySent: true`。
