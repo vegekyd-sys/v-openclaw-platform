@@ -99,6 +99,11 @@ test("inlined literals equal contracts.js", () => {
   assert(c.includes("globalThis[V_INTER_BRIDGES] ??= { v: 1, bridges: new Map(), listeners: new Set() };"), "registry shape of contracts.getBridgeRegistry");
   for (const [, code] of c.matchAll(/reject\("([A-Z_]+)"/gu)) assert(contracts.START_REJECT_CODES.includes(code), code);
   for (const [, code] of c.matchAll(/vInterBridgeError\("([A-Z_]+)"/gu)) assert(contracts.BRIDGE_ERROR_CODES.includes(code), code);
+  // The core V runs reads ctx.ChannelPromptContext only as string[] (a string is dropped silently, and
+  // the target model would never see the request's context), so the patch passes [channelPromptContext].
+  const corePrelude = read("release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/history-image-prune-Dg0CDQ4a.js");
+  assert.match(corePrelude, /function appendChannelPromptContext\(base, channelPromptContext\) \{\n\tif \(!Array\.isArray\(channelPromptContext\) \|\| channelPromptContext\.length === 0\) return base;/u);
+  assert(GENERATED.handler.includes("ChannelPromptContext: typeof vReq.channelPromptContext === \"string\" && vReq.channelPromptContext.trim() ? [vReq.channelPromptContext] : void 0,"));
   // The account id normalizer behaves like contracts.normalizeAccountId (= the core's).
   const fnSrc = c.slice(c.indexOf("function vInterAccountId(value) {"), c.indexOf("\n}\n", c.indexOf("function vInterAccountId(value) {")) + 3);
   const vInterAccountId = new Function(`${fnSrc}; return vInterAccountId;`)();
@@ -191,8 +196,10 @@ function createCore(state) {
           await scenario.beforeGuard?.(p);
           const vInter = r.vInterSession ?? ctx.VInterSession;
           if (scenario.busy && vInter?.exclusive === true) {
+            // The guard returns before typing starts, so (as in 9.1's typing controller, whose cleanup
+            // calls onCleanup only once typing is active) the dispatcher gets no onCleanup; the
+            // buffered dispatcher's finally still marks it idle.
             vInter.onBusy?.({ reason: scenario.busy, activeSessionId: "active-1" });
-            d.onCleanup?.();
             await d.onIdle?.();
             return { queuedFinal: false, counts: { tool: 0, block: 0, final: 0 } };
           }
@@ -200,6 +207,14 @@ function createCore(state) {
           if (scenario.noRun) {
             await d.onIdle?.();
             return { queuedFinal: false, counts: { tool: 0, block: 0, final: 0 } };
+          }
+          if (scenario.failBeforeRunStart) {
+            // executeAgentTurn failed before its harness accepted the turn: no onAgentRunStart, an
+            // error final, terminal outcome "failed" (agent-runner executeAgentTurn).
+            for (const payload of scenario.finals ?? []) await d.deliver(payload, { kind: "final" });
+            r.onAgentRunTerminalOutcome?.("failed");
+            await d.onIdle?.();
+            return { queuedFinal: true, counts: { tool: 0, block: 0, final: (scenario.finals ?? []).length } };
           }
           const runId = r.runId ?? "generated-run-id";
           state.events.push(`runStart:${runId}`);
@@ -215,7 +230,8 @@ function createCore(state) {
           return { queuedFinal: true, counts: { tool: 0, block: 0, final: 1 } };
         },
       },
-      commands: { shouldComputeCommandAuthorized: () => false, resolveCommandAuthorizedFromAuthorizers: () => false },
+      // The connector's own rule would authorize commands (open DM policy): CommandAuthorized must still be false.
+      commands: { shouldComputeCommandAuthorized: () => true, resolveCommandAuthorizedFromAuthorizers: () => true },
       routing: {
         resolveAgentRoute: () => ({ agentId: "makaron", matchedBy: "default" }),
         buildAgentSessionKey: ({ peer }) => `agent:makaron:dingtalk-connector:${peer.kind}:${String(peer.id).toLowerCase()}`,
@@ -409,6 +425,8 @@ test("functional: the DingTalk bridge through the generated chunks", async (t) =
     state.reset();
     state.accountConfig.groupPolicy = "allowlist";
     state.accountConfig.groupAllowFrom = [];
+    state.accountConfig.asyncMode = true; // would post "任务已接收" before dispatch for a person's message
+    const listenersBefore = globalThis[PROGRESS_LISTENERS].size;
     const humanQuestions = [];
     const unrouteHuman = vx.onQuestionRequested(GROUP_KEY, (record) => { humanQuestions.push(record.id); return true; });
     vx.trackChatQuestion({ channel: "dingtalk", chatKey: `__default__:${CID}`, record: { id: `ask_${"a".repeat(32)}`, questions: [] } });
@@ -434,9 +452,26 @@ test("functional: the DingTalk bridge through the generated chunks", async (t) =
     assert.equal(ctx.SessionKey, GROUP_KEY, "route forced to the target session");
     assert.equal(replyOptions.vInterSession, ctx.VInterSession);
     assert.deepEqual(Object.keys(replyOptions.vInterSession).sort(), ["exclusive", "id", "kind", "onBusy"]);
+    // No onCleanup reached the dispatcher (typing never started), yet its work view is gone: a BUSY
+    // attempt retried for hours must not leave one progress-card listener per attempt.
+    assert.equal(globalThis[PROGRESS_LISTENERS].size, listenersBefore, "the BUSY attempt's work view was disposed");
     unrouteHuman();
     vx.untrackChatQuestion(`ask_${"a".repeat(32)}`);
     state.accountConfig.groupPolicy = "open";
+    delete state.accountConfig.asyncMode;
+  });
+
+  await t.test("the request text is never a slash command or a game command; GATED frees the dispatcher", async () => {
+    for (const promptText of ["清空对话", "/西游 状态"]) {
+      state.reset({ noRun: true });
+      const listenersBefore = globalThis[PROGRESS_LISTENERS].size;
+      const outcome = await bridge.start(request({ promptText }));
+      assert.equal(outcome.code, "GATED");
+      assert.equal(state.named("gamificationCommand").length, 0, promptText);
+      assert.equal(state.dispatches.length, 1, `${promptText}: dispatched as the request`);
+      assert(state.dispatches[0].ctx.BodyForAgent.startsWith(promptText), `${promptText}: unchanged (not normalized to /new)`);
+      assert.equal(globalThis[PROGRESS_LISTENERS].size, listenersBefore, "the GATED attempt's work view was disposed");
+    }
   });
 
   await t.test("started: the card waits for the run, the turn is the request, finals come back", async () => {
@@ -472,7 +507,7 @@ test("functional: the DingTalk bridge through the generated chunks", async (t) =
     assert.equal(replyOptions.vInterSession.kind, "request");
     assert.equal(ctx.VInterSession, replyOptions.vInterSession);
     assert.deepEqual(ctx.InputProvenance, req.provenance);
-    assert.equal(ctx.ChannelPromptContext, req.channelPromptContext);
+    assert.deepEqual(ctx.ChannelPromptContext, [req.channelPromptContext], "9.1 reads ChannelPromptContext as string[]");
     assert.equal(ctx.CommandInterpretationSuppressed, true);
     assert.equal(ctx.CommandAuthorized, false);
     assert.equal(ctx.SenderId, req.sender.id, "chain-root rule: the synthetic sender, not the chat's last speaker");
@@ -512,6 +547,12 @@ test("functional: the DingTalk bridge through the generated chunks", async (t) =
     const req = request({ route: dmRoute, sessionKey: "agent:makaron:dingtalk-connector:direct:staffpeer01" });
     const outcome = await bridge.start(req);
     assert.equal(outcome.status, "started");
+    // The chat's person routes the turn (To / the card); the permission identity is the request's
+    // sender, in From too: 9.1 adds a direct chat's From to the elevated sender tokens
+    // (reply-elevated.ts shouldUseFromAsSenderFallback), so the peer there would lend its rights.
+    const dmCtx = state.dispatches[0].ctx;
+    assert.notEqual(req.sender.id, dmRoute.peerId);
+    assert.deepEqual([dmCtx.SenderId, dmCtx.From, dmCtx.To, dmCtx.OriginatingTo, dmCtx.ChatType], [req.sender.id, req.sender.id, "staffPeer01", "staffPeer01", "direct"]);
     assert.deepEqual((await until(() => state.named("createAICardForTarget")[0], "the AI card")).args[1], { type: "user", userId: "staffPeer01" });
     await until(() => vx.hasTrackedQuestion({ channel: "dingtalk", chatKey: "__default__:dm:staffPeer01", senderId: "staffPeer01" }), "the question in the direct chat");
     // The person answers in the real direct chat (its own conversationId): intercepted, resolved, not a new turn.
@@ -530,6 +571,18 @@ test("functional: the DingTalk bridge through the generated chunks", async (t) =
   });
 
   await t.test("outcomes: failed, aborted, error after start, wedge / gated / internal before start", async () => {
+    // A run that failed before its harness accepted the turn (no onAgentRunStart, e.g. an unknown
+    // model) still ran: "started" with an error outcome (started_failed), not GATED (not_started).
+    state.reset({ failBeforeRunStart: true, finals: [{ text: "⚠️ 模型不可用", isError: true }] });
+    const failedEarly = await bridge.start(request());
+    assert.equal(failedEarly.status, "started");
+    assert.deepEqual(contracts.validateStartOutcome(failedEarly), { ok: true, errors: [] });
+    let early = await failedEarly.done;
+    assert.deepEqual([early.status, early.error, early.finals, early.finalCount], ["error", "⚠️ 模型不可用", [], 1]);
+    assert.deepEqual(contracts.validateRunOutcome(early), { ok: true, errors: [] });
+    state.reset({ failBeforeRunStart: true, finals: [] });
+    early = await (await bridge.start(request())).done;
+    assert.deepEqual([early.status, early.error], ["error", "the agent run failed"]);
     state.reset({ terminal: "failed", finals: [{ text: "⚠️ 模型出错", isError: true }] });
     let run = await (await bridge.start(request())).done;
     assert.deepEqual([run.status, run.error, run.finals, run.finalCount], ["error", "⚠️ 模型出错", [], 1]);
@@ -562,6 +615,8 @@ test("functional: the DingTalk bridge through the generated chunks", async (t) =
     assert.equal(replyOptions.vInterSession, undefined);
     assert.equal(ctx.VInterSession, undefined);
     assert.equal(ctx.SenderId, "staffHuman");
+    assert.equal(ctx.CommandAuthorized, true, "a person's command authorization is the connector's own rule");
+    assert.equal(ctx.ChannelPromptContext, undefined);
     assert.equal(ctx.MessageSid, "human-1");
     assert.equal(state.named("addEmotionReply").length, 1);
     assert.equal(state.named("sendProactive").length, 0);

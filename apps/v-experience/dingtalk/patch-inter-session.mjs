@@ -260,8 +260,11 @@ function createVInterSessionBridges({ account, cfg, runtime, log, messageHandler
 					finalCount: 0,
 					errorText: void 0,
 					terminal: void 0,
+					lateStart: false,
 					dispatchResult: void 0,
 					readVisible: () => false,
+					// Set by the reply dispatcher: frees its work view and question route when no run started.
+					releaseUnstarted: () => {},
 					// replyOptions.vInterSession and ctx.VInterSession (design §2.a): read by the core's exclusive admission guard.
 					seam: {
 						exclusive: true,
@@ -289,6 +292,32 @@ function createVInterSessionBridges({ account, cfg, runtime, log, messageHandler
 					finalCount: control.finalCount,
 					...error ? { error } : {}
 				});
+				// The core reported an outcome, or the turn delivered a reply, without onAgentRunStart (a run
+				// that failed before its harness accepted the turn, e.g. an unknown model): it still ran, so it
+				// is "started" with that outcome, never "GATED" (= nothing happened). Never after BUSY.
+				const lateStart = () => {
+					if (control.runStarted || settled) return;
+					if (control.terminal === void 0 && control.finalCount === 0 && !control.readVisible()) return;
+					control.runStarted = true;
+					control.lateStart = true;
+					control.runId = String(request.runId);
+					settle({ status: "started", runId: control.runId, done });
+				};
+				const settledOutcome = () => {
+					if (control.terminal === "failed") return runOutcome("error", control.errorText || "the agent run failed");
+					if (control.terminal === "completed") return runOutcome("ok");
+					if (control.lateStart && control.errorText && !control.finals.length) return runOutcome("error", control.errorText);
+					if (control.lateStart && (control.finals.length || control.readVisible())) return runOutcome("ok");
+					// A run that reported neither completed nor failed was aborted (agent-runner executeAgentTurn).
+					return runOutcome("aborted");
+				};
+				// BUSY and GATED attempts never reach the typing cleanup that disposes the dispatcher's work
+				// view (it only runs once typing started), so the bridge frees it here.
+				const releaseUnstarted = () => {
+					try {
+						control.releaseUnstarted();
+					} catch {}
+				};
 				processing?.start?.();
 				Promise.resolve().then(() => messageHandler({
 					accountId: account.accountId,
@@ -300,13 +329,20 @@ function createVInterSessionBridges({ account, cfg, runtime, log, messageHandler
 					cfg,
 					vInterSession: control
 				})).then(() => {
-					// A run that reported neither completed nor failed was aborted (agent-runner executeAgentTurn).
-					if (control.runStarted) resolveDone(control.terminal === "failed" ? runOutcome("error", control.errorText || "the agent run failed") : runOutcome(control.terminal === "completed" ? "ok" : "aborted"));
-					else settle(reject("GATED", "the DingTalk handler returned without starting a run"));
+					lateStart();
+					if (control.runStarted) resolveDone(settledOutcome());
+					else {
+						releaseUnstarted();
+						settle(reject("GATED", "the DingTalk handler returned without starting a run"));
+					}
 				}, (err) => {
 					const message = String(err?.message || err);
+					lateStart();
 					if (control.runStarted) resolveDone(runOutcome("error", message));
-					else settle(reject(V_INTER_RESTART_WEDGE_RE.test(message) ? "RESTART_WEDGE" : isStopped() ? "CHANNEL_DOWN" : "INTERNAL", message));
+					else {
+						releaseUnstarted();
+						settle(reject(V_INTER_RESTART_WEDGE_RE.test(message) ? "RESTART_WEDGE" : isStopped() ? "CHANNEL_DOWN" : "INTERNAL", message));
+					}
 				}).finally(() => processing?.end?.());
 			});
 		}
@@ -499,12 +535,24 @@ const handlerEdits = [
     anchor: "\tconst vUnrouteQuestions = vExperience.onQuestionRequested(params.vSessionKey, (record) => vDeliverQuestionRecord(record));\n",
     replace: `\tlet vUnrouteQuestions = vInter ? () => {} : vExperience.onQuestionRequested(params.vSessionKey, (record) => vDeliverQuestionRecord(record));
 \t// inter-session bridge: the run started; the AI card is created now (moved from onReplyStart).
+\t// Runs inside the core's run-start notification: nothing here may throw into the run.
 \tconst vInterOnAgentRunStart = (...args) => {
 \t\tconst first = !vInter.runStarted;
 \t\tvInter.onRunStart(args[0]);
 \t\tif (!first) return;
-\t\tif (!vInterCleaned) vUnrouteQuestions = vExperience.onQuestionRequested(params.vSessionKey, (record) => vDeliverQuestionRecord(record));
-\t\tif (streamingEnabled) startStreaming().catch((err) => log.error(\`[DingTalk][inter-session] startStreaming error: \${err?.message || err}\`));
+\t\ttry {
+\t\t\tif (!vInterCleaned) vUnrouteQuestions = vExperience.onQuestionRequested(params.vSessionKey, (record) => vDeliverQuestionRecord(record));
+\t\t\tif (streamingEnabled) startStreaming().catch((err) => log.error(\`[DingTalk][inter-session] startStreaming error: \${err?.message || err}\`));
+\t\t} catch (err) {
+\t\t\tlog.error(\`[DingTalk][inter-session] run start handling failed: \${err?.message || err}\`);
+\t\t}
+\t};
+\t// A BUSY or GATED attempt (no run) never gets onCleanup: the core calls it only once typing started.
+\tif (vInter) vInter.releaseUnstarted = () => {
+\t\tif (vInter.runStarted || vInterCleaned) return;
+\t\tvInterCleaned = true;
+\t\tvWork.dispose();
+\t\tvUnrouteQuestions();
 \t};
 `,
   },
@@ -561,12 +609,13 @@ const handlerEdits = [
     anchor: "\t\t\tBotChatbotUserId: data.chatbotUserId,\n\t\t\tBotChatbotCorpId: data.chatbotCorpId\n\t\t};\n",
     after: `\t\t// inter-session bridge (design §2.a): provenance and channel prompt context of the request; its
 \t\t// permission identity (chain-root rule, also as From, which the core takes as a direct chat's
-\t\t// sender when no SenderId matches); never a command.
+\t\t// sender when no SenderId matches); never a command. 9.1 takes ChannelPromptContext as a list
+\t\t// of entries (appendChannelPromptContext drops anything that is not an array).
 \t\tif (params.vInterSession) {
 \t\t\tconst vReq = params.vInterSession.req;
 \t\t\tObject.assign(ctxPayload, {
 \t\t\t\tInputProvenance: vReq.provenance,
-\t\t\t\tChannelPromptContext: vReq.channelPromptContext,
+\t\t\t\tChannelPromptContext: typeof vReq.channelPromptContext === "string" && vReq.channelPromptContext.trim() ? [vReq.channelPromptContext] : void 0,
 \t\t\t\tCommandInterpretationSuppressed: true,
 \t\t\t\tCommandAuthorized: false,
 \t\t\t\tSenderId: vReq.sender.id,

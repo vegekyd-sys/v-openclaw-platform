@@ -748,12 +748,24 @@ function createDingtalkReplyDispatcher(params) {
 	};
 	let vUnrouteQuestions = vInter ? () => {} : vExperience.onQuestionRequested(params.vSessionKey, (record) => vDeliverQuestionRecord(record));
 	// inter-session bridge: the run started; the AI card is created now (moved from onReplyStart).
+	// Runs inside the core's run-start notification: nothing here may throw into the run.
 	const vInterOnAgentRunStart = (...args) => {
 		const first = !vInter.runStarted;
 		vInter.onRunStart(args[0]);
 		if (!first) return;
-		if (!vInterCleaned) vUnrouteQuestions = vExperience.onQuestionRequested(params.vSessionKey, (record) => vDeliverQuestionRecord(record));
-		if (streamingEnabled) startStreaming().catch((err) => log.error(`[DingTalk][inter-session] startStreaming error: ${err?.message || err}`));
+		try {
+			if (!vInterCleaned) vUnrouteQuestions = vExperience.onQuestionRequested(params.vSessionKey, (record) => vDeliverQuestionRecord(record));
+			if (streamingEnabled) startStreaming().catch((err) => log.error(`[DingTalk][inter-session] startStreaming error: ${err?.message || err}`));
+		} catch (err) {
+			log.error(`[DingTalk][inter-session] run start handling failed: ${err?.message || err}`);
+		}
+	};
+	// A BUSY or GATED attempt (no run) never gets onCleanup: the core calls it only once typing started.
+	if (vInter) vInter.releaseUnstarted = () => {
+		if (vInter.runStarted || vInterCleaned) return;
+		vInterCleaned = true;
+		vWork.dispose();
+		vUnrouteQuestions();
 	};
 	// v-experience-dingtalk-v1: after the answer, one line for the session's background work.
 	const vStartBackground = (card, finalText) => {
@@ -2104,12 +2116,13 @@ async function handleDingTalkMessageInternal(params, prepared) {
 		};
 		// inter-session bridge (design §2.a): provenance and channel prompt context of the request; its
 		// permission identity (chain-root rule, also as From, which the core takes as a direct chat's
-		// sender when no SenderId matches); never a command.
+		// sender when no SenderId matches); never a command. 9.1 takes ChannelPromptContext as a list
+		// of entries (appendChannelPromptContext drops anything that is not an array).
 		if (params.vInterSession) {
 			const vReq = params.vInterSession.req;
 			Object.assign(ctxPayload, {
 				InputProvenance: vReq.provenance,
-				ChannelPromptContext: vReq.channelPromptContext,
+				ChannelPromptContext: typeof vReq.channelPromptContext === "string" && vReq.channelPromptContext.trim() ? [vReq.channelPromptContext] : void 0,
 				CommandInterpretationSuppressed: true,
 				CommandAuthorized: false,
 				SenderId: vReq.sender.id,

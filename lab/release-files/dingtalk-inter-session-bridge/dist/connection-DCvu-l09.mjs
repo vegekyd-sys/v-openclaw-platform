@@ -227,8 +227,11 @@ function createVInterSessionBridges({ account, cfg, runtime, log, messageHandler
 					finalCount: 0,
 					errorText: void 0,
 					terminal: void 0,
+					lateStart: false,
 					dispatchResult: void 0,
 					readVisible: () => false,
+					// Set by the reply dispatcher: frees its work view and question route when no run started.
+					releaseUnstarted: () => {},
 					// replyOptions.vInterSession and ctx.VInterSession (design §2.a): read by the core's exclusive admission guard.
 					seam: {
 						exclusive: true,
@@ -256,6 +259,32 @@ function createVInterSessionBridges({ account, cfg, runtime, log, messageHandler
 					finalCount: control.finalCount,
 					...error ? { error } : {}
 				});
+				// The core reported an outcome, or the turn delivered a reply, without onAgentRunStart (a run
+				// that failed before its harness accepted the turn, e.g. an unknown model): it still ran, so it
+				// is "started" with that outcome, never "GATED" (= nothing happened). Never after BUSY.
+				const lateStart = () => {
+					if (control.runStarted || settled) return;
+					if (control.terminal === void 0 && control.finalCount === 0 && !control.readVisible()) return;
+					control.runStarted = true;
+					control.lateStart = true;
+					control.runId = String(request.runId);
+					settle({ status: "started", runId: control.runId, done });
+				};
+				const settledOutcome = () => {
+					if (control.terminal === "failed") return runOutcome("error", control.errorText || "the agent run failed");
+					if (control.terminal === "completed") return runOutcome("ok");
+					if (control.lateStart && control.errorText && !control.finals.length) return runOutcome("error", control.errorText);
+					if (control.lateStart && (control.finals.length || control.readVisible())) return runOutcome("ok");
+					// A run that reported neither completed nor failed was aborted (agent-runner executeAgentTurn).
+					return runOutcome("aborted");
+				};
+				// BUSY and GATED attempts never reach the typing cleanup that disposes the dispatcher's work
+				// view (it only runs once typing started), so the bridge frees it here.
+				const releaseUnstarted = () => {
+					try {
+						control.releaseUnstarted();
+					} catch {}
+				};
 				processing?.start?.();
 				Promise.resolve().then(() => messageHandler({
 					accountId: account.accountId,
@@ -267,13 +296,20 @@ function createVInterSessionBridges({ account, cfg, runtime, log, messageHandler
 					cfg,
 					vInterSession: control
 				})).then(() => {
-					// A run that reported neither completed nor failed was aborted (agent-runner executeAgentTurn).
-					if (control.runStarted) resolveDone(control.terminal === "failed" ? runOutcome("error", control.errorText || "the agent run failed") : runOutcome(control.terminal === "completed" ? "ok" : "aborted"));
-					else settle(reject("GATED", "the DingTalk handler returned without starting a run"));
+					lateStart();
+					if (control.runStarted) resolveDone(settledOutcome());
+					else {
+						releaseUnstarted();
+						settle(reject("GATED", "the DingTalk handler returned without starting a run"));
+					}
 				}, (err) => {
 					const message = String(err?.message || err);
+					lateStart();
 					if (control.runStarted) resolveDone(runOutcome("error", message));
-					else settle(reject(V_INTER_RESTART_WEDGE_RE.test(message) ? "RESTART_WEDGE" : isStopped() ? "CHANNEL_DOWN" : "INTERNAL", message));
+					else {
+						releaseUnstarted();
+						settle(reject(V_INTER_RESTART_WEDGE_RE.test(message) ? "RESTART_WEDGE" : isStopped() ? "CHANNEL_DOWN" : "INTERNAL", message));
+					}
 				}).finally(() => processing?.end?.());
 			});
 		}
