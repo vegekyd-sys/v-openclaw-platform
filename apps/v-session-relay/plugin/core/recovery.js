@@ -16,21 +16,66 @@ import { formatForChannel } from "./visible.js";
 
 const sleep = (ms) => new Promise((r) => { const t = setTimeout(r, Math.max(0, ms)); t.unref?.(); });
 
+/** The run the core's restart recovery registered for `sourceRunId` on this session (entry claim), or null. */
+function claimedRecoveryRun(engine, { sessionKey, agentId, sourceRunId }) {
+  if (!sourceRunId) return null;
+  const entry = engine.routes.entryOf(sessionKey, agentId, { fresh: true });
+  return entry?.restartRecoveryDeliverySourceRunId === sourceRunId && entry.restartRecoveryDeliveryRunId ? entry.restartRecoveryDeliveryRunId : null;
+}
+
 /** Wait up to `ms` for a core recovery run on `sessionKey` (an entry claim or a lifecycle event). */
 async function observeRecoveryRun(engine, { sessionKey, agentId, sourceRunId, since, ms }) {
   const deadline = engine.now() + ms;
   const step = Math.max(20, Math.min(1_000, ms / 4));
   for (;;) {
-    const entry = engine.routes.entryOf(sessionKey, agentId, { fresh: true });
-    if (sourceRunId && entry?.restartRecoveryDeliverySourceRunId === sourceRunId && entry.restartRecoveryDeliveryRunId) {
-      return entry.restartRecoveryDeliveryRunId;
-    }
+    const claimed = claimedRecoveryRun(engine, { sessionKey, agentId, sourceRunId });
+    if (claimed) return { runId: claimed, claimed: true };
     const ev = (engine.sessionEvents.get(sessionKey) ?? []).find((e) => e.at >= since && e.runId && !engine.ourRuns.has(e.runId) && !String(e.runId).startsWith("v-a2a-"));
-    if (ev) return ev.runId;
+    if (ev) return { runId: ev.runId, claimed: false };
     if (engine.now() >= deadline) return null;
     await sleep(step);
   }
 }
+
+/** True once `runId` shows life within `ms`: the session is busy, or the run was seen on the lifecycle stream. */
+async function runShowsLife(engine, { sessionKey, runId, ms }) {
+  const deadline = engine.now() + ms;
+  const step = Math.max(20, Math.min(1_000, ms / 4));
+  for (;;) {
+    if (engine.endedRuns.has(runId) || (engine.sessionEvents.get(sessionKey) ?? []).some((e) => e.runId === runId) || engine._precheckBusy(sessionKey)) return true;
+    if (engine.now() >= deadline) return false;
+    await sleep(step);
+  }
+}
+
+/**
+ * Who finishes a turn that was in flight at the restart (§6.3): the core's restart recovery run,
+ * followed to its end, or nobody. `{ runId }` to follow; otherwise `{ wedge }`:
+ *   - a claim on the entry that nothing runs within the observation window is the wedge of memory
+ *     v-restart-recovery-wedge (status running + restartRecoveryDeliveryRunId + no process);
+ *   - with no claim, the session is watched for a recovery run first (the core may claim it only
+ *     after this recovery looked), and only a session still "running" with no active run is wedged.
+ */
+async function findRecoveryRun(engine, { sessionKey, agentId, sourceRunId }) {
+  const since = engine.startedAt ?? engine.now();
+  const ms = engine.timing.recoveryObserveMs;
+  const seen = await observeRecoveryRun(engine, { sessionKey, agentId, sourceRunId, since, ms });
+  if (seen && (!seen.claimed || await runShowsLife(engine, { sessionKey, runId: seen.runId, ms }))) return { runId: seen.runId, claimed: seen.claimed };
+  if (seen?.claimed) return { wedge: true };
+  const entry = engine.routes.entryOf(sessionKey, agentId, { fresh: true });
+  return { wedge: entry?.status === "running" && !engine._precheckBusy(sessionKey) };
+}
+
+/** The core's recovery run continues one of our turns: its own sends belong to the same request (§2.d). */
+async function adoptRecoveryRun(engine, run) {
+  if (!run?.runId || await engine.ledger.getRun(run.runId)) return;
+  await engine.ledger.putRun({ leaf: false, batchId: null, ...run, createdAt: engine.now() });
+}
+
+const turnRunRecord = (rec, role, runId) => ({
+  runId, sessionKey: rec.target.sessionKey, role, chainId: rec.chainId, depth: rec.depth,
+  leaf: role === "ask", servesSendId: rec.sendId, batchId: null,
+});
 
 async function runEndStatus(engine, runId) {
   const waits = [engine._waitRunEnd(runId, engine.limits.runTimeoutMs)];
@@ -47,23 +92,15 @@ async function recoverRunning(engine, sendId, report) {
     if (!rec) return;
   }
   const target = rec.target.sessionKey;
-  const since = engine.startedAt ?? engine.now();
-  const entry = engine.routes.entryOf(target, rec.target.agentId, { fresh: true });
-  let recoveryRunId = null;
-  if (entry?.restartRecoveryDeliverySourceRunId && entry.restartRecoveryDeliverySourceRunId === rec.targetRun.runId && entry.restartRecoveryDeliveryRunId) {
-    recoveryRunId = entry.restartRecoveryDeliveryRunId;
-  } else if (entry?.status === "running" && !engine._precheckBusy(target)) {
+  const found = await findRecoveryRun(engine, { sessionKey: target, agentId: rec.target.agentId, sourceRunId: rec.targetRun.runId });
+  if (!found.runId) {
     report.interrupted += 1;
-    await engine._fail(sendId, { class: "interrupted", code: "restart_wedge", reason: reasonText("restart_wedge") }, { note: "wedge" });
-    return;
-  } else {
-    recoveryRunId = await observeRecoveryRun(engine, { sessionKey: target, agentId: rec.target.agentId, sourceRunId: rec.targetRun.runId, since, ms: engine.timing.recoveryObserveMs });
-  }
-  if (!recoveryRunId) {
-    report.interrupted += 1;
-    await engine._fail(sendId, { class: "interrupted", code: "restart", reason: reasonText("restart") }, { note: "interrupted" });
+    if (found.wedge) await engine._fail(sendId, { class: "interrupted", code: "restart_wedge", reason: reasonText("restart_wedge") }, { note: "wedge" });
+    else await engine._fail(sendId, { class: "interrupted", code: "restart", reason: reasonText("restart") }, { note: "interrupted" });
     return;
   }
+  const recoveryRunId = found.runId;
+  if (found.claimed) await adoptRecoveryRun(engine, turnRunRecord(rec, rec.kind === "ask" ? "ask" : "request", recoveryRunId));
   await engine._updateSend(sendId, (d) => { d.targetRun.recoveryRunId = recoveryRunId; }, { note: `following core recovery run ${recoveryRunId}` });
   const status = await runEndStatus(engine, recoveryRunId);
   if (!status) {
@@ -73,6 +110,43 @@ async function recoverRunning(engine, sendId, report) {
   const text = await engine._transcriptReply(target, rec.kind, rec.sendId).catch(() => null);
   const ro = { status, finals: text ? [{ text }] : [], visibleReplySent: Boolean(text), finalCount: text ? 1 : 0, ...(status !== "ok" ? { error: status } : {}) };
   await engine._onSendTurnEnd(sendId, recoveryRunId, ro, "target", "transcript");
+}
+
+/** A collect turn that was (or may have been) running at the restart: followed or reported, never re-run. */
+async function recoverCollect(engine, sendId, report) {
+  const rec = engine.ledger.getSend(sendId);
+  if (!rec || rec.phase !== "awaiting_background") return;
+  const target = rec.target.sessionKey;
+  const found = await findRecoveryRun(engine, { sessionKey: target, agentId: rec.target.agentId, sourceRunId: rec.collect?.runId });
+  if (!found.runId) {
+    report.interrupted += 1;
+    const code = found.wedge ? "restart_wedge" : "restart";
+    await engine._fail(sendId, { class: "interrupted", code, reason: reasonText(code) }, { note: found.wedge ? "wedge" : "interrupted" });
+    return;
+  }
+  if (found.claimed) await adoptRecoveryRun(engine, turnRunRecord(rec, "collect", found.runId));
+  await engine._updateSend(sendId, (d) => { d.collect = { ...(d.collect ?? {}), recoveryRunId: found.runId }; }, { note: `following core recovery run ${found.runId}` });
+  const status = await runEndStatus(engine, found.runId);
+  if (!status) {
+    await engine._fail(sendId, { class: "timeout", code: "timeout", reason: reasonText("timeout", { h: Math.round(engine.limits.runTimeoutMs / 3600_000) }) });
+    return;
+  }
+  const text = await engine._transcriptReply(target, "collect", rec.sendId).catch(() => null);
+  const ro = { status, finals: text ? [{ text }] : [], visibleReplySent: Boolean(text), finalCount: text ? 1 : 0, ...(status !== "ok" ? { error: status } : {}) };
+  await engine._onSendTurnEnd(sendId, found.runId, ro, "collect", "transcript");
+}
+
+/**
+ * A collect turn is in doubt when it was admitted (startedAt) and never seen ending, or when its
+ * start was under way: then the transcript decides (no `:col:` tag → it never started). The tag
+ * does not carry the round, so an earlier round's tag counts as "may have started" (never re-run).
+ */
+async function collectInDoubt(engine, rec) {
+  const c = rec.collect;
+  if (!c?.runId || c.endedAt) return false;
+  if (c.startedAt) return true;
+  const tagged = await engine._transcriptHasTag(rec.target.sessionKey, "collect", rec.sendId).catch(() => null);
+  return tagged !== false;
 }
 
 async function recoverSend(engine, sendId, report) {
@@ -115,6 +189,7 @@ async function recoverSend(engine, sendId, report) {
       return;
     }
     case "awaiting_background":
+      if (await collectInDoubt(engine, rec)) { await recoverCollect(engine, sendId, report); return; }
       engine._armBackground(sendId, 0);
       return;
     case "result_ready":
@@ -130,7 +205,11 @@ async function recoverInterruptedWake(engine, batchId, report) {
   const b = engine.ledger.getBatch(batchId);
   if (!b || b.wake?.endedAt) return;
   const key = b.requester.sessionKey;
-  const recoveryRunId = await observeRecoveryRun(engine, { sessionKey: key, agentId: b.requester.agentId, sourceRunId: b.wake.runId, since: engine.startedAt ?? engine.now(), ms: engine.timing.recoveryObserveMs });
+  const found = await findRecoveryRun(engine, { sessionKey: key, agentId: b.requester.agentId, sourceRunId: b.wake.runId });
+  const recoveryRunId = found.runId ?? null;
+  if (found.claimed) {
+    await adoptRecoveryRun(engine, { runId: recoveryRunId, sessionKey: key, role: "wake", chainId: b.chainId, depth: b.depth, leaf: false, servesSendId: b.servesSendId ?? null, batchId: b.batchId });
+  }
   let status = null;
   let text = null;
   if (recoveryRunId) {
@@ -205,7 +284,8 @@ async function recoverBatch(engine, batchId, report) {
 export async function recover(engine, { waitForBridges = true } = {}) {
   const { ledger, timing, logger } = engine;
   const report = { sends: 0, batches: 0, reposted: 0, requeued: 0, interrupted: 0, rewoken: 0, reverted: 0, expired: 0 };
-  const uncertain = ledger.sendsWhere((r) => r.phase === "starting" || r.phase === "running");
+  const collecting = (r) => r.phase === "awaiting_background" && r.collect?.runId && !r.collect.endedAt;
+  const uncertain = ledger.sendsWhere((r) => r.phase === "starting" || r.phase === "running" || collecting(r));
   const lockCount = new Map();
   for (const r of uncertain) {
     engine.recoveryLock.add(r.target.sessionKey);
@@ -223,6 +303,14 @@ export async function recover(engine, { waitForBridges = true } = {}) {
   for (const r of ledger.sendsWhere((x) => !isSendTerminal(x) && x.requester?.runId)) if (!engine.ourRuns.has(r.requester.runId)) engine._rememberEnded(r.requester.runId, "restart");
   for (const b of ledger.batchesWhere((x) => x.phase === "open" && x.requester?.runId)) engine._rememberEnded(b.requester.runId, "restart");
   try {
+    // A core recovery run that already claimed one of our turns may send before this recovery
+    // reaches its record: register it now so its sends join the same request (§2.d), not a new chain.
+    for (const r of uncertain) {
+      const role = r.phase === "awaiting_background" ? "collect" : r.kind === "ask" ? "ask" : "request";
+      const sourceRunId = role === "collect" ? r.collect?.runId : r.targetRun?.runId;
+      const claimed = claimedRecoveryRun(engine, { sessionKey: r.target.sessionKey, agentId: r.target.agentId, sourceRunId });
+      if (claimed) await adoptRecoveryRun(engine, turnRunRecord(r, role, claimed)).catch(() => {});
+    }
     if (waitForBridges) {
       const routeKey = (route) => (route?.channel ? `${route.channel}:${route.accountId ?? "default"}` : null);
       const keys = new Set([
@@ -262,7 +350,7 @@ export async function recover(engine, { waitForBridges = true } = {}) {
 
     const sends = ledger.sendsWhere((r) => !isSendTerminal(r)).sort((a, b) => a.createdAt - b.createdAt);
     const sendJobs = sends.map((r) => {
-      const locked = r.phase === "starting" || r.phase === "running";
+      const locked = r.phase === "starting" || r.phase === "running" || collecting(r);
       return recoverSend(engine, r.sendId, report)
         .catch((err) => logger?.error?.(`v-session-relay: recovery of ${r.sendId} failed: ${err?.stack ?? err}`))
         .finally(() => { if (locked) release(r.target.sessionKey); });

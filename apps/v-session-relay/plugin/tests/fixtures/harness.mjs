@@ -131,7 +131,18 @@ export async function createWorld(options = {}) {
 
   const fake = createFakeBridge({ channel: "feishu", runMs: 5, ...(options.bridge ?? {}) });
   const origStart = fake.start;
+  // Like the core (inbound MessageSid dedupe, 20 min) and a Worker (a runId it ran is refused): an
+  // attempt id is good for one start. A reused one is recorded and rejected; close() fails on it.
+  const usedSids = new Set();
+  const usedRunIds = new Set();
+  world.reusedIds = [];
   fake.start = async (req) => {
+    if (usedSids.has(req.messageSid) || usedRunIds.has(req.runId)) {
+      world.reusedIds.push({ kind: req.kind, id: req.id, attempt: req.attempt, messageSid: req.messageSid, runId: req.runId });
+      return { status: "rejected", code: "GATED", message: `duplicate MessageSid ${req.messageSid}`, started: false };
+    }
+    usedSids.add(req.messageSid);
+    usedRunIds.add(req.runId);
     const out = await origStart(req);
     if (out.status === "started") {
       world.transcriptStart(req);
@@ -196,6 +207,9 @@ export async function createWorld(options = {}) {
     await world.engine.ledger.close();
     clearInterval(keepAlive);
     fs.rmSync(dir, { recursive: true, force: true });
+    if (world.reusedIds.length && !options.allowReusedIds) {
+      throw new Error(`a start reused an attempt id (the core would drop it): ${JSON.stringify(world.reusedIds)}`);
+    }
   };
   return world;
 }

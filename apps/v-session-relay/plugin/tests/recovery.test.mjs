@@ -109,9 +109,14 @@ test("recovery: running with a core restart-recovery run — follow it and take 
     await waitFor(() => w.ledger.dead);
     const runId = startOf(w, "request", rec.sendId)[0].args.runId;
     w.entries.set(X, { restartRecoveryDeliverySourceRunId: runId, restartRecoveryDeliveryRunId: "core-recovery-1" });
+    w.busy.add(X); // the core's recovery run is live on X
     await w.restart();
     await waitFor(() => w.rec(rec.sendId).targetRun.recoveryRunId === "core-recovery-1", { what: "following the core run" });
+    // Its sends belong to the request it continues (§2.d), not to a new chain.
+    const adopted = await w.ledger.getRun("core-recovery-1");
+    assert.deepEqual([adopted.role, adopted.servesSendId, adopted.chainId], ["request", rec.sendId, rec.chainId]);
     w.transcripts.get(X).push({ role: "assistant", content: [{ type: "text", text: "恢复后的完整答复" }] });
+    w.busy.delete(X);
     w.endRun("core-recovery-1", X);
     await settledOnce(w, rec.sendId, { wakeText: /恢复后的完整答复/u });
     assert.equal(w.rec(rec.sendId).result.source, "transcript");
@@ -131,6 +136,45 @@ test("recovery: running on a wedged session — interrupted (restart_wedge), wed
     await settledOnce(w, rec.sendId, { wakeText: /对方聊天可能要人工恢复，先告诉这里的人。/u });
     assert.equal(w.rec(rec.sendId).failure.code, "restart_wedge");
     assert(w.posts().some((p) => p.text === `⚠️ #${rec.code} 做到一半 V 重启了，这个聊天可能要人工恢复后才能继续。已告诉「Tianyi 私聊」。`));
+  } finally { await w.close(); }
+});
+
+test("recovery: a core recovery claim that nothing runs is the wedge — reported, not followed for 12 h", async () => {
+  const w = await createWorld({ ledger: crash("running"), bridge: { holdRuns: true } });
+  try {
+    await w.send(DM, X, "认领了却没人跑", { runId: "rA" });
+    w.endRun("rA", DM);
+    const rec = only(w);
+    await waitFor(() => w.ledger.dead);
+    const runId = startOf(w, "request", rec.sendId)[0].args.runId;
+    w.entries.set(X, { status: "running", restartRecoveryDeliverySourceRunId: runId, restartRecoveryDeliveryRunId: "dead-claim-1" });
+    await w.restart();
+    await settledOnce(w, rec.sendId, { wakeText: /对方聊天可能要人工恢复/u });
+    assert.equal(w.rec(rec.sendId).failure.code, "restart_wedge");
+    assert.equal(w.rec(rec.sendId).targetRun.recoveryRunId, null);
+  } finally { await w.close(); }
+});
+
+test("recovery: a session still running at first look is watched for the core's recovery run before it is called wedged", async () => {
+  const w = await createWorld({ ledger: crash("running"), bridge: { holdRuns: true }, timing: { recoveryObserveMs: 400 } });
+  try {
+    await w.send(DM, X, "核心稍后才认领", { runId: "rA" });
+    w.endRun("rA", DM);
+    const rec = only(w);
+    await waitFor(() => w.ledger.dead);
+    const runId = startOf(w, "request", rec.sendId)[0].args.runId;
+    w.entries.set(X, { status: "running" }); // looks wedged: running, no active run, no claim yet
+    await w.restart();
+    await sleep(60);
+    // The core's restart recovery claims the turn a moment later and runs it.
+    w.entries.set(X, { status: "running", restartRecoveryDeliverySourceRunId: runId, restartRecoveryDeliveryRunId: "late-claim-1" });
+    w.busy.add(X);
+    await waitFor(() => w.rec(rec.sendId).targetRun.recoveryRunId === "late-claim-1", { what: "following the late claim" });
+    w.transcripts.get(X).push({ role: "assistant", content: [{ type: "text", text: "稍后恢复的答复" }] });
+    w.busy.delete(X);
+    w.endRun("late-claim-1", X);
+    await settledOnce(w, rec.sendId, { wakeText: /稍后恢复的答复/u });
+    assert.equal(w.rec(rec.sendId).failure, null);
   } finally { await w.close(); }
 });
 
@@ -265,5 +309,46 @@ test("recovery: awaiting_background is checked again and collected", async () =>
     const col = await waitFor(() => startOf(w, "collect", r.sendId)[0], { what: "collect after restart" });
     w.fake.finishRun(col.args.runId, ok("最终结果"));
     await settledOnce(w, r.sendId, { wakeText: /最终结果/u });
+  } finally { await w.close(); }
+});
+
+async function collectInFlight(w) {
+  const s = await w.send(DM, ROOM(1), "生成后交回", { runId: "rA" });
+  w.endRun("rA", DM);
+  w.tasks.set(ROOM(1), [{ taskId: "img", runtime: "cli", taskKind: "image_generation" }]);
+  const st = await waitFor(() => startOf(w, "request", s.sendId)[0], { what: "request start" });
+  w.fake.finishRun(st.args.runId, ok("开始生成了"));
+  await waitFor(() => w.rec(s.sendId).phase === "awaiting_background" && w.engine.bgTimers.has(s.sendId), { what: "awaiting_background" });
+  w.tasks.delete(ROOM(1));
+  const col = await waitFor(() => startOf(w, "collect", s.sendId)[0], { what: "collect start" });
+  await waitFor(() => w.rec(s.sendId).collect?.startedAt, { what: "collect admitted" });
+  return { sendId: s.sendId, col };
+}
+
+test("recovery: a collect turn in flight at the restart is never re-run — no recovery run → interrupted", async () => {
+  const w = await createWorld({ bridge: { holdRuns: true } });
+  try {
+    const { sendId } = await collectInFlight(w);
+    await w.restart(); // the Gateway (and the collect turn with it) died
+    await settledOnce(w, sendId, { wakeText: /V 重启打断了处理/u });
+    assert.equal(w.rec(sendId).failure.class, "interrupted");
+    assert.equal(startOf(w, "collect", sendId).length, 1, "the collect turn is not started again");
+  } finally { await w.close(); }
+});
+
+test("recovery: a collect turn in flight at the restart follows the core's recovery run and hands its reply back", async () => {
+  const w = await createWorld({ bridge: { holdRuns: true } });
+  try {
+    const { sendId, col } = await collectInFlight(w);
+    w.entries.set(ROOM(1), { restartRecoveryDeliverySourceRunId: col.args.runId, restartRecoveryDeliveryRunId: "core-col-1" });
+    w.busy.add(ROOM(1));
+    await w.restart();
+    await waitFor(() => w.rec(sendId).collect?.recoveryRunId === "core-col-1", { what: "following the core run" });
+    assert.equal((await w.ledger.getRun("core-col-1")).role, "collect");
+    w.transcripts.get(ROOM(1)).push({ role: "assistant", content: [{ type: "text", text: "图都好了" }] });
+    w.busy.delete(ROOM(1));
+    w.endRun("core-col-1", ROOM(1));
+    await settledOnce(w, sendId, { wakeText: /图都好了/u });
+    assert.equal(startOf(w, "collect", sendId).length, 1);
   } finally { await w.close(); }
 });

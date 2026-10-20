@@ -45,7 +45,7 @@ fake.post = async (p) => {
 const origStart = fake.start;
 fake.start = async (req) => {
   const out = await origStart(req);
-  world.starts.push({ kind: req.kind, id: req.id, attempt: req.attempt, runId: req.runId, status: out.status, life: world.lives });
+  world.starts.push({ kind: req.kind, id: req.id, attempt: req.attempt, runId: req.runId, messageSid: req.messageSid, status: out.status, life: world.lives });
   if (out.status === "started") {
     (world.transcripts[req.sessionKey] ??= []).push({ role: "user", content: req.promptText, provenance: req.provenance });
     out.done.then((o) => {

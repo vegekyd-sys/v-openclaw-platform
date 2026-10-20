@@ -605,3 +605,115 @@ test("tasks: requester rows (queued / running) through extraSources, notified on
     assert.equal(target[TASK_REGISTRY_BRIDGE].extraSources.size, 0);
   } finally { await w.close(); }
 });
+
+test("engine: a second collect round gets a fresh runId, MessageSid and anchor (the core drops a repeated MessageSid)", async () => {
+  const w = await createWorld({ bridge: { holdRuns: true } });
+  try {
+    const s = await w.send(DM, ROOM(1), "后台要跑两轮", { runId: "rA" });
+    w.endRun("rA", DM);
+    w.tasks.set(ROOM(1), [{ taskId: "e1", runtime: "cli", taskKind: "exec" }]);
+    const st = await awaitStart(w, "request", s.sendId);
+    w.fake.finishRun(st.args.runId, ok("第一轮"));
+    await waitFor(() => w.rec(s.sendId).phase === "awaiting_background" && w.engine.bgTimers.has(s.sendId), { what: "first background wait" });
+    w.tasks.delete(ROOM(1));
+    const col1 = await waitFor(() => w.starts("collect")[0], { what: "first collect" });
+    // The first collect starts more background work.
+    w.tasks.set(ROOM(1), [{ taskId: "e2", runtime: "cli", taskKind: "exec" }]);
+    w.fake.finishRun(col1.args.runId, ok("第二轮已开工"));
+    await waitFor(() => w.rec(s.sendId).collect?.endedAt && w.engine.bgTimers.has(s.sendId), { what: "second background wait" });
+    w.tasks.delete(ROOM(1));
+    const col2 = await waitFor(() => w.starts("collect")[1], { what: "second collect" });
+    assert.equal(col2.args.attempt, col1.args.attempt + 1);
+    assert.equal(col2.args.runId, runIdFor("collect", s.sendId, col1.args.attempt + 1));
+    assert.equal(col2.args.messageSid, messageSidFor("collect", s.sendId, col1.args.attempt + 1));
+    const collectAnchors = w.posts().filter((p) => /的后台工作都结束了/u.test(p.text));
+    assert.equal(collectAnchors.length, 2, "each round has its own anchor");
+    assert.equal(col2.args.anchorMessageId, collectAnchors[1].messageId);
+    w.fake.finishRun(col2.args.runId, ok("全部完成"));
+    const wake = await waitFor(() => w.starts("wake")[0]);
+    assert.match(wake.args.promptText, /全部完成/u);
+    assert.equal(w.rec(s.sendId).wakeRounds, 2);
+  } finally { await w.close(); }
+});
+
+test("engine: a refused anchor seen just before the accept deadline answers with the error, never 'accepted'", async () => {
+  const w = await createWorld({ bridge: { post: [{ fail: "NOT_MEMBER" }], postDelayMs: 40 }, timing: { anchorPostMs: 60 } });
+  try {
+    const orig = w.engine._detach.bind(w.engine);
+    w.engine._detach = async (...args) => { await sleep(120); return orig(...args); }; // closing outlasts the deadline
+    const r = await w.send(DM, X, "机器人不在群里", { runId: "rA" });
+    assert.deepEqual([r.status, r.code], ["error", "NOT_MEMBER"]);
+    const rec = w.ledger.sendsWhere(() => true)[0];
+    assert.equal(rec.phase, "skipped");
+    assert.equal(w.ledger.getBatch(rec.batchId)?.members.length ?? 0, 0, "out of its batch: nothing will report it");
+    w.endRun("rA", DM);
+    await sleep(60);
+    assert.equal(w.starts().length, 0);
+  } finally { await w.close(); }
+});
+
+test("engine: a repeated call of a send refused at accept gets the same error", async () => {
+  const w = await createWorld({ bridge: { post: [{ fail: "NOT_MEMBER" }] } });
+  try {
+    const p = sendParams(DM, X, "机器人不在群里", { runId: "rA", toolCallId: "tc-refused" });
+    const first = await w.engine.send(p);
+    assert.deepEqual([first.status, first.code], ["error", "NOT_MEMBER"]);
+    const again = await w.engine.send(p);
+    assert.deepEqual(again, first);
+    assert.equal(w.starts().length, 0);
+  } finally { await w.close(); }
+});
+
+test("engine: a send never joins a batch whose wake is already decided — it gets its own and is handed back", async () => {
+  const w = await createWorld({ bridge: { holdRuns: true } });
+  try {
+    const a = await w.send(DM, ROOM(1), "异步一件", { runId: "rA" });
+    const i = await w.send(DM, ROOM(2), "顺便问一句", { runId: "rA", mode: "inline", timeoutMs: 120_000 });
+    const batchId = w.rec(a.sendId).batchId;
+    const ia = await awaitStart(w, "request", i.sendId);
+    w.fake.finishRun(ia.args.runId, ok("答案在此"));
+    await waitFor(() => w.rec(i.sendId).phase === "result_ready", { what: "inline result" });
+    w.endRun("rA", DM); // expires the unclaimed inline send into rA's batch…
+    await waitFor(() => w.rec(i.sendId).inline.expiredAt);
+    // …but suppose the batch had already moved on when that join landed (the race this guards):
+    const st = await awaitStart(w, "request", a.sendId);
+    w.fake.finishRun(st.args.runId, ok("一号完成"));
+    const wake1 = await waitFor(() => w.starts("wake")[0], { what: "first wake" });
+    assert.equal(wake1.args.id, batchId);
+    const late = await w.ledger.createSend({ ...structuredClone(w.rec(i.sendId)), sendId: `${i.sendId.slice(0, -4)}beef`, idempotencyKey: "ss:late", contentKey: "late", code: "Z9Z9", batchId, phase: "result_ready" });
+    const joined = await w.engine._joinBatch(late, batchId, {});
+    assert.notEqual(joined, batchId, "a woken batch takes no new member");
+    assert.equal(w.rec(late.sendId).batchId, joined);
+    assert(!w.ledger.getBatch(batchId).members.includes(late.sendId));
+    w.fake.finishRun(wake1.args.runId, ok("汇报一"));
+    const wake2 = await waitFor(() => w.starts("wake").find((c) => c.args.id === joined), { what: "the late send's own wake" });
+    assert.match(wake2.args.promptText, /#Z9Z9/u);
+    w.fake.finishRun(wake2.args.runId, ok("汇报二"));
+    await waitFor(() => w.rec(late.sendId).phase === "handed_back", { what: "late send handed back" });
+  } finally { await w.close(); }
+});
+
+test("engine: the accepted result carries the target's label for the core's own notes and the poll guard", async () => {
+  const w = await createWorld();
+  try {
+    const r = await w.send(DM, X, "给个标签", { runId: "rA" });
+    assert.equal(r.label, "一个群聊");
+    const again = await w.send(DM, X, "给个标签", { runId: "rA" });
+    assert.equal(again.label, "一个群聊");
+  } finally { await w.close(); }
+});
+
+test("engine: the claim CAS itself refuses an expired or already-claimed inline result", async () => {
+  const w = await createWorld();
+  try {
+    const a = await w.send(DM, ROOM(1), "问 a", { runId: "rA", mode: "inline", timeoutMs: 120_000 });
+    await waitFor(() => w.rec(a.sendId).phase === "result_ready");
+    await w.engine._expireInline(a.sendId, "test");
+    assert.equal(await w.engine._claim(a.sendId), null, "expired: the wake owns it now");
+    assert.equal(w.rec(a.sendId).phase, "result_ready");
+    const b = await w.send(DM, ROOM(2), "问 b", { runId: "rB", mode: "inline", timeoutMs: 120_000 });
+    await waitFor(() => w.rec(b.sendId).phase === "result_ready");
+    assert(await w.engine._claim(b.sendId));
+    assert.equal(await w.engine._claim(b.sendId), null, "claimed once");
+  } finally { await w.close(); }
+});

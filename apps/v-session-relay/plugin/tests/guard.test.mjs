@@ -20,7 +20,8 @@ const call = (toolName, params, runId = "run-1") => [{ toolName, params, runId }
 
 test("guard: polling commands", () => {
   for (const cmd of ["sleep 15", "sleep 60 && cat x", "sleep 20.5", "timeout 30 tail -f x", "while true; do curl x; sleep 5; done", "bash -lc 'sleep 300'"]) assert(isPollingCommand(cmd), cmd);
-  for (const cmd of ["sleep 2", "sleep 14.9", "ls -la", "timeout 5 curl x", "echo while; do", "npm test"]) assert(!isPollingCommand(cmd), cmd);
+  for (const cmd of ["sleep 2", "sleep 14.9", "ls -la", "timeout 5 curl x", "echo while; do", "npm test", "sleep 10s", "sleep 0.2m"]) assert(!isPollingCommand(cmd), cmd);
+  for (const cmd of ["sleep 1m", "sleep 5m; cat out", "sleep 2h", "sleep 30s"]) assert(isPollingCommand(cmd), `${cmd} (units)`);
   assert.equal(commandText({ command: ["bash", "-lc", "sleep 30"] }), "bash -lc sleep 30");
   assert.equal(commandText({ cmd: "sleep 30" }), "sleep 30");
 });
@@ -60,4 +61,19 @@ test("guard: no table, empty table or a plain-object targets entry never throws"
   assert.equal(createPollGuard({ target })(...call("sessions_history", { sessionKey: TARGET }))?.block, true);
   const weird = { [SESSIONS_SEND_ACCEPTED]: new Map([["run-1", null]]) };
   assert.equal(createPollGuard({ target: weird })(...call("exec", { command: "sleep 99" })), undefined);
+});
+
+test("guard: without a toolCallId, the duplicate invocations of one call still count one history read", () => {
+  let t = 1_000;
+  const target = {};
+  target[SESSIONS_SEND_ACCEPTED] = new Map([["run-1", { at: Date.now(), targets: new Map([[TARGET, { code: "7F3A", label: "任务群 a", historyReads: 0 }]]) }]]);
+  const guard = createPollGuard({ target, now: () => t });
+  const ev = { toolName: "sessions_history", params: { sessionKey: TARGET }, runId: "run-1" };
+  const ctx = { runId: "run-1", toolName: "sessions_history" };
+  for (let i = 0; i < 3; i += 1) assert.equal(guard(ev, ctx), undefined, "one call seen by three registrations");
+  assert.equal(target[SESSIONS_SEND_ACCEPTED].get("run-1").targets.get(TARGET).historyReads, 1);
+  t += 30_000; // the model's next call, much later
+  assert.equal(guard(ev, ctx)?.block, true);
+  assert.equal(guard(ev, ctx)?.block, true, "its duplicates get the same verdict");
+  assert.equal(target[SESSIONS_SEND_ACCEPTED].get("run-1").targets.get(TARGET).historyReads, 2);
 });

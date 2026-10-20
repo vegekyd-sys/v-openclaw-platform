@@ -15,7 +15,7 @@ import { tmpDir } from "./fixtures/harness.mjs";
 const CHILD = fileURLToPath(new URL("./fixtures/crash-child.mjs", import.meta.url));
 const PHASES = [
   "accepted", "posting", "before:posted", "posted", "starting", "before:running", "running",
-  "target_done", "result_ready", "waking", "before:woken", "woken",
+  "before:target_done", "target_done", "result_ready", "waking", "before:woken", "woken",
 ];
 
 function life(dir, worldFile, mode, crashAt) {
@@ -51,6 +51,10 @@ async function scenario(crashAt) {
       assert(admitted.length <= 1, `${crashAt}: batch ${b.batchId} woken ${admitted.length} times`);
       assert.equal(admitted.length, 1, `${crashAt}: batch ${b.batchId} never woken`);
     }
+    // Every attempt id is used once across both lives (the core drops a repeated MessageSid; a
+    // Worker refuses a runId it already ran).
+    const sids = world.starts.map((x) => x.messageSid);
+    assert.equal(new Set(sids).size, sids.length, `${crashAt}: a MessageSid was reused: ${sids.join(" ")}`);
     // A target turn is never run twice once it may have started.
     for (const s of state.sends) {
       const started = world.starts.filter((x) => x.kind === "request" && x.id === s.sendId && x.status === "started");

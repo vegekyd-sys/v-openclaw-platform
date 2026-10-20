@@ -171,7 +171,7 @@ export class Engine {
     if (!check.ok) return { status: "error", code: "INTERNAL", error: `vrelay.send: ${check.errors.join("; ")}` };
     if (await this.ledger.isDisabled()) return { status: "fallback", reason: "disabled" };
     const dup = this.ledger.findByIdempotencyKey(params.idempotencyKey);
-    if (dup) return this._acceptedResult(dup, { deduped: true, sameCall: true });
+    if (dup) return this._dupResult(dup);
     const req = params.requester;
     const tgt = params.target;
     if (isUnsupportedRequester(req.sessionKey)) return { status: "fallback", reason: "unsupported_requester" };
@@ -189,7 +189,7 @@ export class Engine {
     }
     if (accepted.status !== "accepted" || !accepted.rec) return accepted;
     const { rec, ctl } = accepted;
-    if (rec.deduped) return this._acceptedResult(rec.rec, { deduped: true, sameCall: rec.sameCall });
+    if (rec.deduped) return rec.sameCall ? this._dupResult(rec.rec) : this._acceptedResult(rec.rec, { deduped: true });
 
     // Anchor: synchronous up to anchorPostMs, then in the background.
     // A ledger failure from here on leaves the send recorded; recovery finishes it after a restart.
@@ -197,7 +197,10 @@ export class Engine {
       this.logger?.error?.(`v-session-relay: anchor flow for ${rec.sendId} failed: ${err?.message ?? err}`);
       return { ok: false, transient: true };
     });
-    const outcome = await Promise.race([posting, sleep(this.timing.anchorPostMs).then(() => null)]);
+    let outcome = await Promise.race([posting, sleep(this.timing.anchorPostMs).then(() => null)]);
+    // A refusal seen before the deadline is being turned into this call's error (the send is being
+    // closed and taken out of its batch): answer with that error, never with "accepted".
+    if (!outcome && ctl.detaching) outcome = await posting;
     ctl.responded = true;
     if (outcome && outcome.ok === false && outcome.permanent) {
       return { status: "error", code: outcome.code, error: routeErrorText({ to: rec.target.label, reason: reasonText(outcome.code) }) };
@@ -398,7 +401,12 @@ export class Engine {
     return { status: "accepted", rec, ctl: { responded: false } };
   }
 
-  /** Add `rec` to batch `batchId`, creating it when needed. */
+  /**
+   * Add `rec` to batch `batchId`, creating it when needed. Resolves with the batch id the send
+   * ends up in: a batch that has moved past `sealed` (ready, waking, woken, skipped) never takes a
+   * new member — its wake is already decided and would never hand this send back — so the send
+   * then gets a sealed batch of its own and its record is pointed at it.
+   */
   async _joinBatch(rec, batchId, { create = false, ctx = null } = {}) {
     const now = this.now();
     const runId = rec.requester.runId;
@@ -416,13 +424,26 @@ export class Engine {
         createdAt: now, updatedAt: now,
       });
       if (sealed) await this._checkBatch(batchId);
-      return;
+      return batchId;
     }
-    await this.ledger.updateBatch(batchId, (b) => {
+    const joined = await this.ledger.updateBatch(batchId, (b) => {
       if (b.members.includes(rec.sendId)) return false;
       b.members.push(rec.sendId);
       return undefined;
-    });
+    }, { from: ["open", "sealed"] });
+    if (joined || this.ledger.getBatch(batchId)?.members.includes(rec.sendId)) return batchId;
+    const own = newBatchId(this.now());
+    this.logger?.warn?.(`v-session-relay: batch ${batchId} already ${this.ledger.getBatch(batchId)?.phase}; ${rec.sendId} gets batch ${own}`);
+    await this._updateSend(rec.sendId, (d) => { d.batchId = own; }, { note: `batch ${batchId} had moved on` });
+    return this._joinBatch({ ...rec, batchId: own }, own, { create: true, ctx: { sealed: true } });
+  }
+
+  /** Answer to a repeated call (same idempotencyKey): the same outcome as the first time. */
+  _dupResult(rec) {
+    if (rec.detachedAtAccept && rec.failure?.code) {
+      return { status: "error", code: rec.failure.code, error: routeErrorText({ to: rec.target.label, reason: reasonText(rec.failure.code) }) };
+    }
+    return this._acceptedResult(rec, { deduped: true, sameCall: true });
   }
 
   _acceptedResult(rec, { deduped = false, sameCall = false }) {
@@ -441,6 +462,9 @@ export class Engine {
       status: "accepted",
       sendId: rec.sendId,
       code: rec.code,
+      // The target's label (§7.1): the core puts it in the accepted table (poll-guard text) and in
+      // the notes it writes itself (inline timeout, broken wait); without it the core shows the raw key.
+      label: rec.target.label,
       runId: runIdFor(rec.kind === "ask" ? "ask" : "request", rec.sendId, 0),
       targetDisposition: "queued",
       queuePosition: pos,
@@ -504,6 +528,9 @@ export class Engine {
       this.logger?.warn?.(`v-session-relay: anchor #${rec.code} not posted (${code}${transient ? ", transient" : ""}): ${err?.message ?? err}`);
       if (!transient) {
         if (!ctl.responded) {
+          // Claimed synchronously: send() now waits for this error instead of answering "accepted"
+          // when its deadline passes while the send is being closed.
+          ctl.detaching = true;
           await this._detach(rec, code);
           return { ok: false, permanent: true, code };
         }
@@ -538,6 +565,7 @@ export class Engine {
     const closed = await this._updateSend(rec.sendId, (d) => {
       d.phase = "skipped";
       d.failure = { class: "not_started", code, reason: reasonText(code) };
+      d.detachedAtAccept = true;
     }, { note: `detached at accept: ${code}` });
     if (rec.batchId) {
       await this.ledger.updateBatch(rec.batchId, (b) => {
@@ -689,9 +717,9 @@ export class Engine {
       return undefined;
     }, { note: `inline expired: ${why}` });
     if (!rec) return this.ledger.getSend(sendId);
-    await this._joinBatch(rec, batchId.batchId, { create: batchId.create, ctx: { sealed: batchId.sealed } });
-    if (isSettled(rec)) await this._checkBatch(rec.batchId);
-    return rec;
+    const joined = await this._joinBatch(rec, batchId.batchId, { create: batchId.create, ctx: { sealed: batchId.sealed } });
+    if (isSettled(rec)) await this._checkBatch(joined);
+    return this.ledger.getSend(sendId) ?? rec;
   }
 
   /** Batch for a send that turns async after accept: the run's open/sealed batch, else a new one. */
@@ -891,12 +919,12 @@ export class Engine {
   }
 
   async _onSendTurnEnd(sendId, runId, ro, role, transport) {
-    await this._onRunEnded(runId, ro.status);
-    const cur = this.ledger.getSend(sendId);
-    if (!cur) return;
+    // The turn's output goes to disk first: a crash after `done` then loses nothing. The run's
+    // own sends (inline claims, its open batch) are settled right after, before W(S) is judged.
     const output = { ...outputOf(ro), status: ro.status, error: ro.error ?? null, source: transport ?? "bridge", fromRunId: runId };
+    let rec = null;
     if (role === "target") {
-      const rec = await this._updateSend(sendId, (d) => {
+      rec = await this._updateSend(sendId, (d) => {
         if (d.phase !== "running") return false;
         d.phase = "target_done";
         d.targetRun.endedAt = this.now();
@@ -905,16 +933,16 @@ export class Engine {
         d.pending = output;
         return undefined;
       });
-      if (!rec) return; // cancelled or timed out meanwhile: the late result is dropped
     } else {
-      const rec = await this._updateSend(sendId, (d) => {
+      rec = await this._updateSend(sendId, (d) => {
         if (d.phase !== "awaiting_background") return false;
         d.collect = { ...(d.collect ?? {}), endedAt: this.now(), status: ro.status };
         d.pending = output;
         return undefined;
       });
-      if (!rec) return;
     }
+    await this._onRunEnded(runId, ro.status);
+    if (!rec) return; // cancelled or timed out meanwhile: the late result is dropped
     await this._evaluate(sendId);
   }
 
@@ -998,10 +1026,15 @@ export class Engine {
     if (!rec || rec.phase !== "awaiting_background") return;
     const q = this._queue(sessionKey);
     if (this._backgroundTasks(sessionKey).length) { q.remove("collect", rec.sendId); this._armBackground(rec.sendId); return; }
-    const attempt = rec.collect?.attempt ?? 0;
+    // Every collect turn that started used up its attempt: a later round (more background work
+    // after the first collect) needs a fresh runId and MessageSid — the core drops a repeated
+    // MessageSid (20 min dedupe) and a worker refuses a runId it already ran — and its own anchor.
+    // Only an attempt that never started (BUSY, route fallback) keeps its anchor.
+    const prev = rec.collect ?? null;
+    const attempt = prev ? (prev.startedAt ? (prev.attempt ?? 0) + 1 : prev.attempt ?? 0) : 0;
     const presetRunId = runIdFor("collect", rec.sendId, attempt);
     const side = this._sideOf(rec);
-    let anchorMessageId = rec.collect?.attempt === attempt ? rec.collect?.anchorMessageId ?? null : null;
+    let anchorMessageId = prev && !prev.startedAt && prev.attempt === attempt ? prev.anchorMessageId ?? null : null;
     if (!anchorMessageId && side.route) {
       try {
         const res = await this._postTo(side, {
@@ -1249,9 +1282,9 @@ export class Engine {
       return undefined;
     }, { note: `inline claim reverted: requester ${status}` });
     if (!rec) return null;
-    await this._joinBatch(rec, late.batchId, { create: late.create, ctx: { sealed: true } });
-    await this._checkBatch(rec.batchId);
-    return rec;
+    const joined = await this._joinBatch(rec, late.batchId, { create: late.create, ctx: { sealed: true } });
+    await this._checkBatch(joined);
+    return this.ledger.getSend(sendId) ?? rec;
   }
 
   /** Our own runs end through `done`; this only guards a bridge that never resolves it. */
@@ -1378,7 +1411,17 @@ export class Engine {
   // ================================================================== periodic (memory only; no directory scans)
 
   async _sweep() {
-    if (!this._alive()) return;
+    if (!this._alive() || this._sweeping) return;
+    this._sweeping = true;
+    try {
+      await this._sweepOnce();
+    } finally {
+      this._sweeping = false;
+    }
+  }
+
+  /** One pass (never two at once: a pass that posts notes or edits can outlast the interval). */
+  async _sweepOnce() {
     const now = this.now();
     for (const rec of this.ledger.sendsWhere((s) => ACTIVE_PHASES.includes(s.phase))) {
       if (rec.phase === "queued" && now > rec.deadlines.queueBy) {
