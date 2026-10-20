@@ -1,0 +1,500 @@
+{
+ "note": "Candidate outputs for lab/gateway-fullread-hotpaths.md (V tables exported read-only 2026-10-20 12:07 CST). retire1 (cleanup steps) ended with an archive-publish error in its first retire batch; retire2/retire3 are the retirement runs.",
+ "candidates": {
+  "candidate-a29699ab-f192-4a25-8079-b9fdc702aeef": {
+   "fixture": {
+    "counts": {
+     "session_nodes": 5164,
+     "session_windows": 7136,
+     "session_participants": 4944,
+     "session_transcript_index_state": 7105,
+     "session_progress_cards": 2376,
+     "transcript_events": 16672,
+     "transcript_event_identities": 16672,
+     "session_transcript_active_events": 16522,
+     "trajectory_runtime_events": 0,
+     "transcript_rewrite_watermarks": 150,
+     "session_transcript_fts": 157180
+    },
+    "pendingEntryValid": 0,
+    "bytes": 782925824,
+    "ms": 34057
+   },
+   "cron.equivalence": {
+    "cronKeys": 40,
+    "cases": 101,
+    "mismatches": 0
+   },
+   "cron.base": {
+    "label": "resolveCronSession V",
+    "repeat": 5,
+    "msMedian": 3738.5,
+    "msMax": 4397.4,
+    "allocatedMBPerCall": 1271.1,
+    "loopDelayMaxMs": 0
+   },
+   "cron.patched": {
+    "label": "resolveCronSession release",
+    "repeat": 50,
+    "msMedian": 0.8,
+    "msMax": 4.4,
+    "allocatedMBPerCall": 0.3,
+    "loopDelayMaxMs": 0
+   },
+   "sweep.base": {
+    "label": "sweepCronRunSessions V (0 run keys)",
+    "repeat": 5,
+    "msMedian": 3837.1,
+    "msMax": 4222.1,
+    "allocatedMBPerCall": 1273.4,
+    "loopDelayMaxMs": 0,
+    "value": 0
+   },
+   "sweep.patched": {
+    "label": "sweepCronRunSessions release (0 run keys)",
+    "repeat": 50,
+    "msMedian": 18.9,
+    "msMax": 29.3,
+    "allocatedMBPerCall": 5.8,
+    "loopDelayMaxMs": 0,
+    "value": 0
+   },
+   "sweep.equivalence": {
+    "runKeys": 60,
+    "base": {
+     "pruned": 30,
+     "swept": true,
+     "remaining": 30,
+     "ms": 15270
+    },
+    "patched": {
+     "pruned": 30,
+     "swept": true,
+     "remaining": 30,
+     "ms": 10600
+    }
+   },
+   "list.full": {
+    "label": "listSessionEntriesCore full projection",
+    "repeat": 3,
+    "msMedian": 4302,
+    "msMax": 8271.9,
+    "allocatedMBPerCall": 1288.5,
+    "loopDelayMaxMs": 0,
+    "value": 5224
+   },
+   "list.listProjection": {
+    "label": "listSessionEntriesReadOnly list projection, cache invalidated",
+    "repeat": 3,
+    "msMedian": 187.9,
+    "msMax": 1420.1,
+    "allocatedMBPerCall": 97.7,
+    "loopDelayMaxMs": 0,
+    "value": 5224
+   }
+  },
+  "candidate-46dde4e1-704f-47a0-bdae-2e654c3973d9": {
+   "fixture": {
+    "counts": {
+     "session_nodes": 5164,
+     "session_windows": 7136,
+     "session_participants": 4944,
+     "session_transcript_index_state": 7105,
+     "session_progress_cards": 2376,
+     "transcript_events": 16672,
+     "transcript_event_identities": 16672,
+     "session_transcript_active_events": 16522,
+     "trajectory_runtime_events": 0,
+     "transcript_rewrite_watermarks": 150,
+     "session_transcript_fts": 157180
+    },
+    "pendingEntryValid": 0,
+    "bytes": 782925824,
+    "ms": 30898
+   },
+   "workboard.equivalence": {
+    "cards": 7507,
+    "archived": 3,
+    "sources": 26718,
+    "compared": 301,
+    "withMatches": 280,
+    "mismatches": 0
+   },
+   "workboard.base": {
+    "label": "listLifecycleCandidates V",
+    "repeat": 5,
+    "msMedian": 265.4,
+    "msMax": 320.6,
+    "allocatedMBPerCall": 60.6,
+    "loopDelayMaxMs": 0,
+    "value": 1
+   },
+   "workboard.patched": {
+    "label": "listLifecycleCandidates release",
+    "repeat": 50,
+    "msMedian": 76.9,
+    "msMax": 94,
+    "allocatedMBPerCall": 13.2,
+    "loopDelayMaxMs": 0,
+    "value": 1
+   }
+  },
+  "candidate-4f4c3756-620c-4a70-bc94-7d33fea219aa": {
+   "fixture": {
+    "counts": {
+     "session_nodes": 5164,
+     "session_windows": 7136,
+     "session_participants": 4944,
+     "session_transcript_index_state": 7105,
+     "session_progress_cards": 2376,
+     "transcript_events": 16672,
+     "transcript_event_identities": 16672,
+     "session_transcript_active_events": 16522,
+     "trajectory_runtime_events": 0,
+     "transcript_rewrite_watermarks": 150,
+     "session_transcript_fts": 157180
+    },
+    "pendingEntryValid": 0,
+    "bytes": 782925824,
+    "ms": 30255
+   },
+   "tasks.base": {
+    "tasks": 22341,
+    "first": {
+     "label": "runTaskRegistryMaintenance base, first sweep",
+     "repeat": 1,
+     "msMedian": 1420.5,
+     "msMax": 1420.5,
+     "allocatedMBPerCall": 334.4,
+     "loopDelayMaxMs": 57,
+     "value": "{\"reconciled\":0,\"recovered\":0,\"cleanupStamped\":0,\"pruned\":1}"
+    },
+    "steady": {
+     "label": "runTaskRegistryMaintenance base, steady sweeps",
+     "repeat": 5,
+     "msMedian": 542.1,
+     "msMax": 712,
+     "allocatedMBPerCall": 158.8,
+     "loopDelayMaxMs": 336,
+     "value": "{\"reconciled\":0,\"recovered\":0,\"cleanupStamped\":0,\"pruned\":0}"
+    },
+    "ledgerAfterFirst": "4ee30d39b55121283df166bc57a7f9bf10fe264bb6cc08f0c70b91740b931c89",
+    "ledgerAfterSteady": "4ee30d39b55121283df166bc57a7f9bf10fe264bb6cc08f0c70b91740b931c89",
+    "tasksAfter": 22340
+   }
+  },
+  "candidate-c7993cf7-083f-4384-a35a-f6a6563b2137": {
+   "fixture": {
+    "counts": {
+     "session_nodes": 5164,
+     "session_windows": 7136,
+     "session_participants": 4944,
+     "session_transcript_index_state": 7105,
+     "session_progress_cards": 2376,
+     "transcript_events": 16672,
+     "transcript_event_identities": 16672,
+     "session_transcript_active_events": 16522,
+     "trajectory_runtime_events": 0,
+     "transcript_rewrite_watermarks": 150,
+     "session_transcript_fts": 157180
+    },
+    "pendingEntryValid": 0,
+    "bytes": 782925824,
+    "ms": 31060
+   },
+   "tasks.patched": {
+    "tasks": 22341,
+    "first": {
+     "label": "runTaskRegistryMaintenance patched, first sweep",
+     "repeat": 1,
+     "msMedian": 1381.3,
+     "msMax": 1381.3,
+     "allocatedMBPerCall": 239.8,
+     "loopDelayMaxMs": 51,
+     "value": "{\"reconciled\":0,\"recovered\":0,\"cleanupStamped\":0,\"pruned\":1}"
+    },
+    "steady": {
+     "label": "runTaskRegistryMaintenance patched, steady sweeps",
+     "repeat": 5,
+     "msMedian": 211,
+     "msMax": 279.9,
+     "allocatedMBPerCall": 54.5,
+     "loopDelayMaxMs": 28,
+     "value": "{\"reconciled\":0,\"recovered\":0,\"cleanupStamped\":0,\"pruned\":0}"
+    },
+    "ledgerAfterFirst": "4ee30d39b55121283df166bc57a7f9bf10fe264bb6cc08f0c70b91740b931c89",
+    "ledgerAfterSteady": "4ee30d39b55121283df166bc57a7f9bf10fe264bb6cc08f0c70b91740b931c89",
+    "tasksAfter": 22340
+   }
+  },
+  "candidate-c287a034-df59-4759-aaf1-a306c182f442": {
+   "fixture": {
+    "bytes": 782925824,
+    "ms": 33057
+   },
+   "reads.before": {
+    "rows": 5164,
+    "entryJsonMB": 336,
+    "fullProjectionMs": 3672,
+    "listProjectionMs": 194
+   },
+   "retire.plan": {
+    "retireDays": 7,
+    "ageBuckets": {
+     "d3": 3269,
+     "d7": 1543,
+     "d14": 38,
+     "total": 3877
+    },
+    "candidates": 1543,
+    "withTranscriptInFixture": 150,
+    "batch": 20,
+    "pauseMs": 200
+   },
+   "retire.result": {
+    "totalMs": 327935,
+    "withTranscripts": {
+     "batches": 8,
+     "removed": 160,
+     "msMedian": 6288,
+     "msMax": 7210
+    },
+    "withoutTranscripts": {
+     "batches": 70,
+     "removed": 1383,
+     "msMedian": 3737,
+     "msMax": 4269
+    },
+    "archives": {
+     "n": 150,
+     "mb": 60.3,
+     "unpublished": 0
+    },
+    "publishErrors": [],
+    "batchesWithError": 0,
+    "remainingNightShift": 2334,
+    "ftsRows": 140113,
+    "lock": {
+     "label": "retire",
+     "probes": 1690,
+     "waitMaxMs": 4139,
+     "waitP99Ms": 3242,
+     "over1s": 77,
+     "over5s": 0
+    }
+   },
+   "reads.afterRetire": {
+    "rows": 3621,
+    "entryJsonMB": 234,
+    "fullProjectionMs": 2460,
+    "listProjectionMs": 150
+   }
+  },
+  "candidate-6002c0e6-7aee-45d4-bc17-2fe4d6cb3d64": {
+   "fixture": {
+    "bytes": 782925824,
+    "ms": 29830
+   },
+   "reads.before": {
+    "rows": 5164,
+    "entryJsonMB": 336,
+    "fullProjectionMs": 3441,
+    "listProjectionMs": 178
+   },
+   "retire.plan": {
+    "retireDays": 3,
+    "ageBuckets": {
+     "d3": 3273,
+     "d7": 1543,
+     "d14": 38,
+     "total": 3877
+    },
+    "candidates": 3273,
+    "withTranscriptInFixture": 150,
+    "batch": 2,
+    "pauseMs": 500
+   },
+   "retire.result": {
+    "totalMs": 3456800,
+    "withTranscripts": {
+     "batches": 75,
+     "removed": 150,
+     "msMedian": 3132,
+     "msMax": 4287
+    },
+    "withoutTranscripts": {
+     "batches": 1562,
+     "removed": 3123,
+     "msMedian": 1547,
+     "msMax": 2622
+    },
+    "archives": {
+     "n": 150,
+     "mb": 60.3,
+     "unpublished": 0
+    },
+    "publishErrors": [],
+    "batchesWithError": 0,
+    "remainingNightShift": 604,
+    "ftsRows": 127123,
+    "lock": {
+     "label": "retire",
+     "probes": 36176,
+     "waitMaxMs": 1741,
+     "waitP99Ms": 1036,
+     "over1s": 596,
+     "over5s": 0
+    }
+   },
+   "reads.afterRetire": {
+    "rows": 1891,
+    "entryJsonMB": 124,
+    "fullProjectionMs": 1338,
+    "listProjectionMs": 114
+   }
+  },
+  "candidate-d157231f-32a9-412f-bef0-88147caa1082": {
+   "fixture": {
+    "bytes": 782925824,
+    "ms": 32151
+   },
+   "reads.before": {
+    "rows": 5164,
+    "entryJsonMB": 336,
+    "fullProjectionMs": 3743,
+    "listProjectionMs": 219
+   },
+   "script.preview": {
+    "status": 0,
+    "ms": 4287,
+    "plan": {
+     "at": "2026-10-20T07:08:28.364Z",
+     "event": "plan",
+     "apply": false,
+     "agent": "makaron",
+     "olderThanDays": 3,
+     "nightShiftSessions": 3877,
+     "candidates": 3204,
+     "selected": 3204,
+     "linkedToDoneCard": 3204,
+     "skipped": {
+      "recent": 565,
+      "running": 0,
+      "cardOpen": 108
+     },
+     "batch": 2,
+     "pauseMs": 1000
+    }
+   },
+   "script.apply": {
+    "status": 0,
+    "ms": 61339,
+    "done": {
+     "at": "2026-10-20T07:09:29.662Z",
+     "event": "done",
+     "removed": 40,
+     "batches": 20,
+     "backoffs": 0,
+     "publishPending": 0,
+     "minutes": 0.9
+    },
+    "batchMsMedian": 1941,
+    "batchMsMax": 3083,
+    "lock": {
+     "label": "script",
+     "probes": 703,
+     "waitMaxMs": 1936,
+     "waitP99Ms": 1134,
+     "over1s": 20,
+     "over5s": 0
+    }
+   }
+  },
+  "candidate-b245a212-875d-47a1-a3c8-dba76f9145e1": {
+   "reads.before": {
+    "rows": 5164,
+    "entryJsonMB": 336,
+    "fullProjectionMs": 3575,
+    "listProjectionMs": 183
+   },
+   "cleanup.dryRun": {
+    "status": 0,
+    "ms": 20718,
+    "summary": {
+     "beforeCount": 5164,
+     "afterCount": 5063,
+     "pruned": 101,
+     "capped": 0,
+     "missing": 0,
+     "diskBudget": {
+      "totalBytesBefore": 784380216,
+      "totalBytesAfter": 784380216,
+      "removedFiles": 0,
+      "removedEntries": 0,
+      "freedBytes": 0,
+      "maxBytes": 51539607552,
+      "highWaterBytes": 41231686041,
+      "overBudget": false
+     },
+     "wouldMutate": true
+    },
+    "lock": {
+     "label": "dry-run",
+     "probes": 375,
+     "waitMaxMs": 19,
+     "waitP99Ms": 1,
+     "over1s": 0,
+     "over5s": 0
+    }
+   },
+   "cleanup.enforce": {
+    "status": 0,
+    "ms": 101905,
+    "summary": {
+     "beforeCount": 5164,
+     "afterCount": 5063,
+     "pruned": 101,
+     "capped": 0,
+     "appliedCount": 5063,
+     "diskBudget": {
+      "totalBytesBefore": 802011602,
+      "totalBytesAfter": 802011602,
+      "removedFiles": 0,
+      "removedEntries": 0,
+      "freedBytes": 0,
+      "maxBytes": 51539607552,
+      "highWaterBytes": 41231686041,
+      "overBudget": false
+     }
+    },
+    "lock": {
+     "label": "enforce",
+     "probes": 632,
+     "waitMaxMs": 49761,
+     "waitP99Ms": 18,
+     "over1s": 5,
+     "over5s": 3
+    }
+   },
+   "reads.afterOfficialCleanup": {
+    "rows": 5063,
+    "entryJsonMB": 329,
+    "fullProjectionMs": 3525,
+    "listProjectionMs": 220
+   },
+   "retire.plan": {
+    "retireDays": 7,
+    "ageBuckets": {
+     "d3": 3256,
+     "d7": 1543,
+     "d14": 38,
+     "total": 3877
+    },
+    "candidates": 1505,
+    "withTranscriptInFixture": 112,
+    "batch": 20,
+    "pauseMs": 200
+   }
+  }
+ }
+}

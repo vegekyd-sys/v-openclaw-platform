@@ -1,0 +1,19 @@
+{
+  "support": [
+    "lab/candidate/nightshift-session-retire.mjs",
+    "scripts/retire-nightshift-sessions.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "--expose-gc",
+    "lab/candidate/nightshift-session-retire.mjs"
+  ],
+  "timeoutSeconds": 14400,
+  "env": {
+    "FIXTURE_DIR": "/var/tmp/gwstall",
+    "RETIRE_DAYS": "7",
+    "BATCH": "20",
+    "PAUSE_MS": "200",
+    "STEPS": "cleanup,retire"
+  }
+}
