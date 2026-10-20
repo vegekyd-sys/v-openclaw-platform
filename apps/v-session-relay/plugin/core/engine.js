@@ -10,7 +10,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import {
   DEFERRED_MEMORY_FLUSH, RESTART_WEDGE_RE, SEND_SETTLED_PHASES, SEND_TERMINAL_PHASES, TASK_REGISTRY_BRIDGE, TIMEOUTS,
-  bridgeChannelOf, feishuPostUuid, isBridgeError, messageSha256, newBatchId, newChainId, newCode, newSendId, parseInterSessionRunId,
+  bridgeChannelOf, feishuPostUuid, isBridgeError, isCoreRestartResumeProvenance, messageSha256, newBatchId, newChainId, newCode, newSendId, parseInterSessionRunId,
   runIdFor, sendContentKey, validateSendParams, validateStartOutcome,
 } from "./contracts.js";
 import {
@@ -1586,6 +1586,9 @@ export function transcriptReplyOf(messages, kind, id) {
   for (let i = start + 1; i < messages.length; i += 1) {
     const m = messages[i];
     if (roleOf(m) === "user") {
+      // The core's restart recovery resumes this same turn with its own user message: the answer
+      // after it is still this request's answer (a recovery run followed by recovery.js).
+      if (isCoreRestartResumeProvenance(provenanceOf(m))) continue;
       const origin = provenanceOf(m)?.originSessionId;
       if (!(typeof origin === "string" && origin.startsWith("v-a2a:") && origin.endsWith(`:${id}`))) break;
       continue;

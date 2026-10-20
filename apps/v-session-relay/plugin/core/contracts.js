@@ -159,6 +159,15 @@ export const BATCH_TERMINAL_PHASES = Object.freeze(["woken", "skipped"]);
 /** Error text of a run that died across a restart while recovery owned the session (memory v-restart-recovery-wedge). */
 export const RESTART_WEDGE_RE = /restart recovery claim changed/u;
 
+/**
+ * The core's restart recovery resumes an interrupted turn with a user message of its own: 9.1
+ * main-session-restart-recovery dispatches "agent" with inputProvenance { kind: "internal_system",
+ * sourceTool: "main_session_restart_recovery" } (input-provenance MAIN_SESSION_RESTART_RECOVERY_SOURCE_TOOL).
+ * That message continues the same turn; the answer after it is the turn's answer (§6.3).
+ */
+export const CORE_RESTART_RESUME_PROVENANCE = Object.freeze({ kind: "internal_system", sourceTool: "main_session_restart_recovery" });
+export const isCoreRestartResumeProvenance = (p) => p?.kind === CORE_RESTART_RESUME_PROVENANCE.kind && p?.sourceTool === CORE_RESTART_RESUME_PROVENANCE.sourceTool;
+
 // ---------------------------------------------------------------- default limits (§3.10 configSchema)
 
 export const DEFAULT_LIMITS = Object.freeze({

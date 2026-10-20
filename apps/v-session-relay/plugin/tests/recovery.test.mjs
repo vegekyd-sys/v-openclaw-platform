@@ -124,6 +124,59 @@ test("recovery: running with a core restart-recovery run — follow it and take 
   } finally { await w.close(); }
 });
 
+test("recovery: the core's recovery run answers after its own resume message — that answer is handed back (e2e-r2 F5)", async () => {
+  // Telegram candidate 2026-10-20 (docs/inter-session/e2e-e2e-r2.md F5): the core resumed the killed turn
+  // with "Your previous turn was interrupted by a gateway restart…" (provenance internal_system /
+  // main_session_restart_recovery), the recovery run answered in the target chat, and the requester was
+  // told "没有文字结果" because the reply search stopped at that untagged user message.
+  const w = await createWorld({ ledger: crash("running"), bridge: { holdRuns: true } });
+  try {
+    await w.send(DM, X, "跑到一半被重启", { runId: "rA" });
+    w.endRun("rA", DM);
+    const rec = only(w);
+    await waitFor(() => w.ledger.dead);
+    const runId = startOf(w, "request", rec.sendId)[0].args.runId;
+    w.entries.set(X, { restartRecoveryDeliverySourceRunId: runId, restartRecoveryDeliveryRunId: "core-recovery-2" });
+    w.busy.add(X);
+    await w.restart();
+    await waitFor(() => w.rec(rec.sendId).targetRun.recoveryRunId === "core-recovery-2", { what: "following the core run" });
+    const t = w.transcripts.get(X);
+    t.push({ role: "assistant", content: [{ type: "toolCall", name: "exec" }] });
+    t.push({ role: "toolResult", content: [{ type: "text", text: "interrupted" }] });
+    t.push({ role: "user", content: "[System] Your previous turn was interrupted by a gateway restart …", provenance: { kind: "internal_system", sourceSessionKey: X, sourceTool: "main_session_restart_recovery" } });
+    t.push({ role: "assistant", content: [{ type: "text", text: "F5_RESULT 恢复回合的答复" }] });
+    w.busy.delete(X);
+    w.endRun("core-recovery-2", X);
+    await settledOnce(w, rec.sendId, { wakeText: /F5_RESULT 恢复回合的答复/u });
+    const r = w.rec(rec.sendId);
+    assert.equal(r.result.source, "transcript");
+    assert.equal(r.result.noReply, false, "not 没有文字结果");
+    assert(!handbacks(w).some((p) => p.text.includes("没有文字结果")), "the hand-back line does not claim an empty result");
+  } finally { await w.close(); }
+});
+
+test("recovery: an untagged person message after the request still ends the request's reply", async () => {
+  const w = await createWorld({ ledger: crash("running"), bridge: { holdRuns: true } });
+  try {
+    await w.send(DM, X, "被真人插话", { runId: "rA" });
+    w.endRun("rA", DM);
+    const rec = only(w);
+    await waitFor(() => w.ledger.dead);
+    const runId = startOf(w, "request", rec.sendId)[0].args.runId;
+    w.entries.set(X, { restartRecoveryDeliverySourceRunId: runId, restartRecoveryDeliveryRunId: "core-recovery-3" });
+    w.busy.add(X);
+    await w.restart();
+    await waitFor(() => w.rec(rec.sendId).targetRun.recoveryRunId === "core-recovery-3", { what: "following the core run" });
+    const t = w.transcripts.get(X);
+    t.push({ role: "user", content: "真人的新问题" });
+    t.push({ role: "assistant", content: [{ type: "text", text: "给真人的回答" }] });
+    w.busy.delete(X);
+    w.endRun("core-recovery-3", X);
+    await settledOnce(w, rec.sendId);
+    assert.equal(w.rec(rec.sendId).result.noReply, true, "a person's turn is never taken as the request's reply");
+  } finally { await w.close(); }
+});
+
 test("recovery: running on a wedged session — interrupted (restart_wedge), wedge note, no re-queue", async () => {
   const w = await createWorld({ ledger: crash("running"), bridge: { holdRuns: true } });
   try {
