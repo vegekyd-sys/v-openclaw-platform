@@ -1,0 +1,55 @@
+{
+  "id": "v-session-relay",
+  "name": "V Session Relay",
+  "description": "Follows the native sessions_send: one Feishu thread card per exchange between two conversations' V's, the requester's closing words posted, replies that survive a Gateway restart.",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "storeDir": {
+        "type": "string"
+      },
+      "owners": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "ownerName": {
+        "type": "string"
+      },
+      "agentNames": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "maxChain": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50
+      },
+      "pollMs": {
+        "type": "integer",
+        "minimum": 200,
+        "maximum": 60000
+      },
+      "waitSliceMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 3600000
+      },
+      "maxWaitMs": {
+        "type": "integer",
+        "minimum": 60000,
+        "maximum": 172800000
+      },
+      "guidance": {
+        "type": "boolean"
+      }
+    }
+  }
+}

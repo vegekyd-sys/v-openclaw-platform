@@ -163,6 +163,8 @@
         "tests/patch-openclaw-media-completion-relay.test.mjs",
         "tests/media-completion-worker-relay-91.test.mjs",
         "tests/patch-openclaw91-sessions-send-owner.test.mjs",
+        "tests/sessions-send-reply-once.test.mjs",
+        "tests/mcp-after-tool-call.test.mjs",
         "tests/patch-openclaw-session-hotset.test.mjs",
         "tests/prune-openclaw-session-hotset.test.mjs",
         "tests/patch-openclaw91-dingtalk-peer-case.test.mjs",
