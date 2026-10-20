@@ -8,7 +8,8 @@
 //   S1  a person's message still runs the normal stream path (regression);
 //   S2  an inter-session request into that session: the preset runId is adopted (A2), the
 //       run start is reported (A1 on WeCom), the final comes back, the answer goes out as a
-//       new markdown message, and nothing ever answers the synthetic req_id (846605);
+//       new markdown message, nothing ever answers the synthetic req_id (846605), and the
+//       answer carries a check code that is only in channelPromptContext (it reached the model);
 //   S3  the same into a session that never had an inbound (route only from delivery.to).
 // No WP1 core guard here, so BUSY is not exercised (offline test covers the plugin side).
 // Nothing talks to WeCom; no shared VLab channel is connected.
@@ -115,7 +116,7 @@ export default definePluginEntry({
       const req = {
         route: routed.route, sessionKey: params.sessionKey, agentId: "makaron", kind: "request", id: sendId, attempt: 0, ...ids,
         anchorMessageId: post.messageId ?? null, promptText: params.text,
-        channelPromptContext: "[会话协作 #" + code + "] 这是候选测试里的一条会话协作请求。你在这里的最终回复就是交回的结果。",
+        channelPromptContext: "[会话协作 #" + code + "] 这是候选测试里的一条会话协作请求。你在这里的最终回复就是交回的结果。" + (params.contextCode ? "校验码：" + params.contextCode + "。" : ""),
         provenance: { kind: "inter_session", sourceSessionKey: "agent:makaron:feishu:direct:ou_iscwecomsmoke", sourceChannel: "feishu", sourceTool: "sessions_send", originSessionId: C.originSessionIdFor({ chainId, depth: 1, kind: "request", id: sendId }) },
         sender: { id: C.syntheticSenderIdFor(chainId), name: "「candidate」的 V（会话协作）", isOwnerIdentity: false },
         routePeerId: routed.route.peerId,
@@ -219,10 +220,10 @@ const findKeys = (value, out = []) => {
   return out;
 };
 
-async function drive(name, { userId, sessionKey, text, token }) {
+async function drive(name, { userId, sessionKey, text, token, contextCode }) {
   const since = Date.now();
   const respondsBefore = fake.respondAttempts.length;
-  const started = await rpc("iscwecom.drive", { userId, sessionKey, text }, 120_000);
+  const started = await rpc("iscwecom.drive", { userId, sessionKey, text, contextCode }, 120_000);
   const result = started.outcome?.status === "started"
     ? await waitFor(async () => { const r = await rpc("iscwecom.result", { sendId: started.sendId }); return r.run ? r : null; }, 420_000, `${name} done`)
     : started;
@@ -266,8 +267,12 @@ try {
   const keyA = report.scenarios.S1.sessionKeys[0];
 
   // S2: an inter-session request into that session.
+  // The check code is only in channelPromptContext: the answer carries it only if 9.1 put the
+  // context into the prompt (it drops a ChannelPromptContext that is not a string[]).
   const tokenA = `ISC_WECOM_OK_${crypto.randomBytes(3).toString("hex")}`;
-  report.scenarios.S2 = await drive("S2", { userId: "candIscA", sessionKey: keyA, text: `这是一条会话协作测试请求。只回复 ${tokenA}，不要调用任何工具，不要做别的。`, token: tokenA });
+  const contextCode = `CTX${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+  report.scenarios.S2 = await drive("S2", { userId: "candIscA", sessionKey: keyA, text: `这是一条会话协作测试请求。第一行只写 ${tokenA}；第二行原样写出上下文里给你的校验码，没有就写 NONE。不要调用任何工具，不要做别的。`, token: tokenA, contextCode });
+  report.scenarios.S2.contextCode = contextCode;
   try {
     const history = await rpc("chat.history", { sessionKey: keyA, limit: 6 }, 30_000);
     const hits = [];
@@ -333,4 +338,5 @@ if (!report.fatal) {
     assert.equal(r.respondsToSyntheticReqId, 0, `${name}: something answered the synthetic req_id`);
     assert.equal(r.unknownReqIdResponds, 0, `${name}: a reply to an unknown req_id was attempted`);
   }
+  assert(s.S2.run.finals.some((f) => (f.text ?? "").includes(s.S2.contextCode)), `S2: the channelPromptContext did not reach the model ${JSON.stringify(s.S2.run.finals)}`);
 }
