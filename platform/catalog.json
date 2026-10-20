@@ -237,6 +237,8 @@
         "lab/candidate/candidate.test.mjs",
         "lab/candidate/deepseek-budget-image.test.mjs",
         "lab/candidate/completions-overflow-signal.test.mjs",
+        "lab/candidate/inter-session-workspace.test.mjs",
+        "lab/candidate/lark-cli-shim.test.mjs",
         "lab/release-files/codex-plugins-off/config.test.mjs",
         "lab/release-files/web-search-parallel/config.test.mjs",
         "lab/release-files/web-search-deepseek/config.test.mjs",
