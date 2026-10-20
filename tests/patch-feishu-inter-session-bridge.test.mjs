@@ -741,6 +741,50 @@ test("run: the model's current message is the anchor, never the synthetic id; im
   assert.doesNotMatch(dispatcher, /payload\.replyToId/u, "Feishu's own replies never take the payload's reply target");
 });
 
+test("run: a run the core reported on without onAgentRunStart is started; a restart wedge never is; no terminal outcome + a non-error final is ok", async () => {
+  await withMonitor({ accountConfig: { renderMode: "raw" } }, async ({ h, bridge }) => {
+    const route = (await bridge.resolveRoute({ sessionKey: GROUP_KEY, agentId: "makaron", ownerIds: [OWNER] })).route;
+    const notice = "⚠️ Agent failed before reply: Unknown model";
+    const deliverNotice = async (turn) => {
+      const info = { kind: "final" };
+      const payload = { text: notice, isError: true };
+      const result = await turn.delivery.deliver(payload, info);
+      turn.delivery.onDelivered?.(payload, info, result);
+    };
+    // executeAgentTurn failed before its harness took the turn: no onAgentRunStart, an error
+    // notice and terminal outcome "failed". It ran: started (the handler closes the attempt only
+    // after this late start), never GATED.
+    h.core = async (turn) => {
+      await deliverNotice(turn);
+      turn.replyOptions.onAgentRunTerminalOutcome("failed");
+      return { dispatched: true, dispatchResult: { queuedFinal: true, counts: { final: 1 } } };
+    };
+    const req = startRequest(route);
+    const early = await bridge.start(req);
+    assert.deepEqual([early.status, early.runId], ["started", req.runId], "started, never GATED");
+    assert.deepEqual(await early.done, { status: "error", finals: [], visibleReplySent: true, finalCount: 0, error: notice });
+    // the core's terminal outcome alone, nothing shown: still a run
+    h.core = async (turn) => {
+      turn.replyOptions.onAgentRunTerminalOutcome("failed");
+      return { dispatched: true, dispatchResult: { queuedFinal: false, counts: { final: 0 } } };
+    };
+    const bare = await bridge.start(startRequest(route, { attempt: 1 }));
+    assert.equal(bare.status, "started");
+    assert.equal((await bare.done).status, "error");
+    // a restart wedge is RESTART_WEDGE even after a notice was shown (every bridge's rule)
+    h.core = async (turn) => {
+      await deliverNotice(turn);
+      throw new Error("restart recovery claim changed for agent:makaron:feishu:group:oc_7a5c0001");
+    };
+    const wedged = await bridge.start(startRequest(route, { attempt: 2 }));
+    assert.deepEqual([wedged.status, wedged.code], ["rejected", "RESTART_WEDGE"]);
+    // no terminal outcome, but a non-error final: the request's result (the shared RunOutcome rule)
+    h.core = coreRun({ finals: [{ text: "结果全文" }], terminal: null });
+    const run = await (await bridge.start(startRequest(route, { attempt: 3 }))).done;
+    assert.deepEqual([run.status, run.finals, run.error], ["ok", [{ text: "结果全文" }], undefined]);
+  });
+});
+
 test("run: events after done are not the request's; a second run start of the same start is tolerated", async () => {
   await withMonitor({ accountConfig: { renderMode: "raw" } }, async ({ h, bridge }) => {
     const route = (await bridge.resolveRoute({ sessionKey: GROUP_KEY, agentId: "makaron", ownerIds: [OWNER] })).route;

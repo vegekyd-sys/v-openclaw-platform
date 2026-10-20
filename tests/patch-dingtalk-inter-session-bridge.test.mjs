@@ -609,6 +609,20 @@ test("functional: the DingTalk bridge through the generated chunks", async (t) =
     assert.equal((await bridge.start({ ...request(), route: feishuRoute })).code, "ROUTE_MISMATCH");
   });
 
+  await t.test("outcomes: a restart wedge stays RESTART_WEDGE even after the core handed over a notice", async () => {
+    // the late start (an outcome or output without onAgentRunStart) never applies to a wedge,
+    // as in the Feishu, Telegram and WeCom bridges
+    const message = "restart recovery claim changed for agent:makaron:x";
+    state.reset({
+      beforeGuard: async (p) => {
+        await p.dispatcherOptions.deliver({ text: "⚠️ 恢复中", isError: true }, { kind: "final" });
+        p.replyOptions.onAgentRunTerminalOutcome?.("failed");
+        throw new Error(message);
+      },
+    });
+    assert.deepEqual(await bridge.start(request()), { status: "rejected", code: "RESTART_WEDGE", message, started: false });
+  });
+
   await t.test("outcomes: with no terminal outcome a run is ok only with a non-error final, else aborted", async () => {
     // a final answer, but the core reported no terminal outcome: still the request's result
     state.reset({ terminal: null, finals: [{ text: "结果全文" }] });

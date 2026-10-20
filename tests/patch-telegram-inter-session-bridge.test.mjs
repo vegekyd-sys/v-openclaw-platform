@@ -283,6 +283,7 @@ function simulatedPipeline({ helpers, api }) {
         await deliverFinals(step.finals);
         opts.onAgentRunTerminalOutcome?.("failed");
         helpers.vTelegramInterSessionOf(context).noteNotStarted(void 0, (step.finals ?? []).some((p) => p.text));
+        if (step.throwAfterNotStarted) throw new Error(step.throwAfterNotStarted);
         return { kind: "completed" };
       }
       opts.onAgentRunStart(step.reportRunId ?? opts.runId);
@@ -1210,6 +1211,11 @@ test("bridge: with no terminal outcome a run is ok only with a non-error final, 
   const early = await bridge.start(startRequest(route, { attempt: attempt++ }));
   assert.deepEqual([early.status, early.runId], ["started", contracts.runIdFor("request", SEND_ID, attempt - 1)]);
   assert.deepEqual(await early.done, { status: "error", finals: [], visibleReplySent: true, finalCount: 0, error: "⚠️ Unknown model" });
+  // a restart wedge stays RESTART_WEDGE even after the core handed over a notice and an outcome
+  // (the late start never applies to a wedge, as in the Feishu, DingTalk and WeCom bridges)
+  const wedge = "restart recovery claim changed for agent:makaron:telegram:direct:" + OWNER;
+  pipeline.queue({ failBeforeRunStart: true, finals: [{ text: "⚠️ 恢复中", isError: true }], throwAfterNotStarted: wedge });
+  assert.deepEqual(await bridge.start(startRequest(route, { attempt: attempt++ })), { status: "rejected", code: "RESTART_WEDGE", message: wedge, started: false });
 });
 
 test("bridge: events after done are not the request's; a second run start of the same start is tolerated", async () => {
