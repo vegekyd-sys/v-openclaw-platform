@@ -133,7 +133,8 @@ async function runInCandidate() {
         }
         r.endedAt = iso(Date.now());
         r.durationMs = Date.now() - t0;
-        r.log = cand.logSince(mark, /inter-session|v-session-relay|vrelay|sessions_send|restart recovery|BUSY|busy|error|Error|warn/u, 120);
+        r.log = cand.logSince(mark, /inter-session|v-session-relay|vrelay|sessions_send|restart recovery|BUSY|busy|Error:|warn/u, 120);
+        r.taskStatus = cand.logSince(mark, /task-status card=/u, 60);
         r.inCandidate = r.checks.every((c) => c.ok) && !r.error ? "pass" : "fail";
         if (def.env) { try { await cand.stop(); await cand.start(); step("gateway restarted without scenario env"); } catch (e) { r.restoreError = redact(e?.message ?? e).slice(0, 300); } }
         step(`scenario ${tag} ${r.inCandidate}`, { failed: r.checks.filter((c) => !c.ok).map((c) => c.id) });
@@ -242,6 +243,9 @@ function expectTargetSide(r, { send, chat, from, to, icon = "📨", tagIncludes 
   rb(r, { id: `one-anchor-${label(chat) ?? chat}`, chat, kind: "count", from, to, textRe: `#${send.code}(\\D|$)`, startsWithAny: ["📨", "❓"], equals: anchors });
 }
 
+/** A transcript message of the synthetic turn tagged `:<kind>:<id>` (role-agnostic: chat.history shows it as the requester V speaking). */
+const isInter = (m, frag) => m?.provenance?.kind === "inter_session" && String(m.provenance.originSessionId ?? "").includes(frag);
+
 function preset(kind, s) { return `v-a2a-${{ request: "req", ask: "ask", collect: "col" }[kind]}-${s.sendId}-${s.attempt}`; }
 
 const dmPrompt = (tag, body) => `【跨会话测试 ${tag}】${body}（这是 V 的自动化测试，内容不重要；回复里带上 ${tag}。）`;
@@ -250,7 +254,10 @@ const keyLine = (chat) => `「${label(chat)}」（sessionKey: ${groupKey(chat)}�
 // ---------------------------------------------------------------- the generic async F2 flow
 async function asyncSingle(ctx, { target = GROUP_B, work, settleMs = 600_000, extraChecks, anchors = 1 } = {}) {
   const { cand, r, tag, t0 } = ctx;
-  const text = dmPrompt(tag, `请让${keyLine(target)}里的 V ${work ?? `用 exec 执行 \`sleep 75 && date\`，然后把输出的时间连同 ${tag} 回复出来`}。它做完后把结果告诉我。`);
+  // A hand-off in Tianyi's words: "交给…" (no instruction about waiting or ending the turn; the tool
+  // description, the result note and AGENTS decide that). Asking "做完告诉我" instead makes models
+  // pick an inline wait (run 7d319a1e: timeoutSeconds=120, tail 81 s), which is allowed but is not F2.
+  const text = dmPrompt(tag, `把这件事交给${keyLine(target)}里的 V：${work ?? `用 exec 执行 \`sleep 75 && date\`，然后把输出的时间连同 ${tag} 回复出来`}。`);
   const ev = await cand.dm(text);
   r.evidence.injected = [{ chat: DM_CHAT, messageId: ev.messageId, at: iso(ev.at) }];
   const [send] = await waitSends(cand, { since: t0, targets: [groupKey(target)] });
@@ -275,9 +282,9 @@ async function asyncSingle(ctx, { target = GROUP_B, work, settleMs = 600_000, ex
   check(r, "batch-woken-once", b?.phase === "woken" && b.wake?.attempt === 0 && Boolean(b.wake?.startedAt), b?.wake);
   check(r, "requester-tail-under-60s", Number.isFinite(r.requesterTailMs) && r.requesterTailMs < 60_000, r.requesterTailMs);
   check(r, "requester-no-sleep-or-poll", !reqTools.some((t) => (t.command && S.SLEEP_RE.test(t.command)) || /sessions_history|session_status/u.test(t.name)), reqTools.map((t) => t.name + (t.command ? `:${t.command.slice(0, 60)}` : "")));
-  const wakeUser = Array.isArray(dmHist) ? dmHist.filter((m) => m.role === "user" && m.provenance?.kind === "inter_session" && String(m.provenance?.originSessionId ?? "").includes(`:wake:${b?.batchId}`)) : [];
+  const wakeUser = Array.isArray(dmHist) ? dmHist.filter((m) => isInter(m, `:wake:${b?.batchId}`)) : [];
   check(r, "one-wake-turn-in-requester-transcript", wakeUser.length === 1, wakeUser.length);
-  const tgtUser = Array.isArray(tgtHist) ? tgtHist.filter((m) => m.role === "user" && String(m.provenance?.originSessionId ?? "").includes(`:${s.sendId}`)) : [];
+  const tgtUser = Array.isArray(tgtHist) ? tgtHist.filter((m) => isInter(m, `:req:${s.sendId}`)) : [];
   check(r, "one-request-turn-in-target-transcript", tgtUser.length === 1, tgtUser.length);
   expectTargetSide(r, { send: s, chat: target, from: t0, to: end, tagIncludes: [tag], anchors });
   expectHandback(r, { batch: b, sends: [s], from: s.createdAt, to: end });
@@ -372,7 +379,7 @@ const SCENARIOS = {
     r.evidence.transcripts = { dm: dmHist, groupB: bHist };
     r.requesterTailMs = S.requesterTailMs(s, b);
     const humanIdx = bHist.findIndex((m) => m.role === "user" && m.text.includes(`${tag}-H`));
-    const reqIdx = bHist.findIndex((m) => m.role === "user" && String(m.provenance?.originSessionId ?? "").includes(`:${s.sendId}`));
+    const reqIdx = bHist.findIndex((m) => isInter(m, `:req:${s.sendId}`));
     const humanTurn = bHist.slice(humanIdx, reqIdx > humanIdx ? reqIdx : undefined);
     const humanEnd = Math.max(...humanTurn.filter((m) => m.role === "assistant").map((m) => m.atMs).filter(Number.isFinite));
     r.evidence.humanTurnEndedAt = iso(humanEnd);
@@ -380,7 +387,7 @@ const SCENARIOS = {
     check(r, "collab-started-after-human-turn", s.targetRun?.startedAt > humanEnd, { started: iso(s.targetRun?.startedAt), humanEnd: iso(humanEnd) });
     check(r, "runId-is-preset", s.targetRun?.runId === preset("request", s), { runId: s.targetRun?.runId, attempt: s.attempt });
     check(r, "human-turn-transcript-without-request", humanIdx >= 0 && reqIdx > humanIdx && !humanTurn.some((m) => m.text.includes(`${tag} 收到`) && m.role === "user"), { humanIdx, reqIdx });
-    const reqUsers = bHist.filter((m) => m.role === "user" && String(m.provenance?.originSessionId ?? "").includes(`:${s.sendId}`));
+    const reqUsers = bHist.filter((m) => isInter(m, `:req:${s.sendId}`));
     check(r, "no-extra-user-messages", reqUsers.length === 1, reqUsers.length);
     check(r, "handed-back", s.phase === "handed_back", s.phase);
     expectTargetSide(r, { send: s, chat: GROUP_B, from: t0, to: end });
@@ -447,6 +454,7 @@ const SCENARIOS = {
   // ---- F7: fan-out 3 + fan-in
   F7: { async run(ctx) {
     const { cand, r, tag, t0 } = ctx;
+    const mark0 = cand.mark();
     const ev = await cand.dm(dmPrompt(tag, `把下面三件事分别交给三个测试房间（都不用等，同一轮交出去）：${keyLine(ROOMS[0])}：用一句话解释什么是 CRDT，开头写 ${tag}-a；${keyLine(ROOMS[1])}：列出三种排序算法的名字，开头写 ${tag}-b；${keyLine(ROOMS[2])}：用 exec 执行 \`sleep 40 && date\` 后回复时间，开头写 ${tag}-c。三个都回来后汇总告诉我`));
     r.evidence.injected = [{ chat: DM_CHAT, messageId: ev.messageId, at: iso(ev.at) }];
     const sends = await waitSends(cand, { since: t0, targets: ROOM_KEYS, n: 3 });
@@ -465,12 +473,17 @@ const SCENARIOS = {
     check(r, "three-sends-one-batch", ss.length === 3 && batchIds.length === 1 && b?.members?.length === 3, { batchIds, members: b?.members });
     check(r, "all-handed-back", ss.every((s) => s.phase === "handed_back"), ss.map((s) => s.phase));
     check(r, "one-wake", b?.phase === "woken" && b.wake?.attempt === 0, b?.wake);
-    const wakeUsers = dmHist.filter((m) => m.role === "user" && String(m.provenance?.originSessionId ?? "").includes(":wake:"));
+    const wakeUsers = dmHist.filter((m) => isInter(m, ":wake:"));
     check(r, "one-wake-turn", wakeUsers.length === 1, wakeUsers.length);
     check(r, "wake-prompt-lists-three", wakeUsers.length === 1 && ["-a", "-b", "-c"].every((x) => wakeUsers[0].text.includes(`${tag}${x}`)), wakeUsers[0]?.text?.slice(0, 400));
     ss.forEach((s, i) => expectTargetSide(r, { send: s, chat: ROOMS[ROOM_KEYS.indexOf(s.target.sessionKey)] ?? ROOMS[i], from: t0, to: end }));
     expectHandback(r, { batch: b, sends: ss, from: Math.min(...ss.map((s) => s.createdAt)), to: end, single: false });
-    rb(r, { id: "background-row-showed-session-requests (watch)", chat: DM_CHAT, kind: "everText", from: t0, to: b?.wake?.startedAt ?? end, includesAll: ["会话请求"], optional: true });
+    // the requester card's background row, as the Feishu plugin logs every line it writes (card text is
+    // not readable through the user API: "请升级至最新版本客户端")
+    const rows = cand.logSince(mark0, /task-status card=/u, 80);
+    r.evidence.taskStatus = rows;
+    check(r, "background-row-counted-3-session-requests", rows.some((l) => /会话请求 ?3|3 项进行中/u.test(l)), rows.slice(0, 6));
+    check(r, "background-row-ended", rows.some((l) => /后台任务已结束/u.test(l)), rows.slice(-3));
   } },
 
   // ---- F8: induced loop: group B and room 1 "confirm each other 10 times"
@@ -543,7 +556,7 @@ const SCENARIOS = {
     const fakeSent = (s.message?.text ?? "").includes("sk-isctest");
     check(r, "requester-passed-the-fake-key", fakeSent, fakeSent);
     check(r, "fake-key-hidden-in-visible-text", !fakeSent || ((s.message?.redactions ?? 0) >= 1 && !s.message?.visibleText?.includes("sk-isctest") && s.message?.visibleText?.includes("‹已隐去›")), { redactions: s.message?.redactions });
-    const req = tHist.find((m) => m.role === "user" && String(m.provenance?.originSessionId ?? "").includes(`:${s.sendId}`));
+    const req = tHist.find((m) => isInter(m, `:req:${s.sendId}`));
     check(r, "model-got-full-text", Boolean(req) && (!fakeSent || req.text.includes("sk-isctest")) && req.text.length >= (s.message?.chars ?? 0) * 0.9, { len: req?.text?.length });
     expectTargetSide(r, { send: s, chat: ROOMS[0], from: t0, to: end });
     rb(r, { id: "anchor-hides-fake-key", chat: ROOMS[0], kind: "message", messageId: s.request?.messageId, excludesAll: ["sk-isctest"], includesAll: fakeSent ? ["‹已隐去›"] : [] });
@@ -591,7 +604,7 @@ const SCENARIOS = {
     const res = S0.result?.text ?? "";
     check(r, "a-gets-the-summary", ["-a", "-b", "-c"].every((x) => res.includes(`${tag}${x}`)), res.slice(0, 500));
     check(r, "a-woken-once", bTop?.phase === "woken" && bTop.wake?.attempt === 0, bTop?.wake);
-    const aWake = dmHist.filter((m) => m.role === "user" && String(m.provenance?.originSessionId ?? "").includes(`:wake:${bTop?.batchId}`));
+    const aWake = dmHist.filter((m) => isInter(m, `:wake:${bTop?.batchId}`));
     check(r, "one-wake-turn-in-dm", aWake.length === 1, aWake.length);
     expectTargetSide(r, { send: S0, chat: GROUP_B, from: t0, to: end });
     RS.forEach((x) => expectTargetSide(r, { send: x, chat: ROOMS[ROOM_KEYS.indexOf(x.target.sessionKey)], from: t0, to: end, tagIncludes: ["经「"] }));
@@ -733,7 +746,7 @@ async function raceScenario(ctx, competitor) {
   else r.evidence.observation = s.attempt >= 1 ? "BUSY then retry (as the design expects)" : "no BUSY: the Feishu per-chat FIFO ran the human turn first and the start waited behind it";
   check(r, "retry-ran-with-its-own-runId", s.targetRun?.runId === preset("request", s), { runId: s.targetRun?.runId, attempt: s.attempt });
   check(r, "handed-back", s.phase === "handed_back", s.phase);
-  const reqUsers = bHist.filter((m) => m.role === "user" && String(m.provenance?.originSessionId ?? "").includes(`:${s.sendId}`));
+  const reqUsers = bHist.filter((m) => isInter(m, `:req:${s.sendId}`));
   check(r, "one-request-user-message", reqUsers.length === 1, reqUsers.length);
   const nextUser = bHist.find((m) => m.role === "user" && m.text.includes(`${tag}-N`));
   check(r, "next-human-prompt-without-request", Boolean(nextUser) && !nextUser.text.includes(`${tag} 收到`), nextUser?.text?.slice(0, 300));
@@ -798,7 +811,7 @@ async function crashScenario(ctx, phase) {
   r.evidence.sends = [reduceSend(s)];
   r.evidence.batches = [reduceBatch(b)];
   r.evidence.transcripts = { dm: dmHist, groupB: await transcript(cand, B_KEY, t0) };
-  const wakes = dmHist.filter((m) => m.role === "user" && String(m.provenance?.originSessionId ?? "").includes(`:wake:${b?.batchId}`));
+  const wakes = dmHist.filter((m) => isInter(m, `:wake:${b?.batchId}`));
   check(r, "wake-at-most-once", wakes.length <= 1 && (b?.phase === "woken" || b?.phase === "skipped"), { wakes: wakes.length, batch: b?.phase });
   check(r, "send-closed", TERMINAL.includes(s.phase), s.phase);
   window(r, GROUP_B, t0, end);
@@ -948,7 +961,7 @@ async function controlScenario(ctx, kind, { fallback = false } = {}) {
     ? dmPrompt(tag, `用 sessions_send 当场问${keyLine(GROUP_B)}里的 V（timeoutSeconds=120，等它回答）：给「v2.3 上线通知」起一个 10 字以内的标题，回答开头写上 ${tag}。拿到回答后把标题告诉我`)
     : kind === "busy"
       ? dmPrompt(tag, `请让${keyLine(GROUP_B)}里的 V 回复一句「${tag} 收到」（不用等它，交出去就行）`)
-      : dmPrompt(tag, `请让${keyLine(GROUP_B)}里的 V 用 exec 执行 \`sleep 75 && date\`，然后把输出的时间连同 ${tag} 回复出来。它做完后把结果告诉我`);
+      : dmPrompt(tag, `把这件事交给${keyLine(GROUP_B)}里的 V：用 exec 执行 \`sleep 75 && date\`，然后把输出的时间连同 ${tag} 回复出来。`);
   const ev = await cand.dm(text);
   (r.evidence.injected ??= []).push({ chat: DM_CHAT, messageId: ev.messageId, at: iso(ev.at) });
   // the requester's turn: wait until the DM transcript shows a sessions_send result and the turn is quiet
