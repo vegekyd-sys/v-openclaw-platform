@@ -66,7 +66,8 @@ export function F1(env, { target = "gv", requester = "dm", vdsSide = "target", i
     const reply = await h.waitItem(reqChat, t0, new RegExp(answer), 300_000, `${id} requester reply`).catch(() => null);
     await sleep(5000);
     const anchor = h.anchors(chat, t0, rec.code);
-    const targetReplies = h.items(chat, t0).filter((m) => String(m.text).includes(answer) && !anchor.includes(m));
+    const anchorIds = new Set(anchor.map((m) => m.id));
+    const targetReplies = h.items(chat, t0).filter((m) => String(m.text).includes(answer) && !anchorIds.has(m.id));
     const dmTools = toolsBetween((await transcript(rpc, ad.keys[requester])).items, t0);
     const users = await h.interSessionUsers(key, "request", rec.sendId);
     const row = await sessionRow(rpc, ad.keys[vdsSide === "requester" ? requester : target]);
@@ -96,6 +97,8 @@ export function F1(env, { target = "gv", requester = "dm", vdsSide = "target", i
 }
 
 // ---------------------------------------------------------------- F2 async, long target
+/** The F2 work: exec, read, exec, so a progress view changes while the target works (≈ the sum of the sleeps). */
+export const F2_TASK = (sleeps, result) => `先用 exec 工具运行 sleep ${sleeps[0]}，再用 read 工具读取 AGENTS.md 的前 5 行，再用 exec 工具运行 sleep ${sleeps[1]}（分三次调用，每次都等它结束），然后只回复 ${result}`;
 export function F2(env, { target = "ga", id = "F2", sleeps = [35, 40] } = {}) {
   const sleepSecs = sleeps.reduce((a, b) => a + b, 0);
   const { ctx, gw, rpc, ledger, ad } = env;
@@ -107,7 +110,7 @@ export function F2(env, { target = "ga", id = "F2", sleeps = [35, 40] } = {}) {
     await h.idle(key);
     const t0 = Date.now();
     const result = `${id}_RESULT_${ctx.tag}`;
-    h.ask(asyncAsk(ctx.tag, id, key, `${sleeps.map((n, i) => `${i ? "再" : "先"}用 exec 工具运行 sleep ${n}`).join("，")}（分开调用，每次都必须等它结束），然后只回复 ${result}`, result));
+    h.ask(asyncAsk(ctx.tag, id, key, F2_TASK(sleeps, result), result));
     const first = await waitSend(gw, ledger, t0, (r) => r.target?.sessionKey === key, 300_000, `${id} send`);
     const rec = await h.settled(first.sendId, ["handed_back", "cancelled", "skipped"], 600_000, `${id} handed back`);
     const batch = await h.woken(rec.batchId, 300_000, `${id} batch woken`);
@@ -117,12 +120,13 @@ export function F2(env, { target = "ga", id = "F2", sleeps = [35, 40] } = {}) {
     const dmItems = (await transcript(rpc, ad.keys.dm)).items;
     const toolsBeforeSeal = toolsBetween(dmItems, t0, batch.sealedAt ?? Infinity);
     const anchor = h.anchors(chat, t0, rec.code);
-    const after = h.items(chat, t0).filter((m) => m.at >= (anchor[0]?.at ?? 0) && !anchor.includes(m));
+    const anchorIds = new Set(anchor.map((m) => m.id));
+    const after = h.items(chat, t0).filter((m) => m.at >= (anchor[0]?.at ?? 0) && !anchorIds.has(m.id));
     const targetFinal = after.filter((m) => String(m.text).includes(result));
     const wakeUsers = await h.interSessionUsers(ad.keys.dm, "wake", batch.batchId);
     const users = await h.interSessionUsers(key, "request", rec.sendId);
     const tailMs = (batch.sealedAt ?? Infinity) - rec.createdAt;
-    const dmAfterHb = h.items(ad.chats.dm, hb.at).filter((m) => m !== hb && m.id !== hb.id);
+    const dmAfterHb = h.items(ad.chats.dm, hb.at).filter((m) => m.id !== hb.id);
     ctx.summary.harness.requesterTailMs = { ...(ctx.summary.harness.requesterTailMs ?? {}), [`${ad.name}:${id}`]: tailMs };
     const info = { id, t0, rec, batch, hb, anchor, after, targetFinal, wakeReply };
     evidence(id, "send", sendEvidence(rec));
@@ -183,12 +187,13 @@ export function F3(env, { target = "ga", id = "F3", personSleepSecs = 20 } = {})
     const personFinalAt = Math.min(...personFinals.map((m) => m.at));
     // The person's turn's own progress draft: created after the person wrote, removed when that turn answered.
     const endOf = (m) => Math.max(m.at, ...(m.history ?? []).map((x) => x.at ?? 0));
-    const personDrafts = h.items(chat, p.at).filter((m) => m.deleted && !personFinals.includes(m) && Math.abs(endOf(m) - personFinalAt) <= 5000);
+    const finalIds = new Set(personFinals.map((m) => m.id));
+    const personDrafts = h.items(chat, p.at).filter((m) => m.deleted && !finalIds.has(m.id) && Math.abs(endOf(m) - personFinalAt) <= 5000);
     const personItems = [...personFinals, ...personDrafts];
     const personIds = new Set([String(p.id), ...personItems.map((m) => String(m.id))]);
     const windowWrites = busyAt ? ad.writes(chat, startingAt, busyAt + 1500) : [];
     const stray = windowWrites.filter((w) => !personIds.has(String(w.itemId)));
-    const beforeStart = h.items(chat, t0).filter((m) => m !== anchor && m.id !== anchor?.id && m.at < (runningAt ?? Infinity) && !personIds.has(String(m.id)));
+    const beforeStart = h.items(chat, t0).filter((m) => m.id !== anchor?.id && m.at < (runningAt ?? Infinity) && !personIds.has(String(m.id)));
     const items = (await transcript(rpc, key)).items.filter((m) => (m.at ?? 0) >= t0 - 1000);
     const reqUsers = items.filter((m) => m.provenance === "inter_session" && String(m.origin ?? "").endsWith(`:req:${rec.sendId}`));
     const personIdx = items.findIndex((m) => m.role === "user" && m.text.includes(`${ctx.tag}-${id} 真人`));

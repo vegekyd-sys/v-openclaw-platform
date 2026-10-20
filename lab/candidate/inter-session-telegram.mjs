@@ -11,7 +11,7 @@
 import {
   AGENT, BAD_LOG_RE, Gateway, MODELS, applyWorkspace, createRpc, createRun, finish, freeBytes, ledgerOf, sendEvidence, sleep, transcript, verifyOverlay, writeConfig,
 } from "./inter-session-r2-lib.mjs";
-import { C, F1, F2, F3, F5, helpers } from "./inter-session-r2-scenarios.mjs";
+import { C, F1, F2, F2_TASK, F3, F5, helpers } from "./inter-session-r2-scenarios.mjs";
 import { FAKE_BOT_TOKEN, createFakeTelegramBotApi } from "./telegram-fake-bot-api.mjs";
 
 const ctx = createRun("telegram");
@@ -54,7 +54,8 @@ const ad = {
   anchorId: (m) => String(m.id),
   extra: {
     F2: async (env, { id, after, targetFinal }) => {
-      const drafts = after.filter((m) => !targetFinal.includes(m) && m.history.some((x) => x.op === "edit"));
+      const finalIds = new Set(targetFinal.map((m) => m.id));
+      const drafts = after.filter((m) => !finalIds.has(m.id) && m.history.some((x) => x.op === "edit"));
       evidence(id, "draftShape", { target: after.map((m) => opsShape(m)), baseline });
       check(id, drafts.length >= 1, "Telegram draft edits: the target's progress draft changed while it worked (editMessageText)", after.map((m) => ({ id: m.id, ops: opsShape(m), text: m.text.slice(0, 60) })));
       check(id, baseline && JSON.stringify(after.map(opsShape)) === JSON.stringify(baseline), "the same draft sequence as a person's two-tool turn in this chat (baseline)", { target: after.map(opsShape), baseline });
@@ -90,7 +91,7 @@ async function main() {
   // ---- seeds: both groups have sessions; GA records a person's two-tool turn (the draft baseline); GV runs on vds
   {
     const t0 = Date.now();
-    ad.person(CHATS.ga, `【${TAG} 准备】这是自动化测试：先用 exec 运行 sleep 5，再用 exec 运行 sleep 5（分开调用，每次都等它结束），然后只回复 SEED_A_${TAG}`);
+    ad.person(CHATS.ga, `【${TAG} 准备】这是自动化测试：${F2_TASK([5, 5], `SEED_A_${TAG}`)}`);
     const seed = await h.waitItem(CHATS.ga, t0, new RegExp(`SEED_A_${TAG}`), 300_000, "GA seed reply");
     await sleep(3000);
     baseline = items(CHATS.ga, t0).filter((m) => m.at <= seed.at).map(opsShape);
