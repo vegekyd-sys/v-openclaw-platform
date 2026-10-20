@@ -98,7 +98,7 @@ export class Ledger {
     this.batches = new Map();
     this.chains = new Map();
     this.runs = new Map();
-    this.byIdempotencyKey = new Map();
+    this.byIdempotencyKey = new Map(); // idempotencyKey → Set<sendId> (one key may carry several messages)
     this.closed = false;
   }
 
@@ -109,7 +109,21 @@ export class Ledger {
     if (this.bootId === undefined) this.bootId = await readBootId();
     await this.#acquireLock();
     for (const kind of Object.keys(KINDS)) await this.#load(kind);
-    for (const rec of this.sends.values()) if (rec.idempotencyKey) this.byIdempotencyKey.set(rec.idempotencyKey, rec.sendId);
+    for (const rec of this.sends.values()) this.#indexIdempotency(rec);
+  }
+
+  #indexIdempotency(rec) {
+    if (!rec?.idempotencyKey) return;
+    let ids = this.byIdempotencyKey.get(rec.idempotencyKey);
+    if (!ids) { ids = new Set(); this.byIdempotencyKey.set(rec.idempotencyKey, ids); }
+    ids.add(rec.sendId);
+  }
+
+  #unindexIdempotency(key, sendId) {
+    const ids = key ? this.byIdempotencyKey.get(key) : undefined;
+    if (!ids) return;
+    ids.delete(sendId);
+    if (ids.size === 0) this.byIdempotencyKey.delete(key);
   }
 
   async #acquireLock() {
@@ -189,13 +203,13 @@ export class Ledger {
     if (this[kind].has(id)) throw new Error(`${kind} ${id} exists`);
     const stamped = { ...rec, updatedAt: rec.updatedAt ?? this.now() };
     this[kind].set(id, stamped);
-    if (kind === "sends" && stamped.idempotencyKey) this.byIdempotencyKey.set(stamped.idempotencyKey, id);
+    if (kind === "sends") this.#indexIdempotency(stamped);
     try {
       await this.#persist(this.#file(kind, id), stamped, kind);
     } catch (err) {
       if (this[kind].get(id) === stamped) {
         this[kind].delete(id);
-        if (kind === "sends" && this.byIdempotencyKey.get(stamped.idempotencyKey) === id) this.byIdempotencyKey.delete(stamped.idempotencyKey);
+        if (kind === "sends") this.#unindexIdempotency(stamped.idempotencyKey, id);
       }
       throw err;
     }
@@ -273,9 +287,23 @@ export class Ledger {
 
   // ------------------------------------------------------------------ queries (memory only)
 
-  findByIdempotencyKey(key) {
-    const id = key ? this.byIdempotencyKey.get(key) : undefined;
-    return id ? this.sends.get(id) ?? null : null;
+  /**
+   * The send recorded under `key`. With `contentKey`, only a send of that same message (requester,
+   * target, text): providers may reuse toolCallIds, so one key can carry two different sends and a
+   * different message under a known key is a new send, never a repeat (review-core-send).
+   * Without `contentKey`, the first send recorded under the key.
+   */
+  findByIdempotencyKey(key, contentKey) {
+    const ids = key ? this.byIdempotencyKey.get(key) : undefined;
+    if (!ids) return null;
+    let best = null;
+    for (const id of ids) {
+      const rec = this.sends.get(id);
+      if (!rec) continue;
+      if (contentKey !== undefined && rec.contentKey && rec.contentKey !== contentKey) continue;
+      if (!best || rec.createdAt < best.createdAt) best = rec;
+    }
+    return best;
   }
 
   /** An in-flight (non-terminal) send with this content key, created within `windowMs`. */
@@ -324,7 +352,7 @@ export class Ledger {
       await (this.#chains.get(src) ?? Promise.resolve()).catch(() => {});
       try { await fs.rename(src, path.join(dst, `${id}.json`)); } catch (err) { if (err?.code !== "ENOENT") throw err; }
       if (this[kind].get(id) === rec) this[kind].delete(id);
-      if (kind === "sends" && this.byIdempotencyKey.get(rec.idempotencyKey) === id) this.byIdempotencyKey.delete(rec.idempotencyKey);
+      if (kind === "sends") this.#unindexIdempotency(rec.idempotencyKey, id);
       moved += 1;
     };
     for (const rec of [...this.sends.values()]) {

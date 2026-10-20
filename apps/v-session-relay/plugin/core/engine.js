@@ -6,21 +6,23 @@
 //
 // Methods prefixed with `_` are internal but shared with recovery.js and the tests.
 
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import {
   DEFERRED_MEMORY_FLUSH, RESTART_WEDGE_RE, SEND_SETTLED_PHASES, SEND_TERMINAL_PHASES, TASK_REGISTRY_BRIDGE, TIMEOUTS,
-  feishuPostUuid, isBridgeError, messageSha256, newBatchId, newChainId, newCode, newSendId, parseInterSessionRunId,
+  bridgeChannelOf, feishuPostUuid, isBridgeError, messageSha256, newBatchId, newChainId, newCode, newSendId, parseInterSessionRunId,
   runIdFor, sendContentKey, validateSendParams, validateStartOutcome,
 } from "./contracts.js";
 import {
-  acceptedNote, anchorHeadLines, busyLine, dedupeNote, handbackText, inlineExpiredNote, inlineFailedNote, inlineNoReplyNote,
-  inlineOkNote, isQueueLine, queuedLine, reasonText, routeErrorText, targetCancelledNote, targetInterruptedNote,
+  acceptedNote, anchorHeadLines, busyLine, dedupeNote, errorDetail, handbackText, inlineExpiredNote, inlineFailedNote, inlineNoReplyNote,
+  inlineOkNote, isQueueLine, queuedLine, reasonText, routeErrorText, sendFailedText, targetCancelledNote, targetInterruptedNote,
   targetNotStartedNote, targetWedgedNote, truncatedLine, WECOM_LINE, collectAnchorText,
 } from "./copy.js";
 import { isUnsupportedRequester, isUnsupportedTarget } from "./labels.js";
 import { isBatchTerminal, isSendTerminal } from "./ledger.js";
 import { classify, countSend, waitEdges } from "./policy.js";
 import { SessionQueue } from "./queue.js";
-import { failureOfRun, memberItem, outputOf, sendStartRequest, wakeStartRequest } from "./requests.js";
+import { failureOfRun, memberItem, normalizeRunOutcome, outputOf, sendStartRequest, wakeStartRequest } from "./requests.js";
 import { audienceFor, clip, formatForChannel, visibleRequestBody } from "./visible.js";
 
 export const DEFAULT_TIMING = Object.freeze({
@@ -41,6 +43,15 @@ export const DEFAULT_TIMING = Object.freeze({
 
 const ACTIVE_PHASES = Object.freeze(["accepted", "posting", "posted", "queued", "starting", "running", "target_done", "awaiting_children", "awaiting_background"]);
 const BACKGROUND_KINDS = new Set(["exec", "image_generation", "video_generation", "music_generation"]);
+// Never part of W(S) (§5.5): requests to other sessions (rule 1 covers them) and automations.
+const isRequestRow = (t) => t?.taskKind === "sessions_send" || String(t?.taskId ?? "").startsWith("v-a2a:");
+const isCronRow = (t) => t?.runtime === "cron" || t?.taskKind === "cron";
+
+/** Run `fn` in the async context the engine was built in (see `inClean`). */
+function cleanContextRunner() {
+  if (typeof AsyncLocalStorage.snapshot === "function") return AsyncLocalStorage.snapshot();
+  return (fn, ...args) => fn(...args);
+}
 const ENDED_RUNS_MAX = 2000;
 const MAX_REJECTS = 3;
 
@@ -63,6 +74,7 @@ export class Engine {
   constructor({
     ledger, config, routes, bridge, agent, sdk = {}, runtime = {}, logger, now = Date.now, timing = {}, env = process.env,
     taskBridge = () => globalThis[TASK_REGISTRY_BRIDGE], flushSeam = () => globalThis[DEFERRED_MEMORY_FLUSH], onSendChange,
+    cleanContext,
   }) {
     this.ledger = ledger;
     this.config = config;
@@ -79,6 +91,12 @@ export class Engine {
     this.taskBridge = taskBridge;
     this.flushSeam = flushSeam;
     this.onSendChange = onSendChange;
+    // Every bridge / transport call (start, post, edit) runs in the async context the engine was
+    // built in (service start), never in its caller's: vrelay.send can run inside a Telegram
+    // update's frame and lifecycle events inside a person's run, and a synthetic turn started from
+    // there would be charged to that frame — its failure marks the update failed-retryable and the
+    // requester's run is repeated (review-telegram).
+    this.inClean = cleanContext ?? cleanContextRunner();
 
     this.queues = new Map();
     this.running = new Map(); // sessionKey → { kind, id, runId }
@@ -115,6 +133,7 @@ export class Engine {
     const tb = this.taskBridge();
     if (tb?.listeners instanceof Set) {
       this.taskListener = (notice) => {
+        if (notice?.kind === "v-a2a") return; // our own rows changing: not background work
         for (const key of notice?.sessionKeys ?? []) this._backgroundCheckSession(key);
       };
       tb.listeners.add(this.taskListener);
@@ -165,18 +184,56 @@ export class Engine {
 
   // ================================================================== vrelay.send
 
+  /**
+   * vrelay.send (§2.b). Never throws: the core reads a thrown error whose text matches its fallback
+   * regex ("missing scope: operator.admin", "unknown method: vrelay.send") as "plugin absent" and
+   * sends the same request again through v2 (review-core-send). An unexpected failure answers with
+   * the send when it was recorded (it goes ahead; recovery finishes it), else with an error.
+   */
   async send(params) {
+    try {
+      return await this._send(params);
+    } catch (err) {
+      this.logger?.error?.(`v-session-relay: vrelay.send failed: ${err?.stack ?? err}`);
+      return this._sendFailure(params, err);
+    }
+  }
+
+  _sendFailure(params, err) {
+    let rec = null;
+    try {
+      const req = params?.requester;
+      const contentKey = sendContentKey({ requesterSessionKey: req?.sessionKey, targetSessionKey: params?.target?.sessionKey, message: params?.message });
+      rec = this.ledger.findByIdempotencyKey(params?.idempotencyKey, contentKey);
+    } catch { rec = null; }
+    if (!rec || rec.detachedAtAccept) return { status: "error", code: "INTERNAL", error: sendFailedText(err) };
+    try { return this._acceptedResult(rec, {}); } catch { /* the plain answer below */ }
+    return {
+      status: "accepted", sendId: rec.sendId, code: rec.code, label: rec.target.label,
+      runId: runIdFor(rec.kind === "ask" ? "ask" : "request", rec.sendId, 0),
+      targetDisposition: "queued", queuePosition: 0, waitingBehindActiveRun: false,
+      delivery: { status: "pending", mode: "announce" },
+      note: acceptedNote({ to: rec.target.label, code: rec.code, visible: Boolean(rec.target.route) }),
+    };
+  }
+
+  async _send(params) {
     if (!this._alive()) return { status: "fallback", reason: "disabled" };
     const check = validateSendParams(params);
     if (!check.ok) return { status: "error", code: "INTERNAL", error: `vrelay.send: ${check.errors.join("; ")}` };
     if (await this.ledger.isDisabled()) return { status: "fallback", reason: "disabled" };
-    const dup = this.ledger.findByIdempotencyKey(params.idempotencyKey);
-    if (dup) return this._dupResult(dup);
     const req = params.requester;
     const tgt = params.target;
+    const contentKey = sendContentKey({ requesterSessionKey: req.sessionKey, targetSessionKey: tgt.sessionKey, message: params.message });
+    // A repeat is the same key AND the same message: providers may reuse toolCallIds, and a
+    // different message under a known key is a new send, never swallowed (review-core-send).
+    const dup = this.ledger.findByIdempotencyKey(params.idempotencyKey, contentKey);
+    if (dup) return this._dupResult(dup);
+    if (this.ledger.findByIdempotencyKey(params.idempotencyKey)) {
+      this.logger?.warn?.(`v-session-relay: idempotencyKey ${params.idempotencyKey} reused for a different message (toolCallId ${params.toolCallId}); accepted as a new send`);
+    }
     if (isUnsupportedRequester(req.sessionKey)) return { status: "fallback", reason: "unsupported_requester" };
     if (tgt.sessionKey === req.sessionKey || isUnsupportedTarget(tgt.sessionKey)) return { status: "fallback", reason: "unsupported_target" };
-    const contentKey = sendContentKey({ requesterSessionKey: req.sessionKey, targetSessionKey: tgt.sessionKey, message: params.message });
     const same = this.ledger.findInFlightByContent(contentKey, TIMEOUTS.contentDedupeMs);
     if (same) return this._acceptedResult(same, { deduped: true });
 
@@ -188,13 +245,17 @@ export class Engine {
       accepted = await this._withLock("accept", () => this._accept(params, contentKey, routes));
     } catch (err) {
       this.logger?.error?.(`v-session-relay: vrelay.send failed: ${err?.stack ?? err}`);
-      return { status: "error", code: "LEDGER", error: `会话转交没有记下来（${String(err?.message ?? err).slice(0, 80)}），这次没有发出。` };
+      return { status: "error", code: "LEDGER", error: `会话转交没有记下来（${errorDetail(err)}），这次没有发出。` };
     }
     if (accepted.status !== "accepted" || !accepted.rec) return accepted;
     const { rec, ctl } = accepted;
     if (rec.deduped) return rec.sameCall ? this._dupResult(rec.rec) : this._acceptedResult(rec.rec, { deduped: true });
 
-    // Anchor: synchronous up to anchorPostMs, then in the background.
+    // Anchor: synchronous up to anchorPostMs, then in the background; the post itself is never
+    // abandoned or repeated while it is in flight (a WeCom post may take 15 s). A post that fails
+    // as transient after that is posted again with the same idempotencyKey: Feishu (idempotentPost)
+    // dedupes it; DingTalk, WeCom, Telegram and the agent transport cannot, so a post that did land
+    // before failing shows the anchor twice — at least once, the same #code (§7.2, accepted there).
     // A ledger failure from here on leaves the send recorded; recovery finishes it after a restart.
     const posting = this._postAnchor(rec.sendId, ctl).catch((err) => {
       this.logger?.error?.(`v-session-relay: anchor flow for ${rec.sendId} failed: ${err?.message ?? err}`);
@@ -231,7 +292,9 @@ export class Engine {
         return { run, runId, chain, servesSend, principal: chain.principal ?? servesSend?.principal ?? null };
       }
     }
-    const principal = { channel: req.channel ?? null, id: req.senderId ?? null, name: req.senderIsOwner ? this.config.ownerName : "", isOwner: req.senderIsOwner === true };
+    // senderIsOwner null (unknown) is a non-owner, like false (review-core-send).
+    const owner = req.senderIsOwner === true;
+    const principal = { channel: bridgeChannelOf(req.channel ?? null), id: req.senderId ?? null, name: owner ? this.config.ownerName : "", isOwner: owner };
     return { run: null, runId, chain: null, servesSend: null, principal, root: true };
   }
 
@@ -290,7 +353,7 @@ export class Engine {
 
   async _accept(params, contentKey, routes = null) {
     // Re-check under the lock: a concurrent call may have just accepted the same send.
-    const dup = this.ledger.findByIdempotencyKey(params.idempotencyKey);
+    const dup = this.ledger.findByIdempotencyKey(params.idempotencyKey, contentKey);
     if (dup) return { status: "accepted", rec: { deduped: true, sameCall: true, rec: dup } };
     const same = this.ledger.findInFlightByContent(contentKey, TIMEOUTS.contentDedupeMs);
     if (same) return { status: "accepted", rec: { deduped: true, rec: same } };
@@ -498,9 +561,9 @@ export class Engine {
   async _postTo(side, { text, idempotencyKey, replyToMessageId }) {
     if (!side.route || !text) return { messageId: null, skipped: true };
     if (side.transport === "bridge" && side.bridgeKey && this.bridge.get(side.bridgeKey)) {
-      return this.bridge.post(side.bridgeKey, { route: side.route, text, idempotencyKey, ...(replyToMessageId ? { replyToMessageId } : {}) });
+      return this.inClean(() => this.bridge.post(side.bridgeKey, { route: side.route, text, idempotencyKey, ...(replyToMessageId ? { replyToMessageId } : {}) }));
     }
-    return this.agent.post({ route: side.route, text });
+    return this.inClean(() => this.agent.post({ route: side.route, text }));
   }
 
   /** A short note in the target chat replying to the request anchor (§7.4); best effort. */
@@ -696,8 +759,11 @@ export class Engine {
       let rec = this.ledger.getSend(sendId);
       if (!rec) return { status: "failed", code: null, failure: { class: "not_started", reason: "找不到这条请求" }, note: "找不到这条请求；不要重发，先看对方聊天里有没有出现它。" };
       if (rec.phase === "delivered_inline") return this._inlineResult(rec);
+      // Never inline (an inline call deduped onto an async send): its batch hands it back, so the
+      // answer is "expired" at once — never a long poll, never "failed" for a cancelled one (WP2).
+      if (rec.mode !== "inline" || !(rec.inline?.until > 0)) return { status: "expired", code: rec.code, note: dedupeNote({ code: rec.code }) };
+      if (rec.inline.expiredAt) return this._expiredResult(rec);
       if (rec.phase === "skipped" || rec.phase === "cancelled") return this._inlineResult(rec);
-      if (rec.mode !== "inline" || rec.inline.expiredAt) return this._expiredResult(rec);
       if (rec.phase === "result_ready" || rec.phase === "failure_ready") {
         const claimed = await this._claim(sendId);
         if (claimed) return this._inlineResult(claimed);
@@ -823,10 +889,16 @@ export class Engine {
     if (Number.isFinite(ms) && ms > 0) await sleep(ms);
   }
 
+  /**
+   * Start a turn. There is no timeout here on purpose: a bridge's start may wait its turn in the
+   * chat's own queue (Feishu, WeCom: up to ~10 min per task ahead) before it answers busy or
+   * started, and a start abandoned early and tried again could run the turn twice. A start that
+   * never answers holds only its own session's slot; recovery decides it after a restart.
+   */
   async _start(side, req, principal) {
     let outcome;
     try {
-      outcome = side.transport === "bridge" ? await this.bridge.start(side.bridgeKey, req) : await this.agent.start(req, { principal });
+      outcome = await this.inClean(() => (side.transport === "bridge" ? this.bridge.start(side.bridgeKey, req) : this.agent.start(req, { principal })));
     } catch (err) {
       const message = String(err?.message ?? err);
       return { status: "rejected", code: RESTART_WEDGE_RE.test(message) ? "RESTART_WEDGE" : "INTERNAL", message, started: false };
@@ -926,12 +998,13 @@ export class Engine {
 
   async _editAnchor(rec, text) {
     if (rec.target.transport !== "bridge" || !rec.target.bridgeKey) return false;
-    return this.bridge.edit(rec.target.bridgeKey, { route: rec.target.route, messageId: rec.request.messageId, text });
+    return this.inClean(() => this.bridge.edit(rec.target.bridgeKey, { route: rec.target.route, messageId: rec.request.messageId, text }));
   }
 
-  async _onSendTurnEnd(sendId, runId, ro, role, transport) {
+  async _onSendTurnEnd(sendId, runId, outcome, role, transport) {
     // The turn's output goes to disk first: a crash after `done` then loses nothing. The run's
     // own sends (inline claims, its open batch) are settled right after, before W(S) is judged.
+    const ro = normalizeRunOutcome(outcome);
     const output = { ...outputOf(ro), status: ro.status, error: ro.error ?? null, source: transport ?? "bridge", fromRunId: runId };
     let rec = null;
     if (role === "target") {
@@ -967,7 +1040,7 @@ export class Engine {
     const key = lower(sessionKey);
     return (Array.isArray(list) ? list : [])
       .filter((t) => !(t?.runtime === "cli" && !t.taskKind && lower(t.childSessionKey) === key))
-      .filter((t) => t?.taskKind !== "sessions_send" && t?.runtime !== "cron")
+      .filter((t) => !isRequestRow(t) && !isCronRow(t))
       .filter((t) => t?.runtime === "subagent" || t?.runtime === "acp" || BACKGROUND_KINDS.has(t?.taskKind));
   }
 
@@ -1014,7 +1087,9 @@ export class Engine {
   }
 
   _backgroundCheckSession(sessionKey) {
-    for (const rec of this.ledger.sendsWhere((s) => s.phase === "awaiting_background" && s.target.sessionKey === sessionKey)) void this._backgroundCheck(rec.sendId);
+    const key = lower(sessionKey);
+    if (!key) return;
+    for (const rec of this.ledger.sendsWhere((s) => s.phase === "awaiting_background" && lower(s.target.sessionKey) === key)) void this._backgroundCheck(rec.sendId);
   }
 
   async _backgroundCheck(sendId) {
@@ -1229,7 +1304,8 @@ export class Engine {
     await this._onWakeEnd(b.batchId, runId, ro, side.transport);
   }
 
-  async _onWakeEnd(batchId, runId, ro, transport) {
+  async _onWakeEnd(batchId, runId, outcome, transport) {
+    const ro = normalizeRunOutcome(outcome);
     const b = await this.ledger.updateBatch(batchId, (d) => { d.wake.endedAt = this.now(); d.wake.status = ro.status; });
     await this._onRunEnded(runId, ro.status);
     if (!b?.servesSendId) return;

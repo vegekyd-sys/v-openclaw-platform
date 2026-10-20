@@ -37,4 +37,4 @@ W1 派活后用结果写周报；W2 同时派两组再汇总；W3 长任务（�
 4. 生产上 V 的所有群和私聊共享同一份记忆：第一版实验里不同场次互相读到了对方的代号。这本身是一条跨群信息通道。
 5. candidate 的 makaron 工作区是 172KB 空壳，被唤醒轮自称"还没有名字"大概率是这个原因；上 V 前在共享 VLab 真实工作区复核。
 
-数据：`lab/candidate/session-relay-experiments.mjs`，plan `session-relay-exp-{ui,work,work-control}.plan.json`。
+数据：`lab/candidate/session-relay-experiments.mjs`，plan `session-relay-exp-{ui,work,work-control}.plan.json`（插件 2.0 起这些 1.x 脚本已删除，见 git 历史）。

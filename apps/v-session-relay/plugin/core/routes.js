@@ -4,7 +4,7 @@
 // identity a synthetic turn carries there (chain-root rule).
 
 import { normalizeAccountId, syntheticSenderIdFor } from "./contracts.js";
-import { ownerIdsFor, parseSessionKey, sessionLabel } from "./labels.js";
+import { bridgeChannelOf, ownerIdsFor, parseSessionKey, sameChannel, sessionLabel } from "./labels.js";
 
 const ENTRY_CACHE_MS = 30_000;
 
@@ -24,10 +24,14 @@ function humansWithoutBridge(channel, chatType, peer, ownerIds) {
 /**
  * Route of a chat without asking its bridge: the stored `to`, else (Feishu, Telegram) the id in
  * the session key. DingTalk and WeCom keys are lower-cased and cannot be read back (§2.a).
+ * `route.channel` is the bridge channel (CHANNELS); a delivery channel id that differs from it
+ * ("dingtalk-connector") is kept as `deliveryChannel` for the agent transport's outbound adapter.
  */
 export function deriveRoute({ sessionKey, delivery, channel, accountId, ownerIds = [] }) {
   const p = parseSessionKey(sessionKey);
-  const ch = channel ?? delivery?.channel ?? p.channel;
+  const raw = channel ?? delivery?.channel ?? p.channel;
+  const ch = bridgeChannelOf(raw);
+  const viaDelivery = raw && raw !== ch ? { deliveryChannel: raw } : {};
   const account = normalizeAccountId(delivery?.accountId ?? accountId);
   if (delivery?.to) {
     const to = String(delivery.to);
@@ -36,13 +40,13 @@ export function deriveRoute({ sessionKey, delivery, channel, accountId, ownerIds
     return {
       ok: true,
       route: {
-        channel: ch, accountId: account, to, chatId, chatType,
+        channel: ch, ...viaDelivery, accountId: account, to, chatId, chatType,
         ...(chatType === "direct" ? { peerId: chatId } : {}),
         humans: humansWithoutBridge(ch, chatType, chatId, ownerIds),
       },
     };
   }
-  if (p.kind !== "channel" || p.channel !== ch) return { ok: false, code: "NO_ROUTE", reason: "no delivery address" };
+  if (p.kind !== "channel" || bridgeChannelOf(p.channel) !== ch) return { ok: false, code: "NO_ROUTE", reason: "no delivery address" };
   if (ch === "feishu") {
     const ok = p.chatType === "group" ? /^oc_[0-9a-f]+$/u.test(p.peer) : /^ou_[0-9a-f]+$/u.test(p.peer);
     if (!ok) return { ok: false, code: "NO_ROUTE", reason: "key does not carry a Feishu id" };
@@ -76,8 +80,12 @@ export function deriveRoute({ sessionKey, delivery, channel, accountId, ownerIds
  */
 export function senderFor({ route, principal, chainId, fromLabel, cfg }) {
   const channel = route?.channel;
-  const ownerIdHere = ownerIdsFor(cfg, channel)[0];
-  const principalIdHere = principal?.channel && principal.channel === channel && principal.id ? principal.id : undefined;
+  const ownerIds = ownerIdsFor(cfg, channel);
+  const ownerIdHere = ownerIds[0];
+  let principalIdHere = principal?.id && sameChannel(principal.channel, channel) ? principal.id : undefined;
+  // senderIsOwner null (unknown) or false is a non-owner (review-core-send): an owner's id is
+  // presented in the target chat only for a chain whose root is known to be the owner.
+  if (principalIdHere && principal?.isOwner !== true && ownerIds.includes(principalIdHere)) principalIdHere = undefined;
   let sender;
   if (principal?.isOwner === true && ownerIdHere) sender = { id: ownerIdHere, isOwnerIdentity: true };
   else if (principalIdHere) sender = { id: principalIdHere, isOwnerIdentity: false };
@@ -90,6 +98,17 @@ export function senderFor({ route, principal, chainId, fromLabel, cfg }) {
     ...(routePeerId ? { routePeerId } : {}),
     ...(askUserAnswererId ? { askUserAnswererId } : {}),
   };
+}
+
+/**
+ * A group route without a name gets the session entry's subject / displayName (review-dingtalk):
+ * the bridge passes it as the group subject, so the target session's label is not rewritten to an
+ * id by a synthetic turn. Direct chats are never named (§7.1).
+ */
+function withLabel(route, entry) {
+  if (!route || route.label || route.chatType !== "group") return route;
+  const label = [entry?.subject, entry?.displayName].find((v) => typeof v === "string" && v.trim());
+  return label ? { ...route, label: label.trim() } : route;
 }
 
 export function createRoutes({ getSessionEntry, getConfig = () => ({}), bridges, ownerName = "Tianyi", agentNames = {}, logger, now = Date.now }) {
@@ -123,7 +142,9 @@ export function createRoutes({ getSessionEntry, getConfig = () => ({}), bridges,
     const channel = delivery?.channel ?? p.channel;
     if (!channel) return { ok: true, transport: "agent", bridgeKey: null, route: null, entry };
     const accountId = normalizeAccountId(delivery?.accountId);
-    const bridgeKey = `${channel}:${accountId}`;
+    // DingTalk: the session says "dingtalk-connector", the bridge is "dingtalk:<acct>" (V's account
+    // "__default__"; the bridge registers "dingtalk:default" too for sessions without an account).
+    const bridgeKey = `${bridgeChannelOf(channel)}:${accountId}`;
     const cfg = getConfig() ?? {};
     const ownerIds = ownerIdsFor(cfg, channel);
     const bridge = avoidBridge ? undefined : bridges?.get(bridgeKey);
@@ -139,12 +160,12 @@ export function createRoutes({ getSessionEntry, getConfig = () => ({}), bridges,
         logger?.warn?.(`v-session-relay: ${bridgeKey} resolveRoute failed: ${err?.message ?? err}`);
         rr = { ok: false, code: "NO_ROUTE", reason: String(err?.message ?? err) };
       }
-      if (rr?.ok) return { ok: true, transport: "bridge", bridgeKey, route: rr.route, entry };
+      if (rr?.ok) return { ok: true, transport: "bridge", bridgeKey, route: withLabel(rr.route, entry), entry };
       if (rr?.code === "CHAT_GONE" || rr?.code === "NOT_MEMBER") return { ok: false, code: rr.code, reason: rr.reason ?? rr.code };
       // The bridge cannot place it: try the agent transport with what the entry says.
     }
     const derived = deriveRoute({ sessionKey, delivery, channel, accountId, ownerIds });
-    if (derived.ok) return { ok: true, transport: "agent", bridgeKey: bridge ? bridgeKey : null, route: derived.route, entry };
+    if (derived.ok) return { ok: true, transport: "agent", bridgeKey: bridge ? bridgeKey : null, route: withLabel(derived.route, entry), entry };
     if (p.kind === "channel") return { ok: false, code: "NO_ROUTE", reason: derived.reason };
     return { ok: true, transport: "agent", bridgeKey: null, route: null, entry };
   }

@@ -2,10 +2,24 @@
 // trimming and channel formatting are in visible.js. Placeholders follow the design:
 // {from}/{to}/{root}/{via} are session labels (labels.js), {code} the 4-5 char #code.
 
+import { RELAY_FALLBACK_RE, bridgeChannelOf } from "./contracts.js";
 import { clip, firstChars, charLength } from "./visible.js";
 
 const CHANNEL_NAMES = Object.freeze({ feishu: "飞书", telegram: "Telegram", dingtalk: "钉钉", wecom: "企业微信" });
-export const channelName = (channel) => CHANNEL_NAMES[channel] ?? channel ?? "渠道";
+export const channelName = (channel) => CHANNEL_NAMES[bridgeChannelOf(channel)] ?? channel ?? "渠道";
+
+const FALLBACK_TEXT_RE = new RegExp(RELAY_FALLBACK_RE.source, "gu");
+/**
+ * An error's text as vrelay.send may show it: one line, ≤ 80 characters, and never a phrase of
+ * the core's fallback regex — a "missing scope: operator.admin" from a nested call must not read
+ * as "plugin absent" anywhere (review-core-send).
+ */
+export function errorDetail(err) {
+  const text = String(err?.message ?? err ?? "").replace(FALLBACK_TEXT_RE, "…").replace(/\s+/gu, " ").trim();
+  return clip(text || "未知错误", 80);
+}
+/** vrelay.send failed before anything was recorded: nothing was sent. */
+export const sendFailedText = (err) => `会话转交出错（${errorDetail(err)}），这次没有发出。`;
 
 // ---------------------------------------------------------------- §7.5 interception texts
 

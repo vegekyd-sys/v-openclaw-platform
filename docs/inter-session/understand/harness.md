@@ -100,14 +100,14 @@
 - reaper 跳过父进程还活着的登记：`.codex/.../transport-stdio-CyPldczm.js:449-451`。
 
 **candidate 脚本**
-- `lab/candidate/session-relay-experiments.mjs`：
+- `lab/candidate/session-relay-experiments.mjs`（插件 1.x 的实验脚本，2.0 起已删除，行号指删除前的版本，见 git 历史）：
   - harness 设定：`:34-35`
   - 补丁与插件接线：`:73-92`
   - worker 配置改写：`:93-106`
   - vds 准备：`:146-185`
   - 环境与 key：`:188-190`
 - `vcc-background-tasks.mjs`：`:36-66`（私装 2.1.280、登录检查）、`:98`（PATH 设置）。
-- `session-relay-native.mjs:58`（关掉 codex 插件）、`:87-103`（worker 配置改写）。
+- `session-relay-native.mjs:65`（关掉 codex 插件）、`:94-110`（worker 配置改写）。文件头已标为历史参考（只打 v2）。
 - 危险示例：`vcodex-sol61-live.mjs:86` 复制了 `auth_profile_*`。
 
 **记忆依据**：`candidate-stale-oauth-refresh.md`、`cross-harness-background-matrix.md`、`vcc-background-agent-swallows-reply.md`、`feishu-progress-stream.md`（V 是 `renderMode: auto`）。

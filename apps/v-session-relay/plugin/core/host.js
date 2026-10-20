@@ -10,6 +10,7 @@
 import path from "node:path";
 
 import { METHODS, METHOD_SCOPES, isWorkerChildProcess, resolvePluginConfig } from "./contracts.js";
+import { sendFailedText } from "./copy.js";
 import { Engine } from "./engine.js";
 import { createPollGuard } from "./guard.js";
 import { Ledger, LedgerLockedError } from "./ledger.js";
@@ -81,7 +82,14 @@ export class Host {
     switch (method) {
       case METHODS.send:
         if (!engine) return { status: "fallback", reason: "disabled" };
-        return engine.send(p);
+        // Never thrown: the core reads a thrown "missing scope: operator.admin" or "unknown method:
+        // vrelay.send" as "plugin absent" and sends again through v2 (review-core-send).
+        try {
+          return await engine.send(p);
+        } catch (err) {
+          this.logger?.error?.(`v-session-relay: vrelay.send threw: ${err?.stack ?? err}`);
+          return { status: "error", code: "INTERNAL", error: sendFailedText(err) };
+        }
       case METHODS.wait:
         if (typeof p.sendId !== "string" || !p.sendId) return bad(respond, "sendId required");
         if (!engine) return { status: "expired", code: null, note: "" };

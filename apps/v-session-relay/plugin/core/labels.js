@@ -6,7 +6,15 @@
 //   agent:<agentId>:webchat:… / :ios:… / :app:…                      V App
 //   agent:<agentId>:subagent:… / …:run:… / hook:…                    not handled by the plugin
 
+import { CHANNEL_ALIASES, bridgeChannelOf } from "./contracts.js";
 import { clip } from "./visible.js";
+
+export { bridgeChannelOf };
+
+/** True when two delivery channel ids name the same channel ("dingtalk-connector" = "dingtalk"). */
+export function sameChannel(a, b) {
+  return Boolean(a) && Boolean(b) && bridgeChannelOf(a) === bridgeChannelOf(b);
+}
 
 export const LABEL_MAX = 24;
 
@@ -43,15 +51,23 @@ export function isUnsupportedTarget(sessionKey) {
   return p.kind === "subagent" || p.kind === "run" || p.kind === "hook" || p.agentId === null;
 }
 
-/** `commands.ownerAllowFrom` ids of one channel, without the "feishu:" prefix. */
+/**
+ * `commands.ownerAllowFrom` ids of one channel, without the "feishu:" prefix. A channel's aliases
+ * count too: DingTalk owners are listed as "dingtalk-connector:<staffId>" (review-dingtalk).
+ */
 export function ownerIdsFor(cfg, channel) {
   const list = cfg?.commands?.ownerAllowFrom;
   if (!Array.isArray(list) || !channel) return [];
-  const prefix = `${channel}:`;
-  return list
-    .filter((e) => typeof e === "string" && e.toLowerCase().startsWith(prefix))
-    .map((e) => e.slice(prefix.length).trim())
-    .filter(Boolean);
+  const canonical = bridgeChannelOf(channel);
+  const prefixes = [canonical, ...Object.keys(CHANNEL_ALIASES).filter((alias) => CHANNEL_ALIASES[alias] === canonical)].map((c) => `${c}:`);
+  const ids = [];
+  for (const e of list) {
+    if (typeof e !== "string") continue;
+    const prefix = prefixes.find((p) => e.toLowerCase().startsWith(p));
+    const id = prefix ? e.slice(prefix.length).trim() : "";
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
 }
 
 function agentName(agentId, agentNames) {

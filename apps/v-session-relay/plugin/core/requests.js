@@ -8,7 +8,7 @@ import {
 
 /** Name of the chain's root person as the target-side text uses it. */
 export function rootNameOf(principal, ownerName) {
-  if (principal?.isOwner) return ownerName;
+  if (principal?.isOwner === true) return ownerName;
   return principal?.name || "发起这项任务的人";
 }
 
@@ -18,6 +18,21 @@ export function outputOf(outcome) {
   const text = finals.map((f) => (typeof f?.text === "string" ? f.text.trim() : "")).filter(Boolean).join("\n\n");
   const media = [...new Set(finals.flatMap((f) => (Array.isArray(f?.mediaUrls) ? f.mediaUrls.filter((u) => typeof u === "string" && u) : [])))];
   return { text, media, noReply: !text && media.length === 0 };
+}
+
+/**
+ * One RunOutcome rule for every transport (the bridges' rule after review-feishu / review-dingtalk).
+ * The core gives an aborted run no terminal outcome (/stop, a stalled run), so a bridge or the agent
+ * transport reports it "aborted"; some bridges (WeCom, Telegram) never do. Here: "ok" (completed)
+ * and "error" (failed) stand; anything else — "aborted", or no usable status — counts as "ok" only
+ * when the run still delivered a non-error final (text or media), and as "aborted" otherwise.
+ * Bridges keep error notices out of `finals`, so every final is a non-error final.
+ */
+export function normalizeRunOutcome(outcome) {
+  const ro = outcome && typeof outcome === "object" ? outcome : { finals: [], visibleReplySent: false, finalCount: 0 };
+  if (ro.status === "ok" || ro.status === "error") return ro;
+  const status = outputOf(ro).noReply ? "aborted" : "ok";
+  return status === ro.status ? ro : { ...ro, status };
 }
 
 /** Failure class of a finished target turn that did not succeed. */

@@ -7,21 +7,23 @@
 // session. The engine's pre-check keeps most of those collisions away.
 
 import { RESTART_WEDGE_RE } from "../contracts.js";
+import { normalizeRunOutcome } from "../requests.js";
 
 const WAIT_SLICE_MS = 60_000;
 const ABORT_RE = /\babort(ed)?\b/iu;
 
+/** agent.wait → RunOutcome; an aborted run follows the bridges' rule (normalizeRunOutcome). */
 function outcomeFromWait(w) {
   const reply = w?.terminalReply;
   const text = reply?.disposition === "visible" && typeof reply.text === "string" ? reply.text : "";
   const finals = text ? [{ text }] : [];
   const base = { finals, visibleReplySent: finals.length > 0, finalCount: finals.length };
   if (w?.status === "ok") {
-    if (w.stopReason === "aborted") return { ...base, status: "aborted" };
+    if (w.stopReason === "aborted") return normalizeRunOutcome({ ...base, status: "aborted" });
     return { ...base, status: "ok" };
   }
   const error = String(w?.error ?? w?.status ?? "error");
-  if (w?.stopReason === "aborted" || ABORT_RE.test(error)) return { ...base, status: "aborted", error };
+  if (w?.stopReason === "aborted" || ABORT_RE.test(error)) return normalizeRunOutcome({ ...base, status: "aborted", error });
   return { ...base, status: "error", error };
 }
 
@@ -34,8 +36,10 @@ export function createAgentTransport({ callGateway, loadOutboundAdapter, getConf
   async function post({ route, text }) {
     if (!route?.to) return { messageId: null, skipped: true };
     if (typeof loadOutboundAdapter !== "function") throw Object.assign(new Error("no outbound adapter loader"), { code: "CHANNEL_DOWN", transient: true });
-    const adapter = await loadOutboundAdapter(route.channel);
-    if (typeof adapter?.sendText !== "function") throw Object.assign(new Error(`${route.channel} has no sendText`), { code: "CHANNEL_DOWN", transient: false });
+    // The core's channel id ("dingtalk-connector"), not the bridge channel ("dingtalk").
+    const channel = route.deliveryChannel ?? route.channel;
+    const adapter = await loadOutboundAdapter(channel);
+    if (typeof adapter?.sendText !== "function") throw Object.assign(new Error(`${channel} has no sendText`), { code: "CHANNEL_DOWN", transient: false });
     const res = await adapter.sendText({ cfg: getConfig() ?? {}, to: route.to, text, accountId: route.accountId, ...(route.threadId ? { threadId: route.threadId } : {}) });
     return { messageId: res?.messageId ?? res?.id ?? null };
   }
@@ -85,7 +89,7 @@ export function createAgentTransport({ callGateway, loadOutboundAdapter, getConf
       sourceReplyDeliveryMode: "automatic",
       inputProvenance: req.provenance,
       ...(req.channelPromptContext ? { extraSystemPrompt: req.channelPromptContext } : {}),
-      ...(route?.to ? { channel: route.channel, to: route.to, ...(route.accountId ? { accountId: route.accountId } : {}) } : {}),
+      ...(route?.to ? { channel: route.deliveryChannel ?? route.channel, to: route.to, ...(route.accountId ? { accountId: route.accountId } : {}) } : {}),
     };
     let res;
     try {

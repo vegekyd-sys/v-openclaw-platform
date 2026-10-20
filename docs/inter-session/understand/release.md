@@ -58,7 +58,7 @@
   - receipt 里记下 files 的 before/after（`runner.mjs:231`）。
   - `baseRelease` 可选；给了就必须等于当前发版（`runner.mjs:150`）。
 - **在脚本里直接改**
-  - 例子：`lab/candidate/session-relay-native.mjs:70-83` 在私有 runtime 里调用 `patchSessionsSendReplyOnce`；`:61-68` 只在 candidate 里放开 Feishu 的 trusted-plugin 门（已验证）。
+  - 例子：`lab/candidate/session-relay-native.mjs:77-90` 在私有 runtime 里调用 `patchSessionsSendReplyOnce`；`:68-75` 只在 candidate 里放开 Feishu 的 trusted-plugin 门（已验证）。
   - 这些改动不会出现在 receipt 的 files 里（推断）。
   - 对照组用 `RELAY_NO_PATCH=1` 跑（`lab/candidate/session-relay-native-control.plan.json`）。
 - **交付前要换成 `files` 方式**：README 要求提交后核对被测文件的哈希（`lab/AGENT-QUICKSTART.md:23`）。用 `files` 加 `before` 做证据，才能和发版 plan 一一对应（推断）。

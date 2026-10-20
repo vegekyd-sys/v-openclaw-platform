@@ -8,13 +8,19 @@ import { TASK_REGISTRY_BRIDGE } from "./contracts.js";
 const QUEUED = new Set(["accepted", "posting", "posted", "queued"]);
 const RUNNING = new Set(["starting", "running", "target_done", "awaiting_children", "awaiting_background"]);
 
-/** Task rows of the sends `sessionKey` has out (not yet settled). */
+/**
+ * Task rows of the sends `sessionKey` has out (not yet settled). This is the extraSources function:
+ * synchronous, memory only, and it never calls listActive (it runs inside it, review-core-tasks).
+ * Keys arrive trimmed, not lower-cased, and DingTalk's are lower-cased already: compare without case.
+ * A send leaves the rows at result_ready / failure_ready, before its hand-back: the wake turn's card
+ * must not show the request it is reporting as still running.
+ */
 export function taskRowsFor(ledger, sessionKey) {
-  const key = typeof sessionKey === "string" ? sessionKey.trim() : "";
+  const key = typeof sessionKey === "string" ? sessionKey.trim().toLowerCase() : "";
   if (!key) return [];
   const rows = [];
   for (const rec of ledger.sends.values()) {
-    if (rec.requester?.sessionKey !== key) continue;
+    if (String(rec.requester?.sessionKey ?? "").trim().toLowerCase() !== key) continue;
     if (!QUEUED.has(rec.phase) && !RUNNING.has(rec.phase)) continue;
     rows.push({
       taskId: `v-a2a:${rec.sendId}`,
