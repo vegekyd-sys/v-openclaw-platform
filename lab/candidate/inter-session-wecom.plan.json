@@ -123,7 +123,7 @@
     "lab/candidate/inter-session-wecom.mjs"
   ],
   "env": {
-    "ISR2_SCENARIOS": "F1,F2,F3,C,F5",
+    "ISR2_SCENARIOS": "F1,F2,F3,F3q,C,F5",
     "ISR2_START_DELAY_MS": "6000"
   },
   "timeoutSeconds": 5400,

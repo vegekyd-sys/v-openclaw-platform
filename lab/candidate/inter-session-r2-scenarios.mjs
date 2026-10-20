@@ -15,7 +15,7 @@
 //
 // env: { ctx, gw, rpc, ledger, ad, startDelayMs }
 import {
-  BAD_LOG_RE, batchEvidence, contracts, historyAt, rawMessages, runScenario, sendEvidence, sessionRow, sleep, toolsBetween, transcript, waitSend,
+  AGENT, BAD_LOG_RE, batchEvidence, contracts, historyAt, rawMessages, runScenario, sendEvidence, sessionRow, sleep, toolsBetween, transcript, waitSend,
 } from "./inter-session-r2-lib.mjs";
 
 const TERMINAL = contracts.SEND_TERMINAL_PHASES;
@@ -153,7 +153,15 @@ export function F2(env, { target = "ga", id = "F2", sleeps = [35, 40] } = {}) {
 }
 
 // ---------------------------------------------------------------- F3 BUSY at the core guard
-export function F3(env, { target = "ga", id = "F3", personSleepSecs = 20 } = {}) {
+/**
+ * F3: the target becomes busy between the plugin's idle precheck and the start (startDelayMs).
+ *   busyBy "person"  a person writes in the target chat (Telegram, DingTalk: the core guard answers BUSY);
+ *   busyBy "rpc"     a Gateway `agent` run on the target session, invisible in the chat (a run the chat's
+ *                    own queue does not see, e.g. an automation), so the guard answers BUSY;
+ *   expectBusy false the channel queues the start behind the person (WeCom's per-chat queue): no BUSY,
+ *                    the request starts after the person's turn on attempt 0, nothing shown meanwhile.
+ */
+export function F3(env, { target = "ga", id = "F3", personSleepSecs = 20, busyBy = "person", expectBusy = true } = {}) {
   const { ctx, gw, rpc, ledger, ad } = env;
   const h = helpers(env);
   const { check, evidence } = ctx;
@@ -167,54 +175,74 @@ export function F3(env, { target = "ga", id = "F3", personSleepSecs = 20 } = {})
     const done = `PERSON_DONE_${ctx.tag}`;
     h.ask(asyncAsk(ctx.tag, id, key, `请只回复 ${result}`, result));
     const first = await waitSend(gw, ledger, t0, (r) => r.target?.sessionKey === key, 300_000, `${id} send`);
-    // The plugin's precheck found the target idle and now holds the start for startDelayMs: a person writes.
+    // The plugin's precheck found the target idle and now holds the start for startDelayMs: the target gets busy.
     let starting = null;
     for (const until = Date.now() + 180_000; Date.now() < until && !starting; await sleep(40)) {
       const r = ledger.send(first.sendId);
       if (r && ["starting", "running", "target_done", "result_ready", "handed_back"].includes(r.phase)) starting = r;
     }
-    const p = ad.person(chat, `【${ctx.tag}-${id} 真人】这是自动化测试：先用 exec 运行 sleep ${personSleepSecs}，然后只回复 ${done}`);
-    ctx.step(`${id}: person wrote while the request was starting`, { phase: starting?.phase, msAfterStarting: starting ? p.at - (historyAt(starting, /^starting/u) ?? p.at) : null });
+    const occupantText = `【${ctx.tag}-${id} ${busyBy === "rpc" ? "后台" : "真人"}】这是自动化测试：先用 exec 运行 sleep ${personSleepSecs}，然后只回复 ${done}`;
+    let p;
+    let rpcRun = null;
+    if (busyBy === "rpc") {
+      const at = Date.now();
+      const accepted = await rpc("agent", { message: occupantText, sessionKey: key, agentId: AGENT, idempotencyKey: `isr2-${ctx.tag}-${id}-occupant`, deliver: false }, 60_000).catch((e) => ({ error: String(e?.message ?? e) }));
+      p = { at, id: null };
+      rpcRun = { accepted, waited: rpc("agent.wait", { runId: accepted?.runId, timeoutMs: 300_000 }, 320_000).then((r) => ({ ...r, endedAt: Date.now() }), (e) => ({ error: String(e?.message ?? e), endedAt: Date.now() })) };
+    } else {
+      p = ad.person(chat, occupantText);
+    }
+    ctx.step(`${id}: target made busy (${busyBy}) while the request was starting`, { phase: starting?.phase, msAfterStarting: starting ? p.at - (historyAt(starting, /^starting/u) ?? p.at) : null });
     const rec = await h.settled(first.sendId, ["handed_back", "cancelled", "skipped"], 600_000, `${id} handed back`);
     const hb = await gw.waitFor(() => h.handbacks(t0, rec.code)[0], 120_000, `${id} hand-back line`);
     await h.waitItem(ad.chats.dm, hb.at, new RegExp(result), 300_000, `${id} wake reply`).catch(() => null);
+    const occupantRun = rpcRun ? await rpcRun.waited : null;
     await sleep(5000);
     const startingAt = historyAt(rec, /^starting/u);
     const busyAt = historyAt(rec, /busy:/u);
     const runningAt = historyAt(rec, /^running/u);
     const anchor = h.anchors(chat, t0, rec.code)[0];
-    const personFinals = h.items(chat, p.at).filter((m) => String(m.text).includes(done) || (m.history ?? []).some((x) => String(x.text ?? "").includes(done)));
+    const personFinals = busyBy === "rpc" ? [] : h.items(chat, p.at).filter((m) => String(m.text).includes(done) || (m.history ?? []).some((x) => String(x.text ?? "").includes(done)));
     const personFinalAt = Math.min(...personFinals.map((m) => m.at));
     // The person's turn's own progress draft: created after the person wrote, removed when that turn answered.
     const endOf = (m) => Math.max(m.at, ...(m.history ?? []).map((x) => x.at ?? 0));
     const finalIds = new Set(personFinals.map((m) => m.id));
     const personDrafts = h.items(chat, p.at).filter((m) => m.deleted && !finalIds.has(m.id) && Math.abs(endOf(m) - personFinalAt) <= 5000);
     const personItems = [...personFinals, ...personDrafts];
-    const personIds = new Set([String(p.id), ...personItems.map((m) => String(m.id))]);
-    const windowWrites = busyAt ? ad.writes(chat, startingAt, busyAt + 1500) : [];
+    const personIds = new Set([...(p.id ? [String(p.id)] : []), ...personItems.map((m) => String(m.id))]);
+    // BUSY: the attempt's window; queued in the channel: the whole wait until the run started.
+    const windowEnd = expectBusy ? (busyAt ? busyAt + 1500 : startingAt) : (runningAt ?? startingAt);
+    const windowWrites = ad.writes(chat, startingAt, windowEnd);
     const stray = windowWrites.filter((w) => !personIds.has(String(w.itemId)));
     const beforeStart = h.items(chat, t0).filter((m) => m.id !== anchor?.id && m.at < (runningAt ?? Infinity) && !personIds.has(String(m.id)));
     const items = (await transcript(rpc, key)).items.filter((m) => (m.at ?? 0) >= t0 - 1000);
     const reqUsers = items.filter((m) => m.provenance === "inter_session" && String(m.origin ?? "").endsWith(`:req:${rec.sendId}`));
-    const personIdx = items.findIndex((m) => m.role === "user" && m.text.includes(`${ctx.tag}-${id} 真人`));
+    const personIdx = items.findIndex((m) => m.role === "user" && m.text.includes(`${ctx.tag}-${id} `));
     const reqIdx = items.findIndex((m) => reqUsers.includes(m));
     const personReply = items.slice(personIdx + 1, reqIdx < 0 ? undefined : reqIdx).filter((m) => m.role === "assistant").map((m) => m.text).join(" ");
-    const personEnd = Math.max(0, ...personFinals.flatMap((m) => (m.history ?? []).map((x) => x.at)));
+    const occupantEnd = busyBy === "rpc" ? (occupantRun?.endedAt ?? 0) : Math.max(0, ...personFinals.flatMap((m) => (m.history ?? []).map((x) => x.at)));
     const info = { id, t0, rec, startingAt, busyAt, runningAt, anchor, personItems, personIds, p };
     evidence(id, "send", sendEvidence(rec));
-    evidence(id, "window", { startingAt, busyAt, runningAt, personAt: p.at, personEnd, personItems: personItems.map((m) => m.id) });
+    evidence(id, "window", { busyBy, expectBusy, startingAt, busyAt, runningAt, occupantAt: p.at, occupantEnd, personItems: personItems.map((m) => m.id), rpc: rpcRun ? { accepted: rpcRun.accepted, ended: occupantRun } : null });
     evidence(id, "windowWrites", windowWrites.map((w) => ({ at: new Date(w.at).toISOString().slice(11, 23), what: w.what, itemId: w.itemId })));
     evidence(id, "target", h.items(chat, t0).map(h.view));
     evidence(id, "targetTranscript", items.map((m) => ({ role: m.role, prov: m.provenance, origin: m.origin, text: m.text.slice(0, 120) })));
     evidence(id, "log", h.relayLog(t0));
-    check(id, Boolean(busyAt) && /busy: (active_run|pending_queue)/u.test((rec.history ?? []).map((x) => x.note ?? "").join(" ")), "the guard answered BUSY to a started attempt (the failure path ran)", rec.history);
-    check(id, Boolean(busyAt) && stray.length === 0, "BUSY: zero visible writes in the target chat from the attempt (send/edit/card/reaction/delete)", stray);
+    if (busyBy === "rpc") check(id, Boolean(rpcRun.accepted?.runId) && !occupantRun?.error, "the occupying agent run was accepted and ran to its end", { accepted: rpcRun.accepted, ended: occupantRun });
+    if (expectBusy) {
+      check(id, Boolean(busyAt) && /busy: (active_run|pending_queue)/u.test((rec.history ?? []).map((x) => x.note ?? "").join(" ")), "the guard answered BUSY to a started attempt (the failure path ran)", rec.history);
+      check(id, Boolean(busyAt) && stray.length === 0, "BUSY: zero visible writes in the target chat from the attempt (send/edit/card/reaction/delete)", stray);
+      check(id, rec.attempt >= 1 && rec.targetRun?.runId === contracts.runIdFor("request", rec.sendId, rec.attempt), "started on a later attempt with that attempt's preset runId", { attempt: rec.attempt, runId: rec.targetRun?.runId });
+    } else {
+      check(id, !busyAt && rec.attempt === 0 && runningAt - startingAt >= 10_000, "the start waited in the channel's own chat queue behind the person (no BUSY, attempt 0)", { busyAt, attempt: rec.attempt, waitedMs: runningAt - startingAt });
+      check(id, stray.length === 0, "while it waited: zero visible writes in the target chat from the request", stray);
+      check(id, rec.targetRun?.runId === contracts.runIdFor("request", rec.sendId, 0), "it ran with the preset runId of attempt 0", rec.targetRun);
+    }
     check(id, beforeStart.length === 0, "nothing of the request in the target chat before it started (no orphan card/draft/fallback)", beforeStart.map(h.view));
     check(id, !h.items(chat, t0).some((m) => FAIL_TEXT.test(String(m.text))), "no error/empty-reply fallback text in the target chat");
-    check(id, rec.attempt >= 1 && rec.targetRun?.runId === contracts.runIdFor("request", rec.sendId, rec.attempt), "started on a later attempt with that attempt's preset runId", { attempt: rec.attempt, runId: rec.targetRun?.runId });
-    check(id, Boolean(runningAt) && personFinals.length >= 1 && personEnd <= runningAt + 3000, "the request turn started after the person's turn had answered", { runningAt, personEnd });
+    check(id, Boolean(runningAt) && occupantEnd > 0 && occupantEnd <= runningAt + 3000, "the request turn started after the occupying turn had ended", { runningAt, occupantEnd });
     check(id, reqUsers.length === 1, "target transcript: exactly one inter_session message for the request (BUSY left none)", reqUsers.length);
-    check(id, personIdx >= 0 && reqIdx > personIdx && !personReply.includes(result), "the person's turn did not see the request; the request ran after it", { personIdx, reqIdx });
+    check(id, personIdx >= 0 && reqIdx > personIdx && !personReply.includes(result), "the occupying turn did not see the request; the request ran after it", { personIdx, reqIdx });
     check(id, rec.phase === "handed_back" && !rec.failure && String(rec.result?.text ?? "").includes(result), "result handed back", rec.result);
     check(id, h.handbacks(t0).length === 1, "exactly one hand-back in the DM", h.handbacks(t0).map(h.view));
     await ad.extra?.F3?.(env, info);

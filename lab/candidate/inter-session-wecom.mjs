@@ -4,8 +4,9 @@
 // real DeepSeek turns, against the loopback fake robot socket (lab/candidate/wecom-fake-aibot.mjs;
 // nothing reaches WeCom).
 //
-// Requesters are WeCom DMs: candowner (worker) for F2, F3, C, F5, candvds (vds) for F1; the target is
-// the group GA (worker).
+// Requesters are WeCom DMs: candowner (worker) for F2, F3, F3q, C, F5, candvds (vds) for F1; the target
+// is the group GA (worker). F3 makes the target busy with an agent run (the core guard answers BUSY);
+// F3q with a person's message, which WeCom's per-chat queue runs first while the request waits.
 // WeCom extras (§10.5): nothing ever answers a synthetic req_id (aibot_respond_msg to a req_id the
 // robot never pushed is 846605 on WeCom); an inter-session turn opens no stream and its final is one
 // proactive markdown message; the anchor carries the WeCom line (no process view there).
@@ -24,7 +25,7 @@ const ctx = createRun("wecom");
 const { tag: TAG, check, evidence } = ctx;
 const CHATS = { dm: "candowner", dv: "candvds", ga: "wrGrpRoomA0isr2" };
 const START_DELAY_MS = Number(process.env.ISR2_START_DELAY_MS ?? 6000);
-const SCENARIOS = (process.env.ISR2_SCENARIOS ?? "F1,F2,F3,C,F5").split(",").map((s) => s.trim()).filter(Boolean);
+const SCENARIOS = (process.env.ISR2_SCENARIOS ?? "F1,F2,F3,F3q,C,F5").split(",").map((s) => s.trim()).filter(Boolean);
 const WECOM_LINE = "（企业微信里看不到处理过程，做完会发结果）";
 
 const ledger = ledgerOf(ctx);
@@ -133,7 +134,10 @@ async function main() {
 
   if (SCENARIOS.includes("F1")) await F1(env, { requester: "dv", target: "ga", vdsSide: "requester" });
   if (SCENARIOS.includes("F2")) await F2(env, { target: "ga" });
-  if (SCENARIOS.includes("F3")) await F3(env, { target: "ga" });
+  // A person's message and the request's start share WeCom's per-chat queue, so the request simply waits
+  // behind the person (F3q). The core guard's BUSY needs a run the chat queue does not see (F3: an agent run).
+  if (SCENARIOS.includes("F3")) await F3(env, { target: "ga", busyBy: "rpc" });
+  if (SCENARIOS.includes("F3q")) await F3(env, { target: "ga", id: "F3q", expectBusy: false });
   if (SCENARIOS.includes("C")) await C(env, { target: "ga" });
   if (SCENARIOS.includes("F5")) await F5(env, {
     target: "ga",
