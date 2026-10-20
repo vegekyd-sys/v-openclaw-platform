@@ -110,7 +110,10 @@ def gateway_integrity_environment():
     and re-read, 32 GB read). Read them from a Gateway child; none found, the indexer
     checks the database itself as before.
     """
-    main = show("MainPID").strip()
+    try:
+        main = show("MainPID").strip()
+    except (subprocess.CalledProcessError, OSError):
+        return {}  # no systemd or no Gateway unit (CI, VLab candidates): check the DB as before
     if not main or main == "0":
         return {}
     for pid in sorted(p for p in os.listdir("/proc") if p.isdigit()):
