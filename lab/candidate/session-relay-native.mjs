@@ -73,7 +73,11 @@ const sessionsTool = path.join(dist, FILE);
 const sessionsSource = fs.readFileSync(sessionsTool, "utf8");
 assert(!/v-sessions-send-reply-once-v\d/u.test(sessionsSource) || sessionsSource.includes(MARKER), "runtime already carries another version of the patch");
 summary.notes.push(`core ${FILE}: ${sessionsSource.includes(MARKER) ? "already patched" : "patched for this run"}`);
-if (!sessionsSource.includes(MARKER)) fs.writeFileSync(sessionsTool, patchSessionsSendReplyOnce(sessionsSource));
+// Control group: RELAY_NO_PATCH=1 runs the same scenarios on V's unpatched bytes.
+if (process.env.RELAY_NO_PATCH === "1") {
+  assert(!sessionsSource.includes(MARKER), "control group needs an unpatched runtime");
+  summary.notes.push("CONTROL: core left unpatched");
+} else if (!sessionsSource.includes(MARKER)) fs.writeFileSync(sessionsTool, patchSessionsSendReplyOnce(sessionsSource));
 
 // The worker child reads its own config copy.
 const workerPlugin = config.plugins.entries?.["vlab-agent-worker-isolation"]?.config;
