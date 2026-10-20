@@ -95,7 +95,8 @@ test("inter-session requests never take the steer lane, and the guards sit where
   const at = (needle) => { const i = handler.indexOf(needle); assert.ok(i >= 0, needle); return i; };
   assert.ok(at('interSession.reject("ROUTE_MISMATCH"') < at("const ensured = await ensureConfiguredBindingRouteReady({"));
   assert.ok(at('interSession.reject("ROUTE_MISMATCH"') < at("const ctxPayload = await buildCtxPayloadForAgent(route.agentId"));
-  assert.ok(at("if (interSession?.busy) return interSession.complete({ dispatchResult });") < at('await ensureNoVisibleReplyFallback("dispatch-complete-no-visible-reply")'));
+  assert.ok(at("if (interSession?.busy) {\n\t\t\t\tdispatcherOptions.onCleanup?.();\n\t\t\t\treturn interSession.complete({ dispatchResult });") < at('await ensureNoVisibleReplyFallback("dispatch-complete-no-visible-reply")'));
+  assert.ok(at('if (!isGroup && route.matchedBy === "default" && !interSession) {') > 0, "no dynamic agent is created for a request");
   assert.match(handler, /if \(turnAdoptionLifecycle \|\| params\.askUserAnswerOnly \|\| interSession\) throw err;/u);
   const dispatcher = generated.slice(generated.indexOf("function createFeishuReplyDispatcher(params) {"), generated.indexOf("//#region extensions/feishu/src/synthetic-event-target.ts"));
   assert.match(dispatcher, /onReplyStart: async \(\) => \{\n\t+if \(params\.vInterSession && !vInterSessionRunStarted\) return;/u);
@@ -165,13 +166,17 @@ function coreRun({ finals = [{ text: "三份资料已整理好。", mediaUrls: [
   };
 }
 
-/** The core admission guard (WP1) saying BUSY: reply start may already have been offered, then onBusy. */
+/**
+ * The core admission guard (WP1) saying BUSY: reply start may already have been offered, then onBusy.
+ * Like the real core it never calls the dispatcher's onCleanup: the typing controller only runs
+ * onTypingCleanup once typing was active (get-reply createTypingController cleanup), and a BUSY turn
+ * returns before the run ever signals typing.
+ */
 function coreBusy(reason = "active_run") {
   return async (turn) => {
     await turn.dispatcherOptions.onReplyStart?.();
     turn.replyOptions.vInterSession.onBusy({ reason, activeSessionId: "sess-1" });
     await turn.dispatcherOptions.onIdle?.();
-    turn.dispatcherOptions.onCleanup?.();
     // eligibility deliberately left on: the Feishu side must stay silent by itself too (§3.6 item 10)
     return { dispatched: true, dispatchResult: { queuedFinal: false, counts: { final: 0 }, noVisibleReplyFallbackEligible: true, deliberateSilentTerminalReply: true } };
   };
@@ -194,6 +199,20 @@ async function withMonitor(options, body) {
     reg.listeners.delete(listener);
   }
   return { h, bridge, listened };
+}
+
+/** Records every ask_user stream a reply dispatcher binds (vFeishuAsk.bindStream) and whether it was released. */
+function spyAskStreams(h) {
+  const bindings = [];
+  const ask = h.module.vFeishuAsk;
+  const bind = ask.bindStream;
+  ask.bindStream = (sessionKey, accountId, send, isActive, origin) => {
+    const binding = { sessionKey, origin, released: false };
+    bindings.push(binding);
+    const unregister = bind(sessionKey, accountId, send, isActive, origin);
+    return () => { binding.released = true; return unregister(); };
+  };
+  return bindings;
 }
 
 test("run: monitorSingleAccount registers a valid bridge and removes it when the account stops", async () => {
@@ -292,6 +311,7 @@ test("run: start → per-chat queue → handleFeishuMessage with interSession �
     const route = (await bridge.resolveRoute({ sessionKey: GROUP_KEY, agentId: "makaron", ownerIds: [OWNER] })).route;
     const req = startRequest(route);
     h.core = coreRun();
+    h.cfg.broadcast = { [GROUP]: ["makaron", "helper"] }; // a broadcast group: a person's message would fan out
     const outcome = await bridge.start(req);
     assert.ok(C.validateStartOutcome(outcome).ok);
     assert.equal(outcome.status, "started");
@@ -300,7 +320,7 @@ test("run: start → per-chat queue → handleFeishuMessage with interSession �
     assert.ok(C.validateRunOutcome(run).ok, C.validateRunOutcome(run).errors.join("; "));
     assert.deepEqual(run, { status: "ok", finals: [{ text: "三份资料已整理好。", mediaUrls: ["/tmp/report.png"] }], visibleReplySent: true, finalCount: 1 });
 
-    assert.equal(h.turns.length, 1);
+    assert.equal(h.turns.length, 1, "one turn on the target session, never a broadcast fan-out");
     const [turn] = h.turns;
     const ctx = turn.ctxPayload;
     assert.equal(turn.route.sessionKey, GROUP_KEY);
@@ -333,7 +353,8 @@ test("run: start → per-chat queue → handleFeishuMessage with interSession �
 });
 
 test("run: BUSY settles busy with zero visible output (no card, no reaction, no fallback), the next attempt runs", async () => {
-  await withMonitor({ accountConfig: { renderMode: "card", streaming: "partial" } }, async ({ h, bridge }) => {
+  await withMonitor({ accountConfig: { renderMode: "card", streaming: "partial" }, expose: ["vFeishuAsk"] }, async ({ h, bridge }) => {
+    const asks = spyAskStreams(h);
     const route = (await bridge.resolveRoute({ sessionKey: GROUP_KEY, agentId: "makaron", ownerIds: [OWNER] })).route;
     const apiBefore = h.api.length;
     h.core = coreBusy("active_run");
@@ -341,6 +362,7 @@ test("run: BUSY settles busy with zero visible output (no card, no reaction, no 
     assert.deepEqual(busy, { status: "busy", reason: "active_run" });
     for (let i = 0; i < 5; i += 1) await tick();
     assert.deepEqual(h.visible, [], "BUSY: nothing visible at all");
+    assert.deepEqual(asks.map((a) => a.released), [true], "BUSY: the attempt's ask_user stream binding is released, not left behind per retry");
     const writes = h.api.slice(apiBefore).filter((c) => !["im.chat.get", "im.message.get"].includes(c.method));
     assert.deepEqual(writes, [], "BUSY: no Feishu write call (the handler only reads the group name, as for any message)");
     assert.equal(h.logs.filter((l) => l.startsWith("[firsttext-e2e.1] ")).length, 0, "no first-text record for a turn that never ran");
@@ -441,6 +463,34 @@ test("run: failures before and after the run starts are classified", async () =>
 
     const wrongAccount = await bridge.start({ ...startRequest(route, { attempt: 6 }), route: { ...route, accountId: "v-codex" } });
     assert.deepEqual([wrongAccount.status, wrongAccount.code], ["rejected", "INTERNAL"]);
+
+    // /stop in the target chat after some text streamed: the core reports no terminal outcome
+    // (executeAgentTurn skips it for an aborted run); visible text without a final is not a result.
+    h.core = async (turn) => {
+      turn.replyOptions.onAgentRunStart(turn.replyOptions.runId);
+      // the streamed text reached the chat (the core reports the delivered block as visible)
+      turn.delivery.onDelivered?.({ text: "正在整理第一份……" }, { kind: "block" }, { visibleReplySent: true });
+      return { dispatched: true, dispatchResult: { queuedFinal: false, counts: { final: 0 } } };
+    };
+    const stopped = await (await bridge.start(startRequest(route, { attempt: 7 }))).done;
+    assert.deepEqual([stopped.status, stopped.visibleReplySent, stopped.finalCount], ["aborted", true, 0], "stopped mid-way is aborted, not ok");
+
+    // a stalled run's interruption notice (dispatch-from-config finishReplyOperationAbortedDispatch): aborted
+    h.core = coreRun({ finals: [{ text: "⚠️ This turn was interrupted because it stopped making progress. Please try again.", isError: true }], terminal: null });
+    const stalled = await (await bridge.start(startRequest(route, { attempt: 8 }))).done;
+    assert.equal(stalled.status, "aborted");
+    assert.match(stalled.error, /interrupted/u);
+
+    // a reply already shown before the handler failed stays visible in the outcome
+    h.core = async (turn) => {
+      turn.replyOptions.onAgentRunStart(turn.replyOptions.runId);
+      const info = { kind: "final" };
+      const result = await turn.delivery.deliver({ text: "前两份已整理好。" }, info);
+      turn.delivery.onDelivered?.({ text: "前两份已整理好。" }, info, result);
+      throw new Error("worker crashed after replying");
+    };
+    const late = await (await bridge.start(startRequest(route, { attempt: 9 }))).done;
+    assert.deepEqual(late, { status: "error", finals: [{ text: "前两份已整理好。" }], visibleReplySent: true, finalCount: 1, error: "worker crashed after replying" });
   });
 });
 
@@ -469,17 +519,23 @@ test("run: the request waits behind the chat's earlier messages on the same queu
     for (let i = 0; i < 20; i += 1) await tick();
     assert.deepEqual(order, ["human"], "queued behind the person's turn");
     assert.equal(settled, false);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const releasedAt = Date.now();
     human.release();
     await humanDone;
     const [a, b] = await Promise.all([first, second]);
     assert.deepEqual([a.status, b.status], ["started", "started"]);
     await Promise.all([a.done, b.done]);
     assert.deepEqual(order, ["human", `inter:${SEND_ID}`, `inter:${SEND_ID_2}`], "one at a time, in order");
+    const records = h.logs.filter((l) => l.startsWith("[firsttext-e2e.1] ")).map((l) => JSON.parse(l.slice("[firsttext-e2e.1] ".length))).filter((r) => r.origin === "inter_session");
+    assert.equal(records.length, 2);
+    for (const r of records) assert.ok(r.receivedAtMs < releasedAt, "firsttext counts from the attempt's start, including its wait in the chat queue");
   });
 });
 
 test("run: a direct-chat request routes by the person, uses the learned direct chat, and keeps ask_user with the real person", async () => {
-  await withMonitor({ accountConfig: { renderMode: "raw" } }, async ({ h, bridge }) => {
+  await withMonitor({ accountConfig: { renderMode: "raw" }, expose: ["vFeishuAsk"] }, async ({ h, bridge }) => {
+    const asks = spyAskStreams(h);
     const route = (await bridge.resolveRoute({ sessionKey: DM_KEY, agentId: "makaron", ownerIds: [OWNER] })).route;
     await bridge.post({ route, text: "📨 来自「任务群 a」的请求 #9K2M", idempotencyKey: C.feishuPostUuid("request", SEND_ID, "anchor") });
     h.core = coreRun({ preReplyStart: false });
@@ -494,6 +550,77 @@ test("run: a direct-chat request routes by the person, uses the learned direct c
     assert.equal(turn.ctxPayload.__params.sender.id, PEER, "routing sender stays the person");
     const sent = h.visible.filter((v) => v.kind === "sendMessageFeishu");
     assert.equal(sent.at(-1).replyToMessageId, undefined, "direct chats do not thread replies under the anchor");
+    assert.deepEqual({ chatId: asks.at(-1).origin.chatId, senderOpenId: asks.at(-1).origin.senderOpenId }, { chatId: "oc_d1dec7", senderOpenId: OWNER }, "ask_user answers come from askUserAnswererId in that chat, not from the routing peer");
+    assert.equal(h.api.filter((c) => c.method === "im.message.get").length, 0, "the chat learned from post() needs no lookup");
+  });
+});
+
+test("run: after a restart a direct-chat request finds the person's chat from its anchor and queues behind their messages", async () => {
+  await withMonitor({ accountConfig: { renderMode: "raw" }, expose: ["vFeishuAsk"] }, async ({ h, bridge }) => {
+    const asks = spyAskStreams(h);
+    const route = (await bridge.resolveRoute({ sessionKey: DM_KEY, agentId: "makaron", ownerIds: [OWNER] })).route;
+    // nothing posted in this process (the anchor went out before a restart): im.message.get on the anchor
+    h.client.im.message.get = async (req) => {
+      h.api.push({ method: "im.message.get", req });
+      return req?.path?.message_id === "om_anchor_1" ? { code: 0, data: { items: [{ message_id: "om_anchor_1", chat_id: "oc_d1dec7", msg_type: "text" }] } } : { code: 230001, msg: "invalid message_id" };
+    };
+    const human = gate();
+    const order = [];
+    h.core = async (turn) => {
+      const inter = Boolean(turn.ctxPayload.VInterSession);
+      order.push(inter ? "inter" : "human");
+      if (inter) return await coreRun({ preReplyStart: false })(turn);
+      await human.promise;
+      return { dispatched: true, dispatchResult: { queuedFinal: false, counts: { final: 0 } } };
+    };
+    h.handlers["im.message.receive_v1"]({ sender: { sender_id: { open_id: PEER } }, message: { message_id: "om_human_dm", chat_id: "oc_d1dec7", chat_type: "p2p", message_type: "text", content: JSON.stringify({ text: "在吗" }) } });
+    let pending;
+    try {
+      for (let i = 0; i < 20 && order.length === 0; i += 1) await tick();
+      assert.deepEqual(order, ["human"]);
+      pending = bridge.start(startRequest(route));
+      for (let i = 0; i < 20; i += 1) await tick();
+      assert.deepEqual(order, ["human"], "same per-chat queue as the person's own messages");
+    } finally {
+      human.release(); // never leave the person's turn hanging (a failed assertion would stall the monitor's stop)
+    }
+    const outcome = await pending;
+    assert.equal(outcome.status, "started");
+    await outcome.done;
+    const turn = h.turns.at(-1);
+    assert.equal(turn.ctxPayload.__params.conversation.id, "oc_d1dec7", "the direct chat id read from the anchor");
+    assert.equal(asks.at(-1).origin.chatId, "oc_d1dec7", "an ask_user answer typed in that chat matches");
+    const again = await bridge.start(startRequest(route, { attempt: 1 }));
+    await again.done;
+    assert.equal(h.api.filter((c) => c.method === "im.message.get").length, 1, "looked up once, then remembered");
+  });
+  await withMonitor({ accountConfig: { renderMode: "raw" } }, async ({ h, bridge }) => {
+    const route = (await bridge.resolveRoute({ sessionKey: DM_KEY, agentId: "makaron", ownerIds: [OWNER] })).route;
+    h.client.im.message.get = async () => { throw Object.assign(new Error("Request failed with status code 400"), { response: { status: 400, data: { code: 230001, msg: "invalid message_id" } } }); };
+    h.core = coreRun({ preReplyStart: false });
+    const outcome = await bridge.start(startRequest(route));
+    assert.equal(outcome.status, "started", "an unknown direct chat still runs, keyed by the person's open_id");
+    await outcome.done;
+    assert.equal(h.turns.at(-1).ctxPayload.__params.conversation.id, PEER);
+  });
+});
+
+test("run: a request never has command authority, even where a person's own message would", async () => {
+  await withMonitor({ accountConfig: { renderMode: "raw" } }, async ({ h, bridge }) => {
+    h.channelRuntime.commands.shouldComputeCommandAuthorized = () => true;
+    h.core = coreRun({ preReplyStart: false });
+    h.handlers["im.message.receive_v1"]({ sender: { sender_id: { open_id: OWNER } }, message: { message_id: "om_owner_cmd", chat_id: GROUP, chat_type: "group", message_type: "text", content: JSON.stringify({ text: "/status" }) } });
+    for (let i = 0; i < 20 && h.turns.length === 0; i += 1) await tick();
+    assert.equal(h.turns[0].ctxPayload.CommandAuthorized, true, "the owner's own command in this group is authorized");
+    const route = (await bridge.resolveRoute({ sessionKey: GROUP_KEY, agentId: "makaron", ownerIds: [OWNER] })).route;
+    const outcome = await bridge.start(startRequest(route, { fields: { promptText: "/new 请整理三份竞品资料" } }));
+    await outcome.done;
+    const ctx = h.turns.at(-1).ctxPayload;
+    assert.equal(ctx.VInterSession.id, SEND_ID);
+    assert.equal(ctx.SenderId, OWNER, "an owner chain keeps the owner identity …");
+    assert.equal(ctx.CommandAuthorized, false, "… but never command authority");
+    assert.equal(ctx.__params.access.commands.authorized, false);
+    assert.equal(ctx.CommandInterpretationSuppressed, true, "and the text is never read as a slash command");
   });
 });
 

@@ -308,7 +308,9 @@ function vFeishuInterSessionAttempt(req, attemptStartedAtMs, log) {
 		},
 		runOutcome() {
 			const error = attempt.errors.length > 0 ? attempt.errors.join("\n") : void 0;
-			const status = attempt.terminalOutcome === "failed" ? "error" : attempt.terminalOutcome === "completed" || attempt.finals.length > 0 || attempt.visible ? "ok" : "aborted";
+			// The core reports no terminal outcome only for an aborted run (/stop, a stalled run's
+			// interruption notice): streamed text or an error notice without a final is not a result.
+			const status = attempt.terminalOutcome === "failed" ? "error" : attempt.terminalOutcome === "completed" || attempt.finals.length > 0 ? "ok" : "aborted";
 			return {
 				status,
 				finals: attempt.finals.map((final) => ({ ...final })),
@@ -406,6 +408,28 @@ function vFeishuInterSessionCreateBridge({ account, accountId, runtime, dispatch
 			info
 		});
 		return info;
+	};
+	/**
+	* The oc_ id of the bot's direct chat with this person, which a person's own messages carry: the
+	* request then shares their per-chat queue, and an ask_user answer typed there matches. Learned
+	* from post() results, else (after a restart) from the anchor the plugin posted there.
+	*/
+	const directChat = async (req) => {
+		const key = `${bridgeAccountId}:${req.route.peerId}`;
+		const known = vFeishuInterSessionDirectChats.get(key);
+		if (known) return known;
+		const anchor = typeof req.anchorMessageId === "string" ? req.anchorMessageId.trim() : "";
+		if (!anchor) return;
+		try {
+			const res = vFeishuInterSessionCheckResponse(await client().im.message.get({ path: { message_id: anchor } }), "message.get");
+			const chatId = res?.data?.items?.[0]?.chat_id;
+			if (typeof chatId === "string" && V_INTER_SESSION_CHAT_ID_RE.test(chatId)) {
+				vFeishuInterSessionDirectChats.set(key, chatId);
+				return chatId;
+			}
+		} catch (err) {
+			log(`feishu[${bridgeAccountId}]: inter-session direct chat of ${req.route.peerId} not found from anchor ${anchor}: ${vFeishuInterSessionApiFailure(err).msg}`);
+		}
 	};
 	const bridge = {
 		v: 1,
@@ -548,10 +572,17 @@ function vFeishuInterSessionCreateBridge({ account, accountId, runtime, dispatch
 				message: `Feishu account ${bridgeAccountId} is not running`,
 				started: false
 			};
+			const directChatId = req.route.chatType === "direct" ? await directChat(req) : void 0;
+			if (stopped) return {
+				status: "rejected",
+				code: "CHANNEL_DOWN",
+				message: `Feishu account ${bridgeAccountId} is not running`,
+				started: false
+			};
 			const attempt = vFeishuInterSessionAttempt(req, attemptStartedAtMs, log);
 			const event = vFeishuInterSessionEvent(req, {
 				botOpenId: botOpenIds.get(accountId),
-				directChatId: req.route.chatType === "direct" ? vFeishuInterSessionDirectChats.get(`${bridgeAccountId}:${req.route.peerId}`) : void 0,
+				directChatId,
 				createTimeMs: attemptStartedAtMs
 			});
 			try {

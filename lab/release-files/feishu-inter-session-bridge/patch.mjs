@@ -19,7 +19,8 @@
 //     no broadcast, no dynamic agent, route asserted against the target key (ROUTE_MISMATCH),
 //     no pending group history in the prompt and none cleared, no command authority, provenance
 //     and prompt context through `extra`, ask_user answerer, preset runId + vInterSession in
-//     replyOptions, BUSY returns before the no-visible-reply fallback, firsttext origin/attempt,
+//     replyOptions, BUSY returns before the no-visible-reply fallback (releasing the attempt's ask_user
+//     stream, which the core never cleans up for a turn that did not start), firsttext origin/attempt,
 //     errors rethrown for RESTART_WEDGE, result returned;
 //   - createFeishuReplyDispatcher: no typing reaction, reply start (card precreate / streaming,
 //     progress subscription, ask_user activity) deferred to onAgentRunStart, finals captured;
@@ -154,7 +155,12 @@ export function buildEdits(inline = inlineBridgeModule()) {
         + L(2, "error(`feishu[${account.accountId}]: failed to dispatch message: ${String(err)}`);")
         + L(2, "if (turnAdoptionLifecycle || params.askUserAnswerOnly) throw err;"),
       L(3, "const { queuedFinal, counts } = dispatchResult;")
-        + L(3, "if (interSession?.busy) return interSession.complete({ dispatchResult });")
+        // BUSY: the core never started typing, so it never runs the dispatcher's cleanup; release its
+        // ask_user stream binding here (otherwise every BUSY retry leaves one registered for good).
+        + L(3, "if (interSession?.busy) {")
+        + L(4, "dispatcherOptions.onCleanup?.();")
+        + L(4, "return interSession.complete({ dispatchResult });")
+        + L(3, "}")
         + L(3, 'if (dispatchResult.deferredToActiveRun !== "steer" && shouldSendNoVisibleReplyFallback(dispatchResult)) await ensureNoVisibleReplyFallback("dispatch-complete-no-visible-reply");')
         + L(3, "log(`feishu[${account.accountId}]: dispatch complete (queuedFinal=${queuedFinal}, replies=${counts.final})`);")
         + L(3, "try {")
