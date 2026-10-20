@@ -13,7 +13,9 @@
 //     fast path, the explicit "/steer" retarget, skill slash commands (a tool-dispatch skill ran its tool),
 //     explicit skill references, inline simple commands (cut out of the body), the abort-word exemption
 //     from the abort cutoff, and, for a vInterSession turn without the suppression flag, directives, the
-//     command handlers and the unauthorized whole-message command exit.
+//     command handlers and the unauthorized whole-message command exit; for every literal turn, also a
+//     native command turn's directive and a leading think-level word ("High priority: …" set the thinking
+//     level and lost its first word when the turn had no resolved level).
 // Separately, dispatch's own busy exits before get-reply did not call onBusy, so the bridge reported GATED.
 //
 // Every case runs the real code cut out of V's captured bytes ("V", the behaviour before the change) and
@@ -301,10 +303,17 @@ test("dispatch: busy before get-reply reports BUSY active_run to an exclusive tu
     assert.ok(!("noVisibleReplyFallbackEligible" in result.result), "no channel fallback");
     assert.deepEqual(after.log, ["ensureDispatchReplyOperation:pre_dispatch", "finishReplyOperationBusyDispatch:release"], "the native busy exit, nothing else");
   }
-  // Not exclusive, or a person's message: the native busy exit only.
-  for (const vInterValue of [{ exclusive: false, onBusy: () => assert.fail("not exclusive") }, { onBusy: () => assert.fail("not exclusive") }]) {
-    const h = prepareOperationHarness(SOURCES.GEN.D, { text: "x", literal: "optsVInterSessionOnly", preDispatch: "busy", vInterValue });
-    await h.run();
+  // Not exclusive, or a person's message: the native busy exit only. (The calls are recorded: an onBusy
+  // that throws would be swallowed by the busy exit's try/catch and prove nothing.)
+  for (const exclusive of [false, undefined]) {
+    const calls = [];
+    const vInterValue = { ...(exclusive === undefined ? {} : { exclusive }), onBusy: (info) => calls.push(info) };
+    for (const literal of ["bridge", "ctxVInterSessionOnly", "optsVInterSessionOnly"]) {
+      const h = prepareOperationHarness(SOURCES.GEN.D, { text: "x", literal, preDispatch: "busy", vInterValue });
+      await h.run();
+      assert.deepEqual(h.log, ["ensureDispatchReplyOperation:pre_dispatch", "finishReplyOperationBusyDispatch:release"], `exclusive=${exclusive} ${literal}`);
+    }
+    assert.deepEqual(calls, [], `exclusive=${exclusive}: no BUSY`);
   }
   const before = prepareOperationHarness(SOURCES.V.D, { text: "x", preDispatch: "busy" });
   const after = prepareOperationHarness(SOURCES.GEN.D, { text: "x", preDispatch: "busy" });
@@ -599,6 +608,92 @@ test("get-reply: directives are not interpreted for any literal turn (the native
     assert.equal(await run(SOURCES.V.G, literal), true, `V ${literal}`);
     assert.equal(await run(SOURCES.GEN.G, literal), false, literal);
   }
+});
+
+test("get-reply: a native command turn's directive is not read from literal text", async () => {
+  // resolveReplyDirectives interprets directives when text directives are allowed OR the turn is a native
+  // command turn (a native /think reads its level from the text). A literal turn that a channel marked as a
+  // native command turn (the CommandTurn bug the Telegram review found, in its native form) must not get one.
+  const DIRECTIVES = "async function resolveReplyDirectives(params) {\n";
+  class Stop extends Error {}
+  const run = async (source, literal) => {
+    const seen = [];
+    const scope = {
+      listAgentEntries: () => [],
+      normalizeAgentId: (x) => x,
+      buildCommandContext: () => ({ isAuthorizedSender: true, senderIsOwner: true, surface: "telegram", channel: "telegram", commandBodyNormalized: "/think high" }),
+      shouldHandleTextCommands: () => true,
+      hasSkillReferenceCandidate: () => false,
+      normalizeOptionalString,
+      normalizeLowercaseStringOrEmpty: (v) => String(v ?? "").toLowerCase(),
+      reserveSkillCommandNames: () => {},
+      resolveCommandTurnContext: (c) => c.CommandTurn,
+      isNativeCommandTurn: (t) => t?.kind === "native",
+      loadCommandsRegistry: async () => ({ findCommandByNativeName: (name) => (name === "think" ? { key: "think" } : undefined) }),
+      resolveNativeReplyDirectiveCommand: (key) => (key === "think" ? "think" : undefined),
+      resolveReplyDirectiveRouting: (p) => {
+        seen.push({ canInterpretTextDirectives: p.canInterpretTextDirectives, nativeCommand: p.nativeCommand });
+        throw new Stop();
+      },
+    };
+    const fn = compile(`${helpers(source, G_HELPERS_END)}${topLevelFunction(source, DIRECTIVES)}`, "resolveReplyDirectives", scope);
+    const ctx = { SessionKey: SESSION_KEY, CommandTurn: { kind: "native", source: "native", authorized: true, commandName: "think" } };
+    const opts = {};
+    if (literal) LITERAL[literal](ctx, opts, vInter().value);
+    try {
+      await fn({ ctx, cfg: { agents: { defaults: {} } }, agentId: "makaron", sessionCtx: { commandText: "/think high", agentText: "/think high" }, sessionEntry: {}, sessionStore: {}, sessionKey: SESSION_KEY, opts, typing: { cleanup() {} }, commandAuthorized: false });
+    } catch (error) {
+      if (!(error instanceof Stop)) throw error;
+    }
+    return seen[0];
+  };
+  assert.deepEqual(await run(SOURCES.V.G), { canInterpretTextDirectives: true, nativeCommand: "think" });
+  assert.deepEqual(await run(SOURCES.GEN.G), { canInterpretTextDirectives: true, nativeCommand: "think" }, "a person's native /think is unchanged");
+  for (const literal of Object.keys(LITERAL)) {
+    // V: text directives were off for some of these, but the native directive still read "high" from the text.
+    assert.equal((await run(SOURCES.V.G, literal)).nativeCommand, "think", `V ${literal}`);
+    assert.deepEqual(await run(SOURCES.GEN.G, literal), { canInterpretTextDirectives: false, nativeCommand: undefined }, literal);
+  }
+});
+
+test("get-reply: a leading think-level word in literal text is neither a thinking level nor cut from the request", async () => {
+  // prepareReplyRunAdmission, before the guard: when no thinking level is resolved for the turn, a first
+  // word such as "high", "low", "think", "on", "off", "max" or "auto" sets it and is removed from the body.
+  const ADMISSION = "async function prepareReplyRunAdmission(context) {\n";
+  const run = async (source, { text, literal, resolvedThinkLevel }) => {
+    const fn = topLevelFunction(source, ADMISSION);
+    const slice = statements(fn, "\tif (!resolvedThinkLevel && prefixedBodyBase", "const prefixedBodyCore = prefixedBodyBase;");
+    const ctx = { SessionKey: SESSION_KEY };
+    const opts = {};
+    if (literal) LITERAL[literal](ctx, opts, vInter().value);
+    const scope = {
+      ctx,
+      opts,
+      resolvedThinkLevel,
+      prefixedBodyBase: text,
+      provider: "deepseek",
+      model: "deepseek-v4-flash",
+      thinkingRuntime: {},
+      // 9.1 thinking.shared.ts normalizeThinkLevel, for the words used here.
+      normalizeThinkLevel: (raw) => ({ high: "high", think: "minimal", on: "low", off: "off" })[String(raw ?? "").toLowerCase()],
+      traceRunPhase: async (_name, fn2) => await fn2(),
+      modelState: { resolveThinkingCatalog: async () => ({}) },
+      isThinkingLevelSupported: () => true,
+    };
+    const removeSpan = topLevelFunction(source, "function removeDirectiveSpan(body, start, end) {\n");
+    return await runSlice(`${helpers(source, G_HELPERS_END)}${removeSpan}`, slice, "({ resolvedThinkLevel, prefixedBodyBase })", scope);
+  };
+  const cases = [["High priority: summarise the thread", "high", "priority: summarise the thread"], ["Think about the Q3 plan", "minimal", "about the Q3 plan"], ["On Monday, ship it", "low", "Monday, ship it"]];
+  for (const [text, level, cut] of cases) {
+    assert.deepEqual(await run(SOURCES.V.G, { text }), { resolvedThinkLevel: level, prefixedBodyBase: cut }, `V person: ${text}`);
+    assert.deepEqual(await run(SOURCES.GEN.G, { text }), { resolvedThinkLevel: level, prefixedBodyBase: cut }, `a person's shorthand is unchanged: ${text}`);
+    for (const literal of Object.keys(LITERAL)) {
+      assert.deepEqual(await run(SOURCES.V.G, { text, literal }), { resolvedThinkLevel: level, prefixedBodyBase: cut }, `V ${literal}: ${text}`);
+      assert.deepEqual(await run(SOURCES.GEN.G, { text, literal }), { resolvedThinkLevel: undefined, prefixedBodyBase: text }, `${literal}: ${text}`);
+    }
+  }
+  // A resolved level (the usual case) never consults the first word, for anyone.
+  assert.deepEqual(await run(SOURCES.GEN.G, { text: "High priority", resolvedThinkLevel: "medium" }), { resolvedThinkLevel: "medium", prefixedBodyBase: "High priority" });
 });
 
 test("get-reply: the unauthorized whole-message command exit does not swallow a literal turn", async () => {

@@ -148,10 +148,10 @@ function assertOnlyAnchorsChange(captured, generated, anchors, file) {
 test("only the intended lines change; everything V already runs (its own markers included) stays", () => {
   const hunksG = assertOnlyAnchorsChange(V_G, GEN_G, ANCHORS.getReply, FILES.getReply);
   const removedG = hunksG.flatMap((h) => h.removed);
-  assert.equal(removedG.length, 1 + 1 + 1 + 2 + 1 + 1 + 1 + 1 + 1 + 1, "only the interrupt-clear condition and the literal-text conditions are rewritten");
+  assert.equal(removedG.length, 1 + 1 + 1 + 2 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1, "only the interrupt-clear condition and the literal-text conditions are rewritten");
   assert.ok(removedG.every((l) => !/^\s*(?:\/\/|\/?\*)/u.test(l)), "no comment of V's is removed");
   assert.equal(count(GEN_G, "vInterSessionExclusive(opts, ctx)"), 5, "declaration, heartbeat exit, interrupt clear, guard, run-now exit");
-  assert.equal(count(GEN_G, "vInterSessionLiteralText("), 7, "declaration + directives, inline actions, native slash, run context, session reset, explicit steer");
+  assert.equal(count(GEN_G, "vInterSessionLiteralText("), 9, "declaration + directives, native directive, inline actions, native slash, run context, think-level word, session reset, explicit steer");
 
   const hunksR = assertOnlyAnchorsChange(V_R, GEN_R, ANCHORS.agentRunnerRuntime, FILES.agentRunnerRuntime);
   assert.equal(hunksR.flatMap((h) => h.added).length - hunksR.flatMap((h) => h.removed).length, 11 + 2, "flush seam and the exclusive steer/followup decision");

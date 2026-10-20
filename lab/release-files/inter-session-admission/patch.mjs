@@ -54,7 +54,9 @@
 //     - the native/authorized text slash fast path and the explicit "/steer" / "/tell" retarget do not run;
 //     - directives, skill slash commands ("/<skill> ..."), explicit skill references, inline simple
 //       commands and the command handlers are not interpreted (the native CommandInterpretationSuppressed
-//       gates now also cover a vInterSession turn);
+//       gates now also cover a vInterSession turn), and neither is a native command turn's directive;
+//     - a leading think-level word ("high", "think", "on", ...) neither sets the turn's thinking level nor
+//       is cut from the request (prepareReplyRunAdmission, before the guard);
 //     - an abort word does not exempt the turn from the abort cutoff bookkeeping a plain message gets.
 // The upstream semantics are the same: chat.send treats suppressed text as literal
 // (chat-send-request.ts: stopCommand = !commandInterpretationSuppressed && ...; commands-core.ts:
@@ -278,6 +280,20 @@ const G_EXPLICIT_STEER = `\tif (explicitSteerTargetSessionKey) finalized.Command
 const G_EXPLICIT_STEER_LITERAL = `\tif (explicitSteerTargetSessionKey && !vInterSessionLiteralText(finalized, opts)) finalized.CommandTargetSessionKey = explicitSteerTargetSessionKey;
 `;
 
+// resolveReplyDirectives: a native command turn's directive (a native /think, /model, ...) reads its
+// arguments from the text even where text directives are off.
+const G_NATIVE_DIRECTIVE = `\tconst nativeDirectiveCommand = command.isAuthorizedSender && isNativeCommandTurn(commandTurn) && commandTurn.commandName ? resolveNativeReplyDirectiveCommand((await loadCommandsRegistry()).findCommandByNativeName(commandTurn.commandName, command.channel, { includeBundledChannelFallback: false })?.key) : void 0;
+`;
+const G_NATIVE_DIRECTIVE_LITERAL = `\tconst nativeDirectiveCommand = !vInterSessionLiteralText(ctx, opts) && command.isAuthorizedSender && isNativeCommandTurn(commandTurn) && commandTurn.commandName ? resolveNativeReplyDirectiveCommand((await loadCommandsRegistry()).findCommandByNativeName(commandTurn.commandName, command.channel, { includeBundledChannelFallback: false })?.key) : void 0;
+`;
+
+// prepareReplyRunAdmission, before the guard: with no thinking level resolved for the turn, a leading
+// "high" / "low" / "think" / "on" / "off" / "max" / "auto" ... word sets it and is cut from the body.
+const G_THINK_SHORTHAND = `\tif (!resolvedThinkLevel && prefixedBodyBase) {
+`;
+const G_THINK_SHORTHAND_LITERAL = `\tif (!resolvedThinkLevel && prefixedBodyBase && !vInterSessionLiteralText(ctx, opts)) {
+`;
+
 // ---------------------------------------------------------------- dispatch-from-config
 
 const D_OPERATION_START = "//#region src/auto-reply/reply/dispatch-from-config.prepare-operation.ts\nasync function prepareDispatchOperation(state) {\n";
@@ -429,7 +445,7 @@ export const ANCHORS = Object.freeze({
   getReply: Object.freeze([
     G_ADMISSION_START, G_HEARTBEAT_TIMEOUT, G_INTERRUPT_CLEAR, G_QUEUE_ADMISSION, G_RUN_NOW_REPLY,
     G_DIRECTIVES, G_INLINE_CUTOFF, G_INLINE_SKILLS, G_INLINE_COMMAND, G_INLINE_RUN_COMMANDS,
-    G_NATIVE_SLASH, G_RUN_CONTEXT, G_SESSION_RESET, G_EXPLICIT_STEER,
+    G_NATIVE_SLASH, G_RUN_CONTEXT, G_SESSION_RESET, G_EXPLICIT_STEER, G_NATIVE_DIRECTIVE, G_THINK_SHORTHAND,
   ]),
   agentRunnerRuntime: Object.freeze([R_FLUSH_YIELD, R_STEER]),
   dispatchFromConfig: Object.freeze([
@@ -455,6 +471,8 @@ export function patchGetReply(source) {
   out = replaceOnce(out, G_RUN_CONTEXT, G_RUN_CONTEXT_LITERAL, "run context command interpretation gate");
   out = replaceOnce(out, G_SESSION_RESET, G_SESSION_RESET_LITERAL, "session reset triggers");
   out = replaceOnce(out, G_EXPLICIT_STEER, G_EXPLICIT_STEER_LITERAL, "explicit steer retarget");
+  out = replaceOnce(out, G_NATIVE_DIRECTIVE, G_NATIVE_DIRECTIVE_LITERAL, "native command directive");
+  out = replaceOnce(out, G_THINK_SHORTHAND, G_THINK_SHORTHAND_LITERAL, "leading think-level word");
   return out;
 }
 

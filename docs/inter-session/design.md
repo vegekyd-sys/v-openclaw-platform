@@ -1654,6 +1654,8 @@ minimal 设计里"已经汇报过就只回 NO_REPLY"的指令**删除**（J2 mus
      - skill 斜杠命令（tool-dispatch 型 skill 原来会在准入前直接执行工具）、显式 skill 引用、内联简单命令都不再生效，内联命令也不再从正文里剪掉；
      - 中止词不再让这条消息绕过 abort cutoff 的处理；
      - directives、command handlers 和未授权整条命令的静默退出，原来只认 `CommandInterpretationSuppressed`，现在 vInterSession 回合也算字面正文。
+     - （fix-core 评审补充）被标成 native 命令回合的字面正文，不再给 native directive（如 native `/think`）读参数；
+     - （fix-core 评审补充）回合没有解析出思考级别时，正文开头的 `high`、`think`、`on`、`off`、`max`、`auto` 等词不再被当成思考级别，也不再从请求里剪掉。这一步在 prepareReplyRunAdmission 开头、G 守卫之前，原生从不看 `CommandInterpretationSuppressed`。
    - **派发层 BUSY**：dispatch 在 get-reply 之前就判忙时（pre_dispatch 和 dispatch 两处 `finishReplyOperationBusyDispatch`），独占回合会调用 `onBusy({ reason: "active_run" })`，零可见输出，桥因此得到 BUSY，不再是 GATED。get-reply 之后的那处 busy 出口不调：这时要么 G 已经报过 BUSY，要么回合已经开跑。
    - **实现位置**：沿用 `lab/release-files/inter-session-admission` 和 marker `v-inter-session-exclusive-v1`，每个文件各一处 marker。R1 核心文件因此多一个 `dispatch-from-config-DOJq_7CI.js`，V 字节 sha `f150902a…`，就是 feishu-secret-entry 的版本；10-20 19:25 CST 已只读核对，与 V 一致。
    - **测试**：`tests/inter-session-literal-text.test.mjs`。

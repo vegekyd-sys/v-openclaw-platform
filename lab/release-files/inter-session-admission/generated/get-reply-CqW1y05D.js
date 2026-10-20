@@ -1856,7 +1856,7 @@ async function resolveReplyDirectives(params) {
 	const canInterpretMessageDirectives = canInterpretTextDirectives && !hasExplicitSkillInvocation;
 	const configuredAliases = rawAliases.filter((alias) => !reservedCommands.has(normalizeLowercaseStringOrEmpty(alias)));
 	const commandTurn = resolveCommandTurnContext(ctx);
-	const nativeDirectiveCommand = command.isAuthorizedSender && isNativeCommandTurn(commandTurn) && commandTurn.commandName ? resolveNativeReplyDirectiveCommand((await loadCommandsRegistry()).findCommandByNativeName(commandTurn.commandName, command.channel, { includeBundledChannelFallback: false })?.key) : void 0;
+	const nativeDirectiveCommand = !vInterSessionLiteralText(ctx, opts) && command.isAuthorizedSender && isNativeCommandTurn(commandTurn) && commandTurn.commandName ? resolveNativeReplyDirectiveCommand((await loadCommandsRegistry()).findCommandByNativeName(commandTurn.commandName, command.channel, { includeBundledChannelFallback: false })?.key) : void 0;
 	const routedDirectives = resolveReplyDirectiveRouting({
 		commandText,
 		agentText: sessionCtx.agentText,
@@ -3318,7 +3318,7 @@ async function prepareReplyRunAdmission(context) {
 	const { ctx, sessionCtx, cfg, agentId, agentDir, directives, modelState, provider, model, perMessageQueueOptions, typing, opts, isNewSession, sessionKey, sessionId, storePath, sessionEntryHandle, sessionStore } = params;
 	let { sessionEntry, prefixedBodyBase } = context;
 	let { resolvedThinkLevel } = params;
-	if (!resolvedThinkLevel && prefixedBodyBase) {
+	if (!resolvedThinkLevel && prefixedBodyBase && !vInterSessionLiteralText(ctx, opts)) {
 		const firstToken = prefixedBodyBase.split(/\s+/, 1)[0] ?? "";
 		const maybeLevel = normalizeThinkLevel(firstToken);
 		const thinkingCatalog = maybeLevel ? await traceRunPhase("reply.resolve_thinking_catalog_for_hint", () => modelState.resolveThinkingCatalog({
