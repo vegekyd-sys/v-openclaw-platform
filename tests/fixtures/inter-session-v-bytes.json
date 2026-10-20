@@ -77,6 +77,27 @@
       "release": "R1",
       "component": "core",
       "workPackages": [
+        "WP1"
+      ],
+      "file": "dispatch-from-config-DOJq_7CI.js",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/dispatch-from-config-DOJq_7CI.js",
+      "manifest": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/manifest.json",
+      "manifestPath": "./dispatch-from-config-DOJq_7CI.js",
+      "hostPath": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/dispatch-from-config-DOJq_7CI.js",
+      "sha256": "f150902ab3ebf2c9ccb19c4c5eb5158b469554553992a76b1c5e772fe7db39bd",
+      "bytes": 166719,
+      "kind": "modified",
+      "hostMtime": "2026-09-22T14:16:16.000Z",
+      "verifiedOnV": {
+        "at": "2026-10-20T19:25:24+08:00",
+        "method": "ssh v: sha256sum of hostPath, read-only (added with the fix-core literal-text change; not part of the 16:50 check above)",
+        "match": true
+      }
+    },
+    {
+      "release": "R1",
+      "component": "core",
+      "workPackages": [
         "WP3"
       ],
       "file": "task-registry-activity-DSlVVJwD.js",

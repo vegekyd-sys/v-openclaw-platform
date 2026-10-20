@@ -13,7 +13,7 @@ const repo = fileURLToPath(new URL("../", import.meta.url));
 const fixture = JSON.parse(fs.readFileSync(path.join(repo, "tests/fixtures/inter-session-v-bytes.json"), "utf8"));
 const sha256 = (file) => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 
-const R1 = ["sessions-spawn-tool-1FQMTkIo.js", "openclaw-tools-BODVdJQD.js", "get-reply-CqW1y05D.js", "agent-runner.runtime-CAdsMsQt.js", "task-registry-activity-DSlVVJwD.js", "monitor.account-WFdlCDhR.js"];
+const R1 = ["sessions-spawn-tool-1FQMTkIo.js", "openclaw-tools-BODVdJQD.js", "get-reply-CqW1y05D.js", "agent-runner.runtime-CAdsMsQt.js", "dispatch-from-config-DOJq_7CI.js", "task-registry-activity-DSlVVJwD.js", "monitor.account-WFdlCDhR.js"];
 const R2 = ["telegram-ingress-drain-factory-DJM2Jqrc.js", "bot-message-DC6p8sB3.js", "v-experience.js", "connection-DCvu-l09.mjs", "message-handler-BUoLSylZ.mjs", "v-experience.mjs", "monitor.js", "v-experience.mjs"];
 
 test("inter-session V bytes: the fixture lists exactly the §3.0 R1 and R2 targets", () => {

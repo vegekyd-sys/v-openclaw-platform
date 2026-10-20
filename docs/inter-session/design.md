@@ -1640,3 +1640,20 @@ minimal 设计里"已经汇报过就只回 NO_REPLY"的指令**删除**（J2 mus
 11. **/vcc 的 candidate 实测受阻**：共享 VLab 的 claude 登录 10/17 起过期，需要 Tianyi 重新登录；在此之前用 worker、vds 完成 candidate，vcc 只做离线与已有路径验证。
 12. **v-experience 的「会话请求」种类映射**由 WP3 统一改 `apps/v-experience/v-experience.mjs` 及其三份产物（核心 Telegram 用、钉钉、企微）；WP6/7/8 不碰这些文件，各自的桥放在独立的 `lab/release-files/<channel>-inter-session-bridge/`。
 13. **测试房间已建**（2026-10-20 17:33 CST，VLab bot `im/v1/chats`，成员只有 Tianyi 和「V - Lab」）：「VLab 测试｜房间 1」`oc_fe63730f4bc817cd46ccd325ab990a74`、「房间 2」`oc_c7074487c880fb9792a663750b2f22ba`、「房间 3」`oc_a14d4ff92e03b4d52420ef20e56eaba6`。candidate 的 `INTER_SESSION_ROOM_POOL` 用这三个。
+14. **字面正文与派发层 BUSY**（2026-10-20 19:33 CST，fix-core；来自 Telegram 评审和 core-guard 评审）。
+   - **范围**：跨会话回合（`replyOptions.vInterSession` 或 `ctx.VInterSession` 存在），以及任何 `ctx.CommandInterpretationSuppressed === true` 的回合。这类回合的正文一律按字面处理，不会被当成命令或触发词。
+   - **为什么 §2.a 的 `CommandAuthorized:false` 不够**：V 的 `commands.allowFrom` 对各渠道配了 `"*"`，`resolveCommandSenderAuthorization` 这时不看 `commandAuthorized`。而原生只有 directives、`handleCommands` 和 run context 三处读 `CommandInterpretationSuppressed`。
+   - **派发层（新增核心文件 `dispatch-from-config-DOJq_7CI.js`）**，都在 G 守卫之前：
+     - 中止词（「停止」「stop」「/stop」等）不再中止目标会话正在跑的回合，也不再发「⚙️ Agent was aborted.」；
+     - `/approve <id>` 不再批掉待审批；
+     - `/new`、`/reset` 不再让 dispatch 的准入判成重置；
+     - 不再判成显式命令回合，所以不会走 active-run-safe 的命令准入。
+   - **get-reply**：
+     - initSessionState 里的 `/new`、`/reset`、`/reset soft` 不再重置会话；
+     - native 和已授权 text slash 的快速路径不再执行；`/steer`、`/tell` 不再改目标会话；
+     - skill 斜杠命令（tool-dispatch 型 skill 原来会在准入前直接执行工具）、显式 skill 引用、内联简单命令都不再生效，内联命令也不再从正文里剪掉；
+     - 中止词不再让这条消息绕过 abort cutoff 的处理；
+     - directives、command handlers 和未授权整条命令的静默退出，原来只认 `CommandInterpretationSuppressed`，现在 vInterSession 回合也算字面正文。
+   - **派发层 BUSY**：dispatch 在 get-reply 之前就判忙时（pre_dispatch 和 dispatch 两处 `finishReplyOperationBusyDispatch`），独占回合会调用 `onBusy({ reason: "active_run" })`，零可见输出，桥因此得到 BUSY，不再是 GATED。get-reply 之后的那处 busy 出口不调：这时要么 G 已经报过 BUSY，要么回合已经开跑。
+   - **实现位置**：沿用 `lab/release-files/inter-session-admission` 和 marker `v-inter-session-exclusive-v1`，每个文件各一处 marker。R1 核心文件因此多一个 `dispatch-from-config-DOJq_7CI.js`，V 字节 sha `f150902a…`，就是 feishu-secret-entry 的版本；10-20 19:25 CST 已只读核对，与 V 一致。
+   - **测试**：`tests/inter-session-literal-text.test.mjs`。
