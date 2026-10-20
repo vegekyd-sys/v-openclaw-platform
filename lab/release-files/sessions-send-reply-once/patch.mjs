@@ -11,14 +11,27 @@
 // One deviation from 9.8: the requester's turn uses the idempotency key
 // `sessions-send-result:<target runId>`, so the v-session-relay plugin can find
 // it (and re-issue it after a Gateway restart without running it twice).
-// Drop this patch when V moves to 2026.9.8.
+//
+// V-only (v2, not in any upstream release): both turns are delivered through the
+// session's own channel, the way a reply to a person is. The target's turn and the
+// requester's wake-up turn run with `deliver: true` and automatic source replies, so
+// whatever each V says, plus images and files, shows up natively in that session's
+// own Feishu chat. Upstream runs both with `deliver: false` on the internal channel,
+// where nobody in either chat sees them. The 9.8 drop keeps the reply-once part;
+// this part has to be carried forward.
 import fs from "node:fs";
 
-export const MARKER = "v-sessions-send-reply-once-v1";
+export const MARKER = "v-sessions-send-reply-once-v2";
 export const FILE = "sessions-spawn-tool-1FQMTkIo.js";
 
 const STEP_ANCHOR = "\tconst stepIdem = crypto.randomUUID();\n";
 const FLOW_START = "async function runSessionsSendA2AFlow(params) {\n";
+// The target's turn, started by sessions_send itself.
+const TARGET_SEND = "\t\t\t\t\t\tdeliver: false,\n\t\t\t\t\t\tsourceReplyDeliveryMode: \"message_tool_only\",\n\t\t\t\t\t\tchannel: INTERNAL_MESSAGE_CHANNEL,\n";
+const TARGET_SEND_NATIVE = "\t\t\t\t\t\tdeliver: true,\n\t\t\t\t\t\tbestEffortDeliver: true,\n\t\t\t\t\t\tsourceReplyDeliveryMode: \"automatic\",\n";
+// runAgentStep's Gateway call (the requester's wake-up turn goes through it).
+const STEP_GATEWAY = "\t\t\tidempotencyKey: stepIdem,\n\t\t\tdeliver: false,\n\t\t\tsourceReplyDeliveryMode: \"message_tool_only\",\n\t\t\tchannel,\n";
+const STEP_GATEWAY_NATIVE = "\t\t\tidempotencyKey: stepIdem,\n\t\t\t...params.deliver === true ? {\n\t\t\t\tdeliver: true,\n\t\t\t\tbestEffortDeliver: true,\n\t\t\t\tsourceReplyDeliveryMode: \"automatic\"\n\t\t\t} : {\n\t\t\t\tdeliver: false,\n\t\t\t\tsourceReplyDeliveryMode: \"message_tool_only\",\n\t\t\t\tchannel\n\t\t\t},\n";
 const FLOW_END = "//#endregion\n//#region src/agents/tools/sessions-send-tool.ts\n";
 
 const FLOW = `async function runSessionsSendA2AFlow(params) {
@@ -53,7 +66,8 @@ const FLOW = `async function runSessionsSendA2AFlow(params) {
 						lane: resolveNestedAgentLaneForSession(params.requesterSessionKey),
 						sourceSessionKey: params.targetSessionKey,
 						sourceTool: "sessions_send",
-						callGateway: gatewayCall
+						callGateway: gatewayCall,
+						deliver: true
 					});
 				}
 				return;
@@ -100,14 +114,15 @@ const FLOW = `async function runSessionsSendA2AFlow(params) {
 			agentId: params.requesterAgentId,
 			sessionKey: params.requesterSessionKey,
 			message: reply,
-			extraSystemPrompt: "Another session returned the result of your earlier sessions_send request. Continue the work it was for. This result is delivered once; your response will not be sent back to the target session.",
+			extraSystemPrompt: "Another session returned the result of your earlier sessions_send request. Continue the work it was for. What you write now is posted in this conversation's own chat. This result is delivered once; your response will not be sent back to the target session.",
 			timeoutMs: SESSIONS_SEND_REPLY_MAX_WAIT_MS,
 			lane: resolveNestedAgentLaneForSession(params.requesterSessionKey),
 			sourceAgentId: params.targetAgentId,
 			sourceSessionKey: params.targetSessionKey,
 			sourceTool: "sessions_send",
 			callGateway: gatewayCall,
-			idempotencyKey: \`sessions-send-result:\${runContextId}\`
+			idempotencyKey: \`sessions-send-result:\${runContextId}\`,
+			deliver: true
 		});
 	} catch (err) {
 		log$1.warn("sessions_send reply flow failed", {
@@ -140,6 +155,10 @@ export function patchSessionsSendReplyOnce(source) {
     throw new Error("runSessionsSendA2AFlow end anchor not found");
   }
   out = `${head}${FLOW}${rest.slice(endAt)}`;
+  const [beforeTarget, afterTarget] = once(out, TARGET_SEND, "sessions_send target turn");
+  out = `${beforeTarget}${TARGET_SEND_NATIVE}${afterTarget}`;
+  const [beforeGateway, afterGateway] = once(out, STEP_GATEWAY, "runAgentStep Gateway call");
+  out = `${beforeGateway}${STEP_GATEWAY_NATIVE}${afterGateway}`;
   return out;
 }
 

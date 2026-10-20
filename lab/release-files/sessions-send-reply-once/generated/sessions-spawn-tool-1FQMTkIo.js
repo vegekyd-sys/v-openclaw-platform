@@ -358,9 +358,15 @@ async function runAgentStep(params) {
 			...params.agentId ? { agentId: params.agentId } : {},
 			sessionKey: params.sessionKey,
 			idempotencyKey: stepIdem,
-			deliver: false,
-			sourceReplyDeliveryMode: "message_tool_only",
-			channel,
+			...params.deliver === true ? {
+				deliver: true,
+				bestEffortDeliver: true,
+				sourceReplyDeliveryMode: "automatic"
+			} : {
+				deliver: false,
+				sourceReplyDeliveryMode: "message_tool_only",
+				channel
+			},
 			lane,
 			extraSystemPrompt: params.extraSystemPrompt,
 			inputProvenance
@@ -487,7 +493,7 @@ async function deliverAnnounceReply(params) {
 	}
 }
 async function runSessionsSendA2AFlow(params) {
-	// v-sessions-send-reply-once-v1
+	// v-sessions-send-reply-once-v2
 	const runContextId = params.waitRunId ?? "unknown";
 	const gatewayCall = params.callGateway ?? callAgentToolGatewayRequest;
 	try {
@@ -518,7 +524,8 @@ async function runSessionsSendA2AFlow(params) {
 						lane: resolveNestedAgentLaneForSession(params.requesterSessionKey),
 						sourceSessionKey: params.targetSessionKey,
 						sourceTool: "sessions_send",
-						callGateway: gatewayCall
+						callGateway: gatewayCall,
+						deliver: true
 					});
 				}
 				return;
@@ -565,14 +572,15 @@ async function runSessionsSendA2AFlow(params) {
 			agentId: params.requesterAgentId,
 			sessionKey: params.requesterSessionKey,
 			message: reply,
-			extraSystemPrompt: "Another session returned the result of your earlier sessions_send request. Continue the work it was for. This result is delivered once; your response will not be sent back to the target session.",
+			extraSystemPrompt: "Another session returned the result of your earlier sessions_send request. Continue the work it was for. What you write now is posted in this conversation's own chat. This result is delivered once; your response will not be sent back to the target session.",
 			timeoutMs: SESSIONS_SEND_REPLY_MAX_WAIT_MS,
 			lane: resolveNestedAgentLaneForSession(params.requesterSessionKey),
 			sourceAgentId: params.targetAgentId,
 			sourceSessionKey: params.targetSessionKey,
 			sourceTool: "sessions_send",
 			callGateway: gatewayCall,
-			idempotencyKey: `sessions-send-result:${runContextId}`
+			idempotencyKey: `sessions-send-result:${runContextId}`,
+			deliver: true
 		});
 	} catch (err) {
 		log$1.warn("sessions_send reply flow failed", {
@@ -1199,9 +1207,9 @@ function createSessionsSendTool(opts) {
 						agentId: targetAgentId,
 						sessionKey: resolvedKey,
 						idempotencyKey,
-						deliver: false,
-						sourceReplyDeliveryMode: "message_tool_only",
-						channel: INTERNAL_MESSAGE_CHANNEL,
+						deliver: true,
+						bestEffortDeliver: true,
+						sourceReplyDeliveryMode: "automatic",
 						lane: resolveNestedAgentLaneForSession(resolvedKey),
 						extraSystemPrompt: agentMessageContext,
 						inputProvenance
