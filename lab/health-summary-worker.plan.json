@@ -1,0 +1,17 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/health-summary-worker/collector-DyqVHdcZ.js",
+      "target": "openclaw/dist/collector-DyqVHdcZ.js",
+      "before": "8056582c883650665335738742a720cfe00b0dcf050b5a77439c0d949e119c30",
+      "after": "376387c50a24a360aab39aa9d6c11eed7897e45a0b23bb0da93a626d3e860644"
+    },
+    {
+      "source": "lab/release-files/health-summary-worker/v-health-session-summary-worker.mjs",
+      "target": "openclaw/dist/v-health-session-summary-worker.mjs",
+      "before": null,
+      "after": "b5cf6c19999d929c551acdf5164b894ff0c592a231b948ff4c705e2ccd1ebc81"
+    }
+  ]
+}

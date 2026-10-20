@@ -1,0 +1,84 @@
+{
+ "candidates": {
+  "candidate-52929948-e175-4926-ace2-8dfc40f3e3b4": {
+   "equivalence": {
+    "count": 5729,
+    "compared": 8,
+    "mismatches": 0,
+    "sample": []
+   },
+   "cost.cold.base": {
+    "label": "buildHealthAgentSummaries V",
+    "cold": true,
+    "runs": [
+     {
+      "wallMs": 1474,
+      "mainThreadMaxStallMs": 1474
+     },
+     {
+      "wallMs": 1764,
+      "mainThreadMaxStallMs": 1765
+     },
+     {
+      "wallMs": 1530,
+      "mainThreadMaxStallMs": 1530
+     }
+    ]
+   },
+   "cost.cold.patched": {
+    "label": "buildHealthAgentSummaries release",
+    "cold": true,
+    "runs": [
+     {
+      "wallMs": 1451,
+      "mainThreadMaxStallMs": 16
+     },
+     {
+      "wallMs": 1521,
+      "mainThreadMaxStallMs": 9
+     },
+     {
+      "wallMs": 1606,
+      "mainThreadMaxStallMs": 8
+     }
+    ]
+   },
+   "cost.warm.base": {
+    "label": "buildHealthAgentSummaries V",
+    "cold": false,
+    "runs": [
+     {
+      "wallMs": 70,
+      "mainThreadMaxStallMs": 70
+     },
+     {
+      "wallMs": 73,
+      "mainThreadMaxStallMs": 74
+     },
+     {
+      "wallMs": 54,
+      "mainThreadMaxStallMs": 54
+     }
+    ]
+   },
+   "cost.warm.patched": {
+    "label": "buildHealthAgentSummaries release",
+    "cold": false,
+    "runs": [
+     {
+      "wallMs": 56,
+      "mainThreadMaxStallMs": 8
+     },
+     {
+      "wallMs": 83,
+      "mainThreadMaxStallMs": 8
+     },
+     {
+      "wallMs": 72,
+      "mainThreadMaxStallMs": 8
+     }
+    ]
+   }
+  }
+ }
+}

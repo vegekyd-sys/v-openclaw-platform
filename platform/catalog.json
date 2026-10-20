@@ -433,7 +433,8 @@
         "lab/subagent-settle-backlog.test.mjs",
         "lab/workboard-lifecycle-bounded.test.mjs",
         "lab/session-info-subagent-index.test.mjs",
-        "lab/gateway-fullread-hotpaths.test.mjs"
+        "lab/gateway-fullread-hotpaths.test.mjs",
+        "lab/health-summary-worker.test.mjs"
       ]
     }
   ],

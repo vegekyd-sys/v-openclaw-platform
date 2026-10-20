@@ -1,0 +1,23 @@
+{
+  "support": [
+    "lab/candidate/health-summary-worker-ab.mjs",
+    "lab/health-summary-worker.plan.json",
+    "lab/release-files/health-summary-worker/collector-DyqVHdcZ.js"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/health-summary-worker/v-health-session-summary-worker.mjs",
+      "target": "openclaw/dist/v-health-session-summary-worker.mjs"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "--experimental-async-context-frame",
+    "lab/candidate/health-summary-worker-ab.mjs"
+  ],
+  "timeoutSeconds": 3600,
+  "env": {
+    "FIXTURE_DIR": "/var/tmp/gwhealth",
+    "REPEAT": "3"
+  }
+}

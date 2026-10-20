@@ -12,6 +12,8 @@ import { D as tryResolveLegacyCompatibilityAgentId, i as listAgentEntries } from
 import { n as normalizeAgentId } from "./agent-id-CeT3w4ap.js";
 import "./session-key-CRjxKW0X.js";
 import { o as resolveSessionStorePathCore } from "./paths-DDTeIhCT.js";
+import { u as resolveSqliteTargetFromSessionStorePath } from "./store-entry-CMuTqREZ.js";
+import { Worker } from "node:worker_threads";
 import "./legacy.default-agent-owner-BMzvJbjU.js";
 import "./agent-scope-CSlN0kZb.js";
 import { t as runTasksWithConcurrency } from "./run-with-concurrency-B6LtW2cN.js";
@@ -158,11 +160,108 @@ function resolveHealthAgentOrder(cfg) {
 		ordered
 	};
 }
-async function createHealthSessionStoreReader(agentIds) {
+// v-health-summary-worker-v1: the summary reads every session_nodes row's entry_valid, which sits after the
+// entry JSON, so it walks every row's overflow pages: ~0.1 s with a warm page cache, 9-19 s cold, every
+// 60 s refresh, on the main thread (V 2026-10-21 02:07 and 03:03). A persistent worker runs the same
+// readSessionStoreSummaryReadOnly for each physical store first, with the scope and options the
+// synchronous reader would pass; the reader then returns those results.
+const V_HEALTH_SUMMARY_WORKER_TIMEOUT_MS = 12e4;
+let vHealthSummaryWorker = null;
+let vHealthSummarySequence = 0;
+const vHealthSummaryPending = /* @__PURE__ */ new Map();
+function vHealthSummaryScopeKey(scope) {
+	return JSON.stringify([scope.agentId ?? null, scope.storePath ?? null]);
+}
+function getVHealthSummaryWorker() {
+	if (vHealthSummaryWorker) return vHealthSummaryWorker;
+	const worker = new Worker(new URL("./v-health-session-summary-worker.mjs", import.meta.url));
+	worker.unref();
+	const fail = (error) => {
+		if (vHealthSummaryWorker === worker) vHealthSummaryWorker = null;
+		for (const pending of vHealthSummaryPending.values()) {
+			clearTimeout(pending.timer);
+			pending.reject(error);
+		}
+		vHealthSummaryPending.clear();
+	};
+	worker.on("message", (message) => {
+		const pending = vHealthSummaryPending.get(message?.id);
+		if (!pending) return;
+		vHealthSummaryPending.delete(message.id);
+		clearTimeout(pending.timer);
+		pending.resolve(message.results);
+	});
+	worker.on("error", fail);
+	worker.on("exit", (code) => fail(new Error(`health summary worker exited with code ${code}`)));
+	vHealthSummaryWorker = worker;
+	return worker;
+}
+function readHealthSummariesInWorker(requests) {
+	const worker = getVHealthSummaryWorker();
+	const id = ++vHealthSummarySequence;
+	return new Promise((resolve, reject) => {
+		const timer = setTimeout(() => {
+			vHealthSummaryPending.delete(id);
+			reject(new Error("health summary worker timed out"));
+		}, V_HEALTH_SUMMARY_WORKER_TIMEOUT_MS);
+		timer.unref?.();
+		vHealthSummaryPending.set(id, {
+			resolve,
+			reject,
+			timer
+		});
+		worker.postMessage({
+			id,
+			requests
+		});
+	});
+}
+async function prefetchHealthSessionSummaries(agentIds, targets) {
+	if (targets.length === 0 || process.env.OPENCLAW_V_HEALTH_SUMMARY_WORKER === "0") return null;
+	const seenPaths = /* @__PURE__ */ new Set();
+	const requests = [];
+	for (const target of targets) {
+		const path = resolveSqliteTargetFromSessionStorePath(target.storePath, { agentId: target.agentId }).path;
+		if (seenPaths.has(path)) continue;
+		seenPaths.add(path);
+		requests.push({
+			scope: {
+				...target.agentId ? { agentId: target.agentId } : {},
+				storePath: target.storePath
+			},
+			options: {
+				agentIds,
+				recentLimit: HEALTH_RECENT_SESSION_LIMIT
+			}
+		});
+	}
+	try {
+		const results = await readHealthSummariesInWorker(requests);
+		return new Map(requests.map((request, index) => [vHealthSummaryScopeKey(request.scope), results[index]]));
+	} catch (error) {
+		healthLog.warn(`health session summary worker unavailable, reading on the main thread: ${formatErrorMessage(error)}`);
+		return null;
+	}
+}
+async function createHealthSessionStoreReader(agentIds, targets = []) {
 	const { createStatusSessionStoreReader } = await import("./session-stores-Bfpcoo3w.js");
 	const { readSessionStoreSummaryReadOnly } = await import("./session-accessor-Dj50cDcA.js");
 	const { isTransientSqliteError } = await import("./unhandled-rejections-FEKr3n0D.js");
+	const prefetched = await prefetchHealthSessionSummaries(agentIds, targets);
 	return createStatusSessionStoreReader(agentIds, HEALTH_RECENT_SESSION_LIMIT, (scope, options) => {
+		const result = prefetched?.get(vHealthSummaryScopeKey(scope));
+		if (result?.summary) return result.summary;
+		if (result?.error) {
+			if (!result.error.transient) throw Object.assign(new Error(result.error.message), {
+				name: result.error.name ?? "Error",
+				...result.error.code !== void 0 ? { code: result.error.code } : {}
+			});
+			return {
+				count: 0,
+				recent: [],
+				byAgent: /* @__PURE__ */ new Map()
+			};
+		}
 		try {
 			return readSessionStoreSummaryReadOnly(scope, options);
 		} catch (error) {
@@ -188,12 +287,18 @@ function projectHealthSessions(path, summary) {
 	};
 }
 async function buildHealthSessionSummary(storePath, agentId) {
-	const store = (await createHealthSessionStoreReader(agentId ? [agentId] : [])).read(storePath, agentId);
+	const store = (await createHealthSessionStoreReader(agentId ? [agentId] : [], [{
+		agentId,
+		storePath
+	}])).read(storePath, agentId);
 	return projectHealthSessions(store.path, store);
 }
 /** Shares one bounded session snapshot across every configured agent in this collection. */
 async function buildHealthAgentSummaries(cfg, { defaultAgentId, ordered }) {
-	const reader = await createHealthSessionStoreReader(ordered.map((entry) => entry.id));
+	const reader = await createHealthSessionStoreReader(ordered.map((entry) => entry.id), ordered.map((entry) => ({
+		agentId: entry.id,
+		storePath: resolveSessionStorePathCore(cfg.session?.store, { agentId: entry.id })
+	})));
 	return ordered.map((entry) => {
 		const store = reader.read(resolveSessionStorePathCore(cfg.session?.store, { agentId: entry.id }), entry.id);
 		return {
