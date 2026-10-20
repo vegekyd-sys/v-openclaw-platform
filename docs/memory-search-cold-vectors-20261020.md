@@ -79,3 +79,14 @@ OpenClaw 没有向量常驻或预热的配置；官方整理碎片的手段是 `
 - V 的 vda 用 mq-deadline，不认 IO 优先级，所以 unit 里的 IO 级别不起作用，只能靠上面这些刹车。
 
 结论：预热只在内存宽松时有效。内存紧时冷读不可避免，要让冷读本身变快，得做 doctor compact，或者给向量阶段加预算、超时退回关键词结果。这两样都要停 Gateway 或重启。
+
+## 2026-10-20 晚：锁页替代预热，dist 兜底保底
+
+- 17:51、18:14、18:51 memory_search 又连续撞 25 s 截止；CLI 跑同一查询要 45.6 s。
+- **兜底（#444，dist，要重启）**：query embedding 和向量 KNN 各给 8 s 预算，超时就用关键词结果作答，标 `degraded`，不触发 60 s cooldown。V 上真实冷页对比：原版 27.7–30.8 s，补丁 8.6–8.8 s。
+- **锁页（本 PR，取代预热）**：Monitor 19:29 先上了临时版，把向量表的页 mlock 住，飞书实测 searchMs 1.7 s。正式版 `scripts/v-memory-vector-pin.py` + `systemd/v-memory-vector-pin.service`：
+  - 只读 mmap 库文件，只锁 sqlite-vec 影子表的页段（V 上 194,940 页、57,665 段、761.5 MB）。
+  - 每 5 分钟重读一次页表，先锁新映射再放旧映射，中间没有空窗（已缓存时一轮约 1.2 s）。
+  - `MemAvailable` 低于 2 GiB 时整体解锁，回到 3 GiB 以上才重锁；表超过 1.5 GB 不锁；每轮记录 `cachedPct`，即锁之前一次搜索能拿到的比例。
+  - 安装脚本会停掉临时 unit，并移除 `v-memory-vector-warm`（timer、unit、脚本、状态目录）。
+- compact 暂时做不了：库 21.8 GB、freelist 0，VACUUM 峰值约多占 2 倍库大小，磁盘只剩 46 GB，要先腾空间。
