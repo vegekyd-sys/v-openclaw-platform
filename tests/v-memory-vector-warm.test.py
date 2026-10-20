@@ -55,9 +55,42 @@ def meminfo(state, available_kb):
     return path
 
 
+def pressure(state, full_avg10):
+    path = os.path.join(state, f"io-{full_avg10}")
+    with open(path, "w") as f:
+        f.write(f"some avg10={full_avg10 + 1:.2f} avg60=1.00 avg300=1.00 total=1\nfull avg10={full_avg10:.2f} avg60=1.00 avg300=1.00 total=1\n")
+    return path
+
+
+class Rounds:
+    """Run warm.warm() in-process on a fake clock that advances 1 s per reading: with a
+    2.5 s budget each round reads exactly two batches, then stops."""
+
+    def __init__(self, state, budget_ms=2500):
+        self.saved = {k: getattr(warm, k) for k in ("STATE_DIR", "WARM_STATE_DIR", "MEMINFO", "IO_PRESSURE", "TIME_BUDGET_MS")}
+        warm.STATE_DIR, warm.WARM_STATE_DIR = state, os.path.join(state, "warm")
+        warm.MEMINFO, warm.IO_PRESSURE = meminfo(state, 16 * 2**20), pressure(state, 0.0)
+        warm.TIME_BUDGET_MS = budget_ms
+        self.tick, self.real = 0.0, warm.time.monotonic
+        warm.time.monotonic = self.clock
+
+    def clock(self):
+        self.tick += 1
+        return self.tick
+
+    def run(self, now):
+        return warm.warm("makaron", now=now)
+
+    def close(self):
+        warm.time.monotonic = self.real
+        for k, v in self.saved.items():
+            setattr(warm, k, v)
+
+
 def run(state, *agents, **extra):
     # A roomy fake /proc/meminfo unless a test sets its own: the CI host's memory is not the point.
-    env = {**os.environ, "STATE_DIR": state, "MEMINFO": meminfo(state, 16 * 2**20), **extra}
+    env = {**os.environ, "STATE_DIR": state, "MEMINFO": meminfo(state, 16 * 2**20),
+           "IO_PRESSURE": pressure(state, 0.0), "WARM_STATE_DIR": os.path.join(state, "warm"), **extra}
     p = subprocess.run([sys.executable, SCRIPT, *agents], env=env, capture_output=True, text=True, timeout=60)
     return p.returncode, [json.loads(line) for line in p.stdout.splitlines() if line.strip()], p.stderr
 
@@ -153,6 +186,72 @@ def test_time_budget_counts_bytes_already_read():
         finally:
             warm.time.monotonic = real
             db.close()
+            writer.close()
+
+
+def test_io_pressure_skips_the_round():
+    with tempfile.TemporaryDirectory() as state:
+        _, writer = make_agent_db(state)
+        code, out, err = run(state, IO_PRESSURE=pressure(state, 9.4))
+        assert code == 0, err
+        assert out == [{"event": "vector-warm", "agent": "makaron", "skipped": "io-pressure", "ioFullAvg10": 9.4}], out
+        code, out, err = run(state, IO_PRESSURE=pressure(state, 4.9))
+        assert code == 0 and "MB" in out[0], (out, err)
+        writer.close()
+
+
+def test_cold_table_is_read_across_rounds_from_the_resume_point():
+    # 2026-10-20 16:11: every pass restarted at rowid 1, used its 10 s on the first ~400 MB
+    # and never reached the end. Each round must continue where the last one stopped.
+    with tempfile.TemporaryDirectory() as state:
+        _, writer = make_agent_db(state, chunk_rows=warm.BATCH_ROWS * 5)
+        r = Rounds(state)
+        try:
+            a = r.run(now=1000)
+            assert a["aborted"] == "time-budget" and a["resumeAfterRowid"] == 2 * warm.BATCH_ROWS, a
+            b = r.run(now=1060)
+            assert b["resumeAfterRowid"] == 4 * warm.BATCH_ROWS, b
+            c = r.run(now=1120)
+            assert c.get("resumed") is True and "aborted" not in c, c
+        finally:
+            r.close()
+            writer.close()
+
+
+def test_backs_off_when_what_it_read_does_not_stay_cached():
+    # A pass from the start that runs out of time right after a completed cycle means the
+    # pages were evicted meanwhile (16:19: 27 % of the table left right after a pass).
+    with tempfile.TemporaryDirectory() as state:
+        _, writer = make_agent_db(state, chunk_rows=warm.BATCH_ROWS * 3)
+        r = Rounds(state)
+        try:
+            assert "resumeAfterRowid" in r.run(now=0)
+            assert r.run(now=60).get("resumed") is True
+            d = r.run(now=120)
+            assert d["aborted"] == "time-budget" and d["backoffMin"] == 5 and "resumeAfterRowid" not in d, d
+            e = r.run(now=120 + 4 * 60)
+            assert e == {"event": "vector-warm", "agent": "makaron", "skipped": "backoff", "backoffMin": 5, "untilEpoch": 420}, e
+            # After the pause it tries a whole cycle again; failing again doubles the pause.
+            assert "resumeAfterRowid" in r.run(now=421)
+            assert r.run(now=481).get("resumed") is True
+            assert r.run(now=541)["backoffMin"] == 10
+        finally:
+            r.close()
+            writer.close()
+
+
+def test_a_pass_that_finishes_from_the_start_clears_resume_and_backoff():
+    with tempfile.TemporaryDirectory() as state:
+        _, writer = make_agent_db(state, chunk_rows=warm.BATCH_ROWS * 3)
+        r = Rounds(state)
+        try:
+            r.run(now=0); r.run(now=60); r.run(now=120)  # resume, cycle, backoff 5
+            warm.TIME_BUDGET_MS = 10**9
+            f = r.run(now=10_000)
+            assert "MB" in f and "resumed" not in f and "aborted" not in f, f
+            assert warm.load_state("makaron") == {}, warm.load_state("makaron")
+        finally:
+            r.close()
             writer.close()
 
 

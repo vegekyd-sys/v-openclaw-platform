@@ -16,18 +16,28 @@ autocommit batches (no long read snapshot, no write lock, no Gateway call), so t
 next search finds them in the cache. Run it often enough that the pages never age
 out (systemd/v-memory-vector-warm.timer). A warm pass is ~1 s of CPU at nice 19.
 
-Two brakes keep it from making a bad moment worse:
+Brakes, so it never makes a bad moment worse:
 - MemAvailable below 4 GiB: skip the round. On 2026-10-19 21:10 V was down to 3.7 GB
   and the Gateway stalled 30 s; re-reading 743 MB then only fights reclaim for memory and IO.
-- 10 s spent in one pass: stop between two batches. A cold pass is ~23 s of random reads;
-  the next round starts over, and the part already read is cached, so it gets further.
+- IO pressure (/proc/pressure/io full avg10 above 5 %): skip the round.
+- 10 s spent in one pass: stop between two batches and remember the last rowid; the next
+  round resumes there. A cold pass is ~23 s of random reads, so cold it takes 2-3 rounds.
+- Cannot stay cached: when a pass from the start runs out of time right after a completed
+  cycle, the pages were evicted while it went round (2026-10-20 16:19: page cache down to
+  4 GB, 27 % of the table left right after a pass). Back off 5, 10, 20, 40, 60 minutes
+  instead of re-reading 400 MB of cold data every minute; a pass that finishes from the
+  start in time resets it.
 
   v-memory-vector-warm.py [agent...]     default makaron; one JSON line per agent:
-    {"MB", "ms", ...}                                  a full pass
+    {"MB", "ms"[, "resumed": true]}                    a pass reached the end of the table
     {"skipped": "low-memory", "memAvailableMb"}        memory brake
-    {"aborted": "time-budget", "ms", "touchedMB"}      time brake (ms is past the budget)
+    {"skipped": "io-pressure", "ioFullAvg10"}          IO brake
+    {"skipped": "backoff", "backoffMin", "untilEpoch"} still backing off
+    {"aborted": "time-budget", "ms", "touchedMB", "resumeAfterRowid"}   time brake, resumes
+    {"aborted": "time-budget", "ms", "touchedMB", "backoffMin"}         cannot stay cached
   STATE_DIR=<dir>                        default /home/openclaw/.openclaw
-  MIN_AVAILABLE_MB=<n>, TIME_BUDGET_MS=<n>, MEMINFO=<path>   overrides (tests)
+  WARM_STATE_DIR=<dir>                   resume point and backoff, default /var/lib/v-memory-vector-warm
+  MIN_AVAILABLE_MB, MAX_IO_FULL_AVG10, TIME_BUDGET_MS, MEMINFO, IO_PRESSURE   overrides (tests)
 """
 import json
 import os
@@ -44,11 +54,52 @@ BATCH_ROWS = 32  # vector chunk rows per statement: 32 x 64 x 3072 floats = 24 M
 MIN_AVAILABLE_MB = int(os.environ.get("MIN_AVAILABLE_MB", 4096))
 TIME_BUDGET_MS = int(os.environ.get("TIME_BUDGET_MS", 10_000))
 MEMINFO = os.environ.get("MEMINFO", "/proc/meminfo")
+MAX_IO_FULL_AVG10 = float(os.environ.get("MAX_IO_FULL_AVG10", 5.0))
+IO_PRESSURE = os.environ.get("IO_PRESSURE", "/proc/pressure/io")
+WARM_STATE_DIR = os.environ.get("WARM_STATE_DIR", "/var/lib/v-memory-vector-warm")
+BACKOFF_MIN, BACKOFF_MAX_MIN = 5, 60
 
 
 class OverBudget(Exception):
-    def __init__(self, touched):
-        self.touched = touched
+    def __init__(self, touched, table=None, last=None):
+        self.touched, self.table, self.last = touched, table, last
+
+
+def io_full_avg10():
+    """'full avg10' from /proc/pressure/io in percent, or None where PSI is unavailable."""
+    try:
+        with open(IO_PRESSURE) as f:
+            for line in f:
+                if line.startswith("full "):
+                    return float(dict(kv.split("=") for kv in line.split()[1:])["avg10"])
+    except (OSError, KeyError, ValueError):
+        return None
+    return None
+
+
+def state_path(agent):
+    return os.path.join(WARM_STATE_DIR, f"{agent}.json")
+
+
+def load_state(agent):
+    try:
+        with open(state_path(agent)) as f:
+            state = json.load(f)
+        return state if isinstance(state, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(agent, state):
+    """Best effort: without a writable state dir every round starts at the beginning."""
+    try:
+        os.makedirs(WARM_STATE_DIR, exist_ok=True)
+        tmp = state_path(agent) + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(state, f)
+        os.replace(tmp, state_path(agent))
+    except OSError:
+        pass
 
 
 def mem_available_mb():
@@ -91,13 +142,14 @@ def read_all(db, table):
     return touched
 
 
-def read_vector_chunks(db, table, deadline=None, touched_before=0):
-    """Read the vector blobs by rowid in batches: each batch is its own short read transaction.
-    Past the deadline, stop between two batches (OverBudget carries the bytes read so far)."""
-    touched, last = 0, None
+def read_vector_chunks(db, table, deadline=None, touched_before=0, after=None):
+    """Read the vector blobs by rowid in batches (after `after` when resuming): each batch is
+    its own short read transaction. Past the deadline, stop between two batches; OverBudget
+    carries the bytes read so far and the last rowid read."""
+    touched, last = 0, after
     while True:
         if deadline is not None and time.monotonic() >= deadline:
-            raise OverBudget(touched_before + touched)
+            raise OverBudget(touched_before + touched, table, last)
         if last is None:
             rows = db.execute(f'SELECT rowid, vectors FROM "{table}" ORDER BY rowid LIMIT ?', (BATCH_ROWS,)).fetchall()
         else:
@@ -109,16 +161,24 @@ def read_vector_chunks(db, table, deadline=None, touched_before=0):
             last = rowid
 
 
-def warm(agent):
+def warm(agent, now=None):
     path = agent_db(agent)
     started = time.monotonic()
+    now = time.time() if now is None else now
     result = {"event": "vector-warm", "agent": agent}
     if not os.path.exists(path):
         return {**result, "skipped": "no agent database"}
+    state = load_state(agent)
+    if state.get("backoffUntil", 0) > now:
+        return {**result, "skipped": "backoff", "backoffMin": state.get("backoffMin"), "untilEpoch": round(state["backoffUntil"])}
     available = mem_available_mb()
     if available is not None and available < MIN_AVAILABLE_MB:
         return {**result, "skipped": "low-memory", "memAvailableMb": available}
+    pressure = io_full_avg10()
+    if pressure is not None and pressure > MAX_IO_FULL_AVG10:
+        return {**result, "skipped": "io-pressure", "ioFullAvg10": pressure}
     elapsed = lambda: round((time.monotonic() - started) * 1000)
+    resume = state.get("resume") or {}
     db = connect_read_only(path)
     try:
         small, chunks = shadow_tables(db)
@@ -126,13 +186,30 @@ def warm(agent):
             return {**result, "skipped": "no vector table"}
         touched = sum(read_all(db, t) for t in small)
         deadline = started + TIME_BUDGET_MS / 1000
-        for t in chunks:
-            touched += read_vector_chunks(db, t, deadline, touched)
+        todo = [t for t in chunks if t >= resume.get("table", "")] if resume.get("table") in chunks else chunks
+        for t in todo:
+            after = resume.get("after") if t == resume.get("table") else None
+            touched += read_vector_chunks(db, t, deadline, touched, after)
     except OverBudget as stop:
-        return {**result, "aborted": "time-budget", "ms": elapsed(), "touchedMB": round(stop.touched / 2**20, 1)}
+        out = {**result, "aborted": "time-budget", "ms": elapsed(), "touchedMB": round(stop.touched / 2**20, 1)}
+        if not resume and state.get("cycleDone"):
+            # From the start, right after a completed cycle, and out of time again: what the
+            # last cycle read did not stay cached. Re-reading every minute only adds cold IO.
+            minutes = min(BACKOFF_MAX_MIN, max(BACKOFF_MIN, 2 * state.get("backoffMin", 0)))
+            save_state(agent, {"backoffMin": minutes, "backoffUntil": now + minutes * 60})
+            return {**out, "backoffMin": minutes}
+        save_state(agent, {**{k: state[k] for k in ("backoffMin",) if k in state},
+                           "resume": {"table": stop.table, "after": stop.last}})
+        return {**out, "resumeAfterRowid": stop.last}
     finally:
         db.close()
-    return {**result, "tables": len(small) + len(chunks), "MB": round(touched / 2**20, 1), "ms": elapsed()}
+    out = {**result, "tables": len(small) + len(chunks), "MB": round(touched / 2**20, 1), "ms": elapsed()}
+    if resume:
+        # End reached by resuming: the next pass starts over and shows whether it all stayed.
+        save_state(agent, {**{k: state[k] for k in ("backoffMin",) if k in state}, "cycleDone": True})
+        return {**out, "resumed": True}
+    save_state(agent, {})
+    return out
 
 
 def main(argv):
