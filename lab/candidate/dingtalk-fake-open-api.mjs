@@ -9,6 +9,13 @@
 //
 // Nothing here talks to DingTalk. `WebSocketServer` comes from the `ws`
 // package the connector itself depends on.
+//
+// For the sessions_send inbound bridge (docs/inter-session/design.md §10.5):
+// `sessionWebhookCalls()` lists every session-webhook request (a synthetic
+// inter-session turn must make none), `failRoute()` makes an endpoint fail
+// (e.g. AI card creation 403, so the proactive fallback runs), and `sendRaw()`
+// delivers an arbitrary robot callback (e.g. the robot's own message, which
+// the bridge must drop).
 import http from "node:http";
 
 export function createFakeDingTalkOpenApi({ WebSocketServer }) {
@@ -18,6 +25,7 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
   const robotMessages = []; // robot OpenAPI sends: {at, path, userIds|openConversationId, msgKey, msgParam}
   const mediaUploads = []; // oapi media uploads: {at, type, bytes}
   const sockets = new Set();
+  const failures = new Map(); // "METHOD /path" -> {status, body, times}
   let nextMsg = 1;
   let port;
 
@@ -95,7 +103,15 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
     let body = {};
     try { body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {}; } catch { body = { raw: Buffer.concat(chunks).length }; }
     const key = `${req.method} ${url.pathname}`;
-    record(req.method, url.pathname, body);
+    const call = record(req.method, url.pathname, body);
+    const failure = failures.get(key);
+    if (failure && failure.times > 0) {
+      failure.times -= 1;
+      call.failed = failure.status;
+      res.writeHead(failure.status, { "content-type": "application/json" });
+      res.end(JSON.stringify(failure.body));
+      return;
+    }
     const handler = routes[key];
     // Unknown endpoints (emotion reply/recall, user lookups, media) succeed quietly.
     const result = handler ? handler(body, url.searchParams) : (url.pathname.startsWith("/topapi") || url.pathname.startsWith("/user") ? { errcode: 0, errmsg: "ok", result: {} } : { success: true, result: {} });
@@ -124,6 +140,21 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
     webhookMessages,
     robotMessages,
     mediaUploads,
+    /** Every request to a session webhook (`/robot/sendBySession`), failed ones included. */
+    sessionWebhookCalls: () => calls.filter((c) => c.path === "/robot/sendBySession"),
+    /** Robot OpenAPI sends (proactive messages) at or after `at`. */
+    robotMessagesSince: (at = 0) => robotMessages.filter((m) => m.at >= at),
+    /** The next `times` requests to `key` ("POST /v1.0/card/instances") answer `status` with `body`. */
+    failRoute(key, { status = 403, body = { code: "Forbidden.AccessDenied", message: "candidate failure" }, times = 1 } = {}) {
+      failures.set(key, { status, body, times });
+    },
+    /** Delivers a robot callback with exactly this `data` (e.g. a message whose sender is the robot). */
+    sendRaw(data) {
+      const msgId = data?.msgId ?? `raw${Date.now()}${nextMsg++}`;
+      const frame = { specVersion: "1.0", type: "CALLBACK", headers: { topic: "/v1.0/im/bot/messages/get", messageId: `stream-${msgId}`, contentType: "application/json", time: String(Date.now()), appId: "candidate" }, data: JSON.stringify({ ...data, msgId }) };
+      for (const ws of sockets) ws.send(JSON.stringify(frame));
+      return { msgId, at: Date.now() };
+    },
     /** A user taps a control on an interactive card; resolves with the client's ack. */
     pressCard({ outTrackId, userId, params }) {
       const messageId = `card-${Date.now()}-${nextMsg++}`;
