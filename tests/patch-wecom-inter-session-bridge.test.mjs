@@ -414,6 +414,42 @@ test("start: a turn in the target session that never answers a req_id; the resul
   assert(calls.some((c) => c.cmd === "upload") && sends(calls).some((c) => c.body.msgtype === "image"), "media goes out proactively");
 });
 
+test("start: a refused final send is retried by the plugin; the result stays the answer alone", async () => {
+  const req = startRequest({ chatId: "RetryChat" });
+  h.activeTasks.set(req.sessionKey, [{ taskId: "t2", runtime: "subagent", status: "running", childSessionKey: "agent:makaron:subagent:y" }]);
+  h.script = async ({ replyOptions, dispatcherOptions }) => {
+    replyOptions.onAgentRunStart(replyOptions.runId);
+    h.client.sendFailure = { errcode: 93000, errmsg: "refused once" };
+    await dispatcherOptions.deliver({ text: "答复 R" }, { kind: "final" });
+  };
+  const n = h.client.calls.length;
+  try {
+    const outcome = await h.bridge.start(req);
+    assert.deepEqual(await outcome.done, { status: "ok", finals: [{ text: "答复 R" }], visibleReplySent: true, finalCount: 1 });
+    await queueIdle("RetryChat");
+  }
+  finally {
+    h.activeTasks.delete(req.sessionKey);
+  }
+  const texts = sends(callsSince(n)).map((c) => c.body.markdown.content);
+  assert.equal(texts.length, 2, "the plugin's own error path sends the final again");
+  assert.match(texts[1], /^答复 R\n\n---\n\n⏳ 后台 1 项进行中 · 子 agent/u);
+
+  // Both sends refused: the turn still produced its answer, but nobody saw it.
+  const req2 = startRequest({ chatId: "RetryChat" });
+  h.script = async ({ replyOptions, dispatcherOptions }) => {
+    replyOptions.onAgentRunStart(replyOptions.runId);
+    // An own property shadows the stub's method until it is deleted below.
+    h.client.sendMessage = async (chatid, body) => { h.client.calls.push({ cmd: "aibot_send_msg", chatid, body }); throw { errcode: 93000, errmsg: "refused" }; };
+    await dispatcherOptions.deliver({ text: "答复 S" }, { kind: "final" });
+  };
+  const outcome2 = await h.bridge.start(req2);
+  const done2 = await outcome2.done;
+  delete h.client.sendMessage;
+  assert.deepEqual(done2, { status: "ok", finals: [{ text: "答复 S" }], visibleReplySent: false, finalCount: 1 });
+  await queueIdle("RetryChat");
+});
+
 test("start: BUSY from the core's admission guard leaves nothing in the chat", async () => {
   const req = startRequest({ chatId: "BusyChat" });
   const n = h.client.calls.length;

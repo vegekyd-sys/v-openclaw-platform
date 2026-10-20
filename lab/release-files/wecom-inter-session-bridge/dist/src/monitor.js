@@ -294,8 +294,8 @@ function vIsCreateRun(req) {
     const done = new Promise((resolve) => { resolveDone = resolve; });
     const run = {
         req, outcome, runId: req.runId, phase: "pending", began: false, busy: false, dispatched: false,
-        error: undefined, deliveryError: undefined, finalText: "", media: [], finalCount: 0, delivered: 0,
-        visible: false, finished: false, queueTimer: undefined,
+        error: undefined, deliveryError: undefined, finalText: "", finalNoted: false, finalSent: false, media: [],
+        finalCount: 0, delivered: 0, visible: false, finished: false, queueTimer: undefined,
     };
     const settle = (value) => {
         if (settled) return;
@@ -349,7 +349,10 @@ function vIsCreateRun(req) {
         const urls = payload?.mediaUrls?.length ? payload.mediaUrls : payload?.mediaUrl ? [payload.mediaUrl] : [];
         for (const url of urls) if (typeof url === "string" && url && !run.media.includes(url)) run.media.push(url);
     };
+    // The first call is the result: a retry after a failed final send sees the background line too.
     run.noteFinal = (text, state) => {
+        if (run.finalNoted) return;
+        run.finalNoted = true;
         run.finalText = String(text ?? "");
         run.visible = Boolean(run.finalText.trim()) || Boolean(state?.hasMedia) || Boolean(state?.hasTemplateCard);
     };
@@ -383,7 +386,7 @@ function vIsCreateRun(req) {
         resolveDone({
             status: error === undefined ? "ok" : "error",
             finals,
-            visibleReplySent: run.visible && run.deliveryError === undefined,
+            visibleReplySent: run.visible && run.finalSent,
             finalCount: run.finalCount,
             ...(error === undefined ? {} : { error: message }),
         });
@@ -1041,6 +1044,7 @@ async function routeAndDispatchMessage(params) {
         await vStop();
         // 关闭 thinking 流
         await finishThinkingStream(ctx);
+        if (vInterSession) vInterSession.finalSent = true;
         safeCleanup();
     }
     catch (err) {
@@ -1060,6 +1064,7 @@ async function routeAndDispatchMessage(params) {
             }
             await vStop().catch(() => { });
             await finishThinkingStream(ctx);
+            if (vInterSession) vInterSession.finalSent = true;
         }
         catch (finishErr) {
             runtime.error?.(`[wecom] Failed to finish thinking stream after dispatch error: ${String(finishErr)}`);

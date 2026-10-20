@@ -7,6 +7,6 @@
     "marker": "v-wecom-inter-session-bridge-v1",
     "generator": "apps/v-experience/wecom/patch-inter-session.mjs",
     "before": "d4fe3561255428b5446127e2b686319feb5879bae181cc7f38058858f6974f8d",
-    "after": "5ff06ee13159140c1e1d7ca690f0aa413560c5947936f7fbf8a2e8471ce1a3dd"
+    "after": "4566976f4c4c9c270c30d94f5d918b9ae236980b8288b65d27a58e37ad4ecedf"
   }
 ]
