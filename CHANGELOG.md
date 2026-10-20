@@ -11,6 +11,73 @@
 
 ---
 
+## v2026.9.1-db91.6-vector-budget-20261020
+
+上线：2026-10-20 23:13 CST v-self-restart 生效（PID 374689 → 2124560）  ·  tag `v2026.9.1-db91.6-vector-budget-20261020`
+
+**摘要**：#444 给 memory_search 加兜底。query embedding 和向量 KNN 各有 8 s 预算，超时就改用关键词结果回答，并标注 degraded，不再整段 25 s 超时，也不再触发 60 s cooldown。V 上在冷向量页时实测：补丁版 8.6–8.8 s 返回关键词结果，原版要 27.7–30.8 s。热的时候结果和原版一致。
+同一天还上了两样东西，都不在发版文件里：
+- `v-memory-vector-pin.service`（#445）：把向量页 mlock 进内存，约 770 MB；MemAvailable 低于 2 GiB 时解锁。
+- 删除了 v-memory-vector-warm（#439/#440/#443）。
+
+**重启**：18:12 和 22:00 两次按空闲等待，都因为 V 一直在忙而放弃。23:04 Gateway 冻结 61 s（RSS 9.5 GB，host-thaw 已启动）。23:05:56 用 `--if-busy wait-then-proceed --idle-timeout 300` 重启，等满 302 s 后照常执行，打断了 3 个在跑的回合，23:11–23:13 生效，86 s 就绪。worker 5/5，各项检查都是 0；Gateway RSS 从 9.5 GB 降到 3.3 GB。
+
+**上线后验收**：
+- 测试群用 lark-cli 发消息，memory_search 成功，6 条命中，searchMs 2.97 s，没有走降级；
+- 夜班 23:13:56 恢复，0 个回合需要交给人处理；
+- 语音入口 200；
+- drift 检查通过；
+- parity ALIGNED（18,812 个文件），align 完成，lease 已释放。
+
+相对上一版 `v2026.9.1-db91.6-voice-spawn-20261020`：2 个文件变化。
+
+**经 VLab 发版 `vector-budget-20261020`**（monitor-v-production，dev `5d84cddf`）
+> 验收：共享 VLab 21:26 部署 #444（dev 5d84cddf）：manager-runtime.js 134cc6f6→272177d5，tools-Byg09TOP.js 091c3187→076e0ed9，两份 before 都等于 V 线上字节。部署后哈希正确，TypeError/ReferenceError/SyntaxError/InvalidConfig 均为 0。真实回合里调用 memory_search，VLab 向量页是冷的，按设计走了兜底，结果带 degraded:"vector-timeout"，命中 6 条，回复正常。也就是说，端到端 tools 路径里 degraded 字段已确认带出来。热态下结果一致这一点由 PR 内 candidate 覆盖（10 条查询命中集合与原版一致）。
+- `core` extensions/memory-core/manager-runtime.js  134cc6f6 → 272177d5
+- `core` tools-Byg09TOP.js  091c3187 → 076e0ed9
+
+## v2026.9.1-db91.6-voice-spawn-20261020
+
+上线：2026-10-20 23:13 CST v-self-restart 生效（PID 374689 → 2124560）  ·  tag `v2026.9.1-db91.6-voice-spawn-20261020`
+
+**摘要**：#441 修语音委派。父 run 只调 sessions_spawn、不 yield 时，语音任务以前大约 2 s 就判失败，电话里说「后台任务未完成」，子会话的 exec 权限也被收回。现在会等子会话完成，再接着在同一个语音任务里给出结果。V 上 10/20 14:17、14:28 各出过一次。
+
+**重启**：和 #442、#444 同一次，见下面 vector-budget 一节。
+
+相对上一版 `v2026.9.1-db91.6-fullread-hotpaths-20261020`：1 个文件变化。
+
+**经 VLab 发版 `voice-spawn-20261020`**（monitor-v-production，dev `44f29820`）
+> 验收：共享 VLab 18:09 部署 #441（dev 44f29820），只改一个文件：gpt-live-consult-continuation.js 2f2bcda1→8a9c7292，before 等于 V 线上字节。部署后哈希为 8a9c7292，TypeError/ReferenceError/SyntaxError/InvalidConfig/gpt-live 报错均为 0；真实回合 bash echo vs-ok 输出正确。语音委派「父 run 不 yield、只 sessions_spawn」这条路径由 PR 内测试覆盖：新增 5 例在旧代码上失败、新代码 53/53 通过，相关套件 539/539 通过。这条路径在共享 VLab 上没有真实电话可以测，要等 V 上的语音来验证。
+- `core` gpt-live-consult-continuation.js  2f2bcda1 → 8a9c7292
+
+## v2026.9.1-db91.6-fullread-hotpaths-20261020
+
+上线：2026-10-20 23:13 CST v-self-restart 生效（PID 374689 → 2124560）  ·  tag `v2026.9.1-db91.6-fullread-hotpaths-20261020`
+
+**摘要**：#442 去掉 Gateway 热路径上的整表读。改了五处：cron 每次运行前解析会话（resolveCronSession）、cron 清扫（sweepCronRunSessions）、任务登记维护、看板 lifecycle、以及 session 精确读。原来每次都要把 335 MB 的 session_nodes 读一遍，一次 3.7 s、1.28 GB 内存，整点前后这些操作扎堆，Gateway 就停顿 30–40 s，RSS 涨到 8–9.5 GB。候选测试：resolveCronSession 3,739 ms→0.8 ms，清扫 3,837 ms→19 ms，任务维护 542 ms→211 ms，lifecycle 265 ms→77 ms，新旧结果逐条一致。
+
+**重启**：和 #441、#444 一起在 23:11 由 v-self-restart 生效，见下面 vector-budget 一节。
+
+相对上一版 `v2026.9.1-db91.6-subagent-index-20261020`：5 个文件变化。
+
+**经 VLab 发版 `fullread-hotpaths-20261020`**（monitor-v-production，dev `84ded60e`）
+> 验收：共享 VLab 17:58 部署 #442（dev 84ded60e，5 个 core 文件，before 均等于 V 线上字节，after 哈希核对一致）。17:59:56 ready，TypeError/ReferenceError/SyntaxError/InvalidConfig 均为 0；真实回合（bash echo fr-ok）输出正确；sessions.list 正常。共享 VLab 的 cron 是关闭的，所以 cron 路径靠 PR 内 candidate 覆盖：用 V 数据只读副本，两份 chunk 在同一进程里对比，resolveCronSession 101 个用例一致，sweep 删掉的集合相同，任务维护账本哈希一致，lifecycle 301 次探测一致。18:01:31 的 20 s 持锁来自 VLab 自己的 session-history-eviction…
+- `core` runtime-api-1CCazqtv.js  64c75937 → 3300629f
+- `core` service-CzmmKrEg.js  e4fa375a → b9b76fc0
+- `core` session-D4AJhdUK.js  aa29d970 → 83cf19c8
+- `core` sqlite-store-CH-caj1l.js  90437478 → 12c1f546
+- `core` task-registry.maintenance-C4nMaDY9.js  00e9bdb4 → b6fe747f
+
+**这期间合入 dev 的 PR**（8 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #444 fix(memory): 向量/embedding 阶段超 8 s 就用关键词结果回答（不再 25 s 超时）
+- #445 feat(memory): 向量页锁在内存里（mlock），取代定时预热
+- #441 fix(voice): keep a voice task alive when its parent hands off with sessions_spawn
+- #442 perf(gateway): 停掉 cron/任务维护/看板生命周期的整表读 + 夜班旧会话退役方案
+- #443 fix(memory): 向量预热断点续读、IO 压力刹车、留不住就退避
+- #440 fix(memory): 向量预热加内存与时间刹车
+- #439 fix(memory): 预热 memory_search 向量表，语音里不再撞 25 秒截止
+- #438 release: 捕获 V（subagent-index-20261020，#437 上线）+ CHANGELOG
+
 ## v2026.9.1-db91.6-subagent-index-20261020
 
 上线：2026-10-20 02:38 CST v-self-restart 生效（新 PID 374689）  ·  tag `v2026.9.1-db91.6-subagent-index-20261020`
