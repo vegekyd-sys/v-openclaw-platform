@@ -1639,3 +1639,4 @@ minimal 设计里"已经汇报过就只回 NO_REPLY"的指令**删除**（J2 mus
 10. **`vrelay.list` 必须注册为 `operator.read`**，`counts.running` 包含在途的 wake/collect 回合（v-self-restart 闲置门依赖它）。
 11. **/vcc 的 candidate 实测受阻**：共享 VLab 的 claude 登录 10/17 起过期，需要 Tianyi 重新登录；在此之前用 worker、vds 完成 candidate，vcc 只做离线与已有路径验证。
 12. **v-experience 的「会话请求」种类映射**由 WP3 统一改 `apps/v-experience/v-experience.mjs` 及其三份产物（核心 Telegram 用、钉钉、企微）；WP6/7/8 不碰这些文件，各自的桥放在独立的 `lab/release-files/<channel>-inter-session-bridge/`。
+13. **测试房间已建**（2026-10-20 18:50 CST，VLab bot `im/v1/chats`，成员只有 Tianyi 和「V - Lab」）：「VLab 测试｜房间 1」`oc_fe63730f4bc817cd46ccd325ab990a74`、「房间 2」`oc_c7074487c880fb9792a663750b2f22ba`、「房间 3」`oc_a14d4ff92e03b4d52420ef20e56eaba6`。candidate 的 `INTER_SESSION_ROOM_POOL` 用这三个。
