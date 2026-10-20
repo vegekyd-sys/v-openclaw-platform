@@ -217,7 +217,9 @@
         "scripts/vlab-channel-plugins-prep.test.mjs",
         "scripts/lib/runtime-components.test.mjs",
         "tests/install-secret-entry-host.test.mjs",
-        "scripts/lib/parity-config.test.mjs"
+        "scripts/lib/parity-config.test.mjs",
+        "scripts/configure-v-session-relay.test.mjs",
+        "tests/inter-session-plan.test.mjs"
       ]
     },
     {
