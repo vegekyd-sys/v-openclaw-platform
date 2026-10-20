@@ -1,0 +1,29 @@
+[
+  {
+    "component": "core",
+    "path": "v-experience.js",
+    "source": "lab/release-files/v-experience-session-kind/openclaw/dist/v-experience.js",
+    "target": "openclaw/dist/v-experience.js",
+    "hostPath": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/v-experience.js",
+    "before": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+    "after": "484da30979760dbc5e73d7f9d098c9302703f7859e362a11e6bb5563c8c4013e"
+  },
+  {
+    "component": "dingtalk",
+    "path": "dist/v-experience.mjs",
+    "source": "lab/release-files/v-experience-session-kind/dingtalk/dist/v-experience.mjs",
+    "target": "npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/v-experience.mjs",
+    "hostPath": "/home/openclaw/.openclaw/npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/v-experience.mjs",
+    "before": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+    "after": "484da30979760dbc5e73d7f9d098c9302703f7859e362a11e6bb5563c8c4013e"
+  },
+  {
+    "component": "wecom",
+    "path": "dist/src/v-experience.mjs",
+    "source": "lab/release-files/v-experience-session-kind/wecom/dist/src/v-experience.mjs",
+    "target": "extensions/wecom-openclaw-plugin/dist/src/v-experience.mjs",
+    "hostPath": "/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin/dist/src/v-experience.mjs",
+    "before": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+    "after": "484da30979760dbc5e73d7f9d098c9302703f7859e362a11e6bb5563c8c4013e"
+  }
+]
