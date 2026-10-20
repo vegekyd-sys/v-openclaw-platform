@@ -361,6 +361,7 @@
         "lab/restart-speed-2.test.mjs",
         "lab/voice-native-turn-control.test.mjs",
         "lab/memory-search-fast.test.mjs",
+        "lab/memory-search-overlap.test.mjs",
         "lab/memory-search-query-isolation.test.mjs",
         "lab/memory-search-timeout.test.mjs",
         "lab/memory-vector-chunks.test.mjs",
