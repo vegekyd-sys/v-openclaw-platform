@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { runIdFor } from "../core/contracts.js";
+import { transcriptReplyOf } from "../core/engine.js";
 import { DM, ROOM, X, createWorld, sleep, waitFor } from "./fixtures/harness.mjs";
 
 const crash = (at) => ({ crashAt: at, onCrash: () => { throw new Error(`simulated crash at ${at}`); } });
@@ -121,6 +122,36 @@ test("recovery: running with a core restart-recovery run — follow it and take 
     await settledOnce(w, rec.sendId, { wakeText: /恢复后的完整答复/u });
     assert.equal(w.rec(rec.sendId).result.source, "transcript");
     assert.equal(startOf(w, "request", rec.sendId).length, 1);
+  } finally { await w.close(); }
+});
+
+// e2e-feishu F5 (candidate-7ec0e666, 2026-10-20 21:47): the core's recovery run opens with its own
+// "[System] Your previous turn was interrupted by a gateway restart…" user message. The reply was read
+// only up to that message, so A was handed the pre-restart line "I'll run the requested command now."
+// instead of what the recovery run said.
+test("recovery: the core's recovery prompt does not end the reply — the recovery run's answer is handed back, not the pre-restart text", async () => {
+  const w = await createWorld({ ledger: crash("running"), bridge: { holdRuns: true } });
+  try {
+    await w.send(DM, X, "跑到一半", { runId: "rA" });
+    w.endRun("rA", DM);
+    const rec = only(w);
+    await waitFor(() => w.ledger.dead);
+    const runId = startOf(w, "request", rec.sendId)[0].args.runId;
+    // What the interrupted run had written before the restart.
+    w.transcripts.get(X).push({ role: "assistant", content: [{ type: "text", text: "I'll run the requested command now." }, { type: "toolCall", name: "exec", arguments: { command: "sleep 90 && date" } }] });
+    w.entries.set(X, { restartRecoveryDeliverySourceRunId: runId, restartRecoveryDeliveryRunId: "core-recovery-2" });
+    w.busy.add(X);
+    await w.restart();
+    await waitFor(() => w.rec(rec.sendId).targetRun.recoveryRunId === "core-recovery-2", { what: "following the core run" });
+    w.transcripts.get(X).push(
+      { role: "user", content: "[System] Your previous turn was interrupted by a gateway restart while OpenClaw was waiting on tool/model work. Continue from the existing transcript and finish the interrupted response.", provenance: { kind: "internal_system" } },
+      { role: "assistant", content: [{ type: "text", text: "恢复回合的真实答复：没能跑完" }] },
+    );
+    w.busy.delete(X);
+    w.endRun("core-recovery-2", X);
+    await settledOnce(w, rec.sendId, { wakeText: /恢复回合的真实答复/u });
+    assert.equal(w.rec(rec.sendId).result.text, "恢复回合的真实答复：没能跑完");
+    assert.doesNotMatch(w.starts("wake")[0].args.promptText, /I'll run the requested command now/u);
   } finally { await w.close(); }
 });
 
@@ -351,4 +382,16 @@ test("recovery: a collect turn in flight at the restart follows the core's recov
     await settledOnce(w, sendId, { wakeText: /图都好了/u });
     assert.equal(startOf(w, "collect", sendId).length, 1);
   } finally { await w.close(); }
+});
+
+test("transcriptReplyOf: the core's recovery prompt continues the turn; any other user message ends it", () => {
+  const tag = { role: "user", content: "请求", provenance: { kind: "inter_session", originSessionId: "v-a2a:c_1:1:req:s_1" } };
+  const before = { role: "assistant", content: [{ type: "text", text: "I'll run the requested command now." }] };
+  const resume = { role: "user", content: [{ type: "text", text: "[System] Your previous turn was interrupted by a gateway restart while OpenClaw was waiting on tool/model work." }], provenance: { kind: "internal_system" } };
+  const after = { role: "assistant", content: [{ type: "text", text: "恢复后的答复" }] };
+  const human = { role: "user", content: "群里的人又说了一句" };
+  assert.equal(transcriptReplyOf([tag, before, resume, after], "request", "s_1"), "恢复后的答复");
+  assert.equal(transcriptReplyOf([tag, before, resume], "request", "s_1"), null, "the recovery run said nothing: no stale text");
+  assert.equal(transcriptReplyOf([tag, before, human, after], "request", "s_1"), "I'll run the requested command now.", "a human message still ends the turn");
+  assert.equal(transcriptReplyOf([tag, before], "request", "s_1"), "I'll run the requested command now.");
 });
