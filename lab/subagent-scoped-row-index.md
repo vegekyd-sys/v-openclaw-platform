@@ -90,7 +90,45 @@ builder `lab/build-subagent-scoped-row-index.mjs <V dist dir>`. The patch is on 
 
 ## Results
 
-RESULTS
+Copy of V's tables (exported read-only 2026-10-21 01:37): 5,039 subagent runs, 5,624 session entries.
+`candidate/subagent-scoped-row-ab.mjs` loads V's `session-utils-list` and the release one side by side over
+the release store chunk.
+
+**Equivalence.** For each key, three entry points are compared as JSON:
+
+- `loadGatewaySessionLifecycleSnapshot` (session events);
+- `loadGatewaySessionRow` (transcript broadcasts);
+- `buildGatewaySessionInfo` (chat.history).
+
+The 289 keys: `agent:makaron:main`, every requester and controller (52), 200 child sessions, 30
+store-child parents and other sessions. Two passes: in-memory registry empty, then every run restored into
+memory as on V. Then 40 rounds of random in-memory runs, half of them over the restored registry:
+
+- running, queued, regenerated (higher generation), ended recently or 10 days ago;
+- grandchildren chained under a child;
+- controlled by another session;
+- the same run id as a persisted run in another state.
+
+V's chunk has its 500 ms cache cleared before each call.
+
+| run | threshold | comparisons | differences |
+| --- | --- | --- | --- |
+| `ff08b81a` | default (256: main keeps the old path) | 1,734 + 1,254 | 0 |
+| `8ba39b42` | none (every key scoped, main included) | 1,734 + 1,254 | 0 |
+
+No registry key has surrounding whitespace (the SQL lookups compare raw keys).
+
+**Cost of one session-event snapshot** (`ff08b81a`, every run in memory as on V; VLab load ~7 on 4 cores):
+
+| session | V chunk, cache stale | V chunk, cache warm | release |
+| --- | --- | --- | --- |
+| Night Shift child | 978 ms, 224 MB | 21 ms, 49 MB | 18 ms, 1.9 MB |
+| group chat | 916 ms, 226 MB | 29 ms, 48 MB | 14 ms, 1.6 MB |
+| `agent:makaron:main` | 956 ms, 231 MB | 40 ms, 53 MB | same path as V (40 ms warm, ~1 s stale) |
+
+On V events come faster than 500 ms apart, so most event snapshots paid the stale-cache column plus GC.
+Scoping main's closure was measured too (an earlier build): 2.1 s and 460 MB, worse than the stale reload,
+hence the threshold.
 
 ## Archiving ended runs
 

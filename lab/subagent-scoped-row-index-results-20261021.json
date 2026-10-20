@@ -1,0 +1,292 @@
+{
+ "note": "Candidate outputs for lab/subagent-scoped-row-index.md; candidate-a0523902 is the earlier build without the size threshold (main scoped: 2.1 s).",
+ "candidates": {
+  "candidate-ff08b81a-222d-469b-a14c-36bce0645c1d": {
+   "fixture": {
+    "runs": 5039,
+    "storeEntries": 5624,
+    "requesters": 52,
+    "children": 4507,
+    "storeParents": 30,
+    "keys": 289,
+    "whitespaceKeys": 0
+   },
+   "equivalence.persisted": {
+    "maxRuns": "default 256",
+    "keys": 289,
+    "phases": [
+     "registry empty",
+     "all runs restored in memory"
+    ],
+    "compared": 1734,
+    "mismatches": 0,
+    "rowsWithChildren": 2,
+    "rowsActive": 2,
+    "baseMs": 1720457,
+    "patchedMs": 22206,
+    "sample": []
+   },
+   "equivalence.overlays": {
+    "rounds": 40,
+    "restoredRounds": 20,
+    "compared": 1254,
+    "mismatchesTotal": 0,
+    "sample": []
+   },
+   "cost.nightShiftChild.base": {
+    "label": "lifecycle snapshot V nightShiftChild",
+    "repeat": 5,
+    "msMedian": 978.2,
+    "msMax": 1014.4,
+    "allocatedMBPerCall": 223.9
+   },
+   "cost.nightShiftChild.baseWarmCache": {
+    "label": "lifecycle snapshot V nightShiftChild, cache warm",
+    "repeat": 5,
+    "msMedian": 20.7,
+    "msMax": 1002.7,
+    "allocatedMBPerCall": 49.1
+   },
+   "cost.nightShiftChild.patched": {
+    "label": "lifecycle snapshot release nightShiftChild",
+    "repeat": 5,
+    "msMedian": 18.1,
+    "msMax": 52.1,
+    "allocatedMBPerCall": 1.9
+   },
+   "cost.group.base": {
+    "label": "lifecycle snapshot V group",
+    "repeat": 5,
+    "msMedian": 915.5,
+    "msMax": 1117,
+    "allocatedMBPerCall": 225.5
+   },
+   "cost.group.baseWarmCache": {
+    "label": "lifecycle snapshot V group, cache warm",
+    "repeat": 5,
+    "msMedian": 28.5,
+    "msMax": 1041.5,
+    "allocatedMBPerCall": 48.1
+   },
+   "cost.group.patched": {
+    "label": "lifecycle snapshot release group",
+    "repeat": 5,
+    "msMedian": 13.9,
+    "msMax": 46.7,
+    "allocatedMBPerCall": 1.6
+   },
+   "cost.main.base": {
+    "label": "lifecycle snapshot V main",
+    "repeat": 5,
+    "msMedian": 956.1,
+    "msMax": 969.8,
+    "allocatedMBPerCall": 230.5
+   },
+   "cost.main.baseWarmCache": {
+    "label": "lifecycle snapshot V main, cache warm",
+    "repeat": 5,
+    "msMedian": 40.2,
+    "msMax": 882.6,
+    "allocatedMBPerCall": 52.9
+   },
+   "cost.main.patched": {
+    "label": "lifecycle snapshot release main",
+    "repeat": 5,
+    "msMedian": 39.8,
+    "msMax": 1011.9,
+    "allocatedMBPerCall": 53.4
+   }
+  },
+  "candidate-8ba39b42-38de-4b3a-9c70-259c36f27f70": {
+   "fixture": {
+    "runs": 5039,
+    "storeEntries": 5624,
+    "requesters": 52,
+    "children": 4507,
+    "storeParents": 30,
+    "keys": 289,
+    "whitespaceKeys": 0
+   },
+   "equivalence.persisted": {
+    "maxRuns": "Infinity",
+    "keys": 289,
+    "phases": [
+     "registry empty",
+     "all runs restored in memory"
+    ],
+    "compared": 1734,
+    "mismatches": 0,
+    "rowsWithChildren": 2,
+    "rowsActive": 2,
+    "baseMs": 1702486,
+    "patchedMs": 30097,
+    "sample": []
+   },
+   "equivalence.overlays": {
+    "rounds": 40,
+    "restoredRounds": 20,
+    "compared": 1254,
+    "mismatchesTotal": 0,
+    "sample": []
+   },
+   "cost.nightShiftChild.base": {
+    "label": "lifecycle snapshot V nightShiftChild",
+    "repeat": 5,
+    "msMedian": 796.9,
+    "msMax": 822.1,
+    "allocatedMBPerCall": 227
+   },
+   "cost.nightShiftChild.baseWarmCache": {
+    "label": "lifecycle snapshot V nightShiftChild, cache warm",
+    "repeat": 5,
+    "msMedian": 26.1,
+    "msMax": 38.6,
+    "allocatedMBPerCall": 4.3
+   },
+   "cost.nightShiftChild.patched": {
+    "label": "lifecycle snapshot release nightShiftChild",
+    "repeat": 5,
+    "msMedian": 9.7,
+    "msMax": 20.5,
+    "allocatedMBPerCall": 2
+   },
+   "cost.group.base": {
+    "label": "lifecycle snapshot V group",
+    "repeat": 5,
+    "msMedian": 848.9,
+    "msMax": 907.2,
+    "allocatedMBPerCall": 227.6
+   },
+   "cost.group.baseWarmCache": {
+    "label": "lifecycle snapshot V group, cache warm",
+    "repeat": 5,
+    "msMedian": 14.4,
+    "msMax": 26.1,
+    "allocatedMBPerCall": 3.8
+   },
+   "cost.group.patched": {
+    "label": "lifecycle snapshot release group",
+    "repeat": 5,
+    "msMedian": 15.7,
+    "msMax": 23.8,
+    "allocatedMBPerCall": 1.8
+   },
+   "cost.main.base": {
+    "label": "lifecycle snapshot V main",
+    "repeat": 5,
+    "msMedian": 825.7,
+    "msMax": 863,
+    "allocatedMBPerCall": 232.6
+   },
+   "cost.main.baseWarmCache": {
+    "label": "lifecycle snapshot V main, cache warm",
+    "repeat": 5,
+    "msMedian": 26.9,
+    "msMax": 47.3,
+    "allocatedMBPerCall": 8.7
+   },
+   "cost.main.patched": {
+    "label": "lifecycle snapshot release main",
+    "repeat": 5,
+    "msMedian": 30.9,
+    "msMax": 878.2,
+    "allocatedMBPerCall": 53.3
+   }
+  },
+  "candidate-a0523902-565e-4483-899c-5dd5257f4b02": {
+   "fixture": {
+    "runs": 5039,
+    "storeEntries": 5624,
+    "requesters": 52,
+    "children": 4507,
+    "storeParents": 30,
+    "keys": 1,
+    "whitespaceKeys": 0
+   },
+   "equivalence.persisted": {
+    "keys": 1,
+    "phases": [
+     "registry empty",
+     "all runs restored in memory"
+    ],
+    "compared": 6,
+    "mismatches": 0,
+    "rowsWithChildren": 2,
+    "rowsActive": 2,
+    "baseMs": 8660,
+    "patchedMs": 13130,
+    "sample": []
+   },
+   "equivalence.overlays": {
+    "rounds": 0,
+    "restoredRounds": 0,
+    "compared": 0,
+    "mismatchesTotal": 0,
+    "sample": []
+   },
+   "cost.nightShiftChild.base": {
+    "label": "lifecycle snapshot V nightShiftChild",
+    "repeat": 5,
+    "msMedian": 1040.5,
+    "msMax": 1160.5,
+    "allocatedMBPerCall": 224.4
+   },
+   "cost.nightShiftChild.baseWarmCache": {
+    "label": "lifecycle snapshot V nightShiftChild, cache warm",
+    "repeat": 5,
+    "msMedian": 25,
+    "msMax": 1050.5,
+    "allocatedMBPerCall": 48
+   },
+   "cost.nightShiftChild.patched": {
+    "label": "lifecycle snapshot release nightShiftChild",
+    "repeat": 5,
+    "msMedian": 25.3,
+    "msMax": 48.9,
+    "allocatedMBPerCall": 1.7
+   },
+   "cost.group.base": {
+    "label": "lifecycle snapshot V group",
+    "repeat": 5,
+    "msMedian": 1051.7,
+    "msMax": 1093.9,
+    "allocatedMBPerCall": 225.4
+   },
+   "cost.group.baseWarmCache": {
+    "label": "lifecycle snapshot V group, cache warm",
+    "repeat": 5,
+    "msMedian": 33.4,
+    "msMax": 941.1,
+    "allocatedMBPerCall": 48.8
+   },
+   "cost.group.patched": {
+    "label": "lifecycle snapshot release group",
+    "repeat": 5,
+    "msMedian": 17,
+    "msMax": 49.6,
+    "allocatedMBPerCall": 1.6
+   },
+   "cost.main.base": {
+    "label": "lifecycle snapshot V main",
+    "repeat": 5,
+    "msMedian": 998.6,
+    "msMax": 1038.3,
+    "allocatedMBPerCall": 232.3
+   },
+   "cost.main.baseWarmCache": {
+    "label": "lifecycle snapshot V main, cache warm",
+    "repeat": 5,
+    "msMedian": 42.1,
+    "msMax": 1020.8,
+    "allocatedMBPerCall": 54.6
+   },
+   "cost.main.patched": {
+    "label": "lifecycle snapshot release main",
+    "repeat": 5,
+    "msMedian": 2101.9,
+    "msMax": 2270.1,
+    "allocatedMBPerCall": 460.2
+   }
+  }
+ }
+}
