@@ -208,11 +208,14 @@ async function main() {
     h.ask(`【跨会话测试 ${TAG}-${id}】这是自动化测试，请严格照做：调用一次 sessions_send 工具，参数 sessionKey="${ad.keys.ga}"，timeoutSeconds=0，message="【${TAG}-${id}】这是自动化测试，请只回复 ${result}"。工具返回后只回复一句「已交出」，然后立刻结束本轮。结果回来时，把对方的回复告诉我（必须包含 ${result}）。`);
     const first = await waitSend(gw, ledger, t0, (r) => r.target?.sessionKey === ad.keys.ga, 300_000, `${id} send`);
     for (const until = Date.now() + 180_000; Date.now() < until; await sleep(40)) if (["starting", "running"].includes(ledger.send(first.sendId)?.phase)) break;
+    // Every AI card for this group is refused while the target turn runs (other chats' cards are not).
     const armedAt = Date.now();
-    fake.failRoute("POST /v1.0/card/instances", { status: 403, times: 3 });
-    fake.failRoute("POST /v1.0/card/instances/createAndDeliver", { status: 403, times: 3 });
+    const toGroup = (b) => b?.openSpaceId === `dtv1.card//IM_GROUP.${CHATS.ga.cid}`;
+    fake.failRoute("POST /v1.0/card/instances/deliver", { status: 403, times: 1000, when: toGroup });
+    fake.failRoute("POST /v1.0/card/instances/createAndDeliver", { status: 403, times: 1000, when: toGroup });
     const done = await h.settled(first.sendId, ["target_done", "result_ready", "failure_ready", "handed_back", "cancelled", "skipped"], 420_000, `${id} target done`);
-    fake.failRoute("POST /v1.0/card/instances", { times: 0 });
+    await sleep(2000);
+    fake.failRoute("POST /v1.0/card/instances/deliver", { times: 0 });
     fake.failRoute("POST /v1.0/card/instances/createAndDeliver", { times: 0 });
     const rec = await h.settled(first.sendId, ["handed_back", "cancelled", "skipped"], 420_000, `${id} handed back`);
     const hb = await gw.waitFor(() => h.handbacks(t0, rec.code)[0], 120_000, `${id} hand-back`);
@@ -221,13 +224,14 @@ async function main() {
     const run = { from: rec.targetRun.startedAt - 1000, to: (rec.targetRun.endedAt ?? Date.now()) + 3000 };
     const refused = fake.calls.filter((c) => c.at >= armedAt && c.failed === 403);
     const proactive = items("ga", t0).filter((m) => m.kind === "robot" && m.text.includes(result));
+    const groupCards = items("ga", t0).filter((m) => m.kind === "card" && m.text.includes(result));
     const hooks = writes("ga", run.from, run.to).filter((w) => w.what === "sessionWebhook");
     evidence(id, "send", sendEvidence(rec));
     evidence(id, "refused", refused.map((c) => `${new Date(c.at).toISOString().slice(11, 23)} ${c.method} ${c.path}`));
     evidence(id, "target", items("ga", t0).map(h.view));
     evidence(id, "log", gw.logSince(t0, /card|AI ?卡|proactive|主动|fallback|降级|403/iu).slice(-25));
     check(id, done && refused.length >= 1 && refused.every((c) => c.at >= rec.targetRun.startedAt - 2000), "the target turn's AI card creation got 403 (failure path ran)", refused.length);
-    check(id, proactive.length >= 1, "the answer reached the group as a proactive robot message (fallback)", items("ga", t0).map(h.view));
+    check(id, proactive.length === 1 && groupCards.length === 0, "the answer reached the group once, as a proactive robot message (fallback), not as a card", items("ga", t0).map(h.view));
     check(id, hooks.length === 0, "zero session-webhook posts from the inter-session turn", hooks);
     check(id, rec.phase === "handed_back" && !rec.failure && String(rec.result?.text ?? "").includes(result), "the result was handed back", rec.result);
     check(id, h.handbacks(t0).length === 1 && Boolean(wake), "one hand-back and the wake reply in the DM", h.handbacks(t0).map(h.view));
