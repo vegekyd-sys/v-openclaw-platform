@@ -101,14 +101,17 @@ export function senderFor({ route, principal, chainId, fromLabel, cfg }) {
 }
 
 /**
- * A group route without a name gets the session entry's subject / displayName (review-dingtalk):
- * the bridge passes it as the group subject, so the target session's label is not rewritten to an
- * id by a synthetic turn. Direct chats are never named (§7.1).
+ * A group route without a name gets the session entry's subject (review-dingtalk): the bridge
+ * passes it as the group subject, so the target session's label is not rewritten to an id by a
+ * synthetic turn. Only `subject`: 9.1's `displayName` is buildGroupDisplayName's
+ * "<provider>:g-<slug>" (of the subject, or of the chat id when there is none), never a group
+ * name, and passed on as the subject the core would store it as one. Direct chats are never
+ * named (§7.1).
  */
 function withLabel(route, entry) {
   if (!route || route.label || route.chatType !== "group") return route;
-  const label = [entry?.subject, entry?.displayName].find((v) => typeof v === "string" && v.trim());
-  return label ? { ...route, label: label.trim() } : route;
+  const label = typeof entry?.subject === "string" ? entry.subject.trim() : "";
+  return label ? { ...route, label } : route;
 }
 
 export function createRoutes({ getSessionEntry, getConfig = () => ({}), bridges, ownerName = "Tianyi", agentNames = {}, logger, now = Date.now }) {

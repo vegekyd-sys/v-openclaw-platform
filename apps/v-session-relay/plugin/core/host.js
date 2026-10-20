@@ -11,7 +11,7 @@ import path from "node:path";
 
 import { METHODS, METHOD_SCOPES, isWorkerChildProcess, resolvePluginConfig } from "./contracts.js";
 import { sendFailedText } from "./copy.js";
-import { Engine } from "./engine.js";
+import { Engine, cleanContextRunner } from "./engine.js";
 import { createPollGuard } from "./guard.js";
 import { Ledger, LedgerLockedError } from "./ledger.js";
 import { recover } from "./recovery.js";
@@ -48,6 +48,12 @@ export class Host {
     this.registrations = 0;
     this.recovery = null;
     this.logger = undefined;
+    // The async context every bridge / transport call runs in, taken once per process when the
+    // plugin is first loaded (Gateway boot). Not at service start: 9.1 restarts plugin services on a
+    // config reload, and the reload runs in the writer's async context (registerConfigWriteListener
+    // → setTimeout), e.g. an agent turn's config.patch through the gateway tool; an engine built
+    // there would start every later synthetic turn inside that turn's stores.
+    this.cleanContext = cleanContextRunner();
   }
 
   get inWorker() { return isWorkerChildProcess(this.env); }
@@ -149,6 +155,7 @@ export class Host {
       sdk: { resolveActiveEmbeddedRunSessionId: this.sdk.resolveActiveEmbeddedRunSessionId },
       runtime: { getSessionMessages: typeof runtime.subagent?.getSessionMessages === "function" ? (p) => runtime.subagent.getSessionMessages(p) : undefined },
       onSendChange: (rec) => tasks.changed(rec),
+      cleanContext: this.cleanContext,
     });
     engine.start();
     tasks.install();

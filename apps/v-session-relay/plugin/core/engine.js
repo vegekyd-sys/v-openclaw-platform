@@ -47,8 +47,12 @@ const BACKGROUND_KINDS = new Set(["exec", "image_generation", "video_generation"
 const isRequestRow = (t) => t?.taskKind === "sessions_send" || String(t?.taskId ?? "").startsWith("v-a2a:");
 const isCronRow = (t) => t?.runtime === "cron" || t?.taskKind === "cron";
 
-/** Run `fn` in the async context the engine was built in (see `inClean`). */
-function cleanContextRunner() {
+/**
+ * A runner for `fn` in the async context this is called in (see `inClean`). The host takes one
+ * when the plugin is first loaded (Gateway boot) and gives it to every engine; an engine built
+ * without one takes its own.
+ */
+export function cleanContextRunner() {
   if (typeof AsyncLocalStorage.snapshot === "function") return AsyncLocalStorage.snapshot();
   return (fn, ...args) => fn(...args);
 }
@@ -91,11 +95,13 @@ export class Engine {
     this.taskBridge = taskBridge;
     this.flushSeam = flushSeam;
     this.onSendChange = onSendChange;
-    // Every bridge / transport call (start, post, edit) runs in the async context the engine was
-    // built in (service start), never in its caller's: vrelay.send can run inside a Telegram
-    // update's frame and lifecycle events inside a person's run, and a synthetic turn started from
-    // there would be charged to that frame — its failure marks the update failed-retryable and the
-    // requester's run is repeated (review-telegram).
+    // Every bridge / transport call (start, post, edit) runs in a clean async context, never in its
+    // caller's: vrelay.send can run inside a Telegram update's frame and lifecycle events inside a
+    // person's run, and a synthetic turn started from there would be charged to that frame — its
+    // failure marks the update failed-retryable and the requester's run is repeated
+    // (review-telegram) — or carry that run's stores (prepared-model generation scope, gateway
+    // caller identity). The host passes the context of the plugin's first load, not the service
+    // start's: a config reload restarts the service in the writer's context (see host.js).
     this.inClean = cleanContext ?? cleanContextRunner();
 
     this.queues = new Map();

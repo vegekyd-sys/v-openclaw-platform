@@ -20,7 +20,8 @@ import { createAgentTransport } from "../core/transports/agent.js";
 import { createBridgeTransport } from "../core/transports/bridge.js";
 import { formatForChannel } from "../core/visible.js";
 import { createFakeBridge } from "./fixtures/fake-bridge.mjs";
-import { DM, OWNER, ROOM, X, createWorld, sendParams, sleep, waitFor } from "./fixtures/harness.mjs";
+import { DM, OWNER, ROOM, X, createFakeAgent, createWorld, sendParams, sleep, tmpDir, waitFor } from "./fixtures/harness.mjs";
+import fs from "node:fs";
 
 const ok = (text, extra = {}) => ({ status: "ok", finals: text ? [{ text }] : [], visibleReplySent: Boolean(text), finalCount: text ? 1 : 0, ...extra });
 const startOf = (w, kind, id) => w.starts(kind).find((c) => c.args.id === id);
@@ -364,7 +365,7 @@ test("align (j): DingTalk — dingtalk-connector maps to the dingtalk:<acct> bri
   dt.register(registry);
   registry.bridges.set("dingtalk:default", { ...dt, accountId: "default" }); // the bridge registers both keys on V
   const bt = createBridgeTransport({ registry });
-  const entries = { [DT_KEY]: dtEntry(), "agent:makaron:dingtalk-connector:group:cidnoacct": { delivery: { kind: "external", context: { channel: "dingtalk-connector", to: "cidNoAcct" } }, displayName: "无账号群" } };
+  const entries = { [DT_KEY]: dtEntry(), "agent:makaron:dingtalk-connector:group:cidnoacct": { delivery: { kind: "external", context: { channel: "dingtalk-connector", to: "cidNoAcct" } }, subject: "无账号群", displayName: "dingtalk-connector:g-无账号群" } };
   const routes = createRoutes({ getSessionEntry: ({ sessionKey }) => entries[sessionKey], getConfig: () => cfg, bridges: bt.bridges });
   const a = await routes.resolve({ sessionKey: DT_KEY, agentId: "makaron" });
   assert.deepEqual([a.ok, a.transport, a.bridgeKey], [true, "bridge", "dingtalk:__default__"]);
@@ -448,4 +449,139 @@ test("align (k): one RunOutcome rule — no terminal outcome is ok only with a n
   assert.equal((await one.done).status, "ok");
   const two = await agent.start({ route: null, promptText: "p", sessionKey: "agent:makaron:main", runId: "v-a2a-req-s_x-1", provenance: {} });
   assert.equal((await two.done).status, "aborted");
+});
+
+// ---------------------------------------------------------------- review (fix-plugin)
+
+test("align (j): a group route is named from the entry's subject only — 9.1's displayName is '<provider>:g-<slug>', never a name", async () => {
+  // 9.1 buildGroupDisplayName (src/config/sessions/group.ts) always returns `${provider}:${token}`,
+  // token "g-<slug of the subject, else of the chat id>". A bridge passes route.label on as the group
+  // subject (DingTalk conversationTitle, Telegram chat.title) and the core stores it as the session's
+  // subject, so a displayName there would rename the target group to an id-like token.
+  const registry = { v: 1, bridges: new Map(), listeners: new Set() };
+  const dt = createFakeBridge({ channel: "dingtalk", accountId: "__default__" });
+  dt.register(registry);
+  const noSubject = "agent:makaron:dingtalk-connector:group:cidnosubject";
+  const tg = "agent:makaron:telegram:group:-1001234";
+  const entries = {
+    [noSubject]: { delivery: { kind: "external", context: { channel: "dingtalk-connector", to: "cidNoSubject", accountId: "__default__" } }, displayName: "dingtalk-connector:g-cidnosubject" },
+    [DT_KEY]: { ...dtEntry(), displayName: "dingtalk-connector:g-运营群" },
+    [tg]: { delivery: { kind: "external", context: { channel: "telegram", to: "-1001234", accountId: "default" } }, displayName: "telegram:g-1001234" },
+  };
+  const getSessionEntry = ({ sessionKey }) => entries[sessionKey];
+  const viaBridge = createRoutes({ getSessionEntry, getConfig: () => ({}), bridges: createBridgeTransport({ registry }).bridges });
+  const a = await viaBridge.resolve({ sessionKey: noSubject, agentId: "makaron" });
+  assert.equal(a.transport, "bridge");
+  assert.equal(a.route.label, undefined, "never the core's id-like displayName");
+  assert.equal((await viaBridge.resolve({ sessionKey: DT_KEY, agentId: "makaron" })).route.label, "运营群");
+  const plain = createRoutes({ getSessionEntry, getConfig: () => ({}), bridges: new Map() });
+  const b = await plain.resolve({ sessionKey: tg, agentId: "makaron" });
+  assert.deepEqual([b.transport, b.route.label], ["agent", undefined]);
+  // End to end: the DingTalk bridge gets no title to pass on as GroupSubject.
+  const w = await createWorld({ entries: { [noSubject]: entries[noSubject] } });
+  const wdt = createFakeBridge({ channel: "dingtalk", accountId: "__default__" });
+  wdt.register(w.registry);
+  try {
+    const r = await w.send(DM, noSubject, "没有群名的钉钉群", { runId: "rA" });
+    const st = await waitFor(() => wdt.callsOf("start")[0], { what: "dingtalk start" });
+    assert.equal(st.args.route.label, undefined);
+    await waitFor(() => w.rec(r.sendId).phase === "result_ready");
+  } finally { await w.close(); }
+});
+
+test("align (g): the clean context is the process's, taken once — a service restarted inside a turn's async context (config reload) does not hand it to the turns it starts", async (t) => {
+  const keepAlive = setInterval(() => {}, 1_000);
+  t.after(() => clearInterval(keepAlive));
+  const als = new AsyncLocalStorage();
+  const seen = [];
+  const sdk = {
+    callGatewayFromCli: async (method, _opts, params) => {
+      seen.push([method, als.getStore()]);
+      if (method === "agent") return { runId: params.idempotencyKey, status: "accepted" };
+      if (method === "agent.wait") return { status: "ok", terminalReply: { disposition: "visible", text: "好了" } };
+      throw new Error(`unexpected ${method}`);
+    },
+  };
+  // Built when the plugin module is first evaluated (Gateway boot), outside any frame.
+  const host = new Host({ env: {}, recoverOnStart: false, sdk });
+  const api = fakeApi();
+  api.runtime = { agent: { session: { getSessionEntry: () => ({ sessionId: "s" }) } }, subagent: { getSessionMessages: async () => ({ messages: [] }) } };
+  host.register(api);
+  const stateDir = tmpDir("vsr-ctx-");
+  const ctx = { stateDir, config: { commands: { ownerAllowFrom: [] } } };
+  try {
+    const svc = api.services[0];
+    await svc.start(ctx);
+    await svc.stop();
+    // 9.1 replaces the plugin runtime on a config reload, and the reload runs in the writer's async
+    // context (registerConfigWriteListener → setTimeout): an agent's config.patch through the
+    // gateway tool starts the new service inside its turn's stores (prepared-model generation
+    // scope, gateway caller identity, transcript write context).
+    await als.run({ frame: "config.patch from an agent turn" }, () => svc.start(ctx));
+    const from = "agent:makaron:main";
+    const to = "agent:makaron:webchat:app1";
+    const r = await als.run({ frame: "vrelay.send" }, () => host.engine.send({
+      v: 1, idempotencyKey: `ss:${"c".repeat(32)}`, toolCallId: "t1",
+      requester: { sessionKey: from, replySessionKey: from, agentId: "makaron", runId: "root-1", channel: null, accountId: null, to: null, threadId: null, senderId: null, senderIsOwner: false },
+      target: { sessionKey: to, agentId: "makaron", displayKey: to, created: false },
+      message: "交给 App 会话", mode: "async", inlineTimeoutMs: 0,
+    }));
+    assert.equal(r.status, "accepted");
+    host.engine.onAgentEvent({ runId: "root-1", sessionKey: from, stream: "lifecycle", seq: 1, ts: Date.now(), data: { phase: "end" } });
+    await waitFor(() => host.engine.ledger.getSend(r.sendId)?.phase === "handed_back", { what: "handed back" });
+    assert.equal(seen.filter(([m]) => m === "agent").length, 2, "request turn + wake turn");
+    assert.deepEqual(seen.map(([m, store]) => [m, store]), seen.map(([m]) => [m, undefined]), JSON.stringify(seen));
+  } finally {
+    await host.stop();
+    fs.rmSync(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("align (g): anchor edits and agent-transport posts run in the clean context too", async () => {
+  const als = new AsyncLocalStorage();
+  const seen = [];
+  const base = createFakeAgent();
+  const agent = {
+    ...base,
+    post: (p) => { seen.push(["agent.post", als.getStore()]); return base.post(p); },
+    start: (req, o) => { seen.push(["agent.start", als.getStore()]); return base.start(req, o); },
+  };
+  const tg = "agent:makaron:telegram:group:-1001234";
+  const w = await createWorld({ bridge: { holdRuns: true }, agent, entries: { [tg]: { delivery: { kind: "external", context: { channel: "telegram", to: "-1001234", accountId: "default" } } } } });
+  try {
+    const edit = w.fake.edit;
+    w.fake.edit = (p) => { seen.push(["edit", als.getStore()]); return edit(p); };
+    // Busy at accept: the anchor carries the queue line, and the start edits it away.
+    w.busy.add(X);
+    const r = await als.run({ update: 7 }, () => w.send(DM, X, "排在后面", { runId: "rA" }));
+    assert.equal(w.rec(r.sendId).request.queuedLine, true);
+    w.busy.delete(X);
+    als.run({ update: 8 }, () => w.endRun("human-run", X));
+    await waitFor(() => seen.some(([what]) => what === "edit"), { what: "queue line edited away" });
+    // No Telegram bridge: the anchor and the turn go through the agent transport.
+    const t2 = await als.run({ update: 9 }, () => w.send(DM, tg, "TG 群里做", { runId: "rA" }));
+    await waitFor(() => w.rec(t2.sendId).phase === "result_ready", { what: "agent-transport turn done" });
+    assert(seen.some(([what]) => what === "agent.post") && seen.some(([what]) => what === "agent.start"), JSON.stringify(seen));
+    assert.deepEqual(seen.map(([what, store]) => [what, store]), seen.map(([what]) => [what, undefined]), JSON.stringify(seen));
+  } finally { await w.close(); }
+});
+
+test("align (k): a wake turn that serves a send follows the same rule — aborted with a final hands that final back", async () => {
+  const w = await createWorld({ bridge: { holdRuns: true } });
+  try {
+    const s = await w.send(DM, X, "交给 X 去分派", { runId: "rA" });
+    const xs = await awaitStart(w, "request", s.sendId);
+    const child = await w.send(X, ROOM(1), "子任务", { runId: xs.args.runId });
+    assert.equal(child.status, "accepted");
+    w.fake.finishRun(xs.args.runId, ok("已分派"));
+    await waitFor(() => w.rec(s.sendId).phase === "awaiting_children", { what: "S waits for its child" });
+    const cs = await awaitStart(w, "request", child.sendId);
+    w.fake.finishRun(cs.args.runId, ok("子结果"));
+    const wake = await waitFor(() => w.starts("wake")[0], { what: "X's wake" });
+    // No terminal outcome from the core (stopped after the final went out): the bridges' rule.
+    w.fake.finishRun(wake.args.runId, { status: "aborted", finals: [{ text: "汇总好了" }], visibleReplySent: true, finalCount: 1 });
+    await waitFor(() => ["result_ready", "failure_ready"].includes(w.rec(s.sendId).phase), { what: "S settled" });
+    assert.equal(w.rec(s.sendId).phase, "result_ready");
+    assert.equal(w.rec(s.sendId).result.text, "汇总好了");
+  } finally { await w.close(); }
 });
