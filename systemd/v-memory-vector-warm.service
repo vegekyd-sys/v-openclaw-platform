@@ -1,0 +1,15 @@
+[Unit]
+Description=Keep V's memory_search vectors in the page cache
+Documentation=file:/opt/v-sentinel/v-memory-vector-warm.py
+# Read-only and outside the Gateway: no Gateway call, no write lock, nothing to
+# order against. A cold vector table makes memory_search hit its 25 s deadline.
+
+[Service]
+Type=oneshot
+User=openclaw
+Nice=19
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+ExecStart=/usr/bin/python3 /opt/v-sentinel/v-memory-vector-warm.py makaron
+# A warm pass takes ~0.3 s; a fully cold one ~25 s of random reads.
+TimeoutStartSec=300
