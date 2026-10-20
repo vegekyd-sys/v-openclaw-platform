@@ -103,6 +103,12 @@ test("contracts: vocabularies match §2 and §5", () => {
   assert.deepEqual([...C.FAILURE_CLASSES], ["not_started", "started_failed", "interrupted", "aborted", "timeout", "cancelled"]);
   assert.equal(C.SEND_PHASES.length, 15);
   for (const p of [...C.SEND_TERMINAL_PHASES, ...C.SEND_SETTLED_PHASES]) assert(C.SEND_PHASES.includes(p), p);
+  // A batch becomes ready when every member is settled (§5.4); a vrelay.cancel'ed member is
+  // reported in the requester's wake (§6.2 "批次里该项 ⏹"), so it must not hold the batch open.
+  assert.deepEqual([...C.SEND_SETTLED_PHASES], ["result_ready", "failure_ready", "skipped", "cancelled"]);
+  for (const p of ["accepted", "posting", "posted", "queued", "starting", "running", "target_done", "awaiting_children", "awaiting_background"]) {
+    assert(!C.SEND_SETTLED_PHASES.includes(p) && !C.SEND_TERMINAL_PHASES.includes(p), `${p} is still in flight`);
+  }
   for (const p of C.BATCH_TERMINAL_PHASES) assert(C.BATCH_PHASES.includes(p), p);
   assert.match("Error: restart recovery claim changed for agent:x", C.RESTART_WEDGE_RE);
   assert.deepEqual({ ...C.CHANNEL_CAPS.feishu }, { streaming: true, replyAnchor: true, idempotentPost: true, editPost: true, maxVisibleChars: 1500, askUser: true, media: true });
@@ -157,6 +163,27 @@ test("contracts: per-attempt runId, MessageSid and synthetic ids", () => {
   assert.throws(() => C.runIdFor("reply", s, 0), /unknown inter-session kind/u);
   assert.throws(() => C.runIdFor("request", s, -1), /non-negative/u);
   assert.throws(() => C.runIdFor("request", "s_bad", 0), /not a send/u);
+  // wake turns are keyed by a batchId, request / ask / collect by a sendId; a chain id is neither.
+  // The generators refuse what the parsers would not read back.
+  const c = C.newChainId(1_760_000_000_000, Buffer.from("0102030405", "hex"));
+  for (const [kind, id] of [["request", b], ["ask", b], ["collect", b], ["wake", s], ["request", c], ["wake", c]]) {
+    assert.throws(() => C.runIdFor(kind, id, 0), /not a send\/batch id for/u, `${kind} ${id}`);
+    assert.throws(() => C.messageSidFor(kind, id, 0), /not a send\/batch id for/u, `${kind} ${id}`);
+    assert.throws(() => C.feishuPostUuid(kind, id, "anchor"), /not a send\/batch id for/u, `${kind} ${id}`);
+    assert.throws(() => C.originSessionIdFor({ chainId: c, depth: 1, kind, id }), /not a send\/batch id for/u, `${kind} ${id}`);
+    assert.throws(() => C.originTagSuffix(kind, id), /not a send\/batch id for/u, `${kind} ${id}`);
+  }
+  assert.equal(C.parseInterSessionRunId(`v-a2a-wake-${s}-0`), null);
+  assert.equal(C.parseInterSessionRunId(`v-a2a-req-${b}-0`), null);
+  assert.equal(C.parseMessageSid(`v-a2a:ask:${b}:1`), null);
+  assert.equal(C.parseOriginSessionId(`v-a2a:${c}:1:wake:${s}`), null);
+  for (const kind of C.START_KINDS) {
+    const id = kind === "wake" ? b : s;
+    for (const attempt of [0, 7]) {
+      assert.deepEqual(C.parseInterSessionRunId(C.runIdFor(kind, id, attempt)), { kind, abbr: C.KIND_ABBR[kind], id, attempt });
+      assert.deepEqual(C.parseMessageSid(C.messageSidFor(kind, id, attempt)), { kind, abbr: C.KIND_ABBR[kind], id, attempt });
+    }
+  }
   assert.deepEqual(C.parseInterSessionRunId(`v-a2a-col-${s}-12`), { kind: "collect", abbr: "col", id: s, attempt: 12 });
   assert.deepEqual(C.parseMessageSid(`v-a2a:wake:${b}:0`), { kind: "wake", abbr: "wake", id: b, attempt: 0 });
   assert.equal(C.parseInterSessionRunId("7f6c2a8e-1111-4222-8333-444455556666"), null);
@@ -196,6 +223,24 @@ test("contracts: Feishu post uuid, transcript tag and idempotency keys", () => {
   assert.equal(C.sendIdempotencyKey({ ...base, requesterRunId: null, now }), `ss:${sha256(`${DM_KEY}|nr:${Math.floor(now / 600000)}|call_1`).slice(0, 32)}`);
   assert.equal(C.sendContentKey({ requesterSessionKey: DM_KEY, targetSessionKey: GROUP_KEY, message: "hi" }), sha256(`${DM_KEY}|${GROUP_KEY}|hi`));
   assert.equal(C.runRecordName("v-a2a-req-x-0"), `${createHash("sha1").update("v-a2a-req-x-0").digest("hex")}.json`);
+});
+
+test("contracts: worker-child marker and the synthetic sender id", () => {
+  // F-a: the plugin is loaded in every Worker child with the Gateway's config; only this tells them apart.
+  assert.equal(C.WORKER_CHILD_ENV, "VLAB_WORKER_CHILD");
+  assert.equal(C.isWorkerChildProcess({ VLAB_WORKER_CHILD: "1" }), true);
+  for (const env of [{}, { VLAB_WORKER_CHILD: "0" }, { VLAB_WORKER_CHILD: "true" }, undefined]) assert.equal(C.isWorkerChildProcess(env ?? {}), false);
+  assert.equal(typeof C.isWorkerChildProcess(), "boolean");
+
+  const c = C.newChainId(1_760_000_000_000, Buffer.from("0102030405", "hex"));
+  const sender = C.syntheticSenderIdFor(c);
+  assert.equal(sender, `v-a2a:${c}`);
+  assert(sender.startsWith(C.V_A2A_SID_PREFIX), "validateStartRequest recognises it as synthetic");
+  assert.throws(() => C.syntheticSenderIdFor(C.newSendId()), /not a chain id/u);
+  const s = C.newSendId(1_760_000_000_000, Buffer.from("0102030405", "hex"));
+  const route = { channel: "feishu", accountId: "default", to: `chat:${GROUP}`, chatId: GROUP, chatType: "group", humans: "shared" };
+  const req = startRequest({ id: s, route, extra: { sender: { id: sender, name: "x", isOwnerIdentity: true } } });
+  assert(C.validateStartRequest(req).errors.some((e) => e.includes("synthetic sender is never the owner")));
 });
 
 test("contracts: account ids normalize like core normalizeAccountId", () => {
@@ -324,6 +369,14 @@ test("fake bridge: routes, idempotent posts, injected post failures and the call
   assert.equal(dm.route.to, `user:${OWNER}`);
   assert.deepEqual(deriveRoute("agent:makaron:dingtalk:group:cidabc", { channel: "dingtalk", ownerIds: [] }), { ok: false, code: "NO_ROUTE", reason: "dingtalk needs a stored delivery address" });
   assert.equal(deriveRoute("agent:makaron:dingtalk:group:cidabc", { channel: "dingtalk", delivery: { to: "cidAbC" } }).route.to, "cidAbC");
+  // §2.a humans: Telegram / DingTalk / WeCom groups are shared; DingTalk / WeCom have no owner identity.
+  assert.equal(deriveRoute("agent:makaron:dingtalk:group:cidabc", { channel: "dingtalk", delivery: { to: "cidAbC" } }).route.humans, "shared");
+  assert.equal(deriveRoute("agent:makaron:wecom:group:wrabc", { channel: "wecom", delivery: { to: "wrabc" } }).route.humans, "shared");
+  assert.equal(deriveRoute("agent:makaron:telegram:group:-1001", { channel: "telegram", ownerIds: [] }).route.humans, "shared");
+  assert.equal(deriveRoute("agent:makaron:telegram:group:-1001", { channel: "telegram", delivery: { to: "-1001" } }).route.humans, "shared");
+  assert.equal(deriveRoute("agent:makaron:dingtalk:direct:staff1", { channel: "dingtalk", ownerIds: ["staff1"], delivery: { to: "staff1" } }).route.humans, "single_peer");
+  assert.equal(deriveRoute(GROUP_KEY, { channel: "feishu", delivery: { to: `chat:${GROUP}` } }).route.humans, "unknown", "Feishu groups need getChatInfo");
+  assert.equal(deriveRoute(DM_KEY, { channel: "feishu", ownerIds: [OWNER], delivery: { to: `user:${OWNER}` } }).route.humans, "owner_only");
 
   const post = { route: routed.route, text: "📨 来自「Tianyi 私聊」的请求 #7F3A", idempotencyKey: C.feishuPostUuid("request", C.newSendId(), "anchor") };
   await assert.rejects(bridge.post(post), (err) => C.isBridgeError(err) && err.code === "CHANNEL_DOWN" && err.transient === true);

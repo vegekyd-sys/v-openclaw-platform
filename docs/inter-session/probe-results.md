@@ -108,7 +108,8 @@ vcc：A3 未取得（工具没跑到，原因见「vcc」）。
 ## 探针顺带发现
 
 **F-a 插件会进 worker。** 探针插件只写进 Gateway 主配置，candidate 里的 worker 配置文件也是从共享 VLab 复制、不含它，但每个 worker 进程都加载并注册了它（三次运行各 1 次）。原因：V 的 worker 插件（捕获 `…20261020.worker/dist/worker-config-derive.mjs`；`index.mjs:596-608`）启动时和主配置变化时，把 worker 配置**按主配置逐字推导**（只覆盖 runtime id 映射和 session maintenance），主配置变化还会触发 worker 换代（`onWorkerConfigChanged → rollGeneration`）。记忆「worker 读第二份手工配置」已过时。对设计的影响：
-- §3.10「插件只在 Gateway 加载」做不到。插件 2.0 的 `index.js` 必须自己判断是否在 worker 进程（例如入口是 `production-worker/worker.mjs`，或进程有 IPC 父进程），worker 里不启动引擎、不注册服务、不订阅事件；`LOCK` 只是第二道保险。
+- §3.10「插件只在 Gateway 加载」做不到。插件 2.0 的 `index.js` 必须自己判断是否在 worker 进程，worker 里不启动引擎、不注册服务、不订阅事件；`LOCK` 只是第二道保险。判据用 V 的 worker 插件自己的做法：`process.env.VLAB_WORKER_CHILD === "1"`（worker 捕获 `exec-env.mjs:28` 给子进程设置，`index.mjs:351、388` 据此跳过 Gateway 侧服务），已冻结为 `contracts.js` 的 `WORKER_CHILD_ENV` / `isWorkerChildProcess()`；不要靠 argv 或 IPC 父进程猜。
+- 同理，§3.10 按 `config.role` 区分 `gateway` / `worker-guard` 也不成立：worker 拿到的是逐字推导的同一份 `config`（role 永远等于主配置里的值）。worker 轮询闸要改成插件配置里的一个布尔开关（例如 `workerGuard`），由插件在 worker 子进程里读它决定是否注册 guard。
 - §8.7 第 4 条的 worker 轮询闸不需要「声明到 worker 第二份配置」：插件本来就在 worker 里，开不开闸是插件内的开关（仍按 `requester_tail_ms` 判据决定）。回滚说明里「先改 worker 配置再删目录」相应改为「先在主配置停用插件（会触发 worker 换代），再删目录」。
 - WP12 写主配置会触发一次 worker 换代；仍按 `v-self-restart --while-stopped` 执行。
 
@@ -116,11 +117,14 @@ vcc：A3 未取得（工具没跑到，原因见「vcc」）。
 
 **F-c 插件不经信任闸。** 非官方安装（`origin` 为 config 路径）的插件可以 `registerGatewayMethod` 和用 `onAgentEvent`；9.1 的「only available for trusted plugins」闸只管 keyed/blob store、渠道 ingress 队列和 `dispatchHookAgentTurn`（`registry-runtime.ts:184`）。插件 2.0 的账本是普通文件，不受影响。
 
+**F-d vds 不走进程内 dispatch。** 设计 §9.1 表里 /vcodex、/vds 的「`vrelay.*` 调用方式」写的是「进程内 dispatch」；实测 vds 的 sessions_send 虽在 Gateway 进程里执行，`hasInProcessGatewayToolContext()` 为 false，走的是 `callGateway` 的回环客户端（插件看到的调用方是 `gateway-client`、`backend`、`internal:true`），和 worker 一样。结论不变（显式 `scopes:["operator.write"]` 两条路都通，缺席文本相同），但 §9.1 那一格应改为「回环 Gateway 客户端」；真正走进程内 dispatch 的只可能是 /vcc 的 MCP loopback，WP0 没跑到。
+
 ## A16：V 线上字节
 
 只读核对，2026-10-20 16:50 CST，`ssh v`（`/home/openclaw` 下的文件用 `sudo -n sha256sum`）：
 
 - 14 个目标文件（R1：sessions-spawn-tool、openclaw-tools、get-reply、agent-runner.runtime、task-registry-activity、飞书 monitor.account；R2：telegram-ingress-drain-factory、bot-message、core v-experience.js、钉钉 connection / message-handler / v-experience.mjs、企微 src/monitor.js / src/v-experience.mjs）在 V 上的 sha256 全部等于 `release/captured/v2026.9.1-db91.6-subagent-index-20261020*` 的 manifest，逐项记录在 `tests/fixtures/inter-session-v-bytes.json`（`tests/inter-session-v-bytes.test.mjs` 校验它与捕获一致）。
+- 评审复核：2026-10-20 17:25 CST 用 fixture 里的 hostPath 和 sha256 在 V 上只读跑 `sudo -n sha256sum -c`，14 个文件仍全部 OK。
 - 运行中的 Gateway：`ExecStart` 指向 `/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/index.js`，2026-10-20 02:37:39 CST 启动（subagent-index 发版）。钉钉 npm generation 目录仍是捕获时那一个（`…g-7ae9583359ddbec0`）。
 - `origin/dev` 上捕获之后的提交：#439/#440/#443 只改 `scripts/v-memory-vector-warm.py`、systemd 单元和测试，不涉及 dist；dev 上没有比 subagent-index-20261020 更新的 capture。
 - 没有跑 `verify-release-reproducible.mjs --host v` 的全目录扫描（会对 V 上约 8600 个文件做 sha256）；只读核对目标文件和 ExecStart 已足以回答 A16。

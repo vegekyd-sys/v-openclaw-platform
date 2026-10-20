@@ -38,6 +38,16 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+/**
+ * `humans` per the §2.a table, minus what needs the channel API: a Feishu group is "unknown"
+ * here (the real bridge asks getChatInfo); Telegram, DingTalk and WeCom groups are "shared";
+ * a direct chat is "owner_only" only on Feishu / Telegram (DingTalk and WeCom have no owner id).
+ */
+function humansFor(channel, chatType, peer, ownerIds) {
+  if (chatType === "group") return channel === "feishu" ? "unknown" : "shared";
+  return (channel === "feishu" || channel === "telegram") && ownerIds.includes(peer) ? "owner_only" : "single_peer";
+}
+
 /** Feishu/Telegram route derived from a session key (§2.a resolveRoute rules); DingTalk/WeCom need a stored `to`. */
 export function deriveRoute(sessionKey, { channel, accountId = "default", ownerIds = [], delivery } = {}) {
   const parts = String(sessionKey).split(":");
@@ -53,7 +63,7 @@ export function deriveRoute(sessionKey, { channel, accountId = "default", ownerI
         channel: ch, accountId: normalizeAccountId(delivery.accountId ?? accountId), to: delivery.to, chatId,
         chatType: direct ? "direct" : "group",
         ...(direct ? { peerId: chatId } : {}),
-        humans: direct ? (ownerIds.includes(chatId) ? "owner_only" : "single_peer") : "unknown",
+        humans: humansFor(ch, direct ? "direct" : "group", chatId, ownerIds),
       },
     };
   }
@@ -67,7 +77,7 @@ export function deriveRoute(sessionKey, { channel, accountId = "default", ownerI
       route: {
         channel: ch, accountId: normalizeAccountId(accountId), to, chatId: peer, chatType,
         ...(chatType === "direct" ? { peerId: peer } : {}),
-        humans: chatType === "direct" ? (ownerIds.includes(peer) ? "owner_only" : "single_peer") : "unknown",
+        humans: humansFor(ch, chatType, peer, ownerIds),
       },
     };
   }
@@ -77,7 +87,7 @@ export function deriveRoute(sessionKey, { channel, accountId = "default", ownerI
       route: {
         channel: ch, accountId: normalizeAccountId(accountId), to: peer, chatId: peer, chatType,
         ...(chatType === "direct" ? { peerId: peer } : {}),
-        humans: chatType === "direct" ? (ownerIds.includes(peer) ? "owner_only" : "single_peer") : "shared",
+        humans: humansFor(ch, chatType, peer, ownerIds),
       },
     };
   }

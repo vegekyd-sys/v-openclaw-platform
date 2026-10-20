@@ -145,8 +145,13 @@ export const SEND_PHASES = Object.freeze([
 ]);
 /** Phases that close a send for good (§6.1). result_ready / failure_ready still wait for their batch. */
 export const SEND_TERMINAL_PHASES = Object.freeze(["handed_back", "delivered_inline", "skipped", "cancelled"]);
-/** Phases in which a send counts as settled for its batch (§5.4). */
-export const SEND_SETTLED_PHASES = Object.freeze(["result_ready", "failure_ready", "skipped"]);
+/**
+ * Phases in which a send counts as settled for its batch (§5.4). §5.4 names result_ready,
+ * failure_ready and skipped; cancelled is settled too: §6.2 shows a vrelay.cancel'ed send as
+ * "批次里该项 ⏹" in the requester's wake, and §6.1 requires every accepted send to close. A
+ * batch waiting for a cancelled member would never become ready and never wake.
+ */
+export const SEND_SETTLED_PHASES = Object.freeze(["result_ready", "failure_ready", "skipped", "cancelled"]);
 /** BatchRecord.phase (§2.c). */
 export const BATCH_PHASES = Object.freeze(["open", "sealed", "ready", "waking", "woken", "skipped"]);
 export const BATCH_TERMINAL_PHASES = Object.freeze(["woken", "skipped"]);
@@ -175,6 +180,18 @@ export const DEFAULT_LIMITS = Object.freeze({
 });
 
 export const PLUGIN_ROLES = Object.freeze(["gateway", "worker-guard"]);
+
+/**
+ * WP0 probe finding F-a (docs/inter-session/probe-results.md): V's Worker config is derived
+ * from the Gateway config (worker-config-derive.mjs), so a plugin declared for the Gateway is
+ * also loaded, with the same `config`, in every Worker child. `config.role` therefore cannot tell
+ * the two processes apart. V's own worker plugin marks its children with this variable
+ * (worker exec-env.mjs:28) and skips its Gateway services when it is "1" (worker index.mjs:351,
+ * 388); plugin 2.0 uses the same test to never start the engine, services or event subscriptions
+ * inside a Worker.
+ */
+export const WORKER_CHILD_ENV = "VLAB_WORKER_CHILD";
+export const isWorkerChildProcess = (env = process.env) => env?.[WORKER_CHILD_ENV] === "1";
 
 export const DEFAULT_CONFIG = Object.freeze({
   role: "gateway",
@@ -302,7 +319,6 @@ export const newChainId = (now, rand) => newRecordId("c_", now, rand);
 export const SEND_ID_RE = /^s_[0-9a-z]+[0-9a-f]{10}$/u;
 export const BATCH_ID_RE = /^b_[0-9a-z]+[0-9a-f]{10}$/u;
 export const CHAIN_ID_RE = /^c_[0-9a-z]+[0-9a-f]{10}$/u;
-const RECORD_ID_RE = /^[sbc]_[0-9a-z]+[0-9a-f]{10}$/u;
 
 /** Crockford base32 (no I, L, O, U). */
 export const CROCKFORD_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
@@ -346,8 +362,16 @@ export function kindFromAbbr(abbr) {
 function assertAttempt(attempt, what = "attempt") {
   if (!Number.isSafeInteger(attempt) || attempt < 0) throw new TypeError(`${what} must be a non-negative integer: ${attempt}`);
 }
-function assertRecordId(id) {
-  if (typeof id !== "string" || !RECORD_ID_RE.test(id)) throw new TypeError(`not a send/batch/chain id: ${id}`);
+/** wake turns are keyed by a batchId; request / ask / collect turns by a sendId (§2.c). */
+function idMatchesKind(kind, id) {
+  const re = kindFromAbbr(kindAbbr(kind)) === "wake" ? BATCH_ID_RE : SEND_ID_RE;
+  return typeof id === "string" && re.test(id);
+}
+function assertIdForKind(kind, id) {
+  if (!idMatchesKind(kind, id)) {
+    const want = kindFromAbbr(kindAbbr(kind)) === "wake" ? "a batch id (b_…)" : "a send id (s_…)";
+    throw new TypeError(`not a send/batch id for ${kind}: ${id} (needs ${want})`);
+  }
 }
 
 /** The prefix of every plugin-started runId and synthetic message id (WP11 filters on it). */
@@ -355,16 +379,22 @@ export const V_A2A_PREFIX = "v-a2a-";
 /** The prefix of every plugin MessageSid and transcript tag. */
 export const V_A2A_SID_PREFIX = "v-a2a:";
 
+/** Synthetic, never-owner sender of a chain whose root person has no id in the target channel (§2.a): `v-a2a:<chainId>`. */
+export function syntheticSenderIdFor(chainId) {
+  if (typeof chainId !== "string" || !CHAIN_ID_RE.test(chainId)) throw new TypeError(`not a chain id: ${chainId}`);
+  return `${V_A2A_SID_PREFIX}${chainId}`;
+}
+
 /** Preset target / ask / collect / wake runId, unique per attempt: `v-a2a-req-<sendId>-<n>` (§2.c). */
 export function runIdFor(kind, id, attempt) {
-  assertRecordId(id);
+  assertIdForKind(kind, id);
   assertAttempt(attempt);
   return `${V_A2A_PREFIX}${kindAbbr(kind)}-${id}-${attempt}`;
 }
 
 /** Core MessageSid (inbound dedupe key, 20 min), unique per attempt: `v-a2a:req:<sendId>:<n>`. */
 export function messageSidFor(kind, id, attempt) {
-  assertRecordId(id);
+  assertIdForKind(kind, id);
   assertAttempt(attempt);
   return `${V_A2A_SID_PREFIX}${kindAbbr(kind)}:${id}:${attempt}`;
 }
@@ -393,16 +423,17 @@ export const isInterSessionMessageSid = (sid) => typeof sid === "string" && sid.
 /** `v-a2a-req-<sendId>-<n>` → `{ kind: "request", abbr: "req", id, attempt }`, or null. */
 export function parseInterSessionRunId(runId) {
   const m = typeof runId === "string" ? RUN_ID_RE.exec(runId) : null;
-  return m ? { kind: kindFromAbbr(m[1]), abbr: m[1], id: m[2], attempt: Number(m[3]) } : null;
+  return m && idMatchesKind(m[1], m[2]) ? { kind: kindFromAbbr(m[1]), abbr: m[1], id: m[2], attempt: Number(m[3]) } : null;
 }
 /** `v-a2a:req:<sendId>:<n>` → `{ kind, abbr, id, attempt }`, or null. */
 export function parseMessageSid(sid) {
   const m = typeof sid === "string" ? MESSAGE_SID_RE.exec(sid) : null;
-  return m ? { kind: kindFromAbbr(m[1]), abbr: m[1], id: m[2], attempt: Number(m[3]) } : null;
+  return m && idMatchesKind(m[1], m[2]) ? { kind: kindFromAbbr(m[1]), abbr: m[1], id: m[2], attempt: Number(m[3]) } : null;
 }
 
 /** Feishu im.message.create uuid (server dedupe 1 h, ≤ 50 chars): `va` + kind initial + sha256(id:purpose)[0,40). */
 export function feishuPostUuid(kind, id, purpose) {
+  assertIdForKind(kind, id);
   const initial = kindFromAbbr(kindAbbr(kind))[0];
   if (typeof purpose !== "string" || !purpose) throw new TypeError("purpose must be a non-empty string");
   return `va${initial}${sha256Hex(`${id}:${purpose}`).slice(0, 40)}`;
@@ -411,17 +442,20 @@ export function feishuPostUuid(kind, id, purpose) {
 /** Transcript tag carried in InputProvenance.originSessionId: `v-a2a:<chainId>:<depth>:<kind>:<id>`. */
 export function originSessionIdFor({ chainId, depth, kind, id }) {
   if (typeof chainId !== "string" || !CHAIN_ID_RE.test(chainId)) throw new TypeError(`not a chain id: ${chainId}`);
-  assertRecordId(id);
+  assertIdForKind(kind, id);
   assertAttempt(depth, "depth");
   return `${V_A2A_SID_PREFIX}${chainId}:${depth}:${kindAbbr(kind)}:${id}`;
 }
 const ORIGIN_RE = /^v-a2a:(c_[0-9a-z]+[0-9a-f]{10}):(\d+):(req|ask|col|wake):([sb]_[0-9a-z]+[0-9a-f]{10})$/u;
 export function parseOriginSessionId(origin) {
   const m = typeof origin === "string" ? ORIGIN_RE.exec(origin) : null;
-  return m ? { chainId: m[1], depth: Number(m[2]), kind: kindFromAbbr(m[3]), abbr: m[3], id: m[4] } : null;
+  return m && idMatchesKind(m[3], m[4]) ? { chainId: m[1], depth: Number(m[2]), kind: kindFromAbbr(m[3]), abbr: m[3], id: m[4] } : null;
 }
 /** Recovery looks for `…:<kind>:<id>` at the end of a user message's originSessionId (§6.3). */
-export const originTagSuffix = (kind, id) => `:${kindAbbr(kind)}:${id}`;
+export function originTagSuffix(kind, id) {
+  assertIdForKind(kind, id);
+  return `:${kindAbbr(kind)}:${id}`;
+}
 
 /** vrelay.send idempotencyKey (§2.b). */
 export function sendIdempotencyKey({ requesterSessionKey, requesterRunId, toolCallId, now = Date.now() }) {
