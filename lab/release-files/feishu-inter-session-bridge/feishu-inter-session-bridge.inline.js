@@ -160,6 +160,9 @@ function vFeishuInterSessionStartProblem(req, accountId) {
 /**
 * The synthetic inbound event (as buildSyntheticMessageEvent$1 for card actions): no sender_type,
 * because a bot sender turns the streaming card off (requiredMentionTargets) and arms the bot-loop guard.
+* Its message_id is the anchor when there is one: that is the request as the chat shows it, so the
+* model's "[message_id: …]" and anything Feishu treats as the current message name a real message. The
+* per-attempt synthetic id stays the Feishu dedupe key (dispatch entry) and never reaches the model.
 */
 function vFeishuInterSessionEvent(req, params) {
 	const route = req.route;
@@ -169,7 +172,7 @@ function vFeishuInterSessionEvent(req, params) {
 	return {
 		sender: { sender_id: { open_id: group ? req.routePeerId ?? req.sender.id : route.peerId } },
 		message: {
-			message_id: req.syntheticMessageId,
+			message_id: anchor ?? req.syntheticMessageId,
 			...anchor ? { reply_target_message_id: anchor } : { suppress_reply_target: true },
 			chat_id: group ? route.chatId : params.directChatId ?? route.peerId,
 			chat_type: group ? "group" : "p2p",
@@ -188,6 +191,11 @@ function vFeishuInterSessionEvent(req, params) {
 * One start() attempt, handed to handleFeishuMessage as `interSession`. It settles the StartOutcome
 * at onAgentRunStart (started), at the core admission guard's onBusy (busy), or when the handler
 * returns or throws without either (rejected), and resolves `done` when a started run's handler returns.
+* A second onAgentRunStart of the same start (the core re-running a stranded reply) changes nothing;
+* its finals join `done` while it is open. Once the handler returned the attempt is closed: a followup
+* drain may run a person's turn with this attempt's runner and options, and nothing that turn reports
+* (run start, busy, finals, outcome, visible output) is this request's. Closing also retires the
+* exclusive-admission seam, so the core admits such a reused turn like any other.
 */
 function vFeishuInterSessionAttempt(req, attemptStartedAtMs, log) {
 	let settleOutcome;
@@ -213,11 +221,16 @@ function vFeishuInterSessionAttempt(req, attemptStartedAtMs, log) {
 		runId: req.runId,
 		sender: req.sender,
 		askUserAnswererId: typeof req.askUserAnswererId === "string" && req.askUserAnswererId ? req.askUserAnswererId : void 0,
+		/** The anchor the synthetic event names as its message, if any. */
+		anchorMessageId: typeof req.anchorMessageId === "string" && req.anchorMessageId.trim() ? req.anchorMessageId.trim() : void 0,
+		/** Feishu's dedupe key for this attempt (never shown to the model). */
+		dedupeKey: req.syntheticMessageId,
 		attemptStartedAtMs,
 		startedRunId: void 0,
 		busy: void 0,
 		rejected: void 0,
 		finished: false,
+		closed: false,
 		visible: false,
 		terminalOutcome: void 0,
 		finals: [],
@@ -228,11 +241,20 @@ function vFeishuInterSessionAttempt(req, attemptStartedAtMs, log) {
 		ctxExtra() {
 			return {
 				InputProvenance: req.provenance,
-				ChannelPromptContext: req.channelPromptContext || void 0,
+				// 9.1 takes ChannelPromptContext as a list of entries: appendChannelPromptContext drops
+				// anything that is not an array, so the model would never see a plain string.
+				ChannelPromptContext: typeof req.channelPromptContext === "string" && req.channelPromptContext.trim() ? [req.channelPromptContext] : void 0,
 				CommandInterpretationSuppressed: true,
 				SenderId: req.sender.id,
 				SenderName: req.sender.name,
+				// In a direct chat the core reads From as a sender identity too (elevated allowFrom,
+				// shouldUseFromAsSenderFallback): it carries the chain root, never the chat's person, who
+				// still routes the turn and passes the channel gate (the synthetic event's sender).
+				...req.route.chatType === "direct" ? { From: `feishu:${req.sender.id}` } : {},
 				MessageSid: req.messageSid,
+				// MessageSid is the per-attempt core id (dedupe, source turn), not a Feishu message: the
+				// message tool must never reply to it as "the current message".
+				ReplyToMode: "off",
 				VInterSession: attempt.vInterSession
 			};
 		},
@@ -246,13 +268,13 @@ function vFeishuInterSessionAttempt(req, attemptStartedAtMs, log) {
 					return result;
 				},
 				onAgentRunTerminalOutcome: (value) => {
-					if (value === "failed" || attempt.terminalOutcome === void 0) attempt.terminalOutcome = value;
+					if (!attempt.closed && (value === "failed" || attempt.terminalOutcome === void 0)) attempt.terminalOutcome = value;
 					return base?.onAgentRunTerminalOutcome?.(value);
 				}
 			};
 		},
 		markStarted(runId) {
-			if (attempt.startedRunId !== void 0 || attempt.busy || attempt.rejected) return;
+			if (attempt.closed || attempt.startedRunId !== void 0 || attempt.busy || attempt.rejected) return;
 			attempt.startedRunId = typeof runId === "string" && runId ? runId : req.runId;
 			decide({
 				status: "started",
@@ -261,7 +283,7 @@ function vFeishuInterSessionAttempt(req, attemptStartedAtMs, log) {
 			});
 		},
 		markBusy(info) {
-			if (attempt.startedRunId !== void 0 || attempt.busy || attempt.rejected) return;
+			if (attempt.closed || attempt.startedRunId !== void 0 || attempt.busy || attempt.rejected) return;
 			const reason = V_INTER_SESSION_BUSY_REASONS.includes(info?.reason) ? info.reason : "active_run";
 			attempt.busy = { reason };
 			log(`feishu: inter-session ${req.kind} ${req.id} attempt ${req.attempt}: ${req.sessionKey} is busy (${reason}); nothing was posted`);
@@ -281,10 +303,10 @@ function vFeishuInterSessionAttempt(req, attemptStartedAtMs, log) {
 			});
 		},
 		noteVisible() {
-			attempt.visible = true;
+			if (!attempt.closed) attempt.visible = true;
 		},
 		captureFinal(payload, reply) {
-			if (!payload || payload.isReasoning === true) return;
+			if (attempt.closed || !payload || payload.isReasoning === true) return;
 			const text = reply?.hasText ? reply.text : void 0;
 			const mediaUrls = reply?.hasMedia ? [...reply.mediaUrls] : void 0;
 			if (payload.isError === true) {
@@ -325,11 +347,18 @@ function vFeishuInterSessionAttempt(req, attemptStartedAtMs, log) {
 			if (attempt.terminalOutcome === void 0 && !attempt.visible && attempt.finals.length === 0 && attempt.errors.length === 0) return;
 			attempt.markStarted(req.runId);
 		},
+		/** The handler returned or threw: nothing after this is this request's. */
+		close() {
+			if (attempt.closed) return;
+			attempt.closed = true;
+			if (attempt.vInterSession) attempt.vInterSession.exclusive = false;
+		},
 		finish(result) {
 			if (attempt.finished) return;
 			attempt.finished = true;
 			if (result?.visibleReplySent === true) attempt.visible = true;
 			attempt.lateStart();
+			attempt.close();
 			if (attempt.startedRunId !== void 0) {
 				resolveDone(attempt.runOutcome());
 				return;
@@ -354,6 +383,7 @@ function vFeishuInterSessionAttempt(req, attemptStartedAtMs, log) {
 			const message = vFeishuInterSessionErrorText(err);
 			const wedged = V_INTER_SESSION_RESTART_WEDGE_RE.test(message);
 			if (!wedged) attempt.lateStart();
+			attempt.close();
 			if (attempt.startedRunId !== void 0) {
 				resolveDone({
 					...attempt.runOutcome(),

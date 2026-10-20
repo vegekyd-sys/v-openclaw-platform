@@ -14,14 +14,17 @@
 //     in globalThis[Symbol.for("openclaw.v.interSessionInboundBridges")] after the event handlers
 //     and unregistered in monitorSingleAccount's finally;
 //   - createFeishuMessageReceiveHandler: a dispatch entry that enqueues on the chat's base lane
-//     (never ":active-run", ":control" or ":btw");
+//     (never ":active-run", ":control" or ":btw"), deduplicated by the attempt's synthetic id;
 //   - handleFeishuMessage `interSession` branch: sender name from the request, no pairing reply,
 //     no broadcast, no dynamic agent, route asserted against the target key (ROUTE_MISMATCH),
 //     no pending group history in the prompt and none cleared, no command authority, provenance
-//     and prompt context through `extra`, ask_user answerer, preset runId + vInterSession in
-//     replyOptions, BUSY returns before the no-visible-reply fallback (releasing the attempt's ask_user
-//     stream, which the core never cleans up for a turn that did not start), firsttext origin/attempt,
-//     errors rethrown for RESTART_WEDGE, result returned;
+//     and prompt context (as 9.1's string[]) through `extra`, From = the chain root in a direct chat
+//     (the person still routes the turn), ReplyToMode "off" (MessageSid is no Feishu message), the
+//     anchor as the model's current message ("[message_id: …]", none without an anchor), ask_user
+//     answerer, preset runId + vInterSession in replyOptions, BUSY returns before the
+//     no-visible-reply fallback (releasing the attempt's ask_user stream, which the core never cleans
+//     up for a turn that did not start), firsttext origin/attempt, errors rethrown for
+//     RESTART_WEDGE, result returned;
 //   - createFeishuReplyDispatcher: no typing reaction, reply start (card precreate / streaming,
 //     progress subscription, ask_user activity) deferred to onAgentRunStart, finals captured;
 //   - the background line names sessions_send tasks "会话请求".
@@ -87,6 +90,10 @@ export function buildEdits(inline = inlineBridgeModule()) {
         + L(5, "Promise.resolve(dispatcherOptions.onReplyStart()).catch((error) => params.runtime.error?.(`feishu[${account.accountId}] inter-session reply start failed: ${String(error)}`));")
         + L(4, "}")
         + L(3, "},")],
+    // ---------------------------------------------------------------- buildFeishuAgentBody
+    ["agent body: no message id when an inter-session request has no anchor to name",
+      L(1, "messageBody = `[message_id: ${ctx.messageId}]\\n${messageBody}`;"),
+      L(1, "if (!ctx.vInterSessionNoMessageId) messageBody = `[message_id: ${ctx.messageId}]\\n${messageBody}`;")],
     // ---------------------------------------------------------------- handleFeishuMessage
     ["handler: interSession parameter",
       L(1, "const { cfg, event, botOpenId, botName, runtime, channelRuntime, chatHistories, accountId, processingClaim, messageDedupeKey: messageDedupeKeyOverride, turnAdoptionLifecycle } = params;"),
@@ -119,6 +126,9 @@ export function buildEdits(inline = inlineBridgeModule()) {
     ["handler: the group's pending chatter stays out of the request prompt",
       L(2, "if (isGroup && historyKey && chatHistories) combinedBody = createChannelHistoryWindow({ historyMap: chatHistories }).buildPendingContext({"),
       L(2, "if (isGroup && historyKey && chatHistories && !interSession) combinedBody = createChannelHistoryWindow({ historyMap: chatHistories }).buildPendingContext({")],
+    ["handler: the agent body names the anchor as the current message, or no message without one",
+      L(3, "ctx: agentFacingCtx,"),
+      L(3, "ctx: interSession && !interSession.anchorMessageId ? {") + L(4, "...agentFacingCtx,") + L(4, "vInterSessionNoMessageId: true") + L(3, "} : agentFacingCtx,")],
     ["handler: no command authority, commands never parsed",
       "\t\tconst commandAuthorized = (audioTranscript === void 0 ? ",
       "\t\tconst commandAuthorized = interSession ? false : (audioTranscript === void 0 ? "],
@@ -183,10 +193,11 @@ export function buildEdits(inline = inlineBridgeModule()) {
         + L(2, "log(`feishu[${accountId}]: per-chat task exceeded ${timeoutMs}ms cap (key=${key}); evicting from queue so later same-key messages can proceed (#70133)`);")
         + L(1, "} });")
         + L(1, "// Inter-session requests queue behind the chat's earlier messages on its base lane, never the steer, control or btw lanes.")
-        + L(1, "// Each attempt is deduplicated by its own synthetic message id, not by the text-retry key (same sender, chat and text).")
+        + L(1, "// Each attempt is deduplicated by its own synthetic id, not by the text-retry key (same sender, chat and text); the")
+        + L(1, "// event's message_id is the anchor, which every attempt of a request shares.")
         + L(1, "vFeishuInterSessionDispatch.set(accountId, (event, interSession) => enqueue(`feishu:${accountId}:${event.message.chat_id?.trim() || \"unknown\"}`, () => interSession.runHandler(() => handleMessage({")
         + L(2, "cfg,") + L(2, "event,") + L(2, "botOpenId: getBotOpenId(accountId),") + L(2, "botName: getBotName(accountId),") + L(2, "runtime,") + L(2, "channelRuntime,")
-        + L(2, "chatHistories,") + L(2, "accountId,") + L(2, "messageDedupeKey: event.message.message_id,") + L(2, "interSession")
+        + L(2, "chatHistories,") + L(2, "accountId,") + L(2, "messageDedupeKey: interSession.dedupeKey,") + L(2, "interSession")
         + L(1, "}))));")],
     // ---------------------------------------------------------------- bridge module + monitorSingleAccount
     ["bridge module",

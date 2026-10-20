@@ -24,6 +24,7 @@ import {
   patchFeishuInterSessionBridge,
 } from "../lab/release-files/feishu-inter-session-bridge/patch.mjs";
 import { createFeishuHarness } from "./fixtures/feishu-monitor-harness.mjs";
+import { vAppendChannelPromptContext, vElevatedSenderCheck } from "./fixtures/inter-session-core-probes.mjs";
 
 const VBYTES = JSON.parse(fs.readFileSync(new URL("./fixtures/inter-session-v-bytes.json", import.meta.url), "utf8"));
 const capture = fs.readFileSync(SOURCE, "utf8");
@@ -310,7 +311,11 @@ test("run: start → per-chat queue → handleFeishuMessage with interSession �
   await withMonitor({ accountConfig: { renderMode: "raw" } }, async ({ h, bridge }) => {
     const route = (await bridge.resolveRoute({ sessionKey: GROUP_KEY, agentId: "makaron", ownerIds: [OWNER] })).route;
     const req = startRequest(route);
-    h.core = coreRun();
+    let exclusiveAtCore;
+    h.core = (turn) => {
+      exclusiveAtCore = turn.replyOptions.vInterSession.exclusive;
+      return coreRun()(turn);
+    };
     h.cfg.broadcast = { [GROUP]: ["makaron", "helper"] }; // a broadcast group: a person's message would fan out
     const outcome = await bridge.start(req);
     assert.ok(C.validateStartOutcome(outcome).ok);
@@ -325,7 +330,7 @@ test("run: start → per-chat queue → handleFeishuMessage with interSession �
     const ctx = turn.ctxPayload;
     assert.equal(turn.route.sessionKey, GROUP_KEY);
     assert.deepEqual(ctx.InputProvenance, req.provenance);
-    assert.equal(ctx.ChannelPromptContext, req.channelPromptContext);
+    assert.deepEqual(ctx.ChannelPromptContext, [req.channelPromptContext], "9.1's string[]");
     assert.equal(ctx.CommandInterpretationSuppressed, true);
     assert.equal(ctx.CommandAuthorized, false, "access.commands.authorized=false");
     assert.equal(ctx.SenderId, OWNER);
@@ -333,12 +338,14 @@ test("run: start → per-chat queue → handleFeishuMessage with interSession �
     assert.equal(ctx.MessageSid, req.messageSid);
     assert.equal(ctx.GroupSystemPrompt, undefined, "nothing of the request goes into GroupSystemPrompt");
     assert.equal(ctx.VInterSession, turn.replyOptions.vInterSession, "one object for ctx and replyOptions");
-    assert.deepEqual({ ...ctx.VInterSession, onBusy: typeof ctx.VInterSession.onBusy }, { exclusive: true, id: SEND_ID, kind: "request", onBusy: "function" });
+    assert.equal(exclusiveAtCore, true, "the core's admission guard sees an exclusive turn");
+    assert.deepEqual({ ...ctx.VInterSession, onBusy: typeof ctx.VInterSession.onBusy }, { exclusive: false, id: SEND_ID, kind: "request", onBusy: "function" }, "retired once done");
     assert.equal(turn.replyOptions.runId, req.runId);
     assert.equal(turn.history.isGroup, false, "the group's pending history is not cleared by the request turn");
     assert.ok(ctx.Body.includes(`${req.sender.name}: ${PROMPT}`), ctx.Body);
     assert.ok(!ctx.Body.includes("PENDING-GROUP-HISTORY"), "pending group chatter stays out of the request prompt");
-    assert.ok(ctx.Body.includes(`[message_id: ${req.syntheticMessageId}]`));
+    assert.ok(ctx.Body.includes("[message_id: om_anchor_1]"), "the anchor is the model's current message");
+    assert.ok(!ctx.Body.includes(req.syntheticMessageId));
 
     const sent = h.visible.filter((v) => v.kind === "sendMessageFeishu");
     assert.deepEqual(sent.map((v) => [v.to, v.text, v.replyToMessageId]), [[`chat:${GROUP}`, "三份资料已整理好。", "om_anchor_1"]], "the reply hangs under the anchor");
@@ -634,4 +641,131 @@ test("run: the background line calls sessions_send tasks 会话请求", () => {
   ]);
   assert.equal(line, "⏳ 后台 3 项进行中 · 会话请求 2 · 后台命令 1");
   assert.equal(h.module.renderFeishuTaskStatusLine([{ runtime: "session", taskKind: "sessions_send" }]), "⏳ 后台 1 项进行中 · 会话请求");
+});
+
+// ================================================================ Part 3: what the target model and the core see
+
+test("run: the request context reaches the model as 9.1's ChannelPromptContext string[], never a dropped string", async () => {
+  const appendChannelPromptContext = vAppendChannelPromptContext();
+  await withMonitor({ accountConfig: { renderMode: "raw" } }, async ({ h, bridge }) => {
+    const route = (await bridge.resolveRoute({ sessionKey: GROUP_KEY, agentId: "makaron", ownerIds: [OWNER] })).route;
+    h.core = coreRun({ preReplyStart: false });
+    const req = startRequest(route);
+    await (await bridge.start(req)).done;
+    const ctx = h.turns.at(-1).ctxPayload;
+    assert.deepEqual(ctx.ChannelPromptContext, [req.channelPromptContext]);
+    assert.equal(appendChannelPromptContext("BODY", req.channelPromptContext), "BODY", "V drops a bare string: the model would never see the request's context");
+    assert.equal(appendChannelPromptContext("BODY", ctx.ChannelPromptContext), `BODY\n\nContext:\n${req.channelPromptContext}`, "the context reaches the model");
+    await (await bridge.start(startRequest(route, { attempt: 1, fields: { channelPromptContext: "  " } }))).done;
+    assert.equal(h.turns.at(-1).ctxPayload.ChannelPromptContext, undefined, "no empty context entry");
+  });
+});
+
+test("run: a direct-chat request routes by the person, but its authority follows the chain root (From is sender.id)", async () => {
+  const elevated = vElevatedSenderCheck();
+  await withMonitor({ accountConfig: { renderMode: "raw" } }, async ({ h, bridge }) => {
+    // the owner's own direct chat, asked by a chain whose root is not the owner (a synthetic sender)
+    const ownerDmKey = `agent:makaron:feishu:direct:${OWNER}`;
+    const route = (await bridge.resolveRoute({ sessionKey: ownerDmKey, agentId: "makaron", ownerIds: [OWNER] })).route;
+    h.core = coreRun({ preReplyStart: false });
+    const synthetic = `v-a2a:${CHAIN_ID}`;
+    const req = startRequest(route, { fields: { sessionKey: ownerDmKey, sender: { id: synthetic, name: "「任务群 a」的 V（会话协作）", isOwnerIdentity: false } } });
+    assert.equal(req.routePeerId, OWNER);
+    await (await bridge.start(req)).done;
+    const turn = h.turns.at(-1);
+    const ctx = turn.ctxPayload;
+    assert.equal(turn.route.sessionKey, ownerDmKey, "routed by the person (routePeerId)");
+    assert.equal(ctx.__params.sender.id, OWNER, "the channel gate and the route see the person");
+    assert.equal(ctx.__params.from, `feishu:${OWNER}`, "Feishu's own From for the chat names the person");
+    assert.deepEqual([ctx.SenderId, ctx.From], [synthetic, `feishu:${synthetic}`], "the turn's sender identities are the chain root's");
+    const seenByV = { SenderId: ctx.SenderId, From: ctx.From, ChatType: ctx.__params.conversation.kind };
+    assert.equal(seenByV.ChatType, "direct");
+    assert.equal(elevated.fromIsSender(seenByV), true, "in a direct chat V reads From as a sender identity");
+    assert.equal(elevated.approved({ provider: "feishu", allowFrom: [OWNER], ctx: seenByV }), false, "the owner's elevated rights are not lent to a non-owner chain");
+    assert.equal(elevated.approved({ provider: "feishu", allowFrom: [OWNER], ctx: { ...seenByV, From: ctx.__params.from } }), true, "with the person's From (the stock value) they would be");
+    // an owner chain keeps the owner's own rights
+    await (await bridge.start(startRequest(route, { attempt: 1, fields: { sessionKey: ownerDmKey } }))).done;
+    const ownerCtx = h.turns.at(-1).ctxPayload;
+    assert.deepEqual([ownerCtx.SenderId, ownerCtx.From], [OWNER, `feishu:${OWNER}`]);
+    assert.equal(elevated.approved({ provider: "feishu", allowFrom: [OWNER], ctx: { SenderId: ownerCtx.SenderId, From: ownerCtx.From, ChatType: "direct" } }), true);
+    // in a group From is the routing peer, which V never reads as a sender: left as Feishu sets it
+    const groupRoute = (await bridge.resolveRoute({ sessionKey: GROUP_KEY, agentId: "makaron", ownerIds: [OWNER] })).route;
+    const groupStart = await bridge.start(startRequest(groupRoute, { attempt: 2, fields: { sender: { id: synthetic, name: "x", isOwnerIdentity: false } } }));
+    assert.equal(groupStart.status, "started");
+    await groupStart.done;
+    const groupCtx = h.turns.at(-1).ctxPayload;
+    assert.deepEqual([groupCtx.SenderId, groupCtx.From], [synthetic, `feishu:${OWNER}`]);
+    assert.equal(elevated.fromIsSender({ From: groupCtx.From, ChatType: "group" }), false);
+  });
+});
+
+test("run: the model's current message is the anchor, never the synthetic id; implicit replies to it are off", async () => {
+  await withMonitor({ accountConfig: { renderMode: "raw" } }, async ({ h, bridge }) => {
+    const route = (await bridge.resolveRoute({ sessionKey: GROUP_KEY, agentId: "makaron", ownerIds: [OWNER] })).route;
+    h.core = coreRun({ preReplyStart: false });
+    const req = startRequest(route);
+    await (await bridge.start(req)).done;
+    const ctx = h.turns.at(-1).ctxPayload;
+    assert.ok(ctx.Body.includes("[message_id: om_anchor_1]"), ctx.Body);
+    for (const synthetic of [req.syntheticMessageId, req.messageSid]) assert.ok(!ctx.Body.includes(synthetic), `the body never shows ${synthetic}`);
+    assert.equal(ctx.__params.messageId, "om_anchor_1", "Feishu's current message is the anchor");
+    assert.equal(ctx.MessageSid, req.messageSid, "the core's per-attempt id (inbound dedupe, source turn) is unchanged");
+    assert.equal(ctx.ReplyToMode, "off", "the message tool never threads under the per-attempt MessageSid, which is no Feishu message");
+    const sent = h.visible.filter((v) => v.kind === "sendMessageFeishu");
+    assert.equal(sent.at(-1).replyToMessageId, "om_anchor_1", "the turn's own reply hangs under the anchor");
+    // the next attempt has the same anchor and still runs: Feishu deduplicates by the synthetic id
+    const again = await bridge.start(startRequest(route, { attempt: 1 }));
+    assert.equal(again.status, "started");
+    await again.done;
+    // without an anchor there is no message to name: no message id in the body, the reply is not threaded
+    await (await bridge.start(startRequest(route, { attempt: 2, fields: { anchorMessageId: null } }))).done;
+    const bare = h.turns.at(-1).ctxPayload;
+    assert.doesNotMatch(bare.Body, /\[message_id:/u, bare.Body);
+    assert.equal(h.visible.filter((v) => v.kind === "sendMessageFeishu").at(-1).replyToMessageId, undefined);
+  });
+  // Why "off": in V's core the turn's ReplyToMode wins over the channel default ("all", Feishu sets
+  // none), reaches the message tool, and its reply-to-current target is MessageSid(Full).
+  const core = (file) => fs.readFileSync(new URL(`../release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/${file}`, import.meta.url), "utf8");
+  assert.ok(core("get-reply-CqW1y05D.js").includes("originatingReplyToMode: promptSessionCtx.ReplyToMode ?? resolveReplyToMode(cfg, replyPolicyChannel, replyRoute.accountId, replyRoute.chatType),"));
+  const runner = core("agent-runner.runtime-CAdsMsQt.js");
+  assert.ok(runner.includes("replyToMode: turn.followupRun.originatingReplyToMode ?? turn.sessionCtx.ReplyToMode,"));
+  assert.ok(runner.includes("const currentMessageId = params.turn.sessionCtx.MessageSidFull ?? params.turn.sessionCtx.MessageSid;"));
+  assert.ok(core("openclaw-tools-BODVdJQD.js").includes("const replyToMode = options?.replyToMode ?? (currentThreadTs ? \"all\" : void 0);"));
+  const dispatcher = generated.slice(generated.indexOf("function createFeishuReplyDispatcher(params) {"), generated.indexOf("//#region extensions/feishu/src/synthetic-event-target.ts"));
+  assert.doesNotMatch(dispatcher, /payload\.replyToId/u, "Feishu's own replies never take the payload's reply target");
+});
+
+test("run: events after done are not the request's; a second run start of the same start is tolerated", async () => {
+  await withMonitor({ accountConfig: { renderMode: "raw" } }, async ({ h, bridge }) => {
+    const route = (await bridge.resolveRoute({ sessionKey: GROUP_KEY, agentId: "makaron", ownerIds: [OWNER] })).route;
+    let seen;
+    h.core = async (turn) => {
+      seen = turn;
+      const r = turn.replyOptions;
+      r.onAgentRunStart(r.runId);
+      const info = { kind: "final" };
+      await turn.delivery.deliver({ text: "第一份" }, info);
+      // stranded-reply recovery runs the same turn once more: a second onAgentRunStart for this start
+      r.onAgentRunStart(r.runId);
+      await turn.delivery.deliver({ text: "第二份" }, info);
+      r.onAgentRunTerminalOutcome("completed");
+      return { dispatched: true, dispatchResult: { queuedFinal: true, counts: { final: 2 } } };
+    };
+    const req = startRequest(route);
+    const outcome = await bridge.start(req);
+    assert.deepEqual([outcome.status, outcome.runId], ["started", req.runId]);
+    const run = await outcome.done;
+    assert.deepEqual(run, { status: "ok", finals: [{ text: "第一份" }, { text: "第二份" }], visibleReplySent: true, finalCount: 2 }, "the re-run's finals belong to the same done");
+    const snapshot = structuredClone(run);
+    // a followup drain that reuses this turn's runner and options runs a person's message with them
+    const seam = seen.replyOptions.vInterSession;
+    assert.equal(seam.exclusive, false, "once done the seam stops asking the core for exclusive admission");
+    seen.replyOptions.onAgentRunStart("person-followup-run");
+    await seen.delivery.deliver({ text: "给真人的回复" }, { kind: "final" });
+    seen.replyOptions.onAgentRunTerminalOutcome("failed");
+    seam.onBusy({ reason: "active_run" });
+    assert.deepEqual(await outcome.done, snapshot);
+    assert.deepEqual(run, snapshot, "the resolved outcome is never touched");
+    assert.ok(h.visible.some((v) => v.kind === "sendMessageFeishu" && v.text === "给真人的回复"), "the late reply itself still reaches the chat");
+  });
 });
