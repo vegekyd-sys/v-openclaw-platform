@@ -96,6 +96,46 @@ def indexer_environment(env, unit_names):
     return {k: v for k, v in env.items() if k in wanted}
 
 
+INTEGRITY_NAMES = ("OPENCLAW_DB91_INTEGRITY_EPOCH", "OPENCLAW_DB91_INTEGRITY_DIR")
+
+
+def gateway_integrity_environment():
+    """The running Gateway's DB91 integrity epoch, as it hands it to its workers.
+
+    Opening the agent database for writing runs the DB91 integrity check unless a proof
+    from this Gateway boot (receipt in OPENCLAW_DB91_INTEGRITY_DIR, tagged with the epoch)
+    still matches the file. The Gateway sets both variables for its workers only, so the
+    indexer re-checked the whole database on every start: 164 s at 12 GB (2026-10-02),
+    over 21 min at 21.8 GB under the unit's MemoryHigh=1G (2026-10-21, page cache evicted
+    and re-read, 32 GB read). Read them from a Gateway child; none found, the indexer
+    checks the database itself as before.
+    """
+    try:
+        main = show("MainPID").strip()
+    except (subprocess.CalledProcessError, OSError):
+        return {}  # no systemd or no Gateway unit (CI, VLab candidates): check the DB as before
+    if not main or main == "0":
+        return {}
+    for pid in sorted(p for p in os.listdir("/proc") if p.isdigit()):
+        try:
+            with open(f"/proc/{pid}/stat", encoding="utf-8", errors="replace") as f:
+                ppid = f.read().rsplit(")", 1)[1].split()[1]
+            if ppid != main:
+                continue
+            with open(f"/proc/{pid}/environ", "rb") as f:
+                items = f.read().split(b"\0")
+        except (OSError, IndexError):
+            continue
+        found = {}
+        for item in items:
+            key, _, value = item.decode("utf-8", "replace").partition("=")
+            if key in INTEGRITY_NAMES and value:
+                found[key] = value
+        if len(found) == len(INTEGRITY_NAMES):
+            return found
+    return {}
+
+
 def exec_as(user, command, env):
     """execve() the command as user with exactly env: the values never reach argv."""
     pw = pwd.getpwnam(user)
@@ -124,6 +164,9 @@ def main():
         command = [node, entry, *args[1:]]
     else:
         env = indexer_environment(env, unit_names)
+        integrity = gateway_integrity_environment()
+        env.update(integrity)
+        print(f"v-memory-indexer-run: DB91 integrity epoch {'from the running Gateway' if integrity else 'not found; the indexer checks the database itself'}", file=sys.stderr, flush=True)
         env["OPENCLAW_DIST"] = dist
         command = [node, INDEXER, *(args or ["makaron"])]
     env.setdefault("PATH", "/usr/local/bin:/usr/bin:/bin")
