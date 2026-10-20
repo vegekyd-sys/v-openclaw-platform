@@ -723,8 +723,14 @@ test("run: the model's current message is the anchor, never the synthetic id; im
     assert.doesNotMatch(bare.Body, /\[message_id:/u, bare.Body);
     assert.equal(h.visible.filter((v) => v.kind === "sendMessageFeishu").at(-1).replyToMessageId, undefined);
   });
-  // Why "off": in V's core the turn's ReplyToMode wins over the channel default ("all", Feishu sets
-  // none), reaches the message tool, and its reply-to-current target is MessageSid(Full).
+  // Why "off": in V's core the turn's ReplyToMode wins over the channel default ("all": V's Feishu
+  // channel has no threading.resolveReplyToMode and sets no ReplyToMode), reaches the message tool,
+  // and its reply-to-current target is MessageSid(Full).
+  const feishuChannel = fs.readFileSync(new URL("../release/captured/v2026.9.1-db91.6-subagent-index-20261020.feishu/dist/dist/channel-DSYCNah8.js", import.meta.url), "utf8");
+  const threading = feishuChannel.slice(feishuChannel.indexOf("\tthreading: {\n"), feishuChannel.indexOf("\toutbound: {\n"));
+  assert.match(threading, /buildToolContext: \(\{ context, hasRepliedRef \}\) => \(\{/u);
+  assert.doesNotMatch(threading, /resolveReplyToMode|currentMessageId|replyToMode/u, "Feishu leaves the reply mode and the current message id to the core");
+  assert.doesNotMatch(capture, /ReplyToMode/u, "the stock monitor never sets ReplyToMode");
   const core = (file) => fs.readFileSync(new URL(`../release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/${file}`, import.meta.url), "utf8");
   assert.ok(core("get-reply-CqW1y05D.js").includes("originatingReplyToMode: promptSessionCtx.ReplyToMode ?? resolveReplyToMode(cfg, replyPolicyChannel, replyRoute.accountId, replyRoute.chatType),"));
   const runner = core("agent-runner.runtime-CAdsMsQt.js");
