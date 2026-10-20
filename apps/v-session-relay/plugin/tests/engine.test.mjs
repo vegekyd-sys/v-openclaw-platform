@@ -172,7 +172,7 @@ test("engine: a lifecycle end on the target cuts a BUSY backoff short", async ()
     await sleep(40);
     assert.equal(w.starts("request").length, 1, "waiting out the 5 s backoff");
     w.endRun("human-run", X);
-    await waitFor(() => w.starts("request").length === 2, { timeoutMs: 1000, what: "restart after lifecycle end" });
+    await waitFor(() => w.starts("request").length === 2, { timeoutMs: 3000, what: "restart after lifecycle end (well before the 5 s backoff)" });
     assert.equal(w.starts("request")[1].args.attempt, 1);
   } finally { await w.close(); }
 });
@@ -385,7 +385,9 @@ test("engine: inline — vrelay.wait claims ok / no_reply / failed; no wake foll
 test("engine: inline past its window → expired, the send turns async and wakes the requester once", async () => {
   const w = await createWorld({ bridge: { holdRuns: true } });
   try {
-    const r = await w.send(DM, X, "慢慢回答", { runId: "rA", mode: "inline", timeoutMs: 150 });
+    // The window must outlast accept + the first wait even on a loaded machine (ledger fsyncs):
+    // 150 ms failed under the full offline suite.
+    const r = await w.send(DM, X, "慢慢回答", { runId: "rA", mode: "inline", timeoutMs: 1_500 });
     const pending = await w.engine.wait({ sendId: r.sendId, timeoutMs: 20 });
     assert.equal(pending.status, "pending");
     const expired = await w.engine.wait({ sendId: r.sendId, timeoutMs: 2_000 });
@@ -612,7 +614,10 @@ test("tasks: requester rows (queued / running) through extraSources, notified on
 });
 
 test("engine: a second collect round gets a fresh runId, MessageSid and anchor (the core drops a repeated MessageSid)", async () => {
-  const w = await createWorld({ bridge: { holdRuns: true } });
+  // No sweep: it re-arms the background timer while a collect runs, so "endedAt and a timer" could
+  // be seen before the first collect's output was judged, and the work dropped too early (a race
+  // of this test on a loaded machine, not of the engine).
+  const w = await createWorld({ bridge: { holdRuns: true }, timing: { sweepMs: 600_000 } });
   try {
     const s = await w.send(DM, ROOM(1), "后台要跑两轮", { runId: "rA" });
     w.endRun("rA", DM);
@@ -627,7 +632,7 @@ test("engine: a second collect round gets a fresh runId, MessageSid and anchor (
     w.fake.finishRun(col1.args.runId, ok("第二轮已开工"));
     await waitFor(() => w.rec(s.sendId).collect?.endedAt && w.engine.bgTimers.has(s.sendId), { what: "second background wait" });
     w.tasks.delete(ROOM(1));
-    const col2 = await waitFor(() => w.starts("collect")[1], { what: "second collect" });
+    const col2 = await waitFor(() => w.starts("collect")[1], { what: "second collect", timeoutMs: 10_000 });
     assert.equal(col2.args.attempt, col1.args.attempt + 1);
     assert.equal(col2.args.runId, runIdFor("collect", s.sendId, col1.args.attempt + 1));
     assert.equal(col2.args.messageSid, messageSidFor("collect", s.sendId, col1.args.attempt + 1));
@@ -635,17 +640,19 @@ test("engine: a second collect round gets a fresh runId, MessageSid and anchor (
     assert.equal(collectAnchors.length, 2, "each round has its own anchor");
     assert.equal(col2.args.anchorMessageId, collectAnchors[1].messageId);
     w.fake.finishRun(col2.args.runId, ok("全部完成"));
-    const wake = await waitFor(() => w.starts("wake")[0]);
+    const wake = await waitFor(() => w.starts("wake")[0], { timeoutMs: 10_000 });
     assert.match(wake.args.promptText, /全部完成/u);
     assert.equal(w.rec(s.sendId).wakeRounds, 2);
   } finally { await w.close(); }
 });
 
 test("engine: a refused anchor seen just before the accept deadline answers with the error, never 'accepted'", async () => {
-  const w = await createWorld({ bridge: { post: [{ fail: "NOT_MEMBER" }], postDelayMs: 40 }, timing: { anchorPostMs: 60 } });
+  // The refusal must come before the deadline and the closing must outlast it, also on a loaded
+  // machine (ledger fsyncs before the post): a wide deadline and a closing longer than it.
+  const w = await createWorld({ bridge: { post: [{ fail: "NOT_MEMBER" }], postDelayMs: 40 }, timing: { anchorPostMs: 400 } });
   try {
     const orig = w.engine._detach.bind(w.engine);
-    w.engine._detach = async (...args) => { await sleep(120); return orig(...args); }; // closing outlasts the deadline
+    w.engine._detach = async (...args) => { await sleep(600); return orig(...args); }; // closing outlasts the deadline
     const r = await w.send(DM, X, "机器人不在群里", { runId: "rA" });
     assert.deepEqual([r.status, r.code], ["error", "NOT_MEMBER"]);
     const rec = w.ledger.sendsWhere(() => true)[0];

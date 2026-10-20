@@ -854,7 +854,7 @@ export class Engine {
         }
       }
       if (this._precheckBusy(sessionKey)) { this._schedulePump(sessionKey, this.timing.idleRecheckMs); return; }
-      this.running.set(sessionKey, { kind: head.kind, id: head.id, runId: null });
+      this.running.set(sessionKey, { kind: head.kind, id: head.id, runId: null, endSeen: false });
       if (head.kind === "request") this.runningRequests += 1;
       this.globalWaiting.delete(sessionKey);
       void this._runItem(sessionKey, head)
@@ -875,7 +875,13 @@ export class Engine {
   _setBackoff(sessionKey) {
     const prev = this.backoff.get(sessionKey);
     const level = Math.min((prev?.level ?? -1) + 1, this.timing.busyBackoffMs.length - 1);
-    this.backoff.set(sessionKey, { level, until: this.now() + this.timing.busyBackoffMs[level] });
+    // A turn there ended while this attempt was out (a start may wait minutes in the chat queue):
+    // that was most likely the run it was busy behind, so the next attempt need not wait. Without
+    // this, an end that lands before the BUSY answer is recorded is lost and the full backoff runs.
+    const slot = this.running.get(sessionKey);
+    const cut = slot?.endSeen === true;
+    if (slot) slot.endSeen = false;
+    this.backoff.set(sessionKey, { level, until: cut ? 0 : this.now() + this.timing.busyBackoffMs[level] });
   }
 
   async _runItem(sessionKey, item) {
@@ -1408,6 +1414,9 @@ export class Engine {
       // A turn there just ended: the BUSY backoff is over (§4.3), keep its level for next time.
       const bo = this.backoff.get(evt.sessionKey);
       if (bo) bo.until = 0;
+      // Our start there is still out: the backoff it may answer with is over too (see _setBackoff).
+      const slot = this.running.get(evt.sessionKey);
+      if (slot && !slot.runId) slot.endSeen = true;
       this._schedulePump(evt.sessionKey, this.timing.pumpDebounceMs);
       this._backgroundCheckSession(evt.sessionKey);
     }

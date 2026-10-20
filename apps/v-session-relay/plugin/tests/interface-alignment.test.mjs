@@ -64,7 +64,7 @@ test("align (a): vrelay.wait on a record that is not inline answers expired at o
     assert.deepEqual([inline.status, inline.sendId, inline.deduped], ["accepted", first.sendId, true]);
     const t0 = Date.now();
     const r = await w.engine.wait({ sendId: first.sendId, timeoutMs: 2_000 });
-    assert(Date.now() - t0 < 250, "answered at once");
+    assert(Date.now() - t0 < 1_000, "answered at once, not after the 2 s slice");
     assert.equal(r.status, "expired");
     assert.equal(r.code, first.code);
     assert.doesNotMatch(r.note, /已等/u, "not the inline-window text: this send was never inline");
@@ -220,8 +220,8 @@ test("align (f): a start that waits minutes in the chat queue is never timed out
     await waitFor(() => w.fake.callsOf("start").length === 1, { what: "start called" });
     w.endRun("human-run-1", X); // the person's run ahead of it ends meanwhile
     await sleep(900);
+    await waitFor(() => w.rec(r.sendId).phase === "running", { what: "the slow start answered started" });
     assert.equal(w.fake.callsOf("start").length, 1, "exactly one start while the first was pending");
-    assert.equal(w.rec(r.sendId).phase, "running");
     assert(w.rec(r.sendId).inline.expiredAt, "the inline window passed meanwhile; only the requester side turned async");
     w.fake.finishRun(w.rec(r.sendId).targetRun.runId, ok("排到了"));
     await waitFor(() => w.rec(r.sendId).phase === "result_ready");
@@ -236,13 +236,25 @@ test("align (f): a start that waits minutes in the chat queue is never timed out
   } finally { await w2.close(); }
 });
 
-test("align (f): an anchor post slower than the accept budget is posted once; the call answers within the budget", async () => {
-  const w = await createWorld({ bridge: { postDelayMs: 500 }, timing: { anchorPostMs: 100 } });
+test("align (f): a lifecycle end that lands while a start is out still cuts the BUSY backoff", async () => {
+  const w = await createWorld({ bridge: { startDelayMs: 200, start: [{ status: "busy", reason: "active_run" }] }, timing: { busyBackoffMs: [5_000] } });
   try {
-    const t0 = Date.now();
+    const r = await w.send(DM, X, "忙的时候来", { runId: "rA" });
+    await waitFor(() => w.fake.callsOf("start").length === 1, { what: "first start out" });
+    w.endRun("human-run", X); // the run it is busy behind ends before the BUSY answer is recorded
+    await waitFor(() => w.starts("request").length === 2, { timeoutMs: 3_000, what: "a retry well before the 5 s backoff" });
+    assert.equal(w.starts("request")[1].args.attempt, 1);
+    await waitFor(() => w.rec(r.sendId).phase === "result_ready");
+  } finally { await w.close(); }
+});
+
+test("align (f): an anchor post slower than the accept budget is posted once; the call answers within the budget", async () => {
+  const w = await createWorld({ bridge: { postDelayMs: 1_500 }, timing: { anchorPostMs: 100 } });
+  try {
     const r = await w.send(DM, X, "慢的发送", { runId: "rA" });
-    assert(Date.now() - t0 < 400, "accept answered within its budget");
     assert.equal(r.status, "accepted");
+    assert.equal(w.fake.callsOf("post").length, 1);
+    assert.equal(w.fake.callsOf("post")[0].outcome, undefined, "answered while the post was still in flight");
     await waitFor(() => w.rec(r.sendId).phase === "result_ready");
     assert.equal(w.fake.callsOf("post").length, 1, "never re-posted while the first post was in flight");
   } finally { await w.close(); }
@@ -295,8 +307,9 @@ test("align (h): the requester's 会话请求 row leaves at result_ready / failu
     assert.deepEqual(rows.map((x) => x.taskId).sort(), [`v-a2a:${ok1.sendId}`, `v-a2a:${bad.sendId}`].sort());
     assert.equal(source(DM.toUpperCase()).length, 2, "keys match case-insensitively (DingTalk lower-cases them)");
     assert.equal(source(` ${DM.toLowerCase()} `).length, 2);
-    await sleep(5);
-    assert(notices.length > 0 && notices.every((n) => n.kind === "v-a2a"), "kind v-a2a, past a throwing listener");
+    // A record is visible in memory before its write lands; the notice follows the write.
+    await waitFor(() => notices.length > 0, { what: "a notice past the throwing listener" });
+    assert(notices.every((n) => n.kind === "v-a2a"), "kind v-a2a");
     assert.equal(calledSync, false, "listeners run in a microtask, never inside the engine's write");
     notices.length = 0;
     w.fake.finishRun(s1.args.runId, ok("好了"));
@@ -305,8 +318,7 @@ test("align (h): the requester's 会话请求 row leaves at result_ready / failu
     w.fake.finishRun(s2.args.runId, { status: "error", finals: [], visibleReplySent: false, finalCount: 0, error: "boom" });
     await waitFor(() => w.rec(bad.sendId).phase === "failure_ready");
     assert.deepEqual(source(DM), [], "failure_ready: gone too");
-    await sleep(5);
-    assert(notices.some((n) => n.kind === "v-a2a" && n.sessionKeys[0] === DM));
+    await waitFor(() => notices.some((n) => n.kind === "v-a2a" && n.sessionKeys[0] === DM), { what: "notice for the requester" });
     assert.equal(w.batchOf(ok1.sendId).phase, "open", "nothing was handed back yet");
   } finally { tasks?.uninstall(); await w.close(); }
 });
