@@ -6,6 +6,12 @@
 // test injects user messages and button presses as updates and reads back
 // every message the bot produced, including each edit, as a timeline.
 //
+// For the inter-session bridge (lab/release-files/telegram-inter-session-bridge)
+// it also knows group titles (getChat, the chat of every message), records
+// reactions and chat actions as calls (so "nothing visible while BUSY" can be
+// asserted), and can fail the next call of a method with a given Bot API error
+// (failNext), the way Telegram answers a kicked bot or a deleted chat.
+//
 // Nothing here talks to Telegram. The bot token is a fixed fake value.
 import http from "node:http";
 
@@ -20,10 +26,19 @@ export function createFakeTelegramBotApi({ botId = 100000001, botUsername = "v_c
   const calls = []; // every API call, in order
   const callbackAnswers = [];
   const listeners = new Set();
+  const chats = new Map(); // chatId -> { title, type, isForum }
+  const failures = new Map(); // method -> [{ status, description }]
 
   const now = () => Math.floor(Date.now() / 1000);
   const key = (chatId, messageId) => `${chatId}:${messageId}`;
   const emit = (event) => { for (const fn of listeners) fn(event); };
+  /** The Bot API chat object of a chat id: private for positive ids, a supergroup (with a title) for negative ones. */
+  const chatFor = (chatId, firstName = "Tianyi") => {
+    const id = Number(chatId);
+    const meta = chats.get(String(chatId)) ?? {};
+    if (id >= 0 && meta.type !== "supergroup" && meta.type !== "group") return { id, type: "private", first_name: meta.firstName ?? firstName };
+    return { id, type: meta.type ?? "supergroup", title: meta.title ?? "VLab candidate group", ...(meta.isForum ? { is_forum: true } : {}) };
+  };
 
   const wakePollers = () => {
     while (waiters.length && updates.length) waiters.shift()();
@@ -50,7 +65,7 @@ export function createFakeTelegramBotApi({ botId = 100000001, botUsername = "v_c
   const asTelegramMessage = (state, from) => ({
     message_id: state.messageId,
     date: now(),
-    chat: { id: Number(state.chatId), type: Number(state.chatId) < 0 ? "supergroup" : "private" },
+    chat: chatFor(state.chatId),
     from: from ?? { id: botId, is_bot: true, first_name: "V candidate", username: botUsername },
     // A photo message carries its text as the caption.
     ...(state.kind === "photo" ? { caption: state.text, photo: [{ file_id: `photo-${state.messageId}`, file_unique_id: `p${state.messageId}`, width: 640, height: 400 }] } : { text: state.text }),
@@ -135,7 +150,9 @@ export function createFakeTelegramBotApi({ botId = 100000001, botUsername = "v_c
       return true;
     },
     answerCallbackQuery: (params) => { callbackAnswers.push({ at: Date.now(), ...params }); return true; },
-    getChat: (params) => ({ id: Number(params.chat_id), type: Number(params.chat_id) < 0 ? "supergroup" : "private", first_name: "Tianyi" }),
+    getChat: (params) => chatFor(params.chat_id),
+    setMessageReaction: () => true,
+    sendChatAction: () => true,
     getChatMember: (params) => ({ status: "member", user: { id: Number(params.user_id), is_bot: false, first_name: "Tianyi" } }),
     getMyCommands: () => [],
     getWebhookInfo: () => ({ url: "", has_custom_certificate: false, pending_update_count: 0 }),
@@ -152,6 +169,8 @@ export function createFakeTelegramBotApi({ botId = 100000001, botUsername = "v_c
     const reply = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
     if (token !== FAKE_BOT_TOKEN) { reply(401, { ok: false, error_code: 401, description: "Unauthorized" }); return; }
     try {
+      const failure = failures.get(method)?.shift();
+      if (failure) throw apiError(failure.status, failure.description);
       const handler = handlers[method];
       const result = handler ? await handler(params) : true;
       reply(200, { ok: true, result });
@@ -179,13 +198,25 @@ export function createFakeTelegramBotApi({ botId = 100000001, botUsername = "v_c
     calls,
     callbackAnswers,
     messages: () => [...messages.values()],
+    /** Calls of one Bot API method, in order (getUpdates is never recorded). */
+    callsOf: (method) => calls.filter((c) => c.method === method),
+    /** Title, type ("supergroup" | "group" | "private") or forum flag of a chat, for getChat and message chats. */
+    setChat: ({ chatId, title, type, isForum, firstName }) => { chats.set(String(chatId), { title, type, isForum, firstName }); },
+    /**
+     * The next `times` calls of `method` fail with this Bot API error, e.g.
+     * { status: 403, description: "Forbidden: bot was kicked from the supergroup chat" } or
+     * { status: 400, description: "Bad Request: chat not found" }.
+     */
+    failNext: (method, { status = 400, description = "Bad Request", times = 1 } = {}) => {
+      const queue = failures.get(method) ?? [];
+      for (let i = 0; i < times; i += 1) queue.push({ status, description });
+      failures.set(method, queue);
+    },
     onEvent: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
     /** A user writes a text message to the bot. */
     sendUserText: ({ chatId, userId, text, firstName = "Tianyi", replyToMessageId }) => {
       const messageId = nextMessageId++;
-      const chat = Number(chatId) < 0
-        ? { id: Number(chatId), type: "supergroup", title: "VLab candidate group" }
-        : { id: Number(chatId), type: "private", first_name: firstName };
+      const chat = chatFor(chatId, firstName);
       const message = {
         message_id: messageId, date: now(), chat,
         from: { id: Number(userId), is_bot: false, first_name: firstName, language_code: "zh-hans" },
