@@ -21,7 +21,7 @@ import { isBatchTerminal, isSendTerminal } from "./ledger.js";
 import { classify, countSend, waitEdges } from "./policy.js";
 import { SessionQueue } from "./queue.js";
 import { failureOfRun, memberItem, outputOf, sendStartRequest, wakeStartRequest } from "./requests.js";
-import { audienceFor, formatForChannel, visibleRequestBody } from "./visible.js";
+import { audienceFor, clip, formatForChannel, visibleRequestBody } from "./visible.js";
 
 export const DEFAULT_TIMING = Object.freeze({
   pumpDebounceMs: 1_500,
@@ -182,7 +182,10 @@ export class Engine {
 
     let accepted;
     try {
-      accepted = await this._withLock("accept", () => this._accept(params, contentKey));
+      // Routes first, outside the accept lock: a bridge's resolveRoute may call the channel API
+      // (Feishu getChatInfo), and one slow chat must not hold every other send behind it.
+      const routes = await this._resolveSendRoutes(params);
+      accepted = await this._withLock("accept", () => this._accept(params, contentKey, routes));
     } catch (err) {
       this.logger?.error?.(`v-session-relay: vrelay.send failed: ${err?.stack ?? err}`);
       return { status: "error", code: "LEDGER", error: `会话转交没有记下来（${String(err?.message ?? err).slice(0, 80)}），这次没有发出。` };
@@ -273,22 +276,30 @@ export class Engine {
     return q;
   }
 
-  async _accept(params, contentKey) {
+  /** Target and requester routes of a send (§2.a); read-only, so resolved before the accept lock. */
+  async _resolveSendRoutes(params) {
+    const req = params.requester;
+    const tgt = params.target;
+    const hint = req.to ? { channel: req.channel, to: req.to, accountId: req.accountId, threadId: req.threadId } : undefined;
+    const [tRoute, rRoute] = await Promise.all([
+      this.routes.resolve({ sessionKey: tgt.sessionKey, agentId: tgt.agentId }),
+      this.routes.resolve({ sessionKey: req.sessionKey, agentId: req.agentId, hint }),
+    ]);
+    return { tRoute, rRoute, hint };
+  }
+
+  async _accept(params, contentKey, routes = null) {
     // Re-check under the lock: a concurrent call may have just accepted the same send.
     const dup = this.ledger.findByIdempotencyKey(params.idempotencyKey);
     if (dup) return { status: "accepted", rec: { deduped: true, sameCall: true, rec: dup } };
     const same = this.ledger.findInFlightByContent(contentKey, TIMEOUTS.contentDedupeMs);
     if (same) return { status: "accepted", rec: { deduped: true, rec: same } };
 
-    const now = this.now();
     const req = params.requester;
     const tgt = params.target;
     const ctx = await this._requesterContext(req);
-    const hint = req.to ? { channel: req.channel, to: req.to, accountId: req.accountId, threadId: req.threadId } : undefined;
-    const [tRoute, rRoute] = await Promise.all([
-      this.routes.resolve({ sessionKey: tgt.sessionKey, agentId: tgt.agentId }),
-      this.routes.resolve({ sessionKey: req.sessionKey, agentId: req.agentId, hint }),
-    ]);
+    const { tRoute, rRoute, hint } = routes ?? await this._resolveSendRoutes(params);
+    const now = this.now();
     const targetLabel = this.routes.label({ sessionKey: tgt.sessionKey, agentId: tgt.agentId, route: tRoute.route, viewerAgentId: req.agentId });
     if (!tRoute.ok) return { status: "error", code: tRoute.code, error: routeErrorText({ to: targetLabel, reason: reasonText(tRoute.code) }) };
     const requesterLabel = this.routes.label({ sessionKey: req.sessionKey, agentId: req.agentId, route: rRoute.ok ? rRoute.route : null, viewerAgentId: tgt.agentId });
@@ -1391,7 +1402,8 @@ export class Engine {
     const cur = this.ledger.getSend(sendId);
     if (!cur) return { ok: false, error: "unknown sendId" };
     if (isSettled(cur) || SEND_TERMINAL_PHASES.includes(cur.phase)) return { ok: false, error: `already ${cur.phase}` };
-    const why = String(reason ?? "").trim() || reasonText("cancelled");
+    // Shown in the target chat (§7.4 「⏹ #{code} 已撤回（{reason}）」): one short line, ≤ 30 chars like every reason.
+    const why = clip(String(reason ?? "").replace(/\s+/gu, " ").trim(), 30) || reasonText("cancelled");
     this._queue(cur.target.sessionKey).remove(cur.kind, sendId);
     this._queue(cur.target.sessionKey).remove("collect", sendId);
     clearTimeout(this.postRetryTimers.get(sendId));

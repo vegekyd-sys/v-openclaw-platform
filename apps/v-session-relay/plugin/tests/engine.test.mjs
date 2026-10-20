@@ -519,6 +519,11 @@ test("engine: cancel — the target chat gets ⏹, the batch wake lists it; a la
     assert.deepEqual(await w.engine.cancel({ sendId: b.sendId, reason: "Tianyi 改主意了" }), { ok: true });
     assert.equal(w.posts().at(-1).text, `⏹ #${b.code} 已撤回（Tianyi 改主意了）。`);
     assert.deepEqual(await w.engine.cancel({ sendId: b.sendId }), { ok: false, error: "already cancelled" });
+    const c = await w.send(DM, ROOM(3), "做 c", { runId: "rC" });
+    assert.deepEqual(await w.engine.cancel({ sendId: c.sendId, reason: `运维撤回：${"很长的理由".repeat(20)}\n第二行` }), { ok: true });
+    const note = w.posts().at(-1).text;
+    assert.match(note, /^⏹ #\w+ 已撤回（运维撤回：很长的理由.*…）。$/u, "one clipped line in the target chat");
+    assert(note.length <= 45, note);
     w.fake.finishRun(sb.args.runId, ok("迟到的结果"));
     w.fake.finishRun(sa.args.runId, ok("a 好了"));
     const wake = await waitFor(() => w.starts("wake")[0]);
@@ -716,4 +721,27 @@ test("engine: the claim CAS itself refuses an expired or already-claimed inline 
     assert(await w.engine._claim(b.sendId));
     assert.equal(await w.engine._claim(b.sendId), null, "claimed once");
   } finally { await w.close(); }
+});
+
+test("engine: a slow route lookup for one chat does not hold other sends behind the accept lock", async () => {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const w = await createWorld({
+    bridge: {
+      async resolveRoute(q) {
+        if (q.sessionKey === ROOM(9)) await gate; // Feishu getChatInfo hanging for this one group
+        const [, , , chatType, peer] = q.sessionKey.split(":");
+        return { ok: true, route: { channel: "feishu", accountId: "default", to: chatType === "group" ? `chat:${peer}` : `user:${peer}`, chatId: peer, chatType, ...(chatType === "direct" ? { peerId: peer, humans: "owner_only" } : { humans: "unknown" }) } };
+      },
+    },
+  });
+  try {
+    const slow = w.send(DM, ROOM(9), "慢的那个", { runId: "rA" });
+    await sleep(20);
+    const fast = await Promise.race([w.send(DM, ROOM(1), "快的这个", { runId: "rA" }), sleep(1_000).then(() => "blocked")]);
+    assert.notEqual(fast, "blocked", "the other send went through while the slow lookup hangs");
+    assert.equal(fast.status, "accepted");
+    release();
+    assert.equal((await slow).status, "accepted");
+  } finally { release(); await w.close(); }
 });
