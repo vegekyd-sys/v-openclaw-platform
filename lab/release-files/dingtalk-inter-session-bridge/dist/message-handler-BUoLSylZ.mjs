@@ -50,6 +50,7 @@ function vInterReplySenders(vInter) {
 }
 /** A final reply of a sessions_send turn, as the result handed back (ask_user question payloads never count). */
 function vInterCaptureFinal(vInter, payload) {
+	if (vInter.closed) return;
 	vInter.finalCount += 1;
 	const text = typeof payload?.text === "string" ? payload.text : "";
 	if (payload?.isError === true) {
@@ -750,9 +751,8 @@ function createDingtalkReplyDispatcher(params) {
 	// inter-session bridge: the run started; the AI card is created now (moved from onReplyStart).
 	// Runs inside the core's run-start notification: nothing here may throw into the run.
 	const vInterOnAgentRunStart = (...args) => {
-		const first = !vInter.runStarted;
-		vInter.onRunStart(args[0]);
-		if (!first) return;
+		// only the call that starts this request's run: not a second one, nothing after the handler returned
+		if (!vInter.onRunStart(args[0])) return;
 		try {
 			if (!vInterCleaned) vUnrouteQuestions = vExperience.onQuestionRequested(params.vSessionKey, (record) => vDeliverQuestionRecord(record));
 			if (streamingEnabled) startStreaming().catch((err) => log.error(`[DingTalk][inter-session] startStreaming error: ${err?.message || err}`));
@@ -952,7 +952,7 @@ function createDingtalkReplyDispatcher(params) {
 				vInterSession: vInter.seam,
 				onAgentRunStart: vInterOnAgentRunStart,
 				onAgentRunTerminalOutcome: (outcome) => {
-					if (outcome === "failed" || !vInter.terminal) vInter.terminal = outcome;
+					if (!vInter.closed && (outcome === "failed" || !vInter.terminal)) vInter.terminal = outcome;
 				}
 			},
 			...streamingEnabled && { onPartialReply: async (payload) => {

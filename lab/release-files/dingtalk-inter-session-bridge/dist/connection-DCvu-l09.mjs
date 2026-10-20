@@ -218,9 +218,14 @@ function createVInterSessionBridges({ account, cfg, runtime, log, messageHandler
 					resolve(outcome);
 				};
 				// What the message handler and the reply dispatcher see as params.vInterSession.
+				// It closes when the handler returns: a followup drain may run a person's turn with this
+				// turn's options, and nothing that turn reports (run start, busy, finals, outcome) is this
+				// request's. A second onAgentRunStart of the same start (the core re-running a stranded
+				// reply) changes nothing; its finals join done while it is open.
 				const control = {
 					req: request,
 					target,
+					closed: false,
 					runStarted: false,
 					runId: null,
 					finals: [],
@@ -238,15 +243,17 @@ function createVInterSessionBridges({ account, cfg, runtime, log, messageHandler
 						id: request.id,
 						kind: request.kind,
 						onBusy: (info) => {
-							if (control.runStarted) return;
+							if (control.closed || control.runStarted) return;
 							settle({ status: "busy", reason: V_INTER_BUSY_REASONS.includes(info?.reason) ? info.reason : "active_run" });
 						}
 					},
+					/** True only for the call that starts the run. */
 					onRunStart: (runId) => {
-						if (control.runStarted) return;
+						if (control.closed || control.runStarted || settled) return false;
 						control.runStarted = true;
 						control.runId = String(runId || request.runId);
 						settle({ status: "started", runId: control.runId, done });
+						return true;
 					},
 					dispatched: (result) => {
 						control.dispatchResult = result;
@@ -263,20 +270,27 @@ function createVInterSessionBridges({ account, cfg, runtime, log, messageHandler
 				// that failed before its harness accepted the turn, e.g. an unknown model): it still ran, so it
 				// is "started" with that outcome, never "GATED" (= nothing happened). Never after BUSY.
 				const lateStart = () => {
-					if (control.runStarted || settled) return;
+					if (control.closed || control.runStarted || settled) return;
 					if (control.terminal === void 0 && control.finalCount === 0 && !control.readVisible()) return;
 					control.runStarted = true;
 					control.lateStart = true;
 					control.runId = String(request.runId);
 					settle({ status: "started", runId: control.runId, done });
 				};
+				// RunOutcome.status (same rule in every channel bridge): error when the core reported "failed";
+				// ok when it reported "completed"; with no terminal outcome (the core reports none for an
+				// aborted run, agent-runner executeAgentTurn) ok only if a non-error final was captured, else
+				// aborted. Error notices (isError finals) go in error, never in finals.
 				const settledOutcome = () => {
 					if (control.terminal === "failed") return runOutcome("error", control.errorText || "the agent run failed");
-					if (control.terminal === "completed") return runOutcome("ok");
-					if (control.lateStart && control.errorText && !control.finals.length) return runOutcome("error", control.errorText);
-					if (control.lateStart && (control.finals.length || control.readVisible())) return runOutcome("ok");
-					// A run that reported neither completed nor failed was aborted (agent-runner executeAgentTurn).
-					return runOutcome("aborted");
+					if (control.terminal === "completed" || control.finals.length > 0) return runOutcome("ok", control.errorText);
+					return runOutcome("aborted", control.errorText);
+				};
+				// The handler returned: later events are not this request's, and the seam stops asking the
+				// core for exclusive admission (a reused turn is admitted like any other).
+				const close = () => {
+					control.closed = true;
+					control.seam.exclusive = false;
 				};
 				// BUSY and GATED attempts never reach the typing cleanup that disposes the dispatcher's work
 				// view (it only runs once typing started), so the bridge frees it here.
@@ -297,6 +311,7 @@ function createVInterSessionBridges({ account, cfg, runtime, log, messageHandler
 					vInterSession: control
 				})).then(() => {
 					lateStart();
+					close();
 					if (control.runStarted) resolveDone(settledOutcome());
 					else {
 						releaseUnstarted();
@@ -304,7 +319,8 @@ function createVInterSessionBridges({ account, cfg, runtime, log, messageHandler
 					}
 				}, (err) => {
 					const message = String(err?.message || err);
-					lateStart();
+					if (!V_INTER_RESTART_WEDGE_RE.test(message)) lateStart();
+					close();
 					if (control.runStarted) resolveDone(runOutcome("error", message));
 					else {
 						releaseUnstarted();

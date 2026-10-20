@@ -477,9 +477,11 @@ test("functional: the DingTalk bridge through the generated chunks", async (t) =
   await t.test("started: the card waits for the run, the turn is the request, finals come back", async () => {
     state.reset();
     const question = { id: `ask_${"c".repeat(32)}`, sessionKey: GROUP_KEY, status: "pending", questions: [{ questionId: "q1", question: "用哪种格式？", options: [{ label: "表格" }, { label: "列表" }] }] };
+    let exclusiveDuringRun;
     state.scenario = {
       finals: [{ text: "合成好的周报全文", mediaUrls: ["https://cdn.test/a.png"], mediaUrl: "https://cdn.test/b.png" }],
-      duringRun: async () => {
+      duringRun: async (p) => {
+        exclusiveDuringRun = p.replyOptions.vInterSession.exclusive;
         for (const l of globalThis[QUESTION_LISTENERS]) await l(question);
         // ask_user in a group: only askUserAnswererId may answer.
         assert.equal(vx.hasTrackedQuestion({ channel: "dingtalk", chatKey: `__default__:${CID}`, senderId: "someoneElse" }), false);
@@ -502,7 +504,8 @@ test("functional: the DingTalk bridge through the generated chunks", async (t) =
     for (const name of [...WEBHOOK, "addEmotionReply", "recallEmotionReply", "sendProactive", "gamificationCommand"]) assert.equal(state.named(name).length, 0, name);
     const { ctx, replyOptions } = state.dispatches[0];
     assert.equal(replyOptions.runId, req.runId);
-    assert.equal(replyOptions.vInterSession.exclusive, true);
+    assert.equal(exclusiveDuringRun, true, "the core's admission guard sees an exclusive turn");
+    assert.equal(replyOptions.vInterSession.exclusive, false, "retired once done");
     assert.equal(replyOptions.vInterSession.id, req.id);
     assert.equal(replyOptions.vInterSession.kind, "request");
     assert.equal(ctx.VInterSession, replyOptions.vInterSession);
@@ -604,6 +607,64 @@ test("functional: the DingTalk bridge through the generated chunks", async (t) =
     assert.deepEqual(visibleCalls().filter((c) => c.name !== "createAICardForTarget"), [], "nothing visible without a run");
     const feishuRoute = { ...route, channel: "feishu", to: "chat:oc_1", chatId: "oc_1" };
     assert.equal((await bridge.start({ ...request(), route: feishuRoute })).code, "ROUTE_MISMATCH");
+  });
+
+  await t.test("outcomes: with no terminal outcome a run is ok only with a non-error final, else aborted", async () => {
+    // a final answer, but the core reported no terminal outcome: still the request's result
+    state.reset({ terminal: null, finals: [{ text: "结果全文" }] });
+    let run = await (await bridge.start(request())).done;
+    assert.deepEqual([run.status, run.finals, run.error], ["ok", [{ text: "结果全文" }], undefined]);
+    // a stalled run's interruption notice is an error final: aborted, the notice in error, no result
+    state.reset({ terminal: null, finals: [{ text: "⚠️ This turn was interrupted because it stopped making progress.", isError: true }] });
+    run = await (await bridge.start(request())).done;
+    assert.deepEqual([run.status, run.finals, run.error], ["aborted", [], "⚠️ This turn was interrupted because it stopped making progress."]);
+    assert.deepEqual(contracts.validateRunOutcome(run), { ok: true, errors: [] });
+    // completed with nothing to say (NO_REPLY): ok without finals
+    state.reset({ terminal: "completed", finals: [] });
+    run = await (await bridge.start(request())).done;
+    assert.deepEqual([run.status, run.finals], ["ok", []]);
+  });
+
+  await t.test("events after done are not the request's; a second run start of the same start is tolerated", async () => {
+    let dispatch;
+    state.reset({
+      finals: [{ text: "第一份" }],
+      duringRun: async (p) => {
+        dispatch = p;
+        await p.dispatcherOptions.deliver({ text: "第零份" }, { kind: "final" });
+        // stranded-reply recovery runs the same turn once more: a second onAgentRunStart for this start
+        p.replyOptions.onAgentRunStart(p.replyOptions.runId);
+      },
+    });
+    const req = request();
+    const outcome = await bridge.start(req);
+    assert.deepEqual([outcome.status, outcome.runId], ["started", req.runId]);
+    const run = await outcome.done;
+    assert.deepEqual([run.status, run.finals], ["ok", [{ text: "第零份" }, { text: "第一份" }]], "the re-run's finals belong to the same done");
+    const snapshot = structuredClone(run);
+    const cardsBefore = state.named("createAICardForTarget").length;
+    // a followup drain that reuses this turn's options runs a person's message with them
+    const { replyOptions: r, dispatcherOptions: d } = dispatch;
+    r.onAgentRunStart("person-followup-run");
+    await d.deliver({ text: "给真人的回复" }, { kind: "final" });
+    r.onAgentRunTerminalOutcome("failed");
+    r.vInterSession.onBusy({ reason: "active_run" });
+    assert.deepEqual(await outcome.done, snapshot);
+    assert.deepEqual(run, snapshot, "the resolved outcome is never touched");
+    assert.equal(state.named("createAICardForTarget").length, cardsBefore, "no second card for the same start");
+    assert.equal(r.vInterSession.exclusive, false, "once done the seam stops asking the core for exclusive admission");
+  });
+
+  await t.test("a BUSY attempt stays busy, and its dispatcher never opens a card for a later run start", async () => {
+    let dispatch;
+    state.reset({ busy: "active_run", beforeGuard: async (p) => { dispatch = p; } });
+    assert.deepEqual(await bridge.start(request()), { status: "busy", reason: "active_run" });
+    await sleep(20);
+    dispatch.replyOptions.onAgentRunStart(dispatch.replyOptions.runId);
+    await dispatch.dispatcherOptions.onReplyStart?.();
+    await sleep(20);
+    assert.deepEqual(visibleCalls(), [], "nothing visible");
+    assert.equal(dispatch.replyOptions.vInterSession.exclusive, false);
   });
 
   await t.test("a person's message keeps the original path (webhook, emotion, no inter-session options)", async () => {

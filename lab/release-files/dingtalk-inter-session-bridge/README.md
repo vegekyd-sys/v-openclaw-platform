@@ -30,6 +30,8 @@ stage 时逐个文件校验 `before`；V 上的钉钉插件目录换了 generati
 - `post`：`sendProactive(…, {msgType:"markdown", useAICard:false})`，返回 `processQueryKey` 作 messageId；失败抛 `BridgeError`（4xx 非瞬时，5xx/429/网络为瞬时）。至少一次，没有幂等。
 - `start`：构造合成 `data`（群：`conversationId = openConversationId`；私聊：`dm:<userId>`，发送者是对端），以 `params.vInterSession` 调用连接器自己的 `messageHandler`。`onAgentRunStart` 时返回 `started`，核心守卫调 `onBusy` 时返回 `busy`；开跑前的异常按文本分 `RESTART_WEDGE` / `CHANNEL_DOWN` / `INTERNAL`。
 - 没有 `onAgentRunStart` 但核心报了终态（例如 harness 接手前就失败的未知模型）或已经发出回复：仍算 `started`（与飞书桥一致），`done` 带这个结果，账本记 started_failed 而不是 not_started。什么都没发生才是 `GATED`。
+- `RunOutcome.status`（四个渠道桥同一规则）：核心报 `failed` → `error`；报 `completed` → `ok`；没报终态（核心对中止的 run 不报）时，只有截获到非错误的 final 才算 `ok`，否则 `aborted`。错误提示（`isError`）放进 `error`，从不算结果。
+- handler 返回后这次尝试即关闭：followup drain 可能拿本回合的选项去跑真人的消息，之后的 run 开始、BUSY、final、终态都不算这条请求，并把 seam 的 `exclusive` 置为 false（核心按普通回合准入）。同一次 start 的第二个 `onAgentRunStart`（核心重跑滞留回复）不改变任何状态；`done` 结束前它的 final 照样算进结果。
 - BUSY / GATED 的尝试没有 run，核心的 typing 也没开始，分发器收不到 `onCleanup`；桥在 handler 返回后释放它的工作视图和问题路由（否则每次退避重试都留一个进度卡监听器）。
 - 自回声防御（A11）：Stream 回调的发送者就是机器人，或正文就是本进程 10 分钟内发出的锚点，直接丢弃。
 
