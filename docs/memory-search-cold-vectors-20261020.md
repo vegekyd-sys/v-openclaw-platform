@@ -37,6 +37,8 @@ OpenClaw 没有向量常驻或预热的配置；官方整理碎片的手段是 `
 | `scripts/install-v-memory-vector-warm.sh` | 安装并启动；随时可装，不需要重启 Gateway；回滚：`systemctl disable --now v-memory-vector-warm.timer` |
 | `tests/v-memory-vector-warm.test.py` | 读满每个字节、库字节不变、分批之间不钉快照、缺表/缺库跳过、坏库报错 |
 
+两个刹车（后续 PR）：`MemAvailable` 低于 4 GiB 时这一轮跳过，输出 `{"skipped":"low-memory","memAvailableMb":N}`（10/19 21:10 V 只剩 3.7 GB 时 Gateway 卡了 30 s，那时再读 743 MB 只会和内存回收抢资源）；单遍超过 10 s 就在两批之间停下，输出 `{"aborted":"time-budget","ms":N,"touchedMB":N}`，下一轮从头读。已读过的部分还在缓存里，所以每一轮都能读得更远，冷的时候大约 3 轮就能读满。
+
 成本（V 实测）：热的时候一次 0.3 s、CPU 0.33 s、RSS 65 MB；完全冷的时候一次 23 s（在后台，不在用户路径上）。常驻缓存约 750 MB（30 GB 内存的 2.5%）。
 
 ## 前后对比（V，2026-10-20 11:29–11:45）

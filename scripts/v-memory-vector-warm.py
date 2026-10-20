@@ -16,8 +16,18 @@ autocommit batches (no long read snapshot, no write lock, no Gateway call), so t
 next search finds them in the cache. Run it often enough that the pages never age
 out (systemd/v-memory-vector-warm.timer). A warm pass is ~1 s of CPU at nice 19.
 
-  v-memory-vector-warm.py [agent...]     default makaron; one JSON line per agent
+Two brakes keep it from making a bad moment worse:
+- MemAvailable below 4 GiB: skip the round. On 2026-10-19 21:10 V was down to 3.7 GB
+  and the Gateway stalled 30 s; re-reading 743 MB then only fights reclaim for memory and IO.
+- 10 s spent in one pass: stop between two batches. A cold pass is ~23 s of random reads;
+  the next round starts over, and the part already read is cached, so it gets further.
+
+  v-memory-vector-warm.py [agent...]     default makaron; one JSON line per agent:
+    {"MB", "ms", ...}                                  a full pass
+    {"skipped": "low-memory", "memAvailableMb"}        memory brake
+    {"aborted": "time-budget", "ms", "touchedMB"}      time brake (ms is past the budget)
   STATE_DIR=<dir>                        default /home/openclaw/.openclaw
+  MIN_AVAILABLE_MB=<n>, TIME_BUDGET_MS=<n>, MEMINFO=<path>   overrides (tests)
 """
 import json
 import os
@@ -31,6 +41,26 @@ VECTOR_TABLE = "memory_index_chunks_vec"
 SMALL_TABLES = ("_info", "_chunks", "_rowids")
 VECTOR_CHUNKS = "_vector_chunks"
 BATCH_ROWS = 32  # vector chunk rows per statement: 32 x 64 x 3072 floats = 24 MB
+MIN_AVAILABLE_MB = int(os.environ.get("MIN_AVAILABLE_MB", 4096))
+TIME_BUDGET_MS = int(os.environ.get("TIME_BUDGET_MS", 10_000))
+MEMINFO = os.environ.get("MEMINFO", "/proc/meminfo")
+
+
+class OverBudget(Exception):
+    def __init__(self, touched):
+        self.touched = touched
+
+
+def mem_available_mb():
+    """MemAvailable from /proc/meminfo in MiB, or None where there is no such file."""
+    try:
+        with open(MEMINFO) as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024
+    except OSError:
+        return None
+    return None
 
 
 def agent_db(agent):
@@ -61,10 +91,13 @@ def read_all(db, table):
     return touched
 
 
-def read_vector_chunks(db, table):
-    """Read the vector blobs by rowid in batches: each batch is its own short read transaction."""
+def read_vector_chunks(db, table, deadline=None, touched_before=0):
+    """Read the vector blobs by rowid in batches: each batch is its own short read transaction.
+    Past the deadline, stop between two batches (OverBudget carries the bytes read so far)."""
     touched, last = 0, None
     while True:
+        if deadline is not None and time.monotonic() >= deadline:
+            raise OverBudget(touched_before + touched)
         if last is None:
             rows = db.execute(f'SELECT rowid, vectors FROM "{table}" ORDER BY rowid LIMIT ?', (BATCH_ROWS,)).fetchall()
         else:
@@ -82,17 +115,24 @@ def warm(agent):
     result = {"event": "vector-warm", "agent": agent}
     if not os.path.exists(path):
         return {**result, "skipped": "no agent database"}
+    available = mem_available_mb()
+    if available is not None and available < MIN_AVAILABLE_MB:
+        return {**result, "skipped": "low-memory", "memAvailableMb": available}
+    elapsed = lambda: round((time.monotonic() - started) * 1000)
     db = connect_read_only(path)
     try:
         small, chunks = shadow_tables(db)
         if not chunks:
             return {**result, "skipped": "no vector table"}
         touched = sum(read_all(db, t) for t in small)
-        touched += sum(read_vector_chunks(db, t) for t in chunks)
+        deadline = started + TIME_BUDGET_MS / 1000
+        for t in chunks:
+            touched += read_vector_chunks(db, t, deadline, touched)
+    except OverBudget as stop:
+        return {**result, "aborted": "time-budget", "ms": elapsed(), "touchedMB": round(stop.touched / 2**20, 1)}
     finally:
         db.close()
-    return {**result, "tables": len(small) + len(chunks), "MB": round(touched / 2**20, 1),
-            "ms": round((time.monotonic() - started) * 1000)}
+    return {**result, "tables": len(small) + len(chunks), "MB": round(touched / 2**20, 1), "ms": elapsed()}
 
 
 def main(argv):
