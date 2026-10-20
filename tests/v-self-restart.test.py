@@ -506,6 +506,10 @@ class BusyReasons(unittest.TestCase):
                          ["会话协作有 1 个回合在跑"])
         items.append({"phase": "running", "target": OTHER})
         self.assertEqual(self.relay({"counts": {"running": 2}, "items": items}), ["会话协作有 1 个回合在跑"])
+        # a relay whose counts.running leaves out "starting": subtracting the own
+        # starting turn must not hide the other room's running one
+        mixed = [{"phase": "starting", "target": OWN}, {"phase": "running", "target": OTHER}]
+        self.assertEqual(self.relay({"counts": {"running": 1}, "items": mixed}), ["会话协作有 1 个回合在跑"])
 
     def test_gateway_without_the_relay_plugin_is_not_busy(self):
         # what a read-only client is told for an unregistered method, and the plain form

@@ -53,10 +53,12 @@ message ids and MessageSids start with `v-a2a-` / `v-a2a:` and their Feishu
 `[firsttext-e2e.1]` record says `origin: "inter_session"`. The slow-first-reaction
 and slow-dispatch waits, the per-conversation dispatch failures and the ingress
 stall count leave them out; BUSY attempts (zero output, retried later) are such
-turns too. The core's `message dispatch completed` line names no runId, so a
-failure is attributed to a relay turn when it falls between that turn's start
-and the end of its Feishu handler in the same session. Cut-off replies keep room
-turns: people in that chat watched the answer stop.
+turns too. The core's `message dispatch completed` line names no message, but
+the `message processed … outcome=error` line it writes right after (same
+session, a few ms later) carries the MessageSid, which is `v-a2a:…` for a relay
+turn; the sentinel pairs the two. A failed dispatch writes no
+`[firsttext-e2e.1]` record, so that record cannot be used to recognise it.
+Cut-off replies keep room turns: people in that chat watched the answer stop.
 
 ## Verifying it without breaking production
 

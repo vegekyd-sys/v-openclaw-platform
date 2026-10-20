@@ -596,7 +596,9 @@ def relay_running(relay, own_key):
     n = (relay.get("counts") or {}).get("running")
     if not isinstance(n, int) or isinstance(n, bool) or n < 0:
         n = len(running)
-    return max(0, n - own)
+    # counts.running is the relay's own figure; never let the own-turn
+    # subtraction hide a running turn the items do show.
+    return max(0, n - own, len(running) - own)
 
 
 def busy_reasons(rec, query, journal, now_s):

@@ -35,14 +35,17 @@ const since = opt('since', '-1 hour');
 const until = opt('until', 'now');
 const unit = opt('unit', 'openclaw-gateway.service');
 
-// Prefix of every runId, synthetic message id and transcript tag the session relay creates
-// (docs/inter-session/design.md §2.c). A preset runId the harness did not adopt still leaves
-// origin:"inter_session" on the record.
+// Prefixes of every runId / synthetic Feishu message id ('v-a2a-') and MessageSid / Telegram
+// message id ('v-a2a:') the session relay creates (docs/inter-session/design.md §2.c; the same
+// values as V_A2A_PREFIX / V_A2A_SID_PREFIX in apps/v-session-relay/plugin/core/contracts.js).
+// A preset runId the harness did not adopt still leaves origin:"inter_session" on the record.
 export const INTER_SESSION_ID_PREFIX = 'v-a2a-';
+export const INTER_SESSION_SID_PREFIX = 'v-a2a:';
 
 export function isInterSession(r) {
   if (r?.origin === 'inter_session') return true;
-  return [r?.runId, r?.inboundMessageId].some((id) => typeof id === 'string' && id.startsWith(INTER_SESSION_ID_PREFIX));
+  return [r?.runId, r?.inboundMessageId].some((id) => typeof id === 'string'
+    && (id.startsWith(INTER_SESSION_ID_PREFIX) || id.startsWith(INTER_SESSION_SID_PREFIX)));
 }
 
 export function parseRecords(text) {

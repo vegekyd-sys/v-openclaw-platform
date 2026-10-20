@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { patchFeishuMonitor } from './patch-feishu-firsttext-e2e.mjs';
-import { parseRecords, parseModelMetrics, measure, report, percentile, isInterSession } from '../scripts/firsttext-e2e-report.mjs';
+import { parseRecords, parseModelMetrics, measure, report, percentile, isInterSession, INTER_SESSION_ID_PREFIX, INTER_SESSION_SID_PREFIX } from '../scripts/firsttext-e2e-report.mjs';
+import { exportRecords } from '../scripts/firsttext-daily/export-records.mjs';
 
 const read = (url) => fs.readFileSync(new URL(url, import.meta.url), 'utf8');
 const original = read('../release/captured/v2026.9.1-db91.6-gpt-live-voice-20261005.feishu/dist/dist/monitor.account-WFdlCDhR.js');
@@ -178,6 +179,8 @@ test('an inter-session turn is recognised by its origin, its runId or its synthe
   // an older bridge build without the origin field
   assert.equal(isInterSession({ ...sample, runId: 'v-a2a-wake-b_mgk3x1a2f9c1-1' }), true);
   assert.equal(isInterSession({ ...sample, inboundMessageId: 'v-a2a-ask-s_x-0' }), true);
+  // the MessageSid form (Telegram's synthetic message id)
+  assert.equal(isInterSession({ ...sample, inboundMessageId: 'v-a2a:req:s_x:0' }), true);
   for (const r of [sample, { ...sample, runId: '6101061d-305d-4139-9cc3-5a1b04d543cf' }, { ...sample, runId: 'DB91_HI_1_x' }, { ...sample, origin: 'user' }, {}, undefined]) {
     assert.equal(isInterSession(r), false, JSON.stringify(r));
   }
@@ -199,4 +202,27 @@ test('the report leaves inter-session turns out of every figure and counts them 
   assert.deepEqual(out.slowest.map((r) => r.inboundMessageId), ['om_1']);
   assert.equal(report([sample]).interSessionExcluded, 0);
   assert.equal(report([a2a]).n, 0);
+});
+
+test('the daily per-message export keeps the inter-session mark the report filters on', () => {
+  const text = [
+    `[firsttext-e2e.1] ${JSON.stringify(sample)}`,
+    `[firsttext-e2e.1] ${JSON.stringify({ ...a2a, runId: '6101061d-305d-4139-9cc3-5a1b04d543cf', inboundMessageId: 'om_anchor', attempt: 2 })}`,
+  ].join('\n');
+  const rows = exportRecords(text);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].origin, undefined);
+  // a preset runId the harness did not adopt: only origin still says what the turn was
+  assert.equal(rows[1].origin, 'inter_session');
+  assert.equal(rows[1].attempt, 2);
+  assert.equal(isInterSession(rows[1]), true);
+  assert.equal(isInterSession(rows[0]), false);
+});
+
+test('the id prefixes are the relay contracts\' (once WP0 is on the branch)', async (t) => {
+  const url = new URL('../apps/v-session-relay/plugin/core/contracts.js', import.meta.url);
+  if (!fs.existsSync(url)) return t.skip('contracts.js (WP0) is not on this branch');
+  const c = await import(url.href);
+  assert.equal(INTER_SESSION_ID_PREFIX, c.V_A2A_PREFIX);
+  assert.equal(INTER_SESSION_SID_PREFIX, c.V_A2A_SID_PREFIX);
 });

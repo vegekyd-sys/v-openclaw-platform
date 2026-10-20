@@ -62,7 +62,7 @@ sudo v-self-restart --reason "激活 DeepSeek web search" --requested-by "releas
 |---|---|
 | worker 池没有在跑或排队的回合 | RPC `vlab.workers.status`：各 worker 的 `active`（不含发起方自己的会话）、`queued`，加上池子的 `pending` |
 | 没有在跑的 cron 回合 | RPC `cron.list`（分页拿全）：`state.runningAtMs` 有值的任务。stream 型任务的常驻 watcher 只有 `streamStatus: running`，不算忙；它随重启自动拉起，重启后单独核对 |
-| 没有在跑的会话协作回合 | RPC `vrelay.list({active: true})`（v-session-relay 插件，见 `docs/inter-session/design.md` §2.b、§6.6）：`counts.running`，即目标回合正在开跑或在跑的请求；目标就是发起方自己会话的那一项不计入。排队中、等子请求或后台收尾的不算忙，重启后插件会重新排队。忙时原因写「会话协作有 N 个回合在跑」 |
+| 没有在跑的会话协作回合 | RPC `vrelay.list({active: true})`（v-session-relay 插件，见 `docs/inter-session/design.md` §2.b、§6.6）：`counts.running`，即目标回合正在开跑或在跑的请求；目标就是发起方自己会话的那一项不计入，但扣掉它之后不会少于列表里其他会话处于 `starting`/`running` 的项数。排队中、等子请求或后台收尾的不算忙，重启后插件会重新排队。忙时原因写「会话协作有 N 个回合在跑」 |
 | 最近 4 分钟没有分发到一半的消息 | journal 里 `dispatching to agent` 的条数不多于 `dispatch complete (`（`[diagnostic] ... dispatch completed:` 是另一类事件，不算） |
 | 最后一条入站消息已超过 90 秒 | journal 里最后一条 `received message` / `dispatching to agent` |
 

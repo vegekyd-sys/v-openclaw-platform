@@ -19,6 +19,8 @@ V is reachable only from Tianyi's Mac (`ssh v`), so the daily job runs there und
   sha256 of the session key, and the first Worker phase and model-call marks joined by runId.
   `payload` carries the first model request's `inputItems` (provider message count) and
   `toolCount`, a prompt-size proxy for prompt-cache analysis.
+  Inter-session (`sessions_send`) turns keep `origin: "inter_session"` and `attempt`, so a
+  breakdown can leave them out the way the report does (their runIds start with `v-a2a-`).
   No message text, chat ids or message ids.
 
 The project thread "V首字每日报告" reads `latest.md` each morning and posts it. Nothing on V
