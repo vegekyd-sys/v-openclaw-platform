@@ -195,17 +195,23 @@ export const isWorkerChildProcess = (env = process.env) => env?.[WORKER_CHILD_EN
 
 export const DEFAULT_CONFIG = Object.freeze({
   role: "gateway",
+  workerGuard: false,
   ownerName: "Tianyi",
   agentNames: Object.freeze({}),
   limits: DEFAULT_LIMITS,
 });
 
-/** `openclaw.plugin.json` configSchema for plugin 2.0 (§3.10). */
+/**
+ * `openclaw.plugin.json` configSchema for plugin 2.0 (§3.10, amended by §13.1). `role` is kept
+ * only so an older config still validates; it no longer decides anything (a Worker gets the same
+ * config). `workerGuard: true` registers the §8.7 poll guard inside Worker children.
+ */
 export const CONFIG_SCHEMA = Object.freeze({
   type: "object",
   additionalProperties: false,
   properties: {
     role: { type: "string", enum: [...PLUGIN_ROLES] },
+    workerGuard: { type: "boolean" },
     ledgerDir: { type: "string" },
     ownerName: { type: "string" },
     agentNames: { type: "object", additionalProperties: { type: "string" } },
@@ -226,6 +232,7 @@ export function resolvePluginConfig(raw = {}) {
   }
   return {
     role: PLUGIN_ROLES.includes(cfg.role) ? cfg.role : DEFAULT_CONFIG.role,
+    workerGuard: cfg.workerGuard === true,
     ledgerDir: typeof cfg.ledgerDir === "string" && cfg.ledgerDir ? cfg.ledgerDir : undefined,
     ownerName: typeof cfg.ownerName === "string" && cfg.ownerName ? cfg.ownerName : DEFAULT_CONFIG.ownerName,
     agentNames: cfg.agentNames && typeof cfg.agentNames === "object" ? { ...cfg.agentNames } : {},

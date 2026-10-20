@@ -1,66 +1,70 @@
-# v-session-relay
+# v-session-relay 2.0
 
-让任何一个对话（私聊、群、Taskroom）里的 V 把一件事交给另一个对话的 V，对方做完后结果回到原来的对话，原来那个 V 被唤醒接着干。机制与 Claude Code 的跨会话消息、Grok Bot 的 bot 交接一样：传的是 session，不是另起 agent。
+一个对话（私聊、群、Task Room）里的 V 用原生 `sessions_send` 把事交给另一个对话的 V：请求以「📨 来自「…」的请求 #code」可见地出现在对方聊天里，对方在那里像收到真人消息一样流式地做；同一轮交出的几件全部有结果后，发起方只被叫醒一次、汇报一次。设计见 `docs/inter-session/design.md`（§2.b–§2.d、§3.10、§4–§8，§13 的修订优先）。
 
-**入口只有原生 `sessions_send`**，这里不加新工具。两层：
+**入口仍只有原生 `sessions_send`**。核心补丁 v3（`lab/release-files/sessions-send-relay/`，WP2）在读目标历史之前调用 Gateway 方法 `vrelay.send`；本插件只在 Gateway 进程里跑账本和引擎。插件缺席、`DISABLED` 或发起方不受支持时，核心照常走 v2。
 
-| 层 | 位置 | 做什么 | 升级到 9.8 后 |
-|---|---|---|---|
-| 行为 | dist 补丁 `lab/release-files/sessions-send-reply-once/`（标记 `v-sessions-send-reply-once-v1`） | 回移 9.5 + 9.8（上游 1b9e70e2685）：不等待的发送会一直等到对方那一轮结束（原来 30 秒就放弃、回信丢失）；回复只回一次，作为发起方的新一轮（run id `sessions-send-result:<对方 run>`）；去掉看不见的 5 轮来回和发到对方频道的 announce | 删掉，用官方的 |
-| 可见与可靠 | 本插件 `plugin/` | 两边聊天各一张收起的对话卡片；发起方不再传话时把它的话发出来；账本落盘，重启后或对方正忙被插入（steered）时补回信 | 保留 |
+## 组成
 
-```
-A 的 V 调 sessions_send ──► 对方 B 跑一轮（原生）
-   │ after_tool_call：插件记账本              │ before_prompt_build：插件告诉 B 是谁要的、缺信息就问
-   │                                         ▼
-   │                             B 这一轮结束，回复回到核心
-   ▼                                         │
-A 被唤醒（核心补丁，run id 可预测）◄───────────┘ before_prompt_build：插件告诉 A 对方在问就再 sessions_send，交了结果就收尾
-   ├─ 又 sessions_send 给 B → 同一条线程的下一轮
-   └─ 不再发 → 插件把 A 这一轮的话发到 A 的聊天里
-两边聊天里各有一张「A ⇄ B · 状态 · N 条」卡片，默认收起、一行，实时更新；点开每条是「V · 群名 · 时间」。
-```
+| 模块 | 做什么 |
+|---|---|
+| `core/contracts.js` | 冻结的常量、ID、校验（WP0；与 dist 补丁共享的字面量都在这里） |
+| `core/ledger.js` | `$OPENCLAW_STATE_DIR/v-session-relay/v2/`：`sends/ batches/ chains/ runs/ archive/ LOCK DISABLED`；单写者、异步原子写、CAS、先落盘后副作用 |
+| `core/policy.js` | 边分类（delegate / followup / ask）、LEAF、WAIT_CYCLE、REPLY_TO_REQUESTER、深度、扇出、预算、排队满 |
+| `core/queue.js` | 每个会话一条队列：ask > wake = collect > request，同类先到先做 |
+| `core/engine.js` | `send / wait / get / list / cancel`、pump、全局上限 4、BUSY 退避、批次封口与唤醒、W(S) 续接、后台收尾（collect）、inline 领取与退回 |
+| `core/recovery.js` | §6.3 重启恢复，四层防重复唤醒；在跑的请求 / 收尾回合只跟随核心的恢复回合或报中断，绝不重跑；看起来楔死的会话先观察一段时间，看核心是否认领 |
+| `core/routes.js` `core/labels.js` | 会话在哪、走桥还是 agent、聊天里有谁、链根身份规则、§7.1 标签 |
+| `core/copy.js` `core/visible.js` | §7、§8 全部文案；可见正文的隐私裁剪、隐去密钥、渠道长度上限、markdown 转义 |
+| `core/requests.js` | 组装 StartRequest（请求 / 提问 / 收尾 / 唤醒） |
+| `core/transports/bridge.js` `agent.js` | 渠道入站桥（完整卡片体验）；没有桥时用 Gateway `agent`（deliver:true）+ 渠道 `outbound.sendText` 发可见请求 |
+| `core/tasks.js` | 往 `taskRegistryBridge.extraSources` 提供「会话请求」后台行 |
+| `core/guard.js` | `before_tool_call` 轮询闸：已交出任务的回合里 `sleep ≥ 15 秒`（认 `5m`、`2h` 这类单位）、`timeout NN`、`while…sleep` 和第二次起读对方历史一律拦下（只拦，不改参数） |
+| `core/host.js` `index.js` | 一个进程一个引擎（`register()` 会被调用三次）；worker 子进程（`VLAB_WORKER_CHILD=1`）不起引擎，只在 `workerGuard` 打开时注册轮询闸 |
 
-对方很快答完时，原生工具会当场把回复作为工具结果交给 A（inline），A 在同一轮里接着说，插件只画卡片。
-
-## 规则
-
-- **谁都能发起，接收方的 V 自己判断**：不做工程上的权限限制。插件在对方那一轮里写明是谁（Gateway 给的 requester；owner 显示为 `ownerName`）在哪个对话要的，对方按自己的 redline 和本对话上下文决定做不做、能不能把内容带回去。
-- **只防兜圈**：正在回答别人请求的那一轮不能再转给第三方（`before_tool_call` 拦下）；一条线程最多 `maxChain`（默认 8）次。
-- **不丢回信**：每次 `sessions_send` 是 `storeDir` 里的一个 JSON 文件。Gateway 重启丢了核心的进程内等待时，follower 从文件接着等对方、读对方最后一条回复，并用同一个 run id 唤醒 A（不会跑两次）；对方正忙被插入当前轮（`targetDisposition: steered`，9.1 核心不跟踪）时同样由 follower 补上。
+Gateway 方法：`vrelay.send`、`vrelay.wait`（operator.write）、`vrelay.get`、`vrelay.list`（operator.read，`counts.running` 含在跑的唤醒和收尾回合，v-self-restart 的闲置门用它）、`vrelay.cancel`（operator.admin，只给运维）。
 
 ## 配置
+
+只写 Gateway 主配置（worker 配置由它自动推导，插件会被加载进每个 worker，但在 worker 里什么都不启动）：
 
 ```json
 {
   "enabled": true,
-  "hooks": { "allowConversationAccess": true },
   "config": {
-    "storeDir": "/home/openclaw/.openclaw/v-session-relay",
-    "owners": ["feishu:ou_…"],
     "ownerName": "Tianyi",
-    "maxChain": 8,
-    "agentNames": { "dealclaw": "小元" }
+    "agentNames": { "v-codex": "Codex" },
+    "workerGuard": false,
+    "limits": { "maxConcurrentRequestTurns": 4, "sharedVisibleChars": 200 }
   }
 }
 ```
 
-`before_prompt_build` 属于对话类 hook，必须开 `hooks.allowConversationAccess`。`storeDir` 必须是 Gateway 和 worker 都能读写的同一个目录。V 上 worker 读第二份配置（`memory: v-worker-config-second-file`），插件要在两份配置里都声明。
+`limits` 的全部键和默认值见 `core/contracts.js` 的 `DEFAULT_LIMITS`。`role` 仍可写（兼容旧配置），但不再起作用。`ledgerDir` 默认是 `<stateDir>/v-session-relay/v2`。
+
+## 止血与回滚
+
+1. 立即止血：在账本目录建 `DISABLED`（约 1 秒内生效），之后的 `sessions_send` 走 v2；在途的请求照常收尾。
+2. 停用插件：先把配置里的插件改成 `enabled: false`（会触发 worker 换代），再删目录（记忆 deleted-plugin-dir-breaks-worker-config）。
+3. `LOCK` 被另一个活着的进程持有时引擎不启动并记 error，`vrelay.send` 返回 fallback（防止 candidate 与共享 VLab 共用一个目录）。
 
 ## 测试
 
 ```sh
+node --test tests/v-session-relay.test.mjs          # CI 入口：import plugin/tests/ 下全部 *.test.mjs
 cd apps/v-session-relay/plugin && node --test 'tests/*.test.mjs'
-node --test tests/sessions-send-reply-once.test.mjs
-node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo "$PWD" --owner session-relay --plan "$PWD/lab/candidate/session-relay.plan.json"        # 来回对话
-node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo "$PWD" --owner session-relay --plan "$PWD/lab/candidate/session-relay-async.plan.json"  # 对方做 75 秒
 ```
 
-候选测试在私有运行时里对自己的 `sessions-spawn-tool` 字节打核心补丁，飞书走本机 webhook（不和共享 VLab 抢长连接），卡片和回复是真的，会出现在 owner 的 VLab 私聊和「VLab 发布验收 B」群。
+- `engine`：全部 phase、FIFO 类别、全局上限、批次、W(S) 续接、后台收尾、inline 领取 / 过期 / 竞态 / 退回、BUSY、路由不符改走 agent、楔死、撤回、排队超时。
+- `recovery`：§6.3 每个分支（进程内模拟崩溃后用同一目录重启）。
+- `crash-injection`：真子进程在 13 个落盘点 `VSR_CRASH_AT=<phase>`（含 `before:<phase>`）退出，再起一个进程恢复；断言每批最多一次唤醒、结果不丢、飞书锚点不重复、开跑过的回合不重跑、每个 MessageSid / runId 只用一次。
+- 测试世界（`fixtures/harness.mjs`）像核心和 worker 一样拒绝重复使用的 MessageSid / runId，任何测试里出现就失败。
+- `policy`、`ledger`、`routes`、`guard`、`copy`、`host`（三次 register、worker 判定、方法 scope、经 agent transport 的端到端）。
 
-## 还没做
+候选测试与共享 VLab 验收见设计 §10（WP10）。`VSR_TEST_START_DELAY_MS` 让引擎在开跑前多等一会儿（F3b 竞态用）。
 
-- 对方"后台异步干活"（spawn+yield、夜班、生图）时，回信是它这一轮的话，不是最终产物。
-- 只回文字，不带图片和文件。
-- claude-cli / vcodex / vds 下的 hook 与唤醒未验证；Gateway 真重启下的补回信只在单元测试里模拟过。
-- 9.8 上游仍开着的相关问题（#164732 等）回移时没有带进来，升级时要复核。
+## 已知限制
+
+- agent transport（R1 的 Telegram / 钉钉 / 企微、无渠道会话）只有可见请求和最终出站，回复里没有媒体；它没有 G 守卫，忙的目标靠预检避开，避不开时排在当前回合之后。
+- 插件内用 `callGatewayFromCli` 能否拿到 `operator.admin`（A5）未经实测；拿不到时自动降为非 owner 身份运行并记 warn。
+- /vcc 原生 Bash 的 sleep 拦不到（§8.7 第 5 条）。
