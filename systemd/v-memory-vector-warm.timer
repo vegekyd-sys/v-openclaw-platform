@@ -1,0 +1,10 @@
+[Unit]
+Description=Re-read V's memory_search vectors every minute so they stay cached
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=60s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
