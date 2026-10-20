@@ -46,7 +46,7 @@ import { a as resolveModelCostConfig, t as estimateAggregateUsageCost } from "./
 import { a as hasInterSessionUserProvenance } from "./input-provenance-CCQsDhUy.js";
 import { a as projectPluginSessionExtensionsSync } from "./host-hook-state-CqMIyt2W.js";
 import { T as buildSubagentRunReadIndexFromRuns, b as getSubagentRunsSnapshotForRead, c as getSessionDisplaySubagentRunByChildSessionKey, d as isSubagentRunLive, f as isSubagentRunQueued, h as listSubagentRunsForController, i as countActiveDescendantRuns, r as buildSubagentSessionListReadIndex } from "./subagent-registry-read-UaDFTyfW.js";
-import { w as subagentRunRegistry } from "./subagent-registry.store.sqlite-hzGu4QSk.js";
+import { loadSubagentRunTreeFromSqlite, w as subagentRunRegistry } from "./subagent-registry.store.sqlite-hzGu4QSk.js";
 import { a as shouldKeepSubagentRunChildLink, l as resolveSubagentSessionStatus, o as getSubagentSessionRuntimeMs, s as getSubagentSessionStartedAt } from "./subagent-run-liveness-CrhVXF5Y.js";
 import { S as resolveCurrentUserProfileDisplay, d as sqliteMessageEventWithSeq, f as toTranscriptReadScope, j as projectSessionDisplayMessage, r as readRecentSessionUsageFromTranscript, u as resolveTranscriptReadTarget } from "./session-transcript-readers-Bry9KBsD.js";
 import { n as buildControlUiChannelAvatarUrl, r as buildControlUiResourcePath } from "./control-ui-contract-CgrOMhfo.js";
@@ -772,7 +772,34 @@ function buildSingleRowStoreChildSessionsByKey(params) {
 // run of the row (4,345 under agent:makaron:main on V) re-read the whole registry snapshot (reloaded
 // from SQLite once it is 500 ms old) and rebuilt the index over all runs: 43-95 s of main thread per
 // chat.history. Same snapshot and in-memory runs the global lookups read, so the row is unchanged.
-function buildSingleRowSubagentRunIndex(now) {
+// v-subagent-scoped-row-index-v1: a row only asks the index about its own key, its runtime children
+// (runs it controls), its store children and their descendants. With a scope, load just the runs
+// those answers read (loadSubagentRunTreeFromSqlite) and the in-memory runs of the same closure, merged
+// in the whole snapshot's order with in-memory runs winning. Session events and transcript broadcasts build one row each, so the 500 ms
+// whole-registry reload ran for nearly every event on V (967 GB allocated in 2 h, 2026-10-20).
+function buildSingleRowSubagentRunIndex(now, scope) {
+	if (scope?.key && process.env.OPENCLAW_V_SCOPED_ROW_SUBAGENT_RUNS !== "0") try {
+		const key = scope.key.trim();
+		const tree = loadSubagentRunTreeFromSqlite({
+			controllerKey: key,
+			rootKeys: [key, ...scope.store ? buildStoreChildSessionCandidateIndex(scope.store, new Set([key])).get(key) ?? [] : []],
+			inMemoryRuns: subagentRunRegistry.values()
+		});
+		const runs = /* @__PURE__ */ new Map();
+		for (const entry of tree.runs) runs.set(entry.runId, entry);
+		// The Gateway restores every persisted run into memory; keep the ones in the closure, and any
+		// that replaces a persisted run already selected (in-memory wins, as in the whole snapshot).
+		const inMemoryRuns = [];
+		for (const [runId, entry] of subagentRunRegistry) if (runs.has(runId) || tree.childKeys.has(entry.childSessionKey.trim()) || tree.requesterKeys.has(entry.requesterSessionKey) || (entry.controllerSessionKey?.trim() || entry.requesterSessionKey) === key) {
+			runs.set(runId, entry);
+			inMemoryRuns.push(entry);
+		}
+		return buildSubagentRunReadIndexFromRuns({
+			runs,
+			inMemoryRuns,
+			now
+		});
+	} catch {}
 	return buildSubagentRunReadIndexFromRuns({
 		runs: getSubagentRunsSnapshotForRead(subagentRunRegistry),
 		inMemoryRuns: subagentRunRegistry.values(),
@@ -902,7 +929,10 @@ function buildGatewaySessionRow(params) {
 	const sessionAgentId = normalizeAgentId(parsedAgent?.agentId ?? params.agentId ?? resolveSessionStoreAgentId(cfg, key));
 	const skipTranscriptUsage = params.skipTranscriptUsageFallback === true;
 	const rowContext = params.rowContext;
-	const subagentIndex = rowContext?.subagentRuns ?? params.subagentRuns ?? buildSingleRowSubagentRunIndex(now);
+	const subagentIndex = rowContext?.subagentRuns ?? params.subagentRuns ?? buildSingleRowSubagentRunIndex(now, {
+		key,
+		store
+	});
 	const subagentRun = subagentIndex ? subagentIndex.getDisplaySubagentRun(key) : getSessionDisplaySubagentRunByChildSessionKey(key);
 	const subagentOwner = normalizeOptionalString(subagentRun?.controllerSessionKey) || normalizeOptionalString(subagentRun?.requesterSessionKey);
 	const liveSubagentRunActive = isSubagentRunLive(subagentRun) || isSubagentRunQueued(subagentRun);
@@ -1244,7 +1274,10 @@ function loadGatewaySessionSnapshot(sessionKey, options, lightweight = false) {
 		...options?.agentId ? { agentId: options.agentId } : {}
 	});
 	if (!entry) return { row: null };
-	const subagentRuns = buildSingleRowSubagentRunIndex(now);
+	const subagentRuns = buildSingleRowSubagentRunIndex(now, {
+		key: canonicalKey,
+		store
+	});
 	const storeChildSessionsByKey = buildSingleRowStoreChildSessionsByKey({
 		store,
 		key: canonicalKey,
@@ -1280,7 +1313,10 @@ function loadGatewaySessionRow(sessionKey, options) {
 }
 function buildGatewaySessionInfo(params) {
 	const now = params.now ?? Date.now();
-	const subagentRuns = buildSingleRowSubagentRunIndex(now);
+	const subagentRuns = buildSingleRowSubagentRunIndex(now, {
+		key: params.key,
+		store: params.store
+	});
 	const storeChildSessionsByKey = buildSingleRowStoreChildSessionsByKey({
 		store: params.store,
 		key: params.key,

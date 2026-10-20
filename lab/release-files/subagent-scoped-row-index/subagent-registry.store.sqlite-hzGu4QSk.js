@@ -8,6 +8,7 @@ import { $ as normalizeAgentRunTerminalReplySnapshot, i as openOpenClawStateData
 import { c as normalizeDeliveryContext } from "./delivery-context.shared-DlcU69m_.js";
 import { isDeepStrictEqual } from "node:util";
 import { sql } from "kysely";
+import { l as runSqliteDeferredTransactionSync } from "./node-sqlite-CL-d6drd.js";
 //#region src/agents/subagents/registry/subagent-registry-memory.ts
 /**
 * Process-local live subagent run map.
@@ -419,6 +420,74 @@ function loadSubagentRunsForChildSessionFromSqlite(childSessionKey) {
 		sessionKey: childSessionKey
 	});
 }
+// v-subagent-scoped-row-index-v1: the persisted runs one session row's read index needs, in one read snapshot,
+// through the child / requester / controller indexes:
+//   - runs controlled by controllerKey (controller column, or requester when it has none);
+//   - every run whose child is in the closure (latest-generation and display lookups);
+//   - every run whose requester is in the closure (descendant walk), whose children join the closure.
+// The closure starts at rootKeys and also follows inMemoryRuns. Rows are returned in the whole
+// registry's order (created_at, run_id), parsed by the same rowToSubagentRunRecord, with the closure's
+// child and requester keys so the caller can select the in-memory runs the same way.
+function loadSubagentRunTreeFromSqlite(params) {
+	const { db } = openOpenClawStateDatabase();
+	const stateDb = getNodeSqliteKysely(db);
+	const controllerKey = params.controllerKey.trim();
+	const read = () => {
+		const parsed = new Map();
+		const childKeys = new Set();
+		const requesterKeys = new Set();
+		let pendingChild = [];
+		let pendingRequester = [];
+		const addKey = (key) => {
+			const value = typeof key === "string" ? key.trim() : "";
+			if (!value) return;
+			if (!childKeys.has(value)) {
+				childKeys.add(value);
+				pendingChild.push(value);
+			}
+			if (!requesterKeys.has(value)) {
+				requesterKeys.add(value);
+				pendingRequester.push(value);
+			}
+		};
+		const parse = (row) => {
+			if (!parsed.has(row.run_id)) parsed.set(row.run_id, {
+				row,
+				run: rowToSubagentRunRecord(row)
+			});
+			return parsed.get(row.run_id).run;
+		};
+		const select = (column, keys) => {
+			const rows = [];
+			for (let offset = 0; offset < keys.length; offset += 400) rows.push(...executeSqliteQuerySync(db, stateDb.selectFrom("subagent_runs").selectAll().where(column, "in", keys.slice(offset, offset + 400))).rows);
+			return rows;
+		};
+		for (const key of params.rootKeys) addKey(key);
+		if (controllerKey) for (const row of executeSqliteQuerySync(db, stateDb.selectFrom("subagent_runs").selectAll().where((eb) => eb.or([eb("controller_session_key", "=", controllerKey), eb.and([eb.or([eb("controller_session_key", "is", null), eb("controller_session_key", "=", "")]), eb("requester_session_key", "=", controllerKey)])]))).rows) {
+			const run = parse(row);
+			if (run) addKey(run.childSessionKey);
+		}
+		const inMemoryRuns = [...params.inMemoryRuns ?? []];
+		while (pendingChild.length > 0 || pendingRequester.length > 0) {
+			const requesters = pendingRequester;
+			pendingRequester = [];
+			for (const row of select("requester_session_key", requesters)) {
+				const run = parse(row);
+				if (run) addKey(run.childSessionKey);
+			}
+			const children = pendingChild;
+			pendingChild = [];
+			select("child_session_key", children).forEach(parse);
+			for (const entry of inMemoryRuns) if (requesterKeys.has(entry.requesterSessionKey) || controllerKey && (entry.controllerSessionKey?.trim() || entry.requesterSessionKey) === controllerKey) addKey(entry.childSessionKey);
+		}
+		return {
+			runs: [...parsed.values()].filter((item) => item.run).sort((left, right) => Number(left.row.created_at) - Number(right.row.created_at) || Buffer.compare(Buffer.from(String(left.row.run_id)), Buffer.from(String(right.row.run_id)))).map((item) => item.run),
+			childKeys,
+			requesterKeys
+		};
+	};
+	return db.isTransaction ? read() : runSqliteDeferredTransactionSync(db, read);
+}
 /** Loads the canonical subagent registry from shared SQLite state. */
 function loadSubagentRegistryFromSqlite() {
 	const runs = /* @__PURE__ */ new Map();
@@ -455,4 +524,5 @@ function saveSubagentRegistryChangesToSqlite(runs, changedRunIds) {
 	writeSubagentRunValues(values, deleteRunIds);
 }
 //#endregion
+export { loadSubagentRunTreeFromSqlite };
 export { getSubagentRunsForCollectorGroup as C, getSubagentRunsForChildSession as S, hasRetainedRequiredCompletionDelivery as _, loadSubagentSessionListRunsFromSqlite as a, findAuthorizedSwarmCollectorRequest as b, saveSubagentRegistryToSqlite as c, nextSubagentRunGeneration as d, clearDeliveryState as f, getDeliveryLastError as g, getDeliveryAttemptCount as h, loadSubagentRunsForControllerFromSqlite as i, upsertSubagentRunRowInDatabase as l, ensureDeliveryState as m, loadSubagentRegistryFromSqlite as n, readSubagentRun as o, ensureCompletionState as p, loadSubagentRunsForChildSessionFromSqlite as r, saveSubagentRegistryChangesToSqlite as s, bindSubagentRunRecord as t, compareSubagentRunGeneration as u, isDeliverySuspended as v, subagentRuns as w, findSwarmCollectorSession as x, normalizeSubagentRunState as y };
