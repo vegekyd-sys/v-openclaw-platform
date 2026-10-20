@@ -150,24 +150,29 @@ A batch costs ~1.3 s of fixed work plus ~0.12 s per session; nothing came close 
 `scripts/retire-nightshift-sessions.mjs`. By default it only previews: plan, counts and sample keys. It
 selects Night Shift subagent sessions of `makaron` that meet all of these:
 
-- older than `--older-than-days` (3);
+- older than `--older-than-days` (14, Tianyi's choice on 2026-10-20);
 - status not running;
 - no workboard card links them, or every linking card is `done` or archived (blocked / review / ready /
   todo cards keep their session).
 
-On the copy: 3,204 candidates; 108 kept for open cards and 565 for being recent. With `--apply` it removes
+On the copy with a 3-day threshold: 3,204 candidates; 108 kept for open cards and 565 for being recent.
+With `--apply` it removes
 `--batch` (2) keys per lifecycle mutation. Before each batch it measures its own `BEGIN IMMEDIATE` wait
 and backs off when that wait exceeds `--max-lock-wait-ms` (1.5 s). It stops outside `--window`.
+
+Threshold: 14 days (Tianyi, 2026-10-20). V on 10/20 15:3x had 3,905 Night Shift sessions: 3,329 older
+than 3 days, 1,545 older than 7, 943 older than 10, 38 older than 14. So a 14-day run removes almost
+nothing today; the store shrinks as the 10/08–10/17 batches age past 14 days. The 3- and 7-day rows
+above measure the mechanism and what a smaller store reads like.
 
 Suggested order on V:
 
 1. Preview.
 2. `--apply --max 10` as a canary, then check `slow SQLite transaction hold` lines in
    `/tmp/openclaw/openclaw-*.log` and Gateway liveness.
-3. 7 days in 03:00–05:30 (Night Shift's quietest hours, ~50 new sessions an hour).
-4. 3 days the next night.
+3. Then run it in 03:00–05:30 (Night Shift's quietest hours, ~50 new sessions an hour), for example daily.
 
-Expect about 1 h for ~3,200 sessions. Not measured: the Night Shift transcripts on V average ~1.6 MB a
+Expect about 1 h per ~3,200 sessions at batch 2. Not measured: the Night Shift transcripts on V average ~1.6 MB a
 session (sample of 30), so V's archive work per batch is larger than the copy's mix. Also unknown:
 whether opening V's 21 GB database from a second process triggers the DB91 integrity gate, so watch the
 first open.

@@ -9,7 +9,7 @@
 //   sudo -u openclaw env $(systemctl show openclaw-gateway -p Environment --value) \
 //     /opt/node-v22.23.1/bin/node scripts/retire-nightshift-sessions.mjs \
 //       --dist /opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist \
-//       --older-than-days 3 [--apply] [--max 200] [--window 03:00-05:30]
+//       [--older-than-days 14] [--apply] [--max 200] [--window 03:00-05:30]
 //
 // A session is retired only when all hold:
 //   - key starts with agent:<agent>:subagent:workboard-nightshift-
@@ -36,7 +36,7 @@ if (!dist || !fs.existsSync(path.join(dist, "session-accessor-K0XuW6ln.js"))) {
 }
 const AGENT = option("agent", "makaron");
 const PREFIX = `agent:${AGENT}:subagent:workboard-nightshift-`;
-const OLDER_THAN_DAYS = Number(option("older-than-days", "3"));
+const OLDER_THAN_DAYS = Number(option("older-than-days", "14"));
 const BATCH = Number(option("batch", "2"));
 const PAUSE_MS = Number(option("pause-ms", "1000"));
 const MAX = Number(option("max", "0")) || Infinity;
