@@ -155,6 +155,33 @@ test("recovery: the core's recovery run answers after its own resume message —
   } finally { await w.close(); }
 });
 
+test("recovery: a tool-heavy turn's answer is found even when its tag is far back in the transcript", async () => {
+  // The recovery reads the transcript tail; a request turn with a dozen tool calls (two records each)
+  // pushed its tag out of the old 20-record window and the answer was reported as missing.
+  const w = await createWorld({ ledger: crash("running"), bridge: { holdRuns: true } });
+  try {
+    await w.send(DM, X, "工具很多的一轮", { runId: "rA" });
+    w.endRun("rA", DM);
+    const rec = only(w);
+    await waitFor(() => w.ledger.dead);
+    const runId = startOf(w, "request", rec.sendId)[0].args.runId;
+    w.entries.set(X, { restartRecoveryDeliverySourceRunId: runId, restartRecoveryDeliveryRunId: "core-recovery-4" });
+    w.busy.add(X);
+    await w.restart();
+    await waitFor(() => w.rec(rec.sendId).targetRun.recoveryRunId === "core-recovery-4", { what: "following the core run" });
+    const t = w.transcripts.get(X);
+    for (let i = 0; i < 30; i += 1) {
+      t.push({ role: "assistant", content: [{ type: "toolCall", name: "exec" }] });
+      t.push({ role: "toolResult", content: [{ type: "text", text: `step ${i}` }] });
+    }
+    t.push({ role: "assistant", content: [{ type: "text", text: "六十条记录之后的答复" }] });
+    w.busy.delete(X);
+    w.endRun("core-recovery-4", X);
+    await settledOnce(w, rec.sendId, { wakeText: /六十条记录之后的答复/u });
+    assert.equal(w.rec(rec.sendId).result.noReply, false);
+  } finally { await w.close(); }
+});
+
 test("recovery: an untagged person message after the request still ends the request's reply", async () => {
   const w = await createWorld({ ledger: crash("running"), bridge: { holdRuns: true } });
   try {

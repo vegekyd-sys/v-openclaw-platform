@@ -291,7 +291,9 @@ export function F5(env, { target = "ga", id = "F5", sleepSecs = 90, waitReady })
     const notes = h.items(chat, killedAt).filter((m) => /^⚠️/u.test(strip(m.text)) && String(m.text).includes(`#${rec.code}`));
     const recovered = Boolean(rec.targetRun?.recoveryRunId) && !rec.failure;
     // A recovery turn that answered in the target chat must hand that answer back, not "no text result".
-    const recoveredText = h.items(chat, killedAt).filter((m) => !m.deleted && String(m.text).includes(result));
+    const anchorIds = new Set(h.anchors(chat, t0).map((m) => m.id));
+    const recoveredText = h.items(chat, killedAt).filter((m) => !m.deleted && !anchorIds.has(m.id) && !/^⚠️/u.test(strip(m.text)) && m.at <= (rec.targetRun?.endedAt ?? Date.now()) + 3000);
+    const clean = (t) => String(t ?? "").replace(/[\s*`_#>]/gu, "");
     const alive = `ALIVE_${ctx.tag}`;
     const ta = Date.now();
     ad.person(chat, `【${ctx.tag}-${id} 重启后】这是自动化测试，只回复 ${alive}`);
@@ -306,7 +308,7 @@ export function F5(env, { target = "ga", id = "F5", sleepSecs = 90, waitReady })
     evidence(id, "log", h.relayLog(killedAt));
     check(id, before.phase === "running", "the Gateway was killed while the target turn ran", before.phase);
     check(id, (notes.length === 1 && rec.failure?.class === "interrupted") !== recovered && (notes.length === 1 || recovered), "exactly one of: a restart note in the target chat, or a recovery turn's result", { notes: notes.map(h.view), failure: rec.failure, recoveryRunId: rec.targetRun?.recoveryRunId });
-    if (recovered) check(id, recoveredText.length === 0 || String(rec.result?.text ?? "").includes(result), "a recovery turn's visible answer is what gets handed back (not \"no text result\")", { visible: recoveredText.map(h.view), result: rec.result });
+    if (recovered) check(id, recoveredText.length === 0 || (!rec.result?.noReply && recoveredText.some((m) => clean(m.text).includes(clean(rec.result?.text).slice(0, 30)))), "a recovery turn's visible answer is what gets handed back (not \"no text result\")", { visible: recoveredText.map(h.view), result: rec.result });
     if (notes.length && ad.replyAnchor) check(id, String(notes[0].replyTo) === String(rec.request.messageId), "the restart note replies to the anchor", h.view(notes[0]));
     check(id, hbs.length === 1, "exactly one hand-back line for #code in the DM", hbs.map(h.view));
     check(id, batch.phase === "woken" && wakeUsers.length === 1, "exactly one wake turn in the DM", { phase: batch.phase, wakeUsers: wakeUsers.length });
