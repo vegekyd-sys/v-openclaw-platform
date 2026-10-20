@@ -23,8 +23,9 @@
 //   its req_id for the chat (setReqIdForChat), and it runs in the target session the relay
 //   chose (SessionKey forced against dynamic routing);
 // - the turn's ctx fields (InputProvenance, ChannelPromptContext as 9.1's string[],
-//   CommandInterpretationSuppressed, CommandAuthorized false, SenderId/SenderName/MessageSid,
-//   VInterSession) and replyOptions (runId, vInterSession, onAgentRunStart);
+//   CommandInterpretationSuppressed, CommandAuthorized false, SenderId/SenderName/MessageSid, in a
+//   direct chat From = the chain root, VInterSession) and replyOptions (runId, vInterSession,
+//   onAgentRunStart, onAgentRunTerminalOutcome);
 // - the result: the final text taken from state.accumulatedText before vStop appends the
 //   background line, plus the media the turn delivered; ask_user questions are not results;
 // - a BUSY start (core admission guard) leaves nothing in the chat: nothing it is handed is
@@ -218,7 +219,17 @@ function vIsResolveRoute(accountId, q) {
         },
     };
 }
-/** One start: what the handler reports back (run start, BUSY, result) and what the relay is told. */
+/**
+ * One start: what the handler reports back (run start, BUSY, result) and what the relay is told.
+ * A second onAgentRunStart of the same start (the core re-running a stranded reply) changes nothing;
+ * its output joins done while it is open. When the handler returns the run closes: a followup drain
+ * may run a person's turn with this turn's options, and nothing that turn reports is this request's;
+ * closing also retires the exclusive-admission seam, so the core admits such a reused turn like any
+ * other. RunOutcome.status (same rule in every channel bridge): error when the handler failed or the
+ * core reported "failed"; ok when it reported "completed"; with no terminal outcome (the core reports
+ * none for an aborted run) ok only if a non-error final was delivered, else aborted. Error notices
+ * (isError) go in error, never in finals.
+ */
 function vIsCreateRun(req) {
     let settled = false;
     let resolveOutcome;
@@ -229,6 +240,7 @@ function vIsCreateRun(req) {
         req, outcome, runId: req.runId, phase: "pending", began: false, busy: false, dispatched: false,
         error: undefined, deliveryError: undefined, finalText: "", finalNoted: false, finalSent: false, media: [],
         finalCount: 0, delivered: 0, visible: false, finished: false, queueTimer: undefined,
+        terminal: undefined, resultFinal: false, errorTexts: [],
     };
     const settle = (value) => {
         if (settled) return;
@@ -239,7 +251,7 @@ function vIsCreateRun(req) {
     run.control = {
         exclusive: true, id: req.id, kind: req.kind,
         onBusy: (info) => {
-            if (run.phase !== "pending") return;
+            if (run.finished || run.phase !== "pending") return;
             run.phase = "busy";
             run.busy = true;
             settle({ status: "busy", reason: V_IS_BUSY_REASONS.includes(info?.reason) ? info.reason : "active_run" });
@@ -247,7 +259,7 @@ function vIsCreateRun(req) {
     };
     /** True only for the call that starts the run. */
     run.onAgentRunStart = (runId) => {
-        if (run.phase !== "pending") return false;
+        if (run.finished || run.phase !== "pending") return false;
         run.phase = "started";
         if (typeof runId === "string" && runId) run.runId = runId;
         settle({ status: "started", runId: run.runId, done });
@@ -260,6 +272,11 @@ function vIsCreateRun(req) {
             settle({ status: "busy", reason: "pending_queue" });
         }, V_IS_QUEUE_WAIT_MS);
         run.queueTimer.unref?.();
+    };
+    /** The core's terminal outcome of the run ("completed" | "failed"; none for an aborted run). */
+    run.onTerminalOutcome = (value) => {
+        if (run.finished || run.busy) return;
+        if (value === "failed" || run.terminal === undefined) run.terminal = value;
     };
     run.begin = () => {
         if (run.phase !== "pending") return false;
@@ -274,6 +291,10 @@ function vIsCreateRun(req) {
         CommandInterpretationSuppressed: true,
         SenderId: req.sender?.id,
         SenderName: req.sender?.name,
+        // In a direct chat the core reads From as a sender identity too (elevated allowFrom,
+        // shouldUseFromAsSenderFallback): it carries the chain root, never the chat's person, who
+        // still routes the turn (To, the synthetic frame's sender).
+        ...(req.route?.chatType === "direct" ? { From: "wecom:" + req.sender?.id } : {}),
         MessageSid: req.messageSid,
         VInterSession: run.control,
         ReqId: undefined,
@@ -281,19 +302,27 @@ function vIsCreateRun(req) {
         WeComFrame: undefined,
     });
     run.noteDeliver = (payload, info) => {
+        if (run.finished) return;
         run.delivered += 1;
         if (info?.kind === "final") run.finalCount += 1;
+        const text = typeof payload?.text === "string" ? payload.text.trim() : "";
+        if (payload?.isError === true) {
+            if (text) run.errorTexts.push(text);
+            return;
+        }
         const urls = payload?.mediaUrls?.length ? payload.mediaUrls : payload?.mediaUrl ? [payload.mediaUrl] : [];
+        if (info?.kind === "final" && (text || urls.length)) run.resultFinal = true;
         for (const url of urls) if (typeof url === "string" && url && !run.media.includes(url)) run.media.push(url);
     };
     // The first call is the result: a retry after a failed final send sees the background line too.
     run.noteFinal = (text, state) => {
-        if (run.finalNoted) return;
+        if (run.finished || run.finalNoted) return;
         run.finalNoted = true;
         run.finalText = String(text ?? "");
         run.visible = Boolean(run.finalText.trim()) || Boolean(state?.hasMedia) || Boolean(state?.hasTemplateCard);
     };
     run.noteError = (err) => {
+        if (run.finished) return;
         if (run.dispatched) run.deliveryError ??= err;
         else run.error ??= err;
     };
@@ -301,10 +330,11 @@ function vIsCreateRun(req) {
         if (run.finished) return;
         run.finished = true;
         clearTimeout(run.queueTimer);
+        run.control.exclusive = false;
         const error = run.error ?? err;
         const message = error === undefined ? "" : String(error?.message ?? error);
         if (run.phase === "pending") {
-            if (run.delivered > 0 || run.finalText.trim()) {
+            if (run.delivered > 0 || run.finalText.trim() || run.terminal !== undefined) {
                 // The turn ran although no run start was reported: never report it as not started.
                 run.phase = "started";
                 settle({ status: "started", runId: run.runId, done });
@@ -318,14 +348,18 @@ function vIsCreateRun(req) {
             }
         }
         if (run.phase !== "started") return;
-        const text = run.finalText.trim() ? run.finalText : "";
+        // The answer text (finalText also holds streamed text and error notices) is a result only when a
+        // non-error final came, or the core reported the run completed.
+        const text = run.finalText.trim() && (run.resultFinal || run.terminal === "completed") ? run.finalText : "";
         const finals = text || run.media.length ? [{ ...(text ? { text } : {}), ...(run.media.length ? { mediaUrls: [...run.media] } : {}) }] : [];
+        const status = error !== undefined || run.terminal === "failed" ? "error" : run.terminal === "completed" || run.resultFinal ? "ok" : "aborted";
+        const errorText = error !== undefined ? message : run.errorTexts.length ? run.errorTexts.join("\n") : status === "error" ? "the agent run failed" : undefined;
         resolveDone({
-            status: error === undefined ? "ok" : "error",
+            status,
             finals,
             visibleReplySent: run.visible && run.finalSent,
             finalCount: run.finalCount,
-            ...(error === undefined ? {} : { error: message }),
+            ...(errorText === undefined ? {} : { error: errorText }),
         });
     };
     return run;
@@ -543,6 +577,9 @@ import { normalizeAccountId as vNormalizeAccountId } from "openclaw/plugin-sdk/a
                     vInterSession: vInterSession.control,
                     onAgentRunStart: (runId) => {
                         if (vInterSession.onAgentRunStart(runId)) vRouteQuestions();
+                    },
+                    onAgentRunTerminalOutcome: (value) => {
+                        vInterSession.onTerminalOutcome(value);
                     },
                 } : {}),
                 allowToolLifecycleWhenProgressHidden: true,

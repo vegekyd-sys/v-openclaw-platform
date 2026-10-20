@@ -29,6 +29,7 @@ import {
   syntheticSenderIdFor, validateBridge, validateRoute, validateRunOutcome, validateStartOutcome, validateStartRequest,
 } from "../apps/v-session-relay/plugin/core/contracts.js";
 import { INVALID_REQ_ID_ERRCODE, createFakeWeComAibot } from "../lab/candidate/wecom-fake-aibot.mjs";
+import { vElevatedSenderCheck } from "./fixtures/inter-session-core-probes.mjs";
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const CAPTURE_SRC = path.join(repo, "release/captured/v2026.9.1-db91.6-subagent-index-20261020.wecom/dist/dist/src");
@@ -378,7 +379,9 @@ test("start: a turn in the target session that never answers a req_id; the resul
   const n = h.client.calls.length;
   const d = h.dispatches.length;
   const lanes = {};
+  let exclusiveDuringRun;
   h.script = async ({ replyOptions, dispatcherOptions }) => {
+    exclusiveDuringRun = replyOptions.vInterSession.exclusive;
     lanes.chat = h.chatQueue.hasActiveTask("default:ZhangSan");
     lanes.activeRun = h.chatQueue.hasActiveTask("default:ZhangSan:active-run");
     replyOptions.onAgentRunStart(replyOptions.runId);
@@ -427,7 +430,8 @@ test("start: a turn in the target session that never answers a req_id; the resul
   assert.equal(ctx.To, "wecom:ZhangSan");
   assert.equal(ctx.ChatType, "direct");
   assert.equal(ctx.VInterSession, replyOptions.vInterSession, "one control object in ctx and replyOptions");
-  assert.deepEqual({ ...replyOptions.vInterSession, onBusy: typeof replyOptions.vInterSession.onBusy }, { exclusive: true, id: req.id, kind: "request", onBusy: "function" });
+  assert.equal(exclusiveDuringRun, true, "the core's admission guard sees an exclusive turn");
+  assert.deepEqual({ ...replyOptions.vInterSession, onBusy: typeof replyOptions.vInterSession.onBusy }, { exclusive: false, id: req.id, kind: "request", onBusy: "function" }, "retired once done");
   assert.equal(replyOptions.runId, req.runId);
   assert.equal(typeof replyOptions.onAgentRunStart, "function");
   const record = h.records.at(-1);
@@ -629,6 +633,91 @@ test("start: a group turn, a turn that ran without a run-start signal, and a lon
     assert.equal(parts.join(text === longLine ? "" : "\n"), text);
     assert.deepEqual(respondCalls(callsSince(n)), []);
   }
+});
+
+test("start: a direct-chat turn routes by the person, but its authority follows the chain root (From is sender.id)", async () => {
+  const elevated = vElevatedSenderCheck();
+  const req = startRequest({ chatId: "OwnerDm" });
+  h.script = async ({ replyOptions, dispatcherOptions }) => {
+    replyOptions.onAgentRunStart(replyOptions.runId);
+    await dispatcherOptions.deliver({ text: "好" }, { kind: "final" });
+  };
+  await (await h.bridge.start(req)).done;
+  await queueIdle("OwnerDm");
+  const { ctx } = h.dispatches.at(-1);
+  assert.equal(ctx.SessionKey, req.sessionKey);
+  assert.equal(ctx.To, "wecom:OwnerDm", "the person's chat routes the turn");
+  assert.deepEqual([ctx.SenderId, ctx.From, ctx.ChatType], [req.sender.id, `wecom:${req.sender.id}`, "direct"]);
+  assert.equal(elevated.fromIsSender(ctx), true, "in a direct chat V reads From as a sender identity");
+  assert.equal(elevated.approved({ provider: "wecom", allowFrom: ["wecom:OwnerDm"], ctx }), false, "the person's elevated rights are not lent to a non-owner chain");
+  assert.equal(elevated.approved({ provider: "wecom", allowFrom: ["wecom:OwnerDm"], ctx: { ...ctx, From: "wecom:OwnerDm" } }), true, "with the person's From (the plugin's own value) they would be");
+});
+
+test("start: with no terminal outcome a run is ok only with a non-error final, else aborted; error notices are never results", async () => {
+  const run = async (chatId, script) => {
+    h.script = script;
+    const outcome = await h.bridge.start(startRequest({ chatId }));
+    assert.equal(outcome.status, "started", chatId);
+    const done = await outcome.done;
+    await queueIdle(chatId);
+    assert(validateRunOutcome(done).ok, validateRunOutcome(done).errors.join("; "));
+    return done;
+  };
+  // stopped after some text streamed: no terminal outcome, nothing final
+  let done = await run("Stopped", async ({ replyOptions, dispatcherOptions }) => {
+    replyOptions.onAgentRunStart(replyOptions.runId);
+    await dispatcherOptions.deliver({ text: "正在整理第一份……" }, { kind: "block" });
+  });
+  assert.deepEqual([done.status, done.finals], ["aborted", []]);
+  // a stalled run's interruption notice is an error final: aborted, the notice in error, no result
+  done = await run("Stalled", async ({ replyOptions, dispatcherOptions }) => {
+    replyOptions.onAgentRunStart(replyOptions.runId);
+    await dispatcherOptions.deliver({ text: "⚠️ This turn was interrupted.", isError: true }, { kind: "final" });
+  });
+  assert.deepEqual([done.status, done.finals, done.error], ["aborted", [], "⚠️ This turn was interrupted."]);
+  // the core reported failed: error, with its notice as the error
+  done = await run("FailedRun", async ({ replyOptions, dispatcherOptions }) => {
+    replyOptions.onAgentRunStart(replyOptions.runId);
+    await dispatcherOptions.deliver({ text: "⚠️ Agent failed: model unavailable", isError: true }, { kind: "final" });
+    replyOptions.onAgentRunTerminalOutcome?.("failed");
+  });
+  assert.deepEqual([done.status, done.finals, done.error], ["error", [], "⚠️ Agent failed: model unavailable"]);
+  // completed with nothing to say (NO_REPLY): ok without finals
+  done = await run("Silent", async ({ replyOptions }) => {
+    replyOptions.onAgentRunStart(replyOptions.runId);
+    replyOptions.onAgentRunTerminalOutcome?.("completed");
+  });
+  assert.deepEqual([done.status, done.finals], ["ok", []]);
+});
+
+test("start: events after done are not the request's; a second run start of the same start is tolerated", async () => {
+  let seen;
+  h.script = async (p) => {
+    seen = p;
+    const { replyOptions, dispatcherOptions } = p;
+    replyOptions.onAgentRunStart(replyOptions.runId);
+    await dispatcherOptions.deliver({ text: "第一份。" }, { kind: "final" });
+    // stranded-reply recovery runs the same turn once more: a second onAgentRunStart for this start
+    replyOptions.onAgentRunStart(replyOptions.runId);
+    await dispatcherOptions.deliver({ text: "第二份。", mediaUrls: ["https://media.test/b.png"] }, { kind: "final" });
+    replyOptions.onAgentRunTerminalOutcome?.("completed");
+  };
+  const req = startRequest({ chatId: "LateChat" });
+  const outcome = await h.bridge.start(req);
+  assert.deepEqual([outcome.status, outcome.runId], ["started", req.runId]);
+  const run = await outcome.done;
+  await queueIdle("LateChat");
+  assert.deepEqual([run.status, run.finals], ["ok", [{ text: "第一份。第二份。", mediaUrls: ["https://media.test/b.png"] }]], "the re-run's output belongs to the same done");
+  const snapshot = structuredClone(run);
+  // a followup drain that reuses this turn's options runs a person's message with them
+  const { replyOptions, dispatcherOptions } = seen;
+  replyOptions.onAgentRunStart("person-followup-run");
+  replyOptions.onAgentRunTerminalOutcome?.("failed");
+  replyOptions.vInterSession.onBusy({ reason: "active_run" });
+  await dispatcherOptions.deliver({ text: "给真人的回复", mediaUrls: ["https://media.test/late.png"] }, { kind: "final" }).catch(() => {});
+  assert.deepEqual(await outcome.done, snapshot);
+  assert.deepEqual(run, snapshot, "the resolved outcome is never touched");
+  assert.equal(replyOptions.vInterSession.exclusive, false, "once done the seam stops asking the core for exclusive admission");
 });
 
 test("self-echo: the robot's own posts are dropped, a person's message still runs the normal stream path", async () => {

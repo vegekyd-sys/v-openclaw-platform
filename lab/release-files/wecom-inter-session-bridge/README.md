@@ -23,10 +23,12 @@
 | `post` | `getWeComWebSocket(acc).sendMessage(chatId, {msgtype:"markdown"})`；正文裁到 ≤1000 字且 ≤3800 字节（超出以「…」结尾）；未连接抛 `CHANNEL_DOWN`（可重试），企微拒收抛 `POST_FAILED` |
 | `resolveRoute` | 只用会话存的 `delivery.to`（会话 key 已转小写，不能反推）；私聊 `single_peer`，群 `shared`；广播目标（party/dept/tag）、别的账号或别的渠道一律 `NO_ROUTE` |
 | `start` | 构造合成帧，`enqueueWeComChatTask(() => processWeComMessageNow(entry))`，排在该聊天的串行队列里，不走 active-run 车道。帧标 `vFromCardEvent`，入口不开流、不发「思考中」、不调 `setReqIdForChat`；10 分钟还没轮到就报 `busy: pending_queue`，那条排队项轮到时什么也不做 |
-| `buildMessageContext` | 跳过通讯录查人；动态路由之后把 `agentId/SessionKey` 强制改回目标会话；`CommandAuthorized:false`；ctx 加 `InputProvenance`、`ChannelPromptContext`、`CommandInterpretationSuppressed`、`SenderId/SenderName/MessageSid`、`VInterSession`，并清掉合成的 `ReqId/WeComFrame/ResponseUrl`。`ChannelPromptContext` 按 9.1 的类型写成**字符串数组** `[channelPromptContext]`：V 的 `appendChannelPromptContext` 只认数组，传字符串会被静默丢掉，模型看不到协作上下文 |
-| `routeAndDispatchMessage` | `replyOptions` 加 `runId`、`vInterSession`、`onAgentRunStart`；ask_user 只认链根真人（`askUserAnswererId`）；结果在 `vStop` 拼后台行**之前**取；核心返回 BUSY 时直接收尾，`deliver` 收到什么都不发，聊天里零输出；合成回合**开跑之后**（`onAgentRunStart`）才登记本会话的问题路由，BUSY 的尝试不会抢走正在跑的那一轮的 ask_user；合成回合不改 main 会话的 lastRoute |
+| `buildMessageContext` | 跳过通讯录查人；动态路由之后把 `agentId/SessionKey` 强制改回目标会话；`CommandAuthorized:false`；ctx 加 `InputProvenance`、`ChannelPromptContext`、`CommandInterpretationSuppressed`、`SenderId/SenderName/MessageSid`、`VInterSession`，私聊另把 `From` 设为 `wecom:<sender.id>`（核心在私聊把 From 也当发送者身份，用于 elevated 白名单；对端真人只负责路由），并清掉合成的 `ReqId/WeComFrame/ResponseUrl`。`ChannelPromptContext` 按 9.1 的类型写成**字符串数组** `[channelPromptContext]`：V 的 `appendChannelPromptContext` 只认数组，传字符串会被静默丢掉，模型看不到协作上下文 |
+| `routeAndDispatchMessage` | `replyOptions` 加 `runId`、`vInterSession`、`onAgentRunStart`、`onAgentRunTerminalOutcome`；ask_user 只认链根真人（`askUserAnswererId`）；结果在 `vStop` 拼后台行**之前**取；核心返回 BUSY 时直接收尾，`deliver` 收到什么都不发，聊天里零输出；合成回合**开跑之后**（`onAgentRunStart`）才登记本会话的问题路由，BUSY 的尝试不会抢走正在跑的那一轮的 ask_user；合成回合不改 main 会话的 lastRoute |
 | `finishThinkingStream` | 协作回合的答复一律主动发 markdown，超过 3800 字节分段发（企微 markdown 上限 4096 字节） |
 | ws `message` 入口 | 自回声防御：机器人自己发的、或与桥刚发出的请求正文相同（10 分钟内、同一聊天）的消息直接丢弃 |
+
+`RunOutcome.status` 与另外三个渠道桥同一规则：handler 出错或核心报 `failed` → `error`；报 `completed` → `ok`；没报终态（核心对中止的 run 不报）时，只有投递过非错误的 final 才算 `ok`，否则 `aborted`。错误提示（`isError`）放进 `error`，不算结果。handler 返回后这次 start 即关闭：followup drain 可能拿本回合的选项去跑真人的消息，之后的 run 开始、BUSY、投递、终态都不算这条请求，seam 的 `exclusive` 置为 false。同一次 start 的第二个 `onAgentRunStart`（核心重跑滞留回复）不改变任何状态。
 
 `caps.streaming=false`：企微的流式回复只能挂在平台回调的 `req_id` 上，合成回合没有，所以
 目标聊天里只能看到请求、单独发的问题、终稿和后台「已结束」行。对伪造 `req_id` 发
