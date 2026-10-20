@@ -57,3 +57,7 @@ R2 和 WP6/WP7/WP13 一起走 candidate → Tianyi 授权合 dev → 共享 VLab
     `vlab-worker` 上；transcript 里的 user 消息带 `provenance.kind = inter_session` 和
     `originSessionId = v-a2a:<chain>:1:req:<sendId>`；会话的 `deliveryContext.to` 是 `wecom:<chatId>`，正是 `resolveRoute` 用的格式；
   - `done` 的 finals 就是模型的答复，`visibleReplySent: true`。
+- 评审修复后（`ChannelPromptContext` 改成数组、BUSY 不抢问题）在 vlab91 又跑了一次：`candidate-81a1563f-…` @ebd8a4a0，通过，
+  共享 VLab 未受影响（基线未命中缓存，新建的是当前 VLab runtime `voice-spawn-20261020` 那份，按规则保留）。S2 的
+  `channelPromptContext` 里放了一个只在那里出现的校验码，模型的答复带回了它（`ISC_WECOM_OK_…` 下一行是 `CTX…`），
+  证明协作上下文真的进了提示词；改之前传的是字符串，V 的 9.1 会把它静默丢掉。
