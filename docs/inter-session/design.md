@@ -1620,3 +1620,22 @@ minimal 设计里"已经汇报过就只回 NO_REPLY"的指令**删除**（J2 mus
 11. 飞书：`M:909/911` 已 import `createFeishuClient` 和 `getChatInfo`（chat-CxXaPTuO.js:52-71 返回 owner_id、user_count）。`G:1810/4195`：`CommandInterpretationSuppressed` 是原生开关。
 12. worker：`index.mjs:630/656` 从 Gateway 接收 runId；`native-attempt-bridge.mjs:28-33` 拒绝重复的 runId；`index.mjs:11` 首字统计只认 UUID 或 `DB91_HI_*`。
 13. 记忆 v-restart-recovery-wedge：重启时有一轮在跑的会话，之后每条消息都报 `restart recovery claim changed`。`scripts/v-self-restart.py:410/577`：有 `--while-stopped` 和 `busy_reasons`。
+---
+
+## 13. 实施修订（2026-10-20 18:30 CST，探针与评审之后；与前文冲突时以本节为准）
+
+1. **插件也会在每个 worker 里加载**（F-a，`probe-results.md`）。V 的 worker 配置由主配置自动派生，主配置里声明的插件会进每个 worker；改主配置还会触发 worker 换代。
+   - `index.js` 用 `contracts.isWorkerChildProcess()`（`VLAB_WORKER_CHILD`）判断进程：worker 里**不**启动引擎、服务、账本和事件订阅，只在 `config.workerGuard === true` 时注册 §8.7 的轮询闸。
+   - `config.role` 作废，改为布尔开关 `workerGuard`（默认 false）。§8.7 第 4 条的"声明到 worker 第二份配置"改为"在主配置把 `workerGuard` 设为 true"。
+   - WP12 回滚步骤改为：先把插件 `enabled:false`（配置），再删目录；不再有单独的 worker 配置步骤。
+2. **`register()` 在同一 Gateway 里会被调用三次**（F-b）。所有订阅、引擎、计时器只能在 `registerService` 的 start/stop 里创建，或用模块级单例守卫；Gateway 方法和 hook 重复注册要幂等。
+3. **worker 回合在 Gateway 侧只有 lifecycle end/error，没有 start**（A6）。§2.d 的 `activeTurnBySession` 不用 lifecycle start：发起回合靠核心传来的 `requester.runId`（A3 已证实四路都到位），插件生成的回合靠桥的 `onAgentRunStart`。lifecycle end/error 仍可用于 pump 触发与 W(S) 判定。
+4. **vds 的 sessions_send 经 loopback Gateway client 调用**（F-d），与 worker 一样必须显式传 `scopes:["operator.write"]`；插件缺席时错误文本是 `missing scope: operator.admin`（A4），回退正则不变。
+5. **飞书 `getChatInfo` 返回的 `user_count` 是字符串**，`humans` 判定先 `Number()`。bot 读不了群成员（缺 `im:chat.members:read`），`NOT_MEMBER` 只能从 chat.get 或发送错误码推断。
+6. **VLab app 有 `im:chat:create`**（PERM 报告）。测试房间由编排方一次性用 VLab bot 建 3 个「VLab 测试｜房间 1/2/3」（创建时带上 Tianyi），之后放进 shim 的 `INTER_SESSION_ROOM_POOL` 复用；shim 本身仍不联网。
+7. **ID 统一用短 kind**：runId、MessageSid、飞书合成 message_id、originSessionId 都用 `req/ask/col/wake`。
+8. **`cancelled` 也算批次终态**（§5.4 补充）。
+9. **candidate 工作区**必须在私有 Gateway 启动前调用 `applyInterSessionWorkspace`（否则 9.1 会写 BOOTSTRAP.md），并关闭 heartbeat；`IDENTITY.md` 一并带入。
+10. **`vrelay.list` 必须注册为 `operator.read`**，`counts.running` 包含在途的 wake/collect 回合（v-self-restart 闲置门依赖它）。
+11. **/vcc 的 candidate 实测受阻**：共享 VLab 的 claude 登录 10/17 起过期，需要 Tianyi 重新登录；在此之前用 worker、vds 完成 candidate，vcc 只做离线与已有路径验证。
+12. **v-experience 的「会话请求」种类映射**由 WP3 统一改 `apps/v-experience/v-experience.mjs` 及其三份产物（核心 Telegram 用、钉钉、企微）；WP6/7/8 不碰这些文件，各自的桥放在独立的 `lab/release-files/<channel>-inter-session-bridge/`。
