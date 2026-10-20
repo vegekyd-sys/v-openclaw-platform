@@ -16,7 +16,7 @@
       "generated": "lab/release-files/dingtalk-inter-session-bridge/dist/connection-DCvu-l09.mjs",
       "hostPath": "/home/openclaw/.openclaw/npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/connection-DCvu-l09.mjs",
       "before": "397c42c3f66d0cd7898168de21be1607303723cd797d9174ad4b1d6694d44520",
-      "after": "e441ac8c81f44180d05c8e4831dc3cd2ab5709363f76817840f83bbbe74d9465"
+      "after": "dc2d20cc156772d3f163e93ea511010e50fcd55deff7f7c73c3fd3694eb31122"
     },
     {
       "component": "dingtalk",

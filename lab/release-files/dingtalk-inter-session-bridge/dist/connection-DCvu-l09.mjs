@@ -609,7 +609,8 @@ async function monitorSingleAccount(opts) {
 		});
 		// inter-session bridge: this account's sessions_send requests run through messageHandler
 		// (an abort that came before this point never calls stop(), so it is checked here).
-		if (!isStopped && !abortSignal?.aborted) {
+		// A failure here never stops the connection; sessions_send then uses the agent transport.
+		if (!isStopped && !abortSignal?.aborted) try {
 			vInterBridges = createVInterSessionBridges({
 				account,
 				cfg: clawdbotConfig,
@@ -624,6 +625,8 @@ async function monitorSingleAccount(opts) {
 			});
 			vInterRegister(vInterBridges);
 			logger.info(`[DingTalk][inter-session] bridge registered: ${vInterBridges.map((b) => `${b.channel}:${b.accountId}`).join(", ")}`);
+		} catch (err) {
+			logger.error(`[DingTalk][inter-session] bridge not registered: ${err?.message || err}`);
 		}
 		client.registerCallbackListener(TOPIC_ROBOT, async (res) => {
 			receivedCount++;

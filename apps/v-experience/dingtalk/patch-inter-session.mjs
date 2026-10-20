@@ -333,7 +333,8 @@ const connectionEdits = [
     anchor: "\t\tclient.registerCallbackListener(TOPIC_ROBOT, async (res) => {\n",
     before: `\t\t// inter-session bridge: this account's sessions_send requests run through messageHandler
 \t\t// (an abort that came before this point never calls stop(), so it is checked here).
-\t\tif (!isStopped && !abortSignal?.aborted) {
+\t\t// A failure here never stops the connection; sessions_send then uses the agent transport.
+\t\tif (!isStopped && !abortSignal?.aborted) try {
 \t\t\tvInterBridges = createVInterSessionBridges({
 \t\t\t\taccount,
 \t\t\t\tcfg: clawdbotConfig,
@@ -348,6 +349,8 @@ const connectionEdits = [
 \t\t\t});
 \t\t\tvInterRegister(vInterBridges);
 \t\t\tlogger.info(\`[DingTalk][inter-session] bridge registered: \${vInterBridges.map((b) => \`\${b.channel}:\${b.accountId}\`).join(", ")}\`);
+\t\t} catch (err) {
+\t\t\tlogger.error(\`[DingTalk][inter-session] bridge not registered: \${err?.message || err}\`);
 \t\t}
 `,
   },
