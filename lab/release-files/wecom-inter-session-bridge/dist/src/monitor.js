@@ -224,6 +224,11 @@ function vIsChunks(text, maxBytes) {
     flush();
     return parts.length ? parts : [s];
 }
+/** The relay's channelPromptContext (one string) as 9.1's ChannelPromptContext (string[]). */
+function vIsPromptContext(value) {
+    const entries = (Array.isArray(value) ? value : [value]).filter((entry) => typeof entry === "string" && entry.trim());
+    return entries.length ? entries : undefined;
+}
 const vIsEchoKey = (text) => String(text ?? "").replace(/\s+/gu, " ").trim();
 function vIsNotePosted(accountId, chatId, text) {
     const now = Date.now();
@@ -312,11 +317,13 @@ function vIsCreateRun(req) {
             settle({ status: "busy", reason: V_IS_BUSY_REASONS.includes(info?.reason) ? info.reason : "active_run" });
         },
     };
+    /** True only for the call that starts the run. */
     run.onAgentRunStart = (runId) => {
-        if (run.phase !== "pending") return;
+        if (run.phase !== "pending") return false;
         run.phase = "started";
         if (typeof runId === "string" && runId) run.runId = runId;
         settle({ status: "started", runId: run.runId, done });
+        return true;
     };
     run.armQueueTimer = () => {
         run.queueTimer = setTimeout(() => {
@@ -333,7 +340,9 @@ function vIsCreateRun(req) {
     };
     run.ctxFields = () => ({
         InputProvenance: req.provenance,
-        ChannelPromptContext: req.channelPromptContext,
+        // 9.1 takes ChannelPromptContext as a list of entries: appendChannelPromptContext
+        // (prompt-prelude) drops anything that is not an array, so the one string is one entry.
+        ChannelPromptContext: vIsPromptContext(req.channelPromptContext),
         CommandInterpretationSuppressed: true,
         SenderId: req.sender?.id,
         SenderName: req.sender?.name,
@@ -889,7 +898,14 @@ async function routeAndDispatchMessage(params) {
         if (String(payload?.text ?? "").trim()) await vSend(payload.text).catch((err) => runtime.error?.(`[wecom][v-experience] question delivery failed: ${String(err)}`));
         return true;
     };
-    const vUnrouteQuestions = vExperience.onQuestionRequested(vSessionKey, (record) => vDeliverQuestionRecord(record));
+    // inter-session bridge: a synthetic turn takes its session's questions only once its own run
+    // started (onAgentRunStart); a BUSY attempt never takes a question of the run it waits behind.
+    let vUnrouteQuestions = vInterSession ? () => { } : vExperience.onQuestionRequested(vSessionKey, (record) => vDeliverQuestionRecord(record));
+    const vRouteQuestions = () => {
+        if (state.vFinished) return;
+        vUnrouteQuestions();
+        vUnrouteQuestions = vExperience.onQuestionRequested(vSessionKey, (record) => vDeliverQuestionRecord(record));
+    };
     try {
         // 记录 inbound session 元数据（session 追踪）
         await core.channel.session.recordInboundSession({
@@ -917,7 +933,9 @@ async function routeAndDispatchMessage(params) {
                 ...(vInterSession ? {
                     runId: vInterSession.req.runId,
                     vInterSession: vInterSession.control,
-                    onAgentRunStart: (runId) => vInterSession.onAgentRunStart(runId),
+                    onAgentRunStart: (runId) => {
+                        if (vInterSession.onAgentRunStart(runId)) vRouteQuestions();
+                    },
                 } : {}),
                 allowToolLifecycleWhenProgressHidden: true,
                 commentaryProgressEnabled: true,
@@ -957,6 +975,9 @@ async function routeAndDispatchMessage(params) {
                     }
                 },
                 deliver: async (payload, info) => {
+                    // inter-session bridge: a BUSY start shows nothing, whatever the core hands over
+                    // (no question, no media, no text); otherwise questions are not results.
+                    if (vInterSession?.busy) return;
                     if ((info.kind === "tool" || payload?.channelData?.askUser) && await vDeliverQuestion(payload)) return;
                     vInterSession?.noteDeliver(payload, info);
                     runtime.log?.(`[openclaw -> plugin] kind=${info.kind}, payload=${JSON.stringify(payload)}, info=${JSON.stringify(info)}`);

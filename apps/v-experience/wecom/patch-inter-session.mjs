@@ -22,12 +22,14 @@
 //   goes out as a new markdown message, in parts of at most 3800 bytes), it never records
 //   its req_id for the chat (setReqIdForChat), and it runs in the target session the relay
 //   chose (SessionKey forced against dynamic routing);
-// - the turn's ctx fields (InputProvenance, ChannelPromptContext,
+// - the turn's ctx fields (InputProvenance, ChannelPromptContext as 9.1's string[],
 //   CommandInterpretationSuppressed, CommandAuthorized false, SenderId/SenderName/MessageSid,
 //   VInterSession) and replyOptions (runId, vInterSession, onAgentRunStart);
 // - the result: the final text taken from state.accumulatedText before vStop appends the
 //   background line, plus the media the turn delivered; ask_user questions are not results;
-// - a BUSY start (core admission guard) leaves nothing in the chat;
+// - a BUSY start (core admission guard) leaves nothing in the chat: nothing it is handed is
+//   delivered, and it never takes the session's ask_user questions (the turn registers its
+//   question route only when its own run starts);
 // - self-echo defence: a socket message from the robot itself, or repeating a request the
 //   bridge just posted in that chat, is dropped before it can become a person's message (A11).
 // caps.streaming=false: WeCom cannot stream a turn that no WeCom callback started.
@@ -150,6 +152,11 @@ function vIsChunks(text, maxBytes) {
     flush();
     return parts.length ? parts : [s];
 }
+/** The relay's channelPromptContext (one string) as 9.1's ChannelPromptContext (string[]). */
+function vIsPromptContext(value) {
+    const entries = (Array.isArray(value) ? value : [value]).filter((entry) => typeof entry === "string" && entry.trim());
+    return entries.length ? entries : undefined;
+}
 const vIsEchoKey = (text) => String(text ?? "").replace(/\s+/gu, " ").trim();
 function vIsNotePosted(accountId, chatId, text) {
     const now = Date.now();
@@ -238,11 +245,13 @@ function vIsCreateRun(req) {
             settle({ status: "busy", reason: V_IS_BUSY_REASONS.includes(info?.reason) ? info.reason : "active_run" });
         },
     };
+    /** True only for the call that starts the run. */
     run.onAgentRunStart = (runId) => {
-        if (run.phase !== "pending") return;
+        if (run.phase !== "pending") return false;
         run.phase = "started";
         if (typeof runId === "string" && runId) run.runId = runId;
         settle({ status: "started", runId: run.runId, done });
+        return true;
     };
     run.armQueueTimer = () => {
         run.queueTimer = setTimeout(() => {
@@ -259,7 +268,9 @@ function vIsCreateRun(req) {
     };
     run.ctxFields = () => ({
         InputProvenance: req.provenance,
-        ChannelPromptContext: req.channelPromptContext,
+        // 9.1 takes ChannelPromptContext as a list of entries: appendChannelPromptContext
+        // (prompt-prelude) drops anything that is not an array, so the one string is one entry.
+        ChannelPromptContext: vIsPromptContext(req.channelPromptContext),
         CommandInterpretationSuppressed: true,
         SenderId: req.sender?.id,
         SenderName: req.sender?.name,
@@ -493,6 +504,22 @@ import { normalizeAccountId as vNormalizeAccountId } from "openclaw/plugin-sdk/a
 `,
   },
   {
+    // The v-experience question route is the session's newest dispatcher (routes.at(-1)). A BUSY
+    // attempt runs while another run of the same session is active; registering it up front would
+    // take that run's ask_user questions (shown here, answerable by the wrong person).
+    name: "dispatch-question-route",
+    anchor: "    const vUnrouteQuestions = vExperience.onQuestionRequested(vSessionKey, (record) => vDeliverQuestionRecord(record));\n",
+    replace: String.raw`    // inter-session bridge: a synthetic turn takes its session's questions only once its own run
+    // started (onAgentRunStart); a BUSY attempt never takes a question of the run it waits behind.
+    let vUnrouteQuestions = vInterSession ? () => { } : vExperience.onQuestionRequested(vSessionKey, (record) => vDeliverQuestionRecord(record));
+    const vRouteQuestions = () => {
+        if (state.vFinished) return;
+        vUnrouteQuestions();
+        vUnrouteQuestions = vExperience.onQuestionRequested(vSessionKey, (record) => vDeliverQuestionRecord(record));
+    };
+`,
+  },
+  {
     name: "dispatch-result-before-background-line",
     anchor: "        state.accumulatedText = vWork.finalText(state.accumulatedText);\n        const line = vExperience.currentBackgroundLine(vSessionKey);\n",
     replace: String.raw`        state.accumulatedText = vWork.finalText(state.accumulatedText);
@@ -514,7 +541,9 @@ import { normalizeAccountId as vNormalizeAccountId } from "openclaw/plugin-sdk/a
                 ...(vInterSession ? {
                     runId: vInterSession.req.runId,
                     vInterSession: vInterSession.control,
-                    onAgentRunStart: (runId) => vInterSession.onAgentRunStart(runId),
+                    onAgentRunStart: (runId) => {
+                        if (vInterSession.onAgentRunStart(runId)) vRouteQuestions();
+                    },
                 } : {}),
                 allowToolLifecycleWhenProgressHidden: true,
 `,
@@ -522,8 +551,12 @@ import { normalizeAccountId as vNormalizeAccountId } from "openclaw/plugin-sdk/a
   {
     name: "dispatch-deliver",
     anchor: '                    if ((info.kind === "tool" || payload?.channelData?.askUser) && await vDeliverQuestion(payload)) return;\n',
-    insert: "after",
-    code: "                    vInterSession?.noteDeliver(payload, info);\n",
+    replace: String.raw`                    // inter-session bridge: a BUSY start shows nothing, whatever the core hands over
+                    // (no question, no media, no text); otherwise questions are not results.
+                    if (vInterSession?.busy) return;
+                    if ((info.kind === "tool" || payload?.channelData?.askUser) && await vDeliverQuestion(payload)) return;
+                    vInterSession?.noteDeliver(payload, info);
+`,
   },
   {
     name: "dispatch-busy",

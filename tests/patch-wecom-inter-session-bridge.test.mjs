@@ -35,8 +35,28 @@ const CAPTURE_SRC = path.join(repo, "release/captured/v2026.9.1-db91.6-subagent-
 const V_SOURCE = path.join(CAPTURE_SRC, FILE);
 const RELEASE_DIR = path.join(repo, "lab/release-files/wecom-inter-session-bridge");
 const GENERATED = path.join(RELEASE_DIR, "dist/src", FILE);
+const CORE_DIST = path.join(repo, "release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist");
 const sha256 = (buf) => createHash("sha256").update(buf).digest("hex");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const QUESTION_LISTENERS = Symbol.for("openclaw.questionChannelRequestedListeners");
+
+/** V's own appendChannelPromptContext (the prompt prelude get-reply runs on sessionCtx.ChannelPromptContext). */
+function vAppendChannelPromptContext() {
+  const getReply = fs.readFileSync(path.join(CORE_DIST, "get-reply-CqW1y05D.js"), "utf8");
+  assert(getReply.includes("appendChannelPromptContext(prependEvents(rawPrefixedBody), params.sessionCtx.ChannelPromptContext)"), "V's get-reply appends sessionCtx.ChannelPromptContext");
+  const chunk = fs.readFileSync(path.join(CORE_DIST, "history-image-prune-Dg0CDQ4a.js"), "utf8");
+  const fn = /^function appendChannelPromptContext\(base, channelPromptContext\) \{\n[\s\S]*?\n\}\n/mu.exec(chunk)?.[0];
+  assert(fn, "appendChannelPromptContext in V's core");
+  return new Function("normalizeInboundTextNewlines", "markInboundContextLabel", `${fn}return appendChannelPromptContext;`)((s) => String(s), (label) => label);
+}
+/** A renderable ask_user record, as the core hands it to the question listeners (worker runs). */
+const askRecord = (sessionKey) => ({
+  id: `ask_${createHash("md5").update(`${sessionKey}:${Math.random()}`).digest("hex")}`, sessionKey, status: "pending",
+  questions: [{ questionId: "q1", question: "选哪个方案？", options: [{ label: "甲" }, { label: "乙" }] }],
+});
+async function announceQuestion(record) {
+  for (const listener of globalThis[QUESTION_LISTENERS] ?? []) await listener(record);
+}
 async function until(fn, { timeoutMs = 3000, what = "condition" } = {}) {
   const end = Date.now() + timeoutMs;
   for (;;) {
@@ -90,7 +110,7 @@ test("every anchor occurs once in V's file; the marker once; V's markers stay", 
   const patchedCount = count(patched.split("\n"));
   let missing = 0;
   for (const [line, n] of count(v.split("\n"))) missing += Math.max(0, n - (patchedCount.get(line) ?? 0));
-  assert(missing <= 12, `only the replaced lines differ (${missing})`);
+  assert(missing <= 13, `only the replaced lines differ (${missing})`);
 });
 
 test("the inlined literals are the frozen contracts", () => {
@@ -127,8 +147,10 @@ test("static shape: no req_id use, no stream, forced session, BUSY exit before a
   assert(dispatch.indexOf("vInterSession?.noteFinal(state.accumulatedText, state);") < dispatch.indexOf("state.accumulatedText += `\\n\\n---\\n\\n${line}`;"), "result taken before the background line");
   assert(dispatch.indexOf("if (vInterSession.busy) {") < dispatch.indexOf("const cardResult = await processTemplateCardsIfNeeded"), "BUSY exits before cards / final");
   assert.match(dispatch, /updateLastRoute: chatType !== "group" && !vInterSession\n/u);
-  assert.match(dispatch, /replyOptions: \{\n[^\n]*\n                \.\.\.\(vInterSession \? \{\n                    runId: vInterSession\.req\.runId,\n                    vInterSession: vInterSession\.control,\n                    onAgentRunStart: \(runId\) => vInterSession\.onAgentRunStart\(runId\),\n/u);
-  assert.match(dispatch, /await vDeliverQuestion\(payload\)\) return;\n                    vInterSession\?\.noteDeliver\(payload, info\);/u, "questions are not results");
+  assert.match(dispatch, /replyOptions: \{\n[^\n]*\n                \.\.\.\(vInterSession \? \{\n                    runId: vInterSession\.req\.runId,\n                    vInterSession: vInterSession\.control,\n                    onAgentRunStart: \(runId\) => \{\n                        if \(vInterSession\.onAgentRunStart\(runId\)\) vRouteQuestions\(\);\n/u);
+  assert.match(dispatch, /if \(vInterSession\?\.busy\) return;\n                    if \(\(info\.kind === "tool" \|\| payload\?\.channelData\?\.askUser\) && await vDeliverQuestion\(payload\)\) return;\n                    vInterSession\?\.noteDeliver\(payload, info\);/u, "a BUSY start delivers nothing; questions are not results");
+  assert.match(dispatch, /let vUnrouteQuestions = vInterSession \? \(\) => \{ \} : vExperience\.onQuestionRequested\(/u, "a synthetic turn takes no question before its run starts");
+  assert.match(dispatch, /if \(vInterSession\.onAgentRunStart\(runId\)\) vRouteQuestions\(\);/u);
   const monitor = p.slice(p.indexOf("export async function monitorWeComProvider(options) {"));
   assert(monitor.indexOf("vIsRegisterBridge(vInterSessionBridge);") > monitor.indexOf("setWeComWebSocket(account.accountId, wsClient);"), "registered after setWeComWebSocket");
   assert(monitor.indexOf("vIsSelfEcho(account, frame)") < monitor.indexOf("prepareWeComMessage({"), "echo dropped before any processing");
@@ -355,7 +377,10 @@ test("start: a turn in the target session that never answers a req_id; the resul
   h.activeTasks.set(key, [{ taskId: "t1", runtime: "subagent", status: "running", childSessionKey: "agent:makaron:subagent:x" }]);
   const n = h.client.calls.length;
   const d = h.dispatches.length;
+  const lanes = {};
   h.script = async ({ replyOptions, dispatcherOptions }) => {
+    lanes.chat = h.chatQueue.hasActiveTask("default:ZhangSan");
+    lanes.activeRun = h.chatQueue.hasActiveTask("default:ZhangSan:active-run");
     replyOptions.onAgentRunStart(replyOptions.runId);
     await dispatcherOptions.onReplyStart?.();
     await dispatcherOptions.deliver({ text: "先查一下。" }, { kind: "block" });
@@ -381,12 +406,17 @@ test("start: a turn in the target session that never answers a req_id; the resul
     h.activeTasks.delete(key);
   }
   assert.equal(h.dispatches.length, d + 1);
+  assert.deepEqual(lanes, { chat: true, activeRun: false }, "on the chat's serial queue, never the active-run lane");
   const { ctx, replyOptions } = h.dispatches.at(-1);
   assert.equal(ctx.SessionKey, req.sessionKey, "forced against the plugin's own route");
   assert.equal(ctx.CommandAuthorized, false);
   assert.equal(ctx.CommandInterpretationSuppressed, true);
   assert.deepEqual(ctx.InputProvenance, req.provenance);
-  assert.equal(ctx.ChannelPromptContext, req.channelPromptContext);
+  // 9.1's ChannelPromptContext is string[]; V's prompt prelude drops anything else.
+  assert.deepEqual(ctx.ChannelPromptContext, [req.channelPromptContext]);
+  const appendChannelPromptContext = vAppendChannelPromptContext();
+  assert.equal(appendChannelPromptContext("BODY", req.channelPromptContext), "BODY", "a bare string never reaches the model");
+  assert.equal(appendChannelPromptContext("BODY", ctx.ChannelPromptContext), `BODY\n\nContext:\n${req.channelPromptContext}`, "the context reaches the model");
   assert.equal(ctx.SenderId, req.sender.id);
   assert.equal(ctx.SenderName, req.sender.name);
   assert.equal(ctx.MessageSid, req.messageSid);
@@ -462,6 +492,83 @@ test("start: BUSY from the core's admission guard leaves nothing in the chat", a
   assert(validateStartOutcome(outcome).ok);
   await queueIdle("BusyChat");
   assert.deepEqual(callsSince(n), [], "zero sends, zero replies");
+});
+
+test("start: a BUSY attempt neither delivers what it is handed nor takes the busy run's questions", async () => {
+  const req = startRequest({ chatId: "BusyAsk" });
+  const vx = await import(pathToFileURL(path.join(h.root, "src", "v-experience.mjs")).href);
+  // The run the attempt waits behind already has its dispatcher (its question route).
+  const busyRunGot = [];
+  const unroute = vx.onQuestionRequested(req.sessionKey, (record) => { busyRunGot.push(record.id); return true; });
+  const record = askRecord(req.sessionKey);
+  const n = h.client.calls.length;
+  h.script = async ({ replyOptions, dispatcherOptions }) => {
+    await announceQuestion(record); // the busy run asks while this attempt is being admitted
+    replyOptions.vInterSession.onBusy({ reason: "active_run" });
+    await dispatcherOptions.deliver({ text: "不该出现", mediaUrls: ["https://media.test/stray.png"] }, { kind: "final" });
+  };
+  try {
+    assert.deepEqual(await h.bridge.start(req), { status: "busy", reason: "active_run" });
+    await queueIdle("BusyAsk");
+  }
+  finally {
+    unroute();
+  }
+  assert.deepEqual(busyRunGot, [record.id], "the question stays with the run that asked it");
+  assert.deepEqual(callsSince(n), [], "zero sends, zero uploads, zero replies");
+  assert.equal(vx.hasTrackedQuestion({ channel: "wecom", chatKey: "default:BusyAsk", senderId: "anyone" }), false);
+});
+
+test("start: a started turn's own questions go out as their own message, answerable only by askUserAnswererId", async () => {
+  const req = startRequest({ chatType: "group", chatId: "wrkAskGroup", askUserAnswererId: "Boss" });
+  const vx = await import(pathToFileURL(path.join(h.root, "src", "v-experience.mjs")).href);
+  const record = askRecord(req.sessionKey);
+  const n = h.client.calls.length;
+  h.script = async ({ replyOptions, dispatcherOptions }) => {
+    replyOptions.onAgentRunStart(replyOptions.runId);
+    await announceQuestion(record);
+    await dispatcherOptions.deliver({ text: "按甲做完了。" }, { kind: "final" });
+  };
+  const outcome = await h.bridge.start(req);
+  assert.deepEqual((await outcome.done).finals, [{ text: "按甲做完了。" }], "the question is not part of the result");
+  await queueIdle("wrkAskGroup");
+  const texts = sends(callsSince(n)).map((c) => c.body.markdown.content);
+  assert.match(texts[0], /^❓ V 想确认一下\n\n\*\*选哪个方案？\*\*\n1\. 甲\n2\. 乙/u);
+  assert.equal(texts.at(-1), "按甲做完了。");
+  assert.deepEqual(respondCalls(callsSince(n)), []);
+  const chatKey = "default:wrkAskGroup";
+  assert.equal(vx.hasTrackedQuestion({ channel: "wecom", chatKey, senderId: "Boss" }), true);
+  assert.equal(vx.hasTrackedQuestion({ channel: "wecom", chatKey, senderId: "Mallory" }), false, "not whoever the synthetic message names");
+});
+
+test("start: a start still waiting in the chat queue after 10 minutes reports pending_queue and never runs", async (t) => {
+  let release;
+  const blocker = new Promise((r) => { release = r; });
+  h.chatQueue.enqueueWeComChatTask({ accountId: "default", chatId: "QueueChat", task: () => blocker });
+  const req = startRequest({ chatId: "QueueChat" });
+  const n = h.client.calls.length;
+  const d = h.dispatches.length;
+  const r = h.records.length;
+  h.script = async ({ replyOptions }) => { replyOptions.onAgentRunStart(replyOptions.runId); };
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let outcome;
+  try {
+    outcome = h.bridge.start(req); // arms its queue timer synchronously
+    t.mock.timers.tick(599_999);
+    assert.equal(await Promise.race([outcome, Promise.resolve("waiting")]), "waiting");
+    t.mock.timers.tick(1);
+  }
+  finally {
+    t.mock.timers.reset();
+  }
+  assert.deepEqual(await Promise.race([outcome, sleep(1000).then(() => "still waiting")]), { status: "busy", reason: "pending_queue" });
+  release();
+  await queueIdle("QueueChat");
+  await sleep(10);
+  assert.equal(h.dispatches.length, d, "the abandoned entry does nothing when its turn comes");
+  assert.equal(h.records.length, r, "not even the session record");
+  assert.deepEqual(callsSince(n), []);
+  assert.equal(h.stateManager.getMessageState(req.syntheticMessageId), undefined);
 });
 
 test("start: neither started nor busy → GATED; restart wedge and other failures are classified", async () => {
