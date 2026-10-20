@@ -24,7 +24,8 @@
 // - watch syncs wait for QUIET_SECONDS (default 15) without file events, so a burst of
 //   writes to one large file is indexed once, not once per write;
 // - a memory file is written in short transactions (see installShortWrites), and every
-//   file write whose longest transaction is slow is logged.
+//   file write whose longest transaction is slow is logged;
+// - only chunks that changed are written (see "Unchanged chunks" below).
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -96,10 +97,22 @@ export const REPRODUCED_FINGERPRINT = "edbe60cabf3a7b74a3538dd1f6233a759debcde6f
 //   is removed so that the next sync re-indexes the file from scratch.
 // memory_search may meanwhile see the file part old, part new, never neither.
 // Session sources (not indexed on V) keep the upstream write.
+//
+// Unchanged chunks (2026-10-21). A chunk id hashes source, path, start and end line,
+// content hash and model, so a chunk whose id the file already has is already indexed
+// with exactly these rows. Upstream still deletes and re-inserts every chunk of the file.
+// sqlite-vec never reuses a deleted slot, so each rewrite of an append-only file (the
+// daily log, log.md: hundreds of chunks, rewritten after every append, 31 times a day)
+// left hundreds of empty slots that every KNN query still scans: on V 65,792 slots held
+// 42,309 live vectors (64%). Now an unchanged chunk keeps its rows; the write only
+// refreshes its recall metadata and provenance and repairs a missing vector or FTS row
+// (or extra FTS rows). New and changed chunks are written as before, and so is the
+// embedding cache for them. Search does not read chunk updated_at (temporal decay uses
+// the path date or the file mtime). DIFF_WRITES=0 restores whole-file rewrites.
 // More steps than a transaction runs within its budget (warm: about 5 chunks per 50 ms).
 const PREFETCH_STEPS = 32;
 
-export async function installShortWrites(dist, MemoryIndexManager, { log, budgetMs = 50, pauseMs = 150, slowMs = 200 } = {}) {
+export async function installShortWrites(dist, MemoryIndexManager, { log, budgetMs = 50, pauseMs = 150, slowMs = 200, diffWrites = true, onWrite } = {}) {
   const proto = MemoryIndexManager.prototype;
   const fingerprint = crypto.createHash("sha256").update(REPRODUCED_METHODS.map((name) => String(proto[name])).join("\n")).digest("hex");
   if (fingerprint !== REPRODUCED_FINGERPRINT) {
@@ -183,6 +196,7 @@ export async function installShortWrites(dist, MemoryIndexManager, { log, budget
                  supersedes_key=excluded.supersedes_key`);
     const insertVector = db.prepare(`INSERT INTO ${vectorTable} (id, embedding) VALUES (?, ?)`);
     const insertFts = ftsOn ? db.prepare(`INSERT INTO ${ftsTable} (text, id, path, source, model, start_line, end_line)\n VALUES (?, ?, ?, ?, ?, ?, ?)`) : null;
+    const hasVector = deleteVectors ? db.prepare(`SELECT 1 AS found FROM ${vectorTable} WHERE id = ?`) : null;
 
     // Deleting a row reads it first: a chunk row carries its embedding as ~60 KB of JSON in
     // overflow pages, a vector row sits in a sqlite-vec block. Cold, that is 100-300 ms per
@@ -216,11 +230,33 @@ export async function installShortWrites(dist, MemoryIndexManager, { log, budget
     const ops = [];
     if (vectorTableExists && !deleteVectors) ops.push({ run: () => manager.markVectorRebuildRequired() });
     const newIds = new Set();
+    const unchangedIndexes = new Set();
+    let repaired = 0;
     for (const [i, chunk] of chunks.entries()) {
       const embedding = embeddings[i] ?? [];
       const id = hashText(`${source}:${entry.path}:${chunk.startLine}:${chunk.endLine}:${chunk.hash}:${model}`);
       newIds.add(id);
       const provenance = chunk.provenance ?? { originClass: "untrusted", sessionKind: "unknown", observedAt: now };
+      if (diffWrites && oldIds.has(id)) {
+        // Already indexed with these rows: keep them, repair what is missing (read now,
+        // outside the lock), refresh the small per-chunk metadata.
+        unchangedIndexes.add(i);
+        oldIds.delete(id);
+        const fts = ftsRowids.get(id) ?? [];
+        ftsRowids.delete(id);
+        const missingVector = Boolean(vectorReady && embedding.length > 0 && hasVector && !hasVector.get(id));
+        const missingFts = Boolean(insertFts && ftsReadable && fts.length === 0);
+        const extraFts = deleteFts ? fts.slice(1) : [];
+        if (missingVector || missingFts || extraFts.length > 0) repaired += 1;
+        ops.push({ run: () => {
+          insertRecall.run(id, chunk.importance, chunk.triggers, chunk.projectKey);
+          insertProvenance.run(id, provenance.originClass, provenance.sessionKind, provenance.observedAt, provenance.supersedesKey ?? null);
+          for (const rowid of extraFts) try { deleteFts.run(rowid); } catch {}
+          if (missingFts) insertFts.run(chunk.text, id, entry.path, source, model, chunk.startLine, chunk.endLine);
+          if (missingVector) insertVector.run(id, vectorToBlob(embedding));
+        } });
+        continue;
+      }
       ops.push({ reads: oldIds.has(id) ? id : null, run: () => {
         if (oldIds.delete(id)) removeIndexed(id);
         else removeFts(id);
@@ -247,6 +283,7 @@ export async function installShortWrites(dist, MemoryIndexManager, { log, budget
     if (manager.cache.enabled && provider && providerKey && chunks.length > 0) {
       const upsertCache = db.prepare(`INSERT INTO ${cacheTable} (provider, model, provider_key, hash, embedding, dims, updated_at)\n VALUES (?, ?, ?, ?, ?, ?, ?)\n ON CONFLICT(provider, model, provider_key, hash) DO UPDATE SET\n   embedding=excluded.embedding,\n   dims=excluded.dims,\n   updated_at=excluded.updated_at`);
       for (const [i, chunk] of chunks.entries()) {
+        if (unchangedIndexes.has(i)) continue;
         const embedding = embeddings[i] ?? [];
         ops.push({ run: () => upsertCache.run(provider.id, provider.model, providerKey, chunk.hash, JSON.stringify(embedding), embedding.length, now) });
       }
@@ -286,7 +323,9 @@ export async function installShortWrites(dist, MemoryIndexManager, { log, budget
       }
       throw error;
     } finally {
-      if (longestMs >= slowMs) log({ event: "slow-write", agent: manager.agentId, path: entry.path, chunks: chunks.length, transactions, longestMs: Math.round(longestMs), longestWaitMs: Math.round(longestWaitMs), ms: Math.round(performance.now() - started) });
+      const stats = { path: entry.path, chunks: chunks.length, unchanged: unchangedIndexes.size, repaired, removed: [...oldIds].filter((id) => !newIds.has(id)).length, transactions, longestMs: Math.round(longestMs), longestWaitMs: Math.round(longestWaitMs), ms: Math.round(performance.now() - started) };
+      onWrite?.(stats);
+      if (longestMs >= slowMs) log({ event: "slow-write", agent: manager.agentId, ...stats });
     }
   }
   return true;
@@ -342,6 +381,7 @@ async function main() {
     budgetMs: Number(process.env.WRITE_BUDGET_MS || 50),
     pauseMs: Number(process.env.WRITE_PAUSE_MS || 150),
     slowMs: slowWriteMs,
+    diffWrites: process.env.DIFF_WRITES !== "0",
   });
   if (!shortWrites) {
     // Upstream writes: one transaction per file, so its duration is the lock hold.

@@ -5,6 +5,8 @@
 // against an in-memory SQLite database with the memory index schema (the sqlite-vec table
 // is a plain table here). Each case writes the same file versions once with upstream's
 // one-transaction write and once with the short writes, and compares every table.
+// With DIFF_WRITES off the short writes must leave exactly upstream's rows; with it on
+// (the default) the same rows, only fewer row changes (memory_index_state.revision).
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -77,14 +79,19 @@ ${METHODS.map((name) => "\t" + lift("method", name)).join("\n")}
 const { MemoryIndexManager } = await import(pathToFileURL(runtime));
 const stubs = await import(pathToFileURL(path.join(dist, "stubs.js")));
 const upstreamWrite = MemoryIndexManager.prototype.writeChunks;
-// One install per transaction budget: 0 commits after every write step, 1000 never splits.
-const shortWrites = {};
-for (const budgetMs of [0, 1000]) {
-  const Short = class extends MemoryIndexManager {};
-  assert.equal(await indexer.installShortWrites(dist, Short, { log() {}, budgetMs, pauseMs: 0, slowMs: 0 }), true);
-  shortWrites[budgetMs] = Short.prototype.writeChunks;
+// One install per transaction budget (0 commits after every write step, 1000 never splits)
+// and per diff mode (whole-file rewrites, or unchanged chunks kept).
+const shortWrites = { whole: {}, diff: {} };
+const writeStats = [];
+for (const mode of ["whole", "diff"]) {
+  for (const budgetMs of [0, 1000]) {
+    const Short = class extends MemoryIndexManager {};
+    assert.equal(await indexer.installShortWrites(dist, Short, { log() {}, budgetMs, pauseMs: 0, slowMs: 0, diffWrites: mode === "diff", onWrite: (stats) => writeStats.push(stats) }), true);
+    shortWrites[mode][budgetMs] = Short.prototype.writeChunks;
+  }
 }
 let budgetMs = 0;
+let mode = "whole";
 
 const SCHEMA = `
 CREATE TABLE memory_index_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
@@ -161,7 +168,7 @@ async function write(manager, how, { item, embeddings }, vectorReady = true) {
   const realNow = Date.now;
   Date.now = () => 1_760_000_000_000;
   try {
-    await (how === "short" ? shortWrites[budgetMs] : upstreamWrite).call(manager, item, generation, embeddings, vectorReady);
+    await (how === "short" ? shortWrites[mode][budgetMs] : upstreamWrite).call(manager, item, generation, embeddings, vectorReady);
   } finally {
     Date.now = realNow;
   }
@@ -171,10 +178,18 @@ const base = Array.from({ length: 40 }, (_, i) => `line ${i} 记忆内容 ${"x".
 const v2lines = [...base.slice(0, 4), "inserted line", ...base.slice(4, 20), ...base.slice(26), "appended 1", "appended 2"];
 const other = version("memory/other.md", ["other a", "other b", "other c", "other d"], 500);
 
-for (const foreignKeys of [true, false]) {
+// Same rows; with unchanged chunks kept, fewer row changes bump the revision.
+const sameRows = (short, up, diff) => {
+  if (!diff) return assert.deepEqual(short, up);
+  assert(short.memory_index_state[0].revision > 0);
+  assert.deepEqual({ ...short, memory_index_state: [] }, { ...up, memory_index_state: [] });
+};
+
+for (const diff of [false, true]) for (const foreignKeys of [true, false]) {
   for (const budget of [0, 1000]) {
-    test(`short writes leave upstream's rows (foreign keys ${foreignKeys ? "on" : "off"}, ${budget ? "one" : "one op per"} transaction)`, async () => {
+    test(`short writes leave upstream's rows (${diff ? "unchanged chunks kept" : "whole-file rewrites"}, foreign keys ${foreignKeys ? "on" : "off"}, ${budget ? "one" : "one op per"} transaction)`, async () => {
       budgetMs = budget;
+      mode = diff ? "diff" : "whole";
       const states = {};
       for (const how of ["upstream", "short"]) {
         const manager = makeManager({ foreignKeys });
@@ -190,15 +205,16 @@ for (const foreignKeys of [true, false]) {
         await write(manager, how, version("memory/day.md", base, 3000)); // shrink back
         states[how] = { rows: dump(manager.db), transactions };
       }
-      assert.deepEqual(states.short.rows, states.upstream.rows);
+      sameRows(states.short.rows, states.upstream.rows, diff);
       assert.equal(states.upstream.transactions, 1);
-      assert(states.short.transactions >= (budget ? 1 : 10), `short writes used ${states.short.transactions} transactions`);
+      assert(states.short.transactions >= (budget ? 1 : diff ? 5 : 10), `short writes used ${states.short.transactions} transactions`);
     });
   }
 }
 
-test("short writes with vectors unavailable mark a rebuild like upstream", async () => {
+for (const diff of [false, true]) test(`short writes with vectors unavailable mark a rebuild like upstream (${diff ? "unchanged chunks kept" : "whole-file rewrites"})`, async () => {
   budgetMs = 0;
+  mode = diff ? "diff" : "whole";
   const states = {};
   for (const how of ["upstream", "short"]) {
     const manager = makeManager({ foreignKeys: true, vector: false, cache: false });
@@ -207,12 +223,13 @@ test("short writes with vectors unavailable mark a rebuild like upstream", async
     await write(manager, how, version("memory/day.md", v2lines, 2000), false);
     states[how] = dump(manager.db);
   }
-  assert.deepEqual(states.short, states.upstream);
+  sameRows(states.short, states.upstream, diff);
   assert.equal(states.short.memory_index_meta.length, 1);
 });
 
 test("a short write that fails part way drops the file record so the next sync redoes the file", async () => {
   budgetMs = 0;
+  mode = "whole";
   const manager = makeManager({ foreignKeys: true });
   await write(manager, "upstream", version("memory/day.md", base, 1000));
   const v2 = version("memory/day.md", v2lines, 2000);
@@ -229,13 +246,50 @@ test("a short write that fails part way drops the file record so the next sync r
   assert.deepEqual(rows(manager), rows(fixed));
 });
 
+test("an append rewrites only the tail: unchanged chunks keep their vector and FTS rows", async () => {
+  budgetMs = 1000;
+  const counts = {};
+  for (const m of ["whole", "diff"]) {
+    mode = m;
+    const manager = makeManager({ foreignKeys: true });
+    await write(manager, "upstream", version("memory/day.md", base, 1000));
+    manager.db.exec("CREATE TABLE ops (kind TEXT); CREATE TRIGGER vd AFTER DELETE ON memory_index_chunks_vec BEGIN INSERT INTO ops VALUES ('vec-delete'); END; CREATE TRIGGER vi AFTER INSERT ON memory_index_chunks_vec BEGIN INSERT INTO ops VALUES ('vec-insert'); END;");
+    writeStats.length = 0;
+    await write(manager, "short", version("memory/day.md", [...base, "appended a", "appended b"], 2000));
+    counts[m] = { ...Object.fromEntries(manager.db.prepare("SELECT kind, count(*) AS n FROM ops GROUP BY kind").all().map((r) => [r.kind, r.n])), unchanged: writeStats.at(-1).unchanged };
+  }
+  // 40 lines in chunks of 3 is 14 chunks; with 2 lines appended still 14, only the last differs.
+  assert.deepEqual(counts.whole, { "vec-delete": 14, "vec-insert": 14, unchanged: 0 });
+  assert.deepEqual(counts.diff, { "vec-delete": 1, "vec-insert": 1, unchanged: 13 });
+});
+
+test("unchanged chunks get a missing vector or FTS row back and lose extra FTS rows", async () => {
+  budgetMs = 1000;
+  const states = {};
+  for (const how of ["upstream", "short"]) {
+    mode = "diff";
+    const manager = makeManager({ foreignKeys: true });
+    await write(manager, "upstream", version("memory/day.md", base, 1000));
+    const ids = manager.db.prepare("SELECT id FROM memory_index_chunks WHERE path = 'memory/day.md' ORDER BY start_line").all().map((r) => r.id);
+    manager.db.prepare("DELETE FROM memory_index_chunks_vec WHERE id = ?").run(ids[2]);
+    manager.db.prepare("DELETE FROM memory_index_chunks_fts WHERE id = ?").run(ids[3]);
+    const dup = manager.db.prepare("SELECT text, id, path, source, model, start_line, end_line FROM memory_index_chunks_fts WHERE id = ?").get(ids[4]);
+    manager.db.prepare("INSERT INTO memory_index_chunks_fts (text, id, path, source, model, start_line, end_line) VALUES (?, ?, ?, ?, ?, ?, ?)").run(...Object.values(dup));
+    writeStats.length = 0;
+    await write(manager, how, version("memory/day.md", base, 2000));
+    states[how] = dump(manager.db);
+    if (how === "short") assert.equal(writeStats.at(-1).repaired, 3);
+  }
+  sameRows(states.short, states.upstream, true);
+});
+
 test("session sources keep the upstream write", async () => {
   const manager = makeManager({ foreignKeys: true });
   stubs.transactions.length = 0;
   const v = version("sessions/a.jsonl", base, 1000);
   v.item.source = "sessions";
   v.item.entry.sessionId = "s1";
-  await shortWrites[0].call(manager, v.item, generation, v.embeddings, true);
+  await shortWrites.diff[0].call(manager, v.item, generation, v.embeddings, true);
   assert.deepEqual(stubs.transactions, [null]);
 });
 
