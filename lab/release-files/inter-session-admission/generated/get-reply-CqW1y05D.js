@@ -1807,7 +1807,7 @@ async function resolveReplyDirectives(params) {
 		surface: command.surface,
 		commandSource: ctx.CommandSource
 	});
-	const canInterpretTextDirectives = allowTextCommands && command.isAuthorizedSender && ctx.CommandInterpretationSuppressed !== true;
+	const canInterpretTextDirectives = allowTextCommands && command.isAuthorizedSender && !vInterSessionLiteralText(ctx, opts);
 	const commandTextHasSlash = commandText.includes("/");
 	const hasConfiguredModelAliases = commandTextHasSlash && Object.values(cfg.agents?.defaults?.models ?? {}).some((entry) => Boolean(normalizeOptionalString(entry.alias)));
 	const hasSkillReferences = canInterpretTextDirectives && hasSkillReferenceCandidate(command.commandBodyNormalized);
@@ -1856,7 +1856,7 @@ async function resolveReplyDirectives(params) {
 	const canInterpretMessageDirectives = canInterpretTextDirectives && !hasExplicitSkillInvocation;
 	const configuredAliases = rawAliases.filter((alias) => !reservedCommands.has(normalizeLowercaseStringOrEmpty(alias)));
 	const commandTurn = resolveCommandTurnContext(ctx);
-	const nativeDirectiveCommand = command.isAuthorizedSender && isNativeCommandTurn(commandTurn) && commandTurn.commandName ? resolveNativeReplyDirectiveCommand((await loadCommandsRegistry()).findCommandByNativeName(commandTurn.commandName, command.channel, { includeBundledChannelFallback: false })?.key) : void 0;
+	const nativeDirectiveCommand = !vInterSessionLiteralText(ctx, opts) && command.isAuthorizedSender && isNativeCommandTurn(commandTurn) && commandTurn.commandName ? resolveNativeReplyDirectiveCommand((await loadCommandsRegistry()).findCommandByNativeName(commandTurn.commandName, command.channel, { includeBundledChannelFallback: false })?.key) : void 0;
 	const routedDirectives = resolveReplyDirectiveRouting({
 		commandText,
 		agentText: sessionCtx.agentText,
@@ -2202,7 +2202,8 @@ async function handleInlineActions(params) {
 	let cleanedBody = initialCleanedBody;
 	let explicitSkillSelections;
 	const targetSessionEntry = sessionStore?.[sessionKey] ?? sessionEntry;
-	if (!isAbortRequestText(command.rawBodyNormalized) && targetSessionEntry) {
+	const vLiteralText = vInterSessionLiteralText(ctx, opts);
+	if ((vLiteralText || !isAbortRequestText(command.rawBodyNormalized)) && targetSessionEntry) {
 		const cutoff = readAbortCutoffFromSessionEntry(targetSessionEntry);
 		const incoming = resolveAbortCutoffFromContext(ctx);
 		if (cutoff ? shouldSkipMessageByAbortCutoff({
@@ -2234,8 +2235,8 @@ async function handleInlineActions(params) {
 	}
 	const slashCommandName = getStandaloneSlashCommandName(command.commandBodyNormalized);
 	const explicitSkillReferenceBody = command.commandBodyNormalized;
-	const hasSkillReferences = command.isAuthorizedSender && hasSkillReferenceCandidate(explicitSkillReferenceBody);
-	const hasSkillSlashCandidate = command.isAuthorizedSender && slashCommandName !== null && (slashCommandName === "skill" || !getBuiltinSlashCommands().has(slashCommandName));
+	const hasSkillReferences = !vLiteralText && command.isAuthorizedSender && hasSkillReferenceCandidate(explicitSkillReferenceBody);
+	const hasSkillSlashCandidate = !vLiteralText && command.isAuthorizedSender && slashCommandName !== null && (slashCommandName === "skill" || !getBuiltinSlashCommands().has(slashCommandName));
 	const shouldLoadSkillCommands = allowTextCommands && (hasSkillReferences || hasSkillSlashCandidate);
 	const skillCommands = shouldLoadSkillCommands && execOverrides === void 0 && params.skillCommands && params.skillCommands.length > 0 ? params.skillCommands : shouldLoadSkillCommands ? (await loadSkillCommandsRuntime()).listSkillCommandsForWorkspace({
 		workspaceDir,
@@ -2371,7 +2372,7 @@ async function handleInlineActions(params) {
 			isStatusNotice: true
 		})));
 	};
-	const inlineCommand = allowTextCommands && command.isAuthorizedSender && !hasExplicitSkillReferences ? extractInlineSimpleCommand(cleanedBody) : null;
+	const inlineCommand = !vLiteralText && allowTextCommands && command.isAuthorizedSender && !hasExplicitSkillReferences ? extractInlineSimpleCommand(cleanedBody) : null;
 	if (inlineCommand) {
 		cleanedBody = inlineCommand.cleaned;
 		sessionCtx.Body = cleanedBody;
@@ -2510,7 +2511,7 @@ async function handleInlineActions(params) {
 	if (directiveAck && !hasExplicitSkillReferences) await sendInlineReply(directiveAck);
 	let abortedLastRun = initialAbortedLastRun;
 	if (!sessionEntry && command.abortKey) abortedLastRun = getAbortMemory(command.abortKey) ?? false;
-	if (!(!hasExplicitSkillReferences && (inlineCommand !== null || directiveAck !== void 0 || inlineStatusRequested || command.commandBodyNormalized.trim().startsWith("/")))) return {
+	if (vLiteralText || !(!hasExplicitSkillReferences && (inlineCommand !== null || directiveAck !== void 0 || inlineStatusRequested || command.commandBodyNormalized.trim().startsWith("/")))) return {
 		kind: "continue",
 		directives,
 		abortedLastRun,
@@ -2589,7 +2590,7 @@ async function resolveNativeSlashDefaultThinkingLevel(params) {
 	});
 }
 async function maybeResolveNativeSlashCommandFastReply(params) {
-	if (!shouldRunNativeSlashCommandFastPath(params.ctx)) return { handled: false };
+	if (vInterSessionLiteralText(params.ctx, params.opts) || !shouldRunNativeSlashCommandFastPath(params.ctx)) return { handled: false };
 	const sessionState = initFastReplySessionState({
 		ctx: params.ctx,
 		cfg: params.cfg,
@@ -3304,12 +3305,20 @@ function vInterSessionBusy(vInter, info, opts, typing) {
 		reply: void 0
 	};
 }
+/**
+* True when the turn's text must be taken literally: an inter-session turn (replyOptions.vInterSession or
+* ctx.VInterSession present) or any turn whose sender suppressed command interpretation. Such text never
+* resets the session, runs a slash/skill/inline command or fast path, sets a directive or retargets a steer.
+*/
+function vInterSessionLiteralText(ctx, opts) {
+	return ctx?.CommandInterpretationSuppressed === true || ctx?.VInterSession != null || opts?.vInterSession != null;
+}
 async function prepareReplyRunAdmission(context) {
 	const { params, traceRunPhase, inboundEventKind, sourceReplyDeliveryMode, useFastReplyRuntime, thinkingRuntime, isFirstTurnInSession, baseBodyFinal, hasUserBody, isBareSessionReset, startupAction, startupContextPrelude, softResetTail, isMainSession, inboundUserContextPromptJoiner, effectiveQueueMode, effectiveResetTriggered, explicitThinkingLevelOverride, refreshInboundContextAfterAdmissionWait } = context;
 	const { ctx, sessionCtx, cfg, agentId, agentDir, directives, modelState, provider, model, perMessageQueueOptions, typing, opts, isNewSession, sessionKey, sessionId, storePath, sessionEntryHandle, sessionStore } = params;
 	let { sessionEntry, prefixedBodyBase } = context;
 	let { resolvedThinkLevel } = params;
-	if (!resolvedThinkLevel && prefixedBodyBase) {
+	if (!resolvedThinkLevel && prefixedBodyBase && !vInterSessionLiteralText(ctx, opts)) {
 		const firstToken = prefixedBodyBase.split(/\s+/, 1)[0] ?? "";
 		const maybeLevel = normalizeThinkLevel(firstToken);
 		const thinkingCatalog = maybeLevel ? await traceRunPhase("reply.resolve_thinking_catalog_for_hint", () => modelState.resolveThinkingCatalog({
@@ -4243,7 +4252,7 @@ async function prepareReplyRunContext(params) {
 	const isWholeMessageCommand = normalizedCommandBody === rawBodyTrimmed || normalizedCommandBody === rawBodyTrimmed.toLowerCase();
 	const isResetOrNewCommand = /^\/(new|reset)(?:\s|$)/i.test(normalizedCommandBody);
 	const commandTurn = resolveCommandTurnContext(ctx);
-	const canInterpretCommands = ctx.CommandInterpretationSuppressed !== true;
+	const canInterpretCommands = !vInterSessionLiteralText(ctx, opts);
 	const isRegisteredWholeMessageCommand = isWholeMessageCommand && (hasControlCommand(rawBodyTrimmed, cfg) || isResetOrNewCommand);
 	if (canInterpretCommands && (isNativeCommandTurn(commandTurn) || allowTextCommands && (isTextSlashCommandTurn(commandTurn) || isRegisteredWholeMessageCommand)) && (!commandAuthorized || !command.isAuthorizedSender) && isRegisteredWholeMessageCommand) {
 		opts?.onDeliberateSilentTerminalReply?.();
@@ -5547,7 +5556,12 @@ async function initSessionStateAttemptLocked(params, attemptContext, staleSnapsh
 		isGroup,
 		commandAuthorized
 	});
-	const { matchedResetTriggerLower, softResetMatched, triggerBodyNormalized } = resetCommand;
+	const vLiteralText = vInterSessionLiteralText(ctx);
+	const { matchedResetTriggerLower, softResetMatched, triggerBodyNormalized } = vLiteralText ? {
+		...resetCommand,
+		matchedResetTriggerLower: void 0,
+		softResetMatched: false
+	} : resetCommand;
 	if (matchedResetTriggerLower !== void 0) {
 		isNewSession = true;
 		bodyStripped = resetCommand.payload ?? "";
@@ -6400,7 +6414,7 @@ async function getReplyFromConfig(ctx, opts, configOverride) {
 		cfg,
 		ctx: finalized
 	}));
-	if (explicitSteerTargetSessionKey) finalized.CommandTargetSessionKey = explicitSteerTargetSessionKey;
+	if (explicitSteerTargetSessionKey && !vInterSessionLiteralText(finalized, opts)) finalized.CommandTargetSessionKey = explicitSteerTargetSessionKey;
 	const initialAgentScope = resolverTiming.measureSync("reply.resolve_agent_scope", () => {
 		const resolvedAgentSessionKey = resolveCommandTurnTargetSessionKey(finalized) || finalized.SessionKey;
 		return {

@@ -3,6 +3,8 @@
 // Static part: the committed files are exactly the patch of the bytes V runs, the anchors are unique,
 // the marker is there once, only the intended lines change, the literals agree with contracts.js and
 // the guard sits after the queue admission state and before steer/followup and the system-event drain.
+// (The literal-text gates and the dispatch-level BUSY of the same package are exercised functionally in
+// tests/inter-session-literal-text.test.mjs.)
 //
 // Functional part: the real prepareReplyRunAdmission and runReplyAgent bodies are cut out of the
 // captured and generated files and run against fakes of everything they reach outside themselves
@@ -24,6 +26,7 @@ import {
   MARKER,
   PATCHERS,
   patchAgentRunnerRuntime,
+  patchDispatchFromConfig,
   patchGetReply,
 } from "../lab/release-files/inter-session-admission/patch.mjs";
 import * as contracts from "../apps/v-session-relay/plugin/core/contracts.js";
@@ -38,6 +41,8 @@ const V_G = read(capturedPath(FILES.getReply));
 const V_R = read(capturedPath(FILES.agentRunnerRuntime));
 const GEN_G = read(generatedPath(FILES.getReply));
 const GEN_R = read(generatedPath(FILES.agentRunnerRuntime));
+const V_D = read(capturedPath(FILES.dispatchFromConfig));
+const GEN_D = read(generatedPath(FILES.dispatchFromConfig));
 
 const count = (source, needle) => source.split(needle).length - 1;
 const sha256 = (text) => createHash("sha256").update(text).digest("hex");
@@ -66,47 +71,97 @@ test("the committed files are exactly the patch of the bytes V runs, and parse",
 test("every anchor occurs exactly once in V's bytes; the marker is absent before and present once after", () => {
   for (const anchor of ANCHORS.getReply) assert.equal(count(V_G, anchor), 1, JSON.stringify(anchor.slice(0, 80)));
   for (const anchor of ANCHORS.agentRunnerRuntime) assert.equal(count(V_R, anchor), 1, JSON.stringify(anchor.slice(0, 80)));
-  assert.equal(count(V_G, MARKER), 0);
-  assert.equal(count(V_R, MARKER), 0);
-  assert.equal(count(GEN_G, MARKER), 1);
-  assert.equal(count(GEN_R, MARKER), 1);
+  for (const anchor of ANCHORS.dispatchFromConfig) assert.equal(count(V_D, anchor), 1, JSON.stringify(anchor.slice(0, 80)));
+  assert.deepEqual(Object.keys(ANCHORS).sort(), Object.keys(FILES).sort(), "every patched file has its anchors listed");
+  for (const source of [V_G, V_R, V_D]) assert.equal(count(source, MARKER), 0);
+  for (const source of [GEN_G, GEN_R, GEN_D]) assert.equal(count(source, MARKER), 1);
 });
 
 test("patching twice or a changed file is refused", () => {
   assert.throws(() => patchGetReply(GEN_G), /already patched/u);
   assert.throws(() => patchAgentRunnerRuntime(GEN_R), /already patched/u);
+  assert.throws(() => patchDispatchFromConfig(GEN_D), /already patched/u);
   assert.throws(() => patchGetReply("async function other() {}"), /expected exactly one anchor, found 0/u);
   assert.throws(() => patchAgentRunnerRuntime("async function other() {}"), /expected exactly one anchor, found 0/u);
+  assert.throws(() => patchDispatchFromConfig("async function other() {}"), /expected exactly one anchor, found 0/u);
   const doubled = V_G.replace(ANCHORS.getReply[3], `${ANCHORS.getReply[3]}${ANCHORS.getReply[3]}`);
   assert.throws(() => patchGetReply(doubled), /queue admission state: expected exactly one anchor, found 2/u);
+  const doubledD = V_D.replace(ANCHORS.dispatchFromConfig[3], `${ANCHORS.dispatchFromConfig[3]}${ANCHORS.dispatchFromConfig[3]}`);
+  assert.throws(() => patchDispatchFromConfig(doubledD), /fast abort: expected exactly one anchor, found 2/u);
 });
 
-/** Lines of `generated` that are not part of `captured` kept in order (captured must be a subsequence). */
-function addedLines(captured, generated) {
-  const a = captured.split("\n");
-  const b = generated.split("\n");
-  const added = [];
+/**
+ * Line hunks between two mostly equal sources: walk both, and where they differ resync on the nearest
+ * three equal lines. [{ at (line in `before`), removed: [...], added: [...] }]
+ */
+function lineHunks(before, after) {
+  const a = before.split("\n");
+  const b = after.split("\n");
+  const same = (x, y, n) => {
+    if (x + n > a.length || y + n > b.length) return false;
+    for (let k = 0; k < n; k += 1) if (a[x + k] !== b[y + k]) return false;
+    return true;
+  };
+  const hunks = [];
   let i = 0;
-  for (const line of b) {
-    if (i < a.length && line === a[i]) i += 1;
-    else added.push(line);
+  let j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+    let found;
+    search: for (let d = 1; d <= 200; d += 1) {
+      for (let k = 0; k <= d; k += 1) {
+        if (same(i + k, j + d - k, 3)) {
+          found = [k, d - k];
+          break search;
+        }
+      }
+    }
+    found ??= [a.length - i, b.length - j];
+    hunks.push({ at: i, removed: a.slice(i, i + found[0]), added: b.slice(j, j + found[1]) });
+    i += found[0];
+    j += found[1];
   }
-  assert.equal(i, a.length, "every line V runs is still there, in order");
-  return added;
+  return hunks;
+}
+
+/** Every changed line lies inside one of the anchors, and every anchor changes. Returns the hunks. */
+function assertOnlyAnchorsChange(captured, generated, anchors, file) {
+  const ranges = anchors.map((anchor) => {
+    const start = captured.slice(0, captured.indexOf(anchor)).split("\n").length - 1;
+    return { anchor, start, end: start + anchor.split("\n").length - 1 };
+  });
+  const hunks = lineHunks(captured, generated);
+  const touched = new Set();
+  for (const hunk of hunks) {
+    const range = ranges.find((r) => hunk.at >= r.start && hunk.at + hunk.removed.length <= r.end);
+    assert.ok(range, `${file}: change at line ${hunk.at + 1} is outside every anchor: ${JSON.stringify(hunk).slice(0, 300)}`);
+    touched.add(range.anchor);
+  }
+  assert.equal(touched.size, anchors.length, `${file}: every anchor is patched`);
+  return hunks;
 }
 
 test("only the intended lines change; everything V already runs (its own markers included) stays", () => {
-  const interruptOld = ANCHORS.getReply[2].split("\n").filter(Boolean);
-  const vGWithoutInterrupt = V_G.split("\n").filter((l) => !interruptOld.includes(l)).join("\n");
-  const addedG = addedLines(vGWithoutInterrupt, GEN_G);
-  assert.equal(addedG.length, 32 + 5 + 1 + 9 + 5, "helpers, heartbeat-timeout branch, interrupt-clear condition, guard, run-now exit");
-  assert.equal(addedG.filter((l) => l.includes("vInterSessionExclusive(opts, ctx)")).length, 5, "declaration, heartbeat exit, interrupt clear, guard, run-now exit");
+  const hunksG = assertOnlyAnchorsChange(V_G, GEN_G, ANCHORS.getReply, FILES.getReply);
+  const removedG = hunksG.flatMap((h) => h.removed);
+  assert.equal(removedG.length, 1 + 1 + 1 + 2 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1, "only the interrupt-clear condition and the literal-text conditions are rewritten");
+  assert.ok(removedG.every((l) => !/^\s*(?:\/\/|\/?\*)/u.test(l)), "no comment of V's is removed");
+  assert.equal(count(GEN_G, "vInterSessionExclusive(opts, ctx)"), 5, "declaration, heartbeat exit, interrupt clear, guard, run-now exit");
+  assert.equal(count(GEN_G, "vInterSessionLiteralText("), 9, "declaration + directives, native directive, inline actions, native slash, run context, think-level word, session reset, explicit steer");
 
-  const steerOld = ANCHORS.agentRunnerRuntime[1].split("\n").filter(Boolean);
-  const vRWithoutSteer = V_R.split("\n").filter((l) => !steerOld.includes(l)).join("\n");
-  const addedR = addedLines(vRWithoutSteer, GEN_R);
-  assert.equal(addedR.length, 11 + 4, "flush seam and the exclusive steer/followup decision");
+  const hunksR = assertOnlyAnchorsChange(V_R, GEN_R, ANCHORS.agentRunnerRuntime, FILES.agentRunnerRuntime);
+  assert.equal(hunksR.flatMap((h) => h.added).length - hunksR.flatMap((h) => h.removed).length, 11 + 2, "flush seam and the exclusive steer/followup decision");
   assert.equal(count(GEN_R, "//#endregion memory-flush-defer-v1"), 1, "V's memory-flush-defer region is intact");
+
+  const hunksD = assertOnlyAnchorsChange(V_D, GEN_D, ANCHORS.dispatchFromConfig, FILES.dispatchFromConfig);
+  assert.equal(hunksD.flatMap((h) => h.removed).length, 1 + 1 + 1 + 1 + 4 + 4, "reset admission, explicit command, fast abort, fast approve, two busy exits");
+  assert.equal(count(GEN_D, "vInterSessionLiteralText("), 4, "declaration + reset admission, explicit command, fast abort/approve");
+  assert.equal(count(GEN_D, "vInterSessionDispatchBusy(ctx, params.replyOptions);"), 2, "both dispatch busy exits before get-reply");
+  assert.equal(count(GEN_D, "finishReplyOperationBusyDispatch("), count(V_D, "finishReplyOperationBusyDispatch("), "no busy exit added or lost");
 });
 
 test("the inlined literals agree with apps/v-session-relay/plugin/core/contracts.js", () => {
