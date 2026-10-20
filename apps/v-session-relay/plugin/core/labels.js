@@ -76,7 +76,8 @@ function agentName(agentId, agentNames) {
 
 /**
  * The label of a session as a person in `viewerAgentId`'s chats would read it:
- *   1. the group name (route.label from getChatInfo) or the entry's subject;
+ *   1. the group name (route.label from getChatInfo), the entry's subject or its label (never the
+ *      core's displayName, an id-like "<provider>:g-<slug>");
  *   2. the owner's direct chat: 「{ownerName} 私聊」;
  *   3. anyone else's direct chat: 「一个私聊」 (never who);
  *   4. main 「V 主会话」, cron 「定时任务」, webchat/iOS 「V App」.
@@ -92,7 +93,9 @@ export function sessionLabel({ sessionKey, route, entry, ownerName = "Tianyi", o
       const owner = route?.humans === "owner_only" || (peer && ownerIds.includes(peer));
       base = owner ? `${ownerName} 私聊` : "一个私聊";
     } else {
-      base = route?.label || entry?.subject || entry?.displayName || entry?.label || "一个群聊";
+      // Never entry.displayName: 9.1 builds it as "<provider>:g-<slug>" (buildGroupDisplayName), an id,
+      // which the R2 candidate showed in WeCom hand-back lines as 「wecom:g-wrgrprooma0isr2」.
+      base = route?.label || entry?.subject || entry?.label || "一个群聊";
     }
   } else if (p.kind === "main") base = "V 主会话";
   else if (p.kind === "cron") base = "定时任务";

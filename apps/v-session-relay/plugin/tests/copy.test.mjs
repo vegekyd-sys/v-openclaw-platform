@@ -176,6 +176,9 @@ test("labels: §7.1 order, privacy of other people's chats, cross-agent prefix, 
   const ownerIds = ["ou_owner"];
   assert.equal(sessionLabel({ sessionKey: "agent:makaron:feishu:group:oc_1", route: { chatType: "group", label: "任务群 a" } }), "任务群 a");
   assert.equal(sessionLabel({ sessionKey: "agent:makaron:feishu:group:oc_1", entry: { subject: "发布验收" } }), "发布验收");
+  // e2e-r2 WeCom: a group with no name must not be called by 9.1's id-like displayName.
+  assert.equal(sessionLabel({ sessionKey: "agent:makaron:wecom:group:wrgrprooma0isr2", entry: { displayName: "wecom:g-wrgrprooma0isr2" } }), "一个群聊");
+  assert.equal(sessionLabel({ sessionKey: "agent:makaron:wecom:group:wrgrprooma0isr2", entry: { displayName: "wecom:g-wrgrprooma0isr2", label: "运营群" } }), "运营群");
   assert.equal(sessionLabel({ sessionKey: "agent:makaron:feishu:direct:ou_owner", ownerIds }), "Tianyi 私聊");
   assert.equal(sessionLabel({ sessionKey: "agent:makaron:feishu:direct:ou_other", ownerIds }), "一个私聊");
   assert.equal(sessionLabel({ sessionKey: "agent:makaron:main" }), "V 主会话");
