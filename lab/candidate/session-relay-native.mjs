@@ -196,12 +196,18 @@ try {
   if (only.includes("async")) {
     const mark = lines.length;
     const tag = `${RUN_TAG}-A`;
-    const turn = agentTurn(`【原生推送测试 ${tag}】用 sessions_send（timeoutSeconds 设 0，不要等）让「${GROUP_NAME}」群里的 V 用 exec 执行 \`sleep 75 && date\`，再把时间连同 ${tag} 一起回复。你发出去就先告诉我已经交给它了；它做完会回来，到时再把时间告诉我。`, `user:${OWNER}`);
-    const woke = await waitAssistant(DM_KEY, /\d{1,2}:\d{2}/u, 420_000) && await waitAssistant(GROUP_KEY, new RegExp(tag), 30_000);
+    const turn = agentTurn(`【原生推送测试 ${tag}】用 sessions_send（timeoutSeconds 设 0，不要等）让「${GROUP_NAME}」群里的 V 用 exec 执行 \`sleep 75 && date\`，再把时间连同 ${tag} 一起回复。你发出去后只告诉我一句"已交给它"，然后马上结束这一轮：不要用 exec、sleep、sessions_history 或任何办法自己等或查。它做完，结果会作为新一轮自动回到这里，到时再把时间告诉我。`, `user:${OWNER}`);
+    // The wake-up turn follows the reply that came back as an inter-session message.
+    let woke = false;
+    for (const until = Date.now() + 420_000; Date.now() < until && !woke; await sleep(3_000)) {
+      const h = await history(DM_KEY, 40);
+      const back = Array.isArray(h) ? h.findLastIndex((m) => m.provenance === "inter_session" && m.text.includes(tag)) : -1;
+      woke = back >= 0 && h.slice(back + 1).some((m) => m.role === "assistant" && /\S/u.test(m.text));
+    }
     await sleep(10_000); // let the last delivery reach Feishu
     summary.scenarios.async = {
       tag, coordinatorTurn: turn, woke,
-      groupHistory: await history(GROUP_KEY, 12), dmHistory: await history(DM_KEY, 12),
+      groupHistory: await history(GROUP_KEY, 12), dmHistory: await history(DM_KEY, 40),
       log: logSince(mark, DELIVERY_LOG).slice(-40),
     };
     assert.equal(turn.exit, 0, `coordinator turn failed: ${turn.stderr}`);
