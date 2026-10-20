@@ -89,8 +89,9 @@ health refresh still takes that long but the Gateway keeps serving.
 
 ## Not covered
 
-- The worker thread holds its own module graph and a read-only connection; its resident memory on V was
-  not measured. First use of V's 21 GB database in the worker may run its own read-only open checks, off
+- The worker thread holds its own module graph and a read-only connection: process RSS rose 258 → 442 MB
+  after its first call on VLab (candidate `ac3a154a`, same equivalence and costs). On V that is ~0.2 GB
+  more resident. First use of V's 21 GB database in the worker may run its own read-only open checks, off
   the main thread.
 - `status` (`readStatusSessionStores`) uses the same summary on the main thread. It is called on demand,
   not every minute, and is unchanged.

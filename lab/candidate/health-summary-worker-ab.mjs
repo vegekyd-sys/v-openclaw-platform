@@ -100,6 +100,11 @@ async function compare(label) {
   }
 }
 const sample = (await base.t(cfg, ordered))[0].sessions;
+global.gc?.();
+const rssBefore = process.memoryUsage().rss;
+await patched.t(cfg, ordered);
+global.gc?.();
+log("workerMemory", { rssBeforeMB: Math.round(rssBefore / 1e6), rssAfterFirstWorkerCallMB: Math.round(process.memoryUsage().rss / 1e6) });
 await compare("as exported");
 {
   const db = new DatabaseSync(agentDb);

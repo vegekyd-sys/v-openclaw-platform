@@ -79,6 +79,90 @@
      }
     ]
    }
+  },
+  "candidate-ac3a154a-e36c-4df3-9fc7-f4c5f4d0a2f7": {
+   "workerMemory": {
+    "rssBeforeMB": 258,
+    "rssAfterFirstWorkerCallMB": 442
+   },
+   "equivalence": {
+    "count": 5729,
+    "compared": 8,
+    "mismatches": 0,
+    "sample": []
+   },
+   "cost.cold.base": {
+    "label": "buildHealthAgentSummaries V",
+    "cold": true,
+    "runs": [
+     {
+      "wallMs": 1633,
+      "mainThreadMaxStallMs": 1633
+     },
+     {
+      "wallMs": 1471,
+      "mainThreadMaxStallMs": 1472
+     },
+     {
+      "wallMs": 1439,
+      "mainThreadMaxStallMs": 1439
+     }
+    ]
+   },
+   "cost.cold.patched": {
+    "label": "buildHealthAgentSummaries release",
+    "cold": true,
+    "runs": [
+     {
+      "wallMs": 1576,
+      "mainThreadMaxStallMs": 8
+     },
+     {
+      "wallMs": 1479,
+      "mainThreadMaxStallMs": 8
+     },
+     {
+      "wallMs": 1543,
+      "mainThreadMaxStallMs": 11
+     }
+    ]
+   },
+   "cost.warm.base": {
+    "label": "buildHealthAgentSummaries V",
+    "cold": false,
+    "runs": [
+     {
+      "wallMs": 61,
+      "mainThreadMaxStallMs": 61
+     },
+     {
+      "wallMs": 57,
+      "mainThreadMaxStallMs": 60
+     },
+     {
+      "wallMs": 79,
+      "mainThreadMaxStallMs": 79
+     }
+    ]
+   },
+   "cost.warm.patched": {
+    "label": "buildHealthAgentSummaries release",
+    "cold": false,
+    "runs": [
+     {
+      "wallMs": 60,
+      "mainThreadMaxStallMs": 7
+     },
+     {
+      "wallMs": 61,
+      "mainThreadMaxStallMs": 8
+     },
+     {
+      "wallMs": 61,
+      "mainThreadMaxStallMs": 7
+     }
+    ]
+   }
   }
  }
 }
