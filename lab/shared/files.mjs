@@ -44,12 +44,34 @@ export function validateFiles(root, files) {
 export function assertVersion(root, files, side) {
   for(const f of files) assert.equal(hashFile(target(root,f.target)),f[side],`Runtime drift: ${f.target}`);
 }
+// A release may add files in directories the runtime does not have yet (a new
+// plugin, extensions/v-session-relay/). They are created like their nearest
+// existing ancestor (mode and, as root, owner). target() has already refused a
+// symlinked ancestor.
+function makeParents(dest) {
+  const missing=[];let d=path.dirname(dest);
+  while(!fs.existsSync(d)){missing.unshift(d);d=path.dirname(d);}
+  const st=fs.statSync(d);
+  for(const m of missing){fs.mkdirSync(m,{mode:st.mode&0o777});fs.chmodSync(m,st.mode&0o777);if(process.getuid?.()===0)fs.chownSync(m,st.uid,st.gid);}
+}
+// Removing an added file again (rollback) removes the directories it leaves
+// empty, deepest first, never the top-level runtime directory (extensions/,
+// openclaw/, ...). The fingerprint does not see directories; the Gateway's
+// plugin discovery does.
+function removeEmptyParents(root, rel) {
+  const parts=rel.split('/');
+  for(let n=parts.length-1;n>1;n--) {
+    try{fs.rmdirSync(path.join(root,...parts.slice(0,n)));}
+    catch(e){if(e.code==='ENOENT')continue;if(e.code==='ENOTEMPTY'||e.code==='EEXIST')return;throw e;}
+  }
+}
 // Copy-on-write per file. Never modify a hardlinked baseline inode in place.
 export function installFiles(root, files, payloadDir, side) {
   for(const [i,f] of files.entries()) {
     const dest=target(root,f.target);
-    if(f[side]===null) { if(fs.existsSync(dest))fs.unlinkSync(dest); continue; }
+    if(f[side]===null) { if(fs.existsSync(dest)){fs.unlinkSync(dest);removeEmptyParents(root,f.target);} continue; }
     const src=path.join(payloadDir,side,String(i)); assert.equal(hashFile(src),f[side]);
+    makeParents(dest);
     let st=fs.statSync(path.dirname(dest)); if(fs.existsSync(dest))st=fs.statSync(dest);
     const tmp=dest+'.vlab-'+process.pid+'.tmp';
     fs.copyFileSync(src,tmp,fs.constants.COPYFILE_EXCL);
