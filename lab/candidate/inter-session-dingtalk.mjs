@@ -20,7 +20,7 @@ import path from "node:path";
 
 import {
   AGENT, BAD_LOG_RE, DINGTALK_PLUGIN, DINGTALK_PROJECT, Gateway, MODELS, allowRelocatedPlugins, applyWorkspace, contracts, createRpc, createRun,
-  finish, freeBytes, historyAt, ledgerOf, runScenario, sendEvidence, sessionKeys, sha256, sleep, verifyOverlay, waitSend, writeConfig,
+  finish, freeBytes, historyAt, ledgerOf, rawMessages, runScenario, sendEvidence, sessionKeys, sha256, sleep, verifyOverlay, waitSend, writeConfig,
 } from "./inter-session-r2-lib.mjs";
 import { C, F1, F2, F3, F5, helpers } from "./inter-session-r2-scenarios.mjs";
 import { createFakeDingTalkOpenApi } from "./dingtalk-fake-open-api.mjs";
@@ -87,7 +87,8 @@ function writes(name, from, to) {
 }
 
 const ad = {
-  name: "dingtalk", bridgeKey: "dingtalk:default", streaming: true, replyAnchor: false,
+  // V's connector account is "__default__" (the bridge also answers to "dingtalk:default").
+  name: "dingtalk", bridgeKey: "dingtalk:__default__", streaming: true, replyAnchor: false,
   keys: {}, chats: { dm: "dm", ga: "ga", gv: "gv" },
   person(name, text) {
     const c = CHATS[name];
@@ -97,7 +98,10 @@ const ad = {
   items, writes,
   anchorId: (m) => String(m.id),
   extra: {
-    F2: async (env, { id, rec, targetFinal }) => {
+    F1: async (env, { id, t0, rec }) => noPlaceholder(env, id, t0, rec, ["dm", "gv"]),
+    F3: async (env, { id, t0, rec }) => noPlaceholder(env, id, t0, rec, ["dm"]),
+    F2: async (env, { id, t0, rec, targetFinal }) => {
+      await noPlaceholder(env, id, t0, rec, ["dm", "ga"]);
       const startingAt = historyAt(rec, /^starting/u);
       const card = targetFinal.find((m) => m.kind === "card");
       check(id, Boolean(card), "the target answered in an AI card", targetFinal.map((m) => ({ kind: m.kind, text: m.text.slice(0, 80) })));
@@ -106,6 +110,17 @@ const ad = {
     },
   },
 };
+
+// The connector's empty-final fallbacks (utils-D0ALDrCn.mjs): a group gets an ops hint, a direct chat a filler line.
+const PLACEHOLDER = /暂未收到模型回复内容|visibleReplies|好的 👌 有其他问题随时找我/u;
+const DT_LOG = /\[DingTalk\]\[(deliver|closeStreaming|startStreaming|onReplyStart|onIdle|onError|idleNudge|asyncMode|inter-session)\]|final 响应无文本|累积文本为空|默认提示文案|NO_REPLY|silent|announce|followup|lifecycle/u;
+/** No empty-final fallback card or message in these chats since t0; logs and transcripts kept as evidence. */
+async function noPlaceholder(env, id, t0, rec, names) {
+  const hits = names.flatMap((n) => items(n, t0).filter((m) => PLACEHOLDER.test(m.text)).map((m) => ({ chat: n, kind: m.kind, at: new Date(m.at).toISOString().slice(11, 23), ops: m.history.map((x) => x.op).join(","), text: m.text.slice(0, 60) })));
+  evidence(id, "dingtalkLog", env.gw.logSince(t0, DT_LOG).filter((l) => !/textLength=\d+, hasText=true|block 更新到 AI Card/u.test(l)).slice(-60));
+  for (const n of names) evidence(id, `raw:${n}`, (await rawMessages(env.rpc, ad.keys[n], 14)).filter((m) => (m.at ?? 0) >= t0 - 2000));
+  check(id, hits.length === 0, "no empty-reply fallback card/message (「暂未收到模型回复内容」/「好的 👌 有其他问题随时找我」) in the chats involved", hits);
+}
 
 // ---------------------------------------------------------------- main
 async function main() {

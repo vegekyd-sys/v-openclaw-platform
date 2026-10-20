@@ -182,7 +182,7 @@ async function main() {
     ctx.summary.readback = { dmChat: DM_CHAT, from: new Date(t0 - 5000).toISOString(), handbackMessageId: batch.wake?.handbackMessageId ?? null, codes: [dtRec.code, tgRec.code], tokens: [dtToken, tgToken], tag: TAG, dtTitle: DT_TITLE };
     check(id, sends.length === 2 && dtSend && tgSend && dtRec.batchId === tgRec.batchId, "two sends from one turn of the Feishu DM, one batch", sends.map((r) => r.target.sessionKey));
     check(id, dtRec.principal?.channel === "feishu" && dtRec.principal?.isOwner === true, "the chain's root is the Feishu owner", dtRec.principal);
-    check(id, dtRec.target.transport === "bridge" && dtRec.target.bridgeKey === "dingtalk:default" && tgRec.target.transport === "bridge" && tgRec.target.bridgeKey === "telegram:default", "each target reached through its own channel's bridge", [dtRec.target.bridgeKey, tgRec.target.bridgeKey]);
+    check(id, dtRec.target.transport === "bridge" && /^dingtalk:(__default__|default)$/u.test(dtRec.target.bridgeKey ?? "") && tgRec.target.transport === "bridge" && tgRec.target.bridgeKey === "telegram:default", "each target reached through its own channel's bridge", [dtRec.target.bridgeKey, tgRec.target.bridgeKey]);
     for (const [name, r, tokenX] of [["DingTalk", dtRec, dtToken], ["Telegram", tgRec, tgToken]]) {
       check(id, r.phase === "handed_back" && !r.failure && String(r.result?.text ?? "").includes(tokenX), `${name}: result handed back`, { phase: r.phase, result: r.result, failure: r.failure });
       check(id, r.targetRun?.runId === contracts.runIdFor("request", r.sendId, r.attempt), `${name}: the target turn ran with the preset runId`, r.targetRun);
