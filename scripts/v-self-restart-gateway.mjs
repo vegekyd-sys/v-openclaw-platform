@@ -3,7 +3,12 @@
 // /opt/v-sentinel/self-restart-gateway.mjs). Prints one JSON line:
 //
 //   {"workers": <vlab.workers.status, trimmed> | {"error": ...},
-//    "cron":    {"jobs": [{id, name, enabled, kind, runningAtMs, streamStatus}]} | {"error": ...}}
+//    "cron":    {"jobs": [{id, name, enabled, kind, runningAtMs, streamStatus}]} | {"error": ...},
+//    "relay":   {"counts": {running, queued, awaiting}, "items": [{phase, target}]} | {"error": ...}}
+//
+// relay is vrelay.list({active: true}) of the v-session-relay plugin (inter-session
+// collaboration, docs/inter-session/design.md §2.b); without the plugin it is an error
+// that v-self-restart reads as "no collaboration turns".
 //
 //   node self-restart-gateway.mjs --core <dir with dist/> --port <n> --pid <gateway pid> --config <openclaw.json>
 //
@@ -87,6 +92,21 @@ async function main() {
     out.cron = {jobs};
   } catch (e) {
     out.cron = {error: errorText(e)};
+  }
+  try {
+    const r = await client.request('vrelay.list', {active: true, limit: 100}, {timeoutMs: 20000});
+    const counts = {};
+    for (const k of ['running', 'queued', 'awaiting']) if (Number.isSafeInteger(r?.counts?.[k])) counts[k] = r.counts[k];
+    out.relay = {
+      counts,
+      // the target's session key only: labels and message text stay in the Gateway
+      items: (Array.isArray(r?.items) ? r.items : []).map((i) => ({
+        phase: typeof i?.phase === 'string' ? i.phase : null,
+        target: typeof i?.target === 'string' ? i.target : (typeof i?.target?.sessionKey === 'string' ? i.target.sessionKey : null),
+      })),
+    };
+  } catch (e) {
+    out.relay = {error: errorText(e)};
   }
   client.stop();
   return out;

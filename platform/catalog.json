@@ -432,7 +432,8 @@
         "lab/subagent-completion-projection.test.mjs",
         "lab/subagent-settle-backlog.test.mjs",
         "lab/workboard-lifecycle-bounded.test.mjs",
-        "lab/session-info-subagent-index.test.mjs"
+        "lab/session-info-subagent-index.test.mjs",
+        "tests/v-self-restart-gateway.test.mjs"
       ]
     }
   ],

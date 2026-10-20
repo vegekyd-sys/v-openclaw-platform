@@ -56,12 +56,13 @@ sudo v-self-restart --reason "激活 DeepSeek web search" --requested-by "releas
 
 ## 空闲闸门
 
-`--delay` 之后、停服之前检查，四条都满足才算空闲，每 15 秒查一次：
+`--delay` 之后、停服之前检查，五条都满足才算空闲，每 15 秒查一次：
 
 | 条件 | 怎么查 |
 |---|---|
 | worker 池没有在跑或排队的回合 | RPC `vlab.workers.status`：各 worker 的 `active`（不含发起方自己的会话）、`queued`，加上池子的 `pending` |
 | 没有在跑的 cron 回合 | RPC `cron.list`（分页拿全）：`state.runningAtMs` 有值的任务。stream 型任务的常驻 watcher 只有 `streamStatus: running`，不算忙；它随重启自动拉起，重启后单独核对 |
+| 没有在跑的会话协作回合 | RPC `vrelay.list({active: true})`（v-session-relay 插件，见 `docs/inter-session/design.md` §2.b、§6.6）：`counts.running`，即目标回合正在开跑或在跑的请求；目标就是发起方自己会话的那一项不计入。排队中、等子请求或后台收尾的不算忙，重启后插件会重新排队。忙时原因写「会话协作有 N 个回合在跑」 |
 | 最近 4 分钟没有分发到一半的消息 | journal 里 `dispatching to agent` 的条数不多于 `dispatch complete (`（`[diagnostic] ... dispatch completed:` 是另一类事件，不算） |
 | 最后一条入站消息已超过 90 秒 | journal 里最后一条 `received message` / `dispatching to agent` |
 
@@ -69,7 +70,7 @@ sudo v-self-restart --reason "激活 DeepSeek web search" --requested-by "releas
 
 **发起方自己不算忙**：`--delay` 本来就是留给发起方说完话的，闸门只在 delay 之后检查；发起方会话（`--session-key`）在 worker 里的回合不计入；它所在的群/私聊在**请求之前**的入站和分发日志也不计入（请求之后这个群里再来的新消息照样算忙）。没有 `--session-key` 的重启（监控、发版）不做任何排除。
 
-查询失败（Gateway 不回 RPC）算忙。Gateway 没有 worker 池插件（`unknown method`）时这一条视为没有 worker 回合。Gateway 根本没在运行就直接算空闲。
+查询失败（Gateway 不回 RPC）算忙。Gateway 没有 worker 池插件（`unknown method`）时这一条视为没有 worker 回合。没装 v-session-relay 插件时 `vrelay.list` 未注册；Gateway 先查权限再找方法，只读连接收到的是 `missing scope: operator.admin`（或 `unknown method`），这两种都视为没有协作回合；旧版查询脚本没有 `relay` 这一项时也一样。Gateway 根本没在运行就直接算空闲。
 
 等不到空闲时：`wait-then-proceed`（默认）照常重启，并在通知里告警「等了 N 秒仍在忙（原因），照常重启」；`abort` 什么都不改，结果 `busy-aborted`。V 自己发起的重启默认最多多等 5 分钟。
 

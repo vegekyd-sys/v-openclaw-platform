@@ -19,6 +19,11 @@
 //                    (dispatcher -> run start: core inbound, session, Worker admission), agent (received -> first answer text reaches the
 //                    channel), reasoning (received -> first reasoning text), delivery (first answer
 //                    text at the channel -> in the card), card create (start -> created)
+// Inter-session collaboration turns (sessions_send delivered through the Feishu inbound bridge)
+// are left out: they are synthetic inbound messages nobody typed, and their wait in the relay
+// queue is not a person waiting. The bridge marks their record origin:"inter_session" and
+// presets their runIds with "v-a2a-"; the report counts them separately (interSessionExcluded).
+// --records still writes every parsed record, with its origin field.
 // No message text is read or written.
 
 import { execFileSync } from 'node:child_process';
@@ -29,6 +34,16 @@ const opt = (name, fallback) => { const i = args.indexOf(`--${name}`); return i 
 const since = opt('since', '-1 hour');
 const until = opt('until', 'now');
 const unit = opt('unit', 'openclaw-gateway.service');
+
+// Prefix of every runId, synthetic message id and transcript tag the session relay creates
+// (docs/inter-session/design.md §2.c). A preset runId the harness did not adopt still leaves
+// origin:"inter_session" on the record.
+export const INTER_SESSION_ID_PREFIX = 'v-a2a-';
+
+export function isInterSession(r) {
+  if (r?.origin === 'inter_session') return true;
+  return [r?.runId, r?.inboundMessageId].some((id) => typeof id === 'string' && id.startsWith(INTER_SESSION_ID_PREFIX));
+}
 
 export function parseRecords(text) {
   const records = [];
@@ -143,9 +158,10 @@ export function summarize(rows, key) {
   return { n: v.length, p50: percentile(v, 0.5), p95: percentile(v, 0.95), p99: percentile(v, 0.99), max: v.length ? Math.max(...v) : undefined };
 }
 
-export function report(records, models = new Map()) {
+export function report(allRecords, models = new Map()) {
+  const records = allRecords.filter((r) => !isInterSession(r));
   const rows = records.map((r) => measure(r, models.get(r.runId)));
-  const out = { n: rows.length, firstText: summarize(rows, 'firstTextMs'), statusFirst: rows.filter((r) => r.statusFirst).length, firstAnswer: summarize(rows, 'firstAnswerMs'), firstVisible: summarize(rows, 'firstVisibleMs'), segments: {}, byHarness: {}, slowest: [] };
+  const out = { n: rows.length, interSessionExcluded: allRecords.length - records.length, firstText: summarize(rows, 'firstTextMs'), statusFirst: rows.filter((r) => r.statusFirst).length, firstAnswer: summarize(rows, 'firstAnswerMs'), firstVisible: summarize(rows, 'firstVisibleMs'), segments: {}, byHarness: {}, slowest: [] };
   for (const k of ['inboundMs', 'queueMs', 'preDispatchMs', 'dispatchToRunMs', 'agentMs', 'reasoningMs', 'deliveryMs', 'cardCreateMs']) out.segments[k] = summarize(rows, k);
   out.overhead = summarize(rows, 'overheadMs');
   out.overheadNoTools = summarize(rows, 'overheadNoToolsMs');
@@ -165,6 +181,7 @@ const s = (ms) => (Number.isFinite(ms) ? `${(ms / 1000).toFixed(1)}s` : '-');
 function print(out) {
   const line = (label, x) => console.log(`${label.padEnd(26)} n=${String(x.n).padStart(4)}  P50 ${s(x.p50).padStart(6)}  P95 ${s(x.p95).padStart(6)}  P99 ${s(x.p99).padStart(6)}  Max ${s(x.max).padStart(6)}`);
   console.log(`firsttext-e2e ${since} .. ${until}: ${out.n} messages`);
+  if (out.interSessionExcluded) console.log(`  inter-session turns left out: ${out.interSessionExcluded}`);
   line('首字 (answer or status)', out.firstText);
   console.log(`  status line came first: ${out.statusFirst}/${out.n}`);
   line('first answer text', out.firstAnswer);

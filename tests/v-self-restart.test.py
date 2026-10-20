@@ -478,6 +478,48 @@ class BusyReasons(unittest.TestCase):
         earlier = [(self.NOW - 70, "received message from ou_x in oc_%s (group)" % ("a" * 32))]
         self.assertEqual(self.reasons(journal=earlier, requested=self.NOW - 60)[0], [])
 
+    # Inter-session collaboration (docs/inter-session/design.md §6.6): a release
+    # must not restart under a room turn the relay started.
+    def relay(self, relay, **kw):
+        return self.reasons({"workers": idle_workers(), "cron": {"jobs": [STREAM]}, "relay": relay}, **kw)[0]
+
+    def test_running_collaboration_turn_is_busy(self):
+        items = [{"phase": "running", "target": OTHER}, {"phase": "starting", "target": OTHER + "x"},
+                 {"phase": "queued", "target": OTHER}]
+        self.assertEqual(self.relay({"counts": {"running": 2, "queued": 1, "awaiting": 0}, "items": items}),
+                         ["会话协作有 2 个回合在跑"])
+
+    def test_queued_or_waiting_collaboration_is_not_busy(self):
+        # the relay re-queues them after the restart; no turn is in flight
+        items = [{"phase": p, "target": OTHER} for p in ("queued", "posted", "awaiting_children", "result_ready")]
+        self.assertEqual(self.relay({"counts": {"running": 0, "queued": 2, "awaiting": 2}, "items": items}), [])
+        self.assertEqual(self.relay({"counts": {}, "items": []}), [])
+
+    def test_without_counts_the_items_are_counted(self):
+        items = [{"phase": "running", "target": OTHER}, {"phase": "queued", "target": OTHER}, "junk"]
+        self.assertEqual(self.relay({"items": items}), ["会话协作有 1 个回合在跑"])
+
+    def test_requesters_own_room_turn_is_not_a_reason(self):
+        items = [{"phase": "running", "target": OWN}]
+        self.assertEqual(self.relay({"counts": {"running": 1}, "items": items}), [])
+        self.assertEqual(self.relay({"counts": {"running": 1}, "items": items}, session_key=None),
+                         ["会话协作有 1 个回合在跑"])
+        items.append({"phase": "running", "target": OTHER})
+        self.assertEqual(self.relay({"counts": {"running": 2}, "items": items}), ["会话协作有 1 个回合在跑"])
+
+    def test_gateway_without_the_relay_plugin_is_not_busy(self):
+        # what a read-only client is told for an unregistered method, and the plain form
+        for error in ("missing scope: operator.admin", "unknown method: vrelay.list"):
+            self.assertEqual(self.relay({"error": error}), [], error)
+        # a helper installed before the relay query
+        self.assertEqual(self.reasons({"workers": idle_workers(), "cron": {"jobs": [STREAM]}})[0], [])
+
+    def test_relay_query_failure_is_busy(self):
+        self.assertEqual(self.relay({"error": "request timeout after 20000ms"}),
+                         ["查询会话协作失败：request timeout after 20000ms"])
+        # the Gateway not answering at all is reported once per query, not again for the relay
+        self.assertEqual(len(self.reasons({"error": "connect timeout"})[0]), 2)
+
     def test_inbound_quiet_window(self):
         self.assertEqual(self.reasons(journal=[(self.NOW - 89, "received message from ou_y in oc_z (p2p)")])[0],
                          ["90 秒内有新消息进来"])
@@ -531,6 +573,24 @@ class IdleGate(Base):
         # nothing was restarted, so the ten-minute spacing does not apply
         h.busy_query = None
         self.assertEqual(self.request(), 0)
+
+    def test_release_waits_for_a_collaboration_turn_and_aborts_if_it_never_ends(self):
+        relay = {"counts": {"running": 1, "queued": 0, "awaiting": 0}, "items": [{"phase": "running", "target": OTHER}]}
+        h = self.host()
+        h.busy_query = {"workers": idle_workers(), "cron": {"jobs": [STREAM]}, "relay": relay}
+        h.busy_until = 10 ** 6
+        self.request("--if-busy", "abort", "--idle-timeout", "3600", "--while-stopped", "true")
+        rec = self.run_last()
+        self.assertEqual(rec["outcome"], "busy-aborted")
+        self.assertEqual(rec["idleGate"]["reasons"], ["会话协作有 1 个回合在跑"])
+        self.assertNotIn(["systemctl", "stop", "--no-block", mod.UNIT], h.calls)
+        # once the turn is over the same request goes through
+        h.busy_until = self.clock.now + 60
+        self.request("--if-busy", "abort", "--idle-timeout", "3600")
+        rec = self.run_last()
+        self.assertEqual(rec["outcome"], "ok", rec)
+        self.assertEqual(next(x for x in rec["steps"] if x["step"] == "busy")["reasons"], ["会话协作有 1 个回合在跑"])
+        self.assertIn(["systemctl", "stop", "--no-block", mod.UNIT], h.calls)
 
     def test_zero_timeout_skips_the_gate(self):
         h = self.host()

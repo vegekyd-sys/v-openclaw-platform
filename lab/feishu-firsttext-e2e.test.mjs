@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { patchFeishuMonitor } from './patch-feishu-firsttext-e2e.mjs';
-import { parseRecords, parseModelMetrics, measure, report, percentile } from '../scripts/firsttext-e2e-report.mjs';
+import { parseRecords, parseModelMetrics, measure, report, percentile, isInterSession } from '../scripts/firsttext-e2e-report.mjs';
 
 const read = (url) => fs.readFileSync(new URL(url, import.meta.url), 'utf8');
 const original = read('../release/captured/v2026.9.1-db91.6-gpt-live-voice-20261005.feishu/dist/dist/monitor.account-WFdlCDhR.js');
@@ -164,4 +164,39 @@ test('without model lines the overhead is unknown, not zero', () => {
   const m = measure({ ...sample, runId }, undefined);
   assert.equal(m.overheadMs, undefined);
   assert.equal(m.toModelMs, undefined);
+});
+
+// Inter-session collaboration (docs/inter-session/design.md §2.c, §3.6 item 11): the Feishu bridge
+// delivers sessions_send requests and wake-ups as synthetic inbound messages. Their record carries
+// origin:"inter_session" and a preset v-a2a- runId; nobody typed them, so they are not 首字.
+const a2a = { ...sample, origin: 'inter_session', attempt: 0, runId: 'v-a2a-req-s_mgk3x1a2f9c1-0', inboundMessageId: 'v-a2a-req-s_mgk3x1a2f9c1-0', firstPushAtMs: t0 + 90_000, firstAnswerPushAtMs: t0 + 90_000 };
+
+test('an inter-session turn is recognised by its origin, its runId or its synthetic message id', () => {
+  assert.equal(isInterSession(a2a), true);
+  // the harness did not adopt the preset runId: the origin mark still says what it was
+  assert.equal(isInterSession({ ...sample, origin: 'inter_session', runId: '6101061d-305d-4139-9cc3-5a1b04d543cf' }), true);
+  // an older bridge build without the origin field
+  assert.equal(isInterSession({ ...sample, runId: 'v-a2a-wake-b_mgk3x1a2f9c1-1' }), true);
+  assert.equal(isInterSession({ ...sample, inboundMessageId: 'v-a2a-ask-s_x-0' }), true);
+  for (const r of [sample, { ...sample, runId: '6101061d-305d-4139-9cc3-5a1b04d543cf' }, { ...sample, runId: 'DB91_HI_1_x' }, { ...sample, origin: 'user' }, {}, undefined]) {
+    assert.equal(isInterSession(r), false, JSON.stringify(r));
+  }
+});
+
+test('the report leaves inter-session turns out of every figure and counts them separately', () => {
+  const text = [
+    `[firsttext-e2e.1] ${JSON.stringify(sample)}`,
+    `[firsttext-e2e.1] ${JSON.stringify(a2a)}`,
+    `[firsttext-e2e.1] ${JSON.stringify({ ...a2a, origin: undefined, runId: 'v-a2a-wake-b_1-0', inboundMessageId: 'om_anchor' })}`,
+  ].join('\n');
+  const records = parseRecords(text);
+  assert.equal(records.length, 3, '--records keeps every parsed record');
+  const out = report(records);
+  assert.equal(out.n, 1);
+  assert.equal(out.interSessionExcluded, 2);
+  assert.equal(out.firstText.max, 4780, 'the 90 s collaboration turn is not a slow 首字');
+  assert.equal(out.byHarness['vlab-worker/deepseek-flash'].n, 1);
+  assert.deepEqual(out.slowest.map((r) => r.inboundMessageId), ['om_1']);
+  assert.equal(report([sample]).interSessionExcluded, 0);
+  assert.equal(report([a2a]).n, 0);
 });

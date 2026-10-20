@@ -116,6 +116,18 @@ DISK_BUDGET_WARN_RATIO = 0.85
 # is a user message nobody has started on. 10-05..10-14: 0-12 a day, all inside
 # known stalls; 10-15 21:16-21:34: 8.
 INGRESS_STALL_COUNT = 1
+# Inter-session collaboration (sessions_send through the channel inbound bridge,
+# docs/inter-session/design.md): V starts a turn in another chat on a session's
+# behalf. Every runId, synthetic message id and MessageSid the relay creates
+# carries one of these marks, and the Feishu [firsttext-e2e.1] record of such a
+# turn says origin "inter_session". Nobody typed those messages, the time a
+# request waits in the relay queue is not a person waiting, and a BUSY attempt
+# ends without any output by design and is retried later. So the user-wait,
+# dispatch-failure and ingress-stall rules leave them out. A room turn that
+# starts streaming and then breaks is still a cut-off reply people in that room
+# watched, so scan_cutoffs keeps those.
+A2A_MARKS = ("v-a2a-", "v-a2a:")
+A2A_ORIGIN = "inter_session"
 
 
 def sh(cmd, timeout=30):
@@ -243,6 +255,7 @@ def scan_cutoffs(journal, lookback=None):
     unseen = sorted(set(failed) - streamed)
     if unseen and lookback:
         streamed.update(r for r in STREAMED.findall(lookback(unseen)) if r in failed)
+    # Inter-session room turns (v-a2a-…) stay in: people in that chat watched it stop.
     hits = [r for r in streamed & set(failed)
             if not r.startswith(("workboard", "nightshift", "announce"))
             and "internal-session-effects" not in r and "skill-workshop" not in r]
@@ -255,6 +268,34 @@ HEARTBEAT_LATE = re.compile(r"liveness heartbeat delayed: overdue=(\d+)ms")
 DISPATCH_FAIL = re.compile(r"message dispatch completed: .*?sessionKey=(\S+) .*?outcome=error"
                            r"(?: .*?error=\"([^\"]{0,80}))?")
 E2E = re.compile(r"\[firsttext-e2e\.1\] (\{.*\})")
+
+
+def is_a2a_line(line):
+    """The line names an inter-session runId, message id or MessageSid."""
+    return any(m in line for m in A2A_MARKS)
+
+
+def is_a2a_record(d):
+    """A [firsttext-e2e.1] record of an inter-session turn (request, ask, wake-up
+    or a BUSY attempt). The origin field survives a preset runId the harness did
+    not adopt; the id prefixes cover a bridge build without the field."""
+    if d.get("origin") == A2A_ORIGIN:
+        return True
+    return any(isinstance(d.get(k), str) and d[k].startswith(A2A_MARKS[0])
+               for k in ("runId", "inboundMessageId"))
+
+
+def e2e_records(journal):
+    for line in journal.splitlines():
+        m = E2E.search(line)
+        if not m:
+            continue
+        try:
+            d = json.loads(m.group(1))
+        except ValueError:
+            continue
+        if isinstance(d, dict):
+            yield d
 
 
 def line_time(line):
@@ -291,15 +332,47 @@ def scan_main_thread(journal):
     return saturated, freezes
 
 
-def scan_dispatch_failures(journal):
-    """[(epoch, sessionKey, error)] for messages that failed before reaching the agent."""
+def scan_inter_session_turns(journal):
+    """[(sessionKey, start epoch s, end epoch s)] of the inter-session turns whose
+    Feishu handler finished in this window, from their [firsttext-e2e.1] records."""
+    out = []
+    for d in e2e_records(journal):
+        if not is_a2a_record(d):
+            continue
+        marks = [d[k] for k in ("sentAtMs", "receivedAtMs", "dispatcherAtMs")
+                 if isinstance(d.get(k), (int, float))]
+        end = d.get("endAtMs")
+        if marks and isinstance(end, (int, float)) and d.get("sessionKey"):
+            out.append((d["sessionKey"], min(marks) / 1000.0, end / 1000.0))
+    return out
+
+
+def in_a2a_turn(t, key, turns):
+    """Whether a failure logged at t (whole seconds) for session `key` fell inside
+    one of those turns. Feishu runs one chat's inbound messages one after the
+    other, so a failure in that session between the turn's start and the end of
+    its handler is the turn's own."""
+    return t is not None and any(k == key and s - 1 <= t <= e + 1 for k, s, e in turns)
+
+
+def scan_dispatch_failures(journal, a2a_turns=()):
+    """[(epoch, sessionKey, error)] for messages that failed before reaching the agent.
+
+    The core's "message dispatch completed" line carries the session but no
+    runId, so an inter-session turn is recognised by a mark on the line or by
+    falling inside one of a2a_turns (scan_inter_session_turns)."""
     out = []
     for line in journal.splitlines():
         if "message dispatch completed" not in line or "outcome=error" not in line:
             continue
+        if is_a2a_line(line):
+            continue
         m = DISPATCH_FAIL.search(line)
         if m:
-            out.append((line_time(line), m.group(1), (m.group(2) or "?").strip()))
+            t = line_time(line)
+            if in_a2a_turn(t, m.group(1), a2a_turns):
+                continue
+            out.append((t, m.group(1), (m.group(2) or "?").strip()))
     return out
 
 
@@ -309,15 +382,11 @@ def scan_user_waits(journal):
     One [firsttext-e2e.1] line is written per inbound message when its turn ends.
     first-visible is the earliest status card or answer push after the person
     sent it; None when nothing was pushed (a deliberate silence or a failure).
+    Inter-session turns, BUSY attempts included, are nobody's wait (A2A_MARKS).
     """
     out = []
-    for line in journal.splitlines():
-        m = E2E.search(line)
-        if not m:
-            continue
-        try:
-            d = json.loads(m.group(1))
-        except ValueError:
+    for d in e2e_records(journal):
+        if is_a2a_record(d):
             continue
         sent = d.get("sentAtMs")
         if not sent:
@@ -478,11 +547,13 @@ def sample(cursor=None):
     out["received"] = j.count("received message from")
     out["worker_fail"], out["worker_invalid"] = scan_worker_failures(j)
     out["saturated"], out["freezes"] = scan_main_thread(j)
-    out["dispatch_fail"] = scan_dispatch_failures(j)
+    out["a2a_turns"] = scan_inter_session_turns(j)
+    out["dispatch_fail"] = scan_dispatch_failures(j, out["a2a_turns"])
     out["waits"] = scan_user_waits(j)
     # Each stalled event logs two lines (the stall, then "spooled update … failed"); count events.
     out["ingress_stalled"] = sum(1 for l in j.splitlines()
-                                 if "claim→adoption stalled" in l and "spooled update" not in l)
+                                 if "claim→adoption stalled" in l and "spooled update" not in l
+                                 and not is_a2a_line(l))
     out["budget_exhausted"] = j.count("session history disk budget exhausted")
     out["cfg_missing"] = {name: missing_plugin_paths(path) for name, path in CONFIG_FILES}
     out["crash_lines"], out["journal_cursor"] = scan_crashes(cursor)
@@ -670,6 +741,12 @@ def main():
     for t, key, err in s.pop("dispatch_fail"):
         if t is not None:
             df["%d|%s" % (t, key)] = err
+    # A failure the previous window caught before its inter-session turn's
+    # record was written (the window edge fell between the two lines).
+    a2a_turns = s.pop("a2a_turns", [])
+    s["a2a_turns"] = len(a2a_turns)
+    for k in [k for k in df if in_a2a_turn(int(k.split("|", 1)[0]), k.split("|", 1)[1], a2a_turns)]:
+        del df[k]
     waits = st.setdefault("wait_events", {})
     for mid, key, fv, dd in s.pop("waits"):
         if mid not in waits:

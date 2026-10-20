@@ -21,8 +21,9 @@ The request validates every --set with `openclaw config set --dry-run`, then
 hands itself to a transient systemd unit (outside the Gateway's cgroup) and
 returns. That unit waits --delay seconds so V can finish its reply, then waits
 until V is idle (no Worker turn running or queued apart from the requester's
-own, no cron turn running, no Feishu dispatch in flight, no inbound message for
-90 s; --idle-timeout / --if-busy), stops the Gateway, backs up both configs
+own, no cron turn running, no inter-session (sessions_send) turn running, no
+Feishu dispatch in flight, no inbound message for 90 s; --idle-timeout /
+--if-busy), stops the Gateway, backs up both configs
 (the Gateway's and the Worker's), applies the sets, runs --while-stopped,
 clears Codex app-server registrations left by the dead Gateway, starts it, and
 waits for "[gateway] ready". If anything after the stop fails it restores both
@@ -527,8 +528,9 @@ def gateway_endpoint():
 
 
 def gateway_query():
-    """{"workers": ..., "cron": {"jobs": [...]}} from the running Gateway, read
-    only (self-restart-gateway.mjs). {"error": ...} when it cannot be asked."""
+    """{"workers": ..., "cron": {"jobs": [...]}, "relay": ...} from the running
+    Gateway, read only (self-restart-gateway.mjs). {"error": ...} when it cannot
+    be asked."""
     ep = gateway_endpoint()
     if not ep:
         return {"error": "Gateway endpoint unknown (unit %s)" % unit_active()}
@@ -561,6 +563,16 @@ DISPATCH_RE = re.compile(r"dispatching to agent")
 COMPLETE_RE = re.compile(r"dispatch complete(?!d)")  # not the [diagnostic] "dispatch completed:"
 INBOUND_RE = re.compile(r"received message|dispatching to agent")
 NO_METHOD_RE = re.compile(r"unknown method|method not found|no handler", re.I)
+# vrelay.list belongs to the v-session-relay plugin (docs/inter-session/design.md
+# §2.b, §6.6). Without the plugin the method is not registered, and the Gateway
+# checks scopes before it looks a method up: an unregistered method needs
+# operator.admin, so a read-only client is told "missing scope: operator.admin"
+# rather than "unknown method".
+RELAY_ABSENT_RE = re.compile(r"unknown method: vrelay\.|missing scope: operator\.admin")
+# Send phases whose target turn is running or about to start. Queued sends and
+# ones waiting on their own children or background work have no turn in flight;
+# the relay re-queues them after a restart, so they are not a reason to wait.
+RELAY_RUNNING_PHASES = ("starting", "running")
 
 
 class BusyAbort(RuntimeError):
@@ -572,6 +584,19 @@ def requester_token(rec):
     appears in Feishu's "received message ... in oc_x" and "session=..." lines."""
     tail = (rec.get("sessionKey") or "").rsplit(":", 1)[-1]
     return tail if len(tail) >= 8 else None
+
+
+def relay_running(relay, own_key):
+    """Inter-session turns in flight per vrelay.list({active: true}), not counting
+    one whose target is the requester's own session (that turn ends with the
+    Gateway, like its Worker turn)."""
+    items = [i for i in relay.get("items") or [] if isinstance(i, dict)]
+    running = [i for i in items if i.get("phase") in RELAY_RUNNING_PHASES]
+    own = sum(1 for i in running if own_key and i.get("target") == own_key)
+    n = (relay.get("counts") or {}).get("running")
+    if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+        n = len(running)
+    return max(0, n - own)
 
 
 def busy_reasons(rec, query, journal, now_s):
@@ -611,6 +636,16 @@ def busy_reasons(rec, query, journal, now_s):
         running = [j.get("name") or j.get("id") for j in c.get("jobs") or [] if j.get("runningAtMs")]
         if running:
             reasons.append("cron 回合在跑：%s" % "、".join(str(n) for n in running[:3]))
+    # No "relay" at all: the Gateway could not be asked (already a reason above)
+    # or the installed helper predates the relay query.
+    r = query.get("relay")
+    if isinstance(r, dict) and r.get("error"):
+        if not (NO_METHOD_RE.search(r["error"]) or RELAY_ABSENT_RE.search(r["error"])):
+            reasons.append("查询会话协作失败：%s" % r["error"][:120])
+    elif isinstance(r, dict):
+        n = relay_running(r, key)
+        if n:
+            reasons.append("会话协作有 %d 个回合在跑" % n)
     token = requester_token(rec)
 
     def own(ts, msg):
