@@ -419,7 +419,9 @@ const SCENARIOS = {
     r.evidence.kill = await cand.kill9();
     ctx.step(`${tag}: killed`, r.evidence.kill);
     await sleep(3_000);
+    const bootMark = cand.mark();
     r.evidence.restart = await cand.start();
+    r.evidence.restartLog = restartLog(cand, bootMark);
     ctx.step(`${tag}: restarted`, r.evidence.restart);
     await waitSettled(cand, [send.sendId], { timeoutMs: 720_000, labelText: "recovered send settled" });
     await sleep(6_000);
@@ -788,6 +790,11 @@ async function interjectScenario(ctx, who) {
   expectHandback(r, { batch: b, sends: [s], from: s.createdAt, to: end });
 }
 
+/** What the Gateway logged while it came back (to see what a slow start waited for). */
+function restartLog(cand, mark) {
+  return cand.logSince(mark, /^(?!.*firsttext-(metrics|worker-phases)).*(feishu|gateway|plugins|restart|recovery|ingress|dedup|integrity|lease|bot open_id|Webhook|bridge|channel|warn|error|Error)/iu, 300);
+}
+
 async function crashScenario(ctx, phase) {
   const { cand, r, tag, t0 } = ctx;
   await cand.stop();
@@ -798,8 +805,12 @@ async function crashScenario(ctx, phase) {
   ctx.step(`${tag}: Gateway exited`, r.evidence.crash);
   r.evidence.crashLog = cand.logSince(0, /VSR_CRASH_AT/u, 5);
   check(r, "crashed-at-phase", r.evidence.crashLog.some((l) => l.includes(`VSR_CRASH_AT=${phase}`)), r.evidence.crashLog);
+  const bootMark = cand.mark();
   r.evidence.restart = await cand.start({ extraEnv: { VSR_CRASH_AT: null } });
-  const sends = cand.sendsWhere((x) => x.createdAt >= t0 && x.target?.sessionKey === B_KEY);
+  r.evidence.restartLog = restartLog(cand, bootMark);
+  // The original request only: a wake turn may legitimately send again after an "interrupted" result
+  // (the wake prompt suggests 「接着把 #code 做完」), which is a new request, not a duplicate.
+  const sends = cand.sendsWhere((x) => x.createdAt >= t0 && x.target?.sessionKey === B_KEY && x.requester?.runRole !== "wake");
   check(r, "one-record", sends.length === 1, sends.map((s) => s.sendId));
   if (!sends.length) return;
   await waitSettled(cand, [sends[0].sendId], { timeoutMs: 720_000, labelText: "recovered send settled" });
