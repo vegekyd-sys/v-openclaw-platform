@@ -865,6 +865,28 @@ function readCardLifecycleLink(row) {
 		}
 	};
 }
+// v-gateway-fullread-hotpaths-v1: the lifecycle matcher reads automation.boardId only, and only for a card
+// without a linked session key (it then derives the card's workboard session key). For those rows
+// SQLite returns boardId when it is a JSON string or absent; any other shape (or invalid JSON) keeps
+// the row's automation JSON for the original parse. Rows with an integer non-zero archived_at are
+// skipped: the matcher drops them.
+function readCardLifecycleMatchLink(row) {
+	const automation = row.automation_json !== null && row.automation_json !== void 0 ? parseJson(row.automation_json) : row.automation_board_type === "text" ? { boardId: row.automation_board_id } : void 0;
+	return {
+		id: requiredString(row, "id"),
+		...stringValue(row, "agent_id") ? {agentId: stringValue(row, "agent_id")} : {},
+		...stringValue(row, "session_key") ? {sessionKey: stringValue(row, "session_key")} : {},
+		...stringValue(row, "run_id") ? {runId: stringValue(row, "run_id")} : {},
+		...stringValue(row, "execution_id") ? {execution: {
+			...stringValue(row, "execution_session_key") ? {sessionKey: stringValue(row, "execution_session_key")} : {},
+			...stringValue(row, "execution_run_id") ? {runId: stringValue(row, "execution_run_id")} : {}
+		}} : {},
+		metadata: {
+			...automation ? {automation} : {},
+			...numberValue(row, "archived_at") !== void 0 ? {archivedAt: numberValue(row, "archived_at")} : {}
+		}
+	};
+}
 var WorkboardSqliteCardStore = class {
 	constructor(db) {
 		this.db = db;
@@ -952,6 +974,18 @@ var WorkboardSqliteCardStore = class {
 	}
 	async listLifecycleLinks() {
 		return this.db.prepare("SELECT id, agent_id, session_key, run_id, execution_id, execution_session_key, execution_run_id, automation_json, archived_at FROM workboard_cards ORDER BY created_at ASC, id ASC").all().map(readCardLifecycleLink);
+	}
+	async listLifecycleMatchLinks() {
+		return this.db.prepare(`SELECT id, agent_id, session_key, run_id, execution_id, execution_session_key, execution_run_id, archived_at,
+          CASE WHEN linked THEN NULL WHEN json_valid(automation_json) THEN json_type(automation_json, '$.boardId') END AS automation_board_type,
+          CASE WHEN linked THEN NULL WHEN json_valid(automation_json) THEN json_extract(automation_json, '$.boardId') END AS automation_board_id,
+          CASE WHEN linked OR automation_json IS NULL OR automation_json = '' THEN NULL
+            WHEN json_valid(automation_json) AND (json_type(automation_json, '$.boardId') IS NULL OR json_type(automation_json, '$.boardId') IN ('null', 'text')) THEN NULL
+            ELSE automation_json END AS automation_json
+        FROM (SELECT *, (coalesce(session_key, '') <> '' OR (coalesce(execution_id, '') <> '' AND coalesce(execution_session_key, '') <> '')) AS linked
+          FROM workboard_cards
+          WHERE NOT (typeof(archived_at) = 'integer' AND archived_at <> 0))
+        ORDER BY created_at ASC, id ASC`).all().map(readCardLifecycleMatchLink);
 	}
 	async listBoardAggregates() {
 		return this.db.prepare(`

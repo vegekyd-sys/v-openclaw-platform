@@ -16,7 +16,7 @@ import { i as isAcpTurnActive, t as getAcpSessionManager } from "./manager-D8Ksq
 import { n as isTerminalTaskFlow } from "./task-flow-registry.types-BidrdCoB.js";
 import { f as loadTaskRegistryStateFromSqliteReadOnlyResult, l as listTaskRegistryRecordsByRuntimeSourceIdFromSqlite } from "./task-registry.store.sqlite-paxOzi9K.js";
 import { $ as getTaskFlowRegistryRestoreFailure, C as hasActiveTaskForChildSessionKey, E as listTaskRecords, F as isTaskFlowCancellationPending, K as deleteTaskFlowRecordById, M as resolveTaskForLookupToken, Q as getTaskFlowById, S as getTaskById, _ as maybeDeliverTaskTerminalUpdate, b as deleteTaskRecordById, c as markTaskTerminalById, et as listTaskFlowRecords, g as isBackgroundExecTask, k as listTasksForFlowId, o as markTaskLostById, p as isHarnessOwnedSubagentTask, st as updateFlowRecordByIdExpectedRevision, u as setTaskCleanupAfterById } from "./task-registry-B4-CJZk7.js";
-import { j as ensureTaskRegistryReady } from "./task-registry-activity-DSlVVJwD.js";
+import { et as vLiveTaskRecords, j as ensureTaskRegistryReady, w as compareTasksNewestFirst } from "./task-registry-activity-DSlVVJwD.js";
 import { t as getSessionBindingService } from "./session-binding-service-BMVDxMW1.js";
 import { n as resolveTaskCleanupAfter, t as resolveEffectiveTaskCleanupAfter } from "./task-retention-Dg3rO5ZP.js";
 import "./runtime-internal-_JeaUumR.js";
@@ -783,6 +783,16 @@ function startScheduledSweep() {
 		await runTaskFlowRegistryMaintenance();
 	}, "tasks:maintenance").then(clearSweepInProgress, clearSweepInProgress);
 }
+// v-gateway-fullread-hotpaths-v1: the sweep reads ids and cron-history fields from the live records, in
+// listTaskRecords order, without cloning them; every decision still uses getTaskById's fresh copy.
+function listTaskRecordsForMaintenanceSweep() {
+	if (taskRegistryMaintenanceRuntime !== defaultTaskRegistryMaintenanceRuntime || process.env.OPENCLAW_V_FULLREAD_HOTPATHS === "0") return taskRegistryMaintenanceRuntime.listTaskRecords();
+	return [...vLiveTaskRecords.values()].map((task, insertionIndex) => ({
+		createdAt: task.createdAt,
+		insertionIndex,
+		task
+	})).toSorted(compareTasksNewestFirst).map(({ task }) => task);
+}
 async function runTaskRegistryMaintenance() {
 	taskRegistryMaintenanceRuntime.ensureTaskRegistryReady();
 	const now = Date.now();
@@ -790,7 +800,7 @@ async function runTaskRegistryMaintenance() {
 	let recovered = 0;
 	let cleanupStamped = 0;
 	let pruned = 0;
-	const tasks = taskRegistryMaintenanceRuntime.listTaskRecords();
+	const tasks = listTaskRecordsForMaintenanceSweep();
 	const cronHistoryOverflowTaskIds = collectCronHistoryOverflowTaskIds(tasks);
 	const cronRecoveryContext = createCronRecoveryContext();
 	const backingSessionContext = createBackingSessionLookupContext();

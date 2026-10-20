@@ -1605,6 +1605,7 @@ var WorkboardChangeTracker = class {
 				return result;
 			},
 			...typeof store.listLifecycleLinks === "function" ? {listLifecycleLinks: async () => await store.listLifecycleLinks()} : {},
+			...typeof store.listLifecycleMatchLinks === "function" ? {listLifecycleMatchLinks: async () => await store.listLifecycleMatchLinks()} : {},
 			listBoardAggregates: async () => await store.listBoardAggregates(),
 			...typeof store.findByAutomationIdempotencyKey === "function" ? {findByAutomationIdempotencyKey: async (key) => await store.findByAutomationIdempotencyKey(key)} : {},
 			...typeof store.maxPosition === "function" ? {maxPosition: async (boardId, status) => await store.maxPosition(boardId, status)} : {},
@@ -1909,7 +1910,8 @@ var WorkboardCoreStore = class {
 	}
 	async listLifecycleCandidates(source) {
 		if (!this.cardStore?.listLifecycleLinks) return await this.list();
-		const links = await this.cardStore.listLifecycleLinks();
+		// v-gateway-fullread-hotpaths-v1: narrow match projection (no automation JSON parse, archived rows skipped).
+		const links = typeof this.cardStore.listLifecycleMatchLinks === "function" && !(process.env.OPENCLAW_V_FULLREAD_HOTPATHS === "0") ? await this.cardStore.listLifecycleMatchLinks() : await this.cardStore.listLifecycleLinks();
 		const cardIds = links.filter((card) => !card.metadata?.archivedAt && workboardCardMatchesLifecycleLink(card, source)).map((card) => card.id);
 		return await this.list({cardIds});
 	}

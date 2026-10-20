@@ -12,7 +12,7 @@ import { r as beginGatewayRootWorkAdmissionWhenOpen, t as GatewayDrainingError, 
 import { n as deliveryContextFromSession } from "./delivery-context.shared-DlcU69m_.js";
 import { c as isRetryableHeartbeatSkipReason, t as HEARTBEAT_IDLE_RETRY_GRACE_MS } from "./heartbeat-wake-c_7_7clI.js";
 import { t as canonicalizePath } from "./paths-CIwQeLl6.js";
-import { f as loadSessionEntryReadOnly, u as loadExactSessionEntryReadOnly } from "./session-accessor.sqlite-entry-BlklNPKQ.js";
+import { f as loadSessionEntryReadOnly, loadExactSessionEntriesReadOnly, o as listSessionEntryKeysReadOnly, u as loadExactSessionEntryReadOnly } from "./session-accessor.sqlite-entry-BlklNPKQ.js";
 import { s as resolveMaintenanceConfig } from "./disk-budget-BzLS0kmH.js";
 import { It as applySessionEntryLifecycleMutation } from "./session-accessor-K0XuW6ln.js";
 import { t as listSessionEntriesCore } from "./session-accessor.entry-B8arwR7t.js";
@@ -2240,6 +2240,16 @@ async function removeCronJobBaseSession(params) {
 		}]
 	})).removedEntries > 0;
 }
+// v-gateway-fullread-hotpaths-v1: list keys only (no entry JSON), keep cron run keys, then read just
+// those rows (full projection, one snapshot) in key order, as the whole-store read returned them.
+function listCronRunSessionEntries(scope) {
+	if (process.env.OPENCLAW_V_FULLREAD_HOTPATHS === "0") return listSessionEntriesCore(scope);
+	const keys = listSessionEntryKeysReadOnly(scope).filter((sessionKey) => isCronRunSessionKey(sessionKey));
+	return keys.length === 0 ? [] : loadExactSessionEntriesReadOnly({
+		...scope,
+		projection: "full"
+	}, keys);
+}
 /**
 * Sweeps completed isolated cron run sessions while preserving base cron sessions.
 *
@@ -2268,7 +2278,7 @@ async function sweepCronRunSessions(params) {
 		const requestedOwner = normalizeAgentId(params.agentId);
 		let pendingMediaSessionKeys;
 		const removals = [];
-		for (const { sessionKey, entry } of listSessionEntriesCore({
+		for (const { sessionKey, entry } of listCronRunSessionEntries({
 			agentId: params.agentId,
 			storePath
 		})) {

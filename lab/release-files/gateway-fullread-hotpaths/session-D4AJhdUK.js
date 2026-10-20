@@ -1,6 +1,6 @@
 import { o as resolveSessionStorePathCore } from "./paths-DDTeIhCT.js";
 import { A as resolveSessionAuthProfileOverrideSource, E as hasSessionAutoModelFallbackProvenance } from "./agent-scope-CSlN0kZb.js";
-import { d as loadSessionEntry } from "./session-accessor.sqlite-entry-BlklNPKQ.js";
+import { d as loadSessionEntry, l as loadExactSessionEntry } from "./session-accessor.sqlite-entry-BlklNPKQ.js";
 import { i as preserveCreationStamp } from "./session-entry-provenance-Ch9ZRplR.js";
 import "./session-accessor-K0XuW6ln.js";
 import { t as listSessionEntriesCore } from "./session-accessor.entry-B8arwR7t.js";
@@ -92,14 +92,35 @@ function loadCronSessionEntryLatest(storePath, sessionKey) {
 		readConsistency: "latest"
 	});
 }
+// v-gateway-fullread-hotpaths-v1: the run reads (and later writes) only its own key and, for a bound
+// "current" job, the source key; callers never enumerate the store. Each key is read exactly, on
+// the same writable handle and full projection as the whole-store read, and errors still throw.
+// The whole-store read parsed ~335 MB of entry JSON per cron run on V (2026-10-19).
+function readCronSessionStoreKeys(params) {
+	const store = {};
+	for (const sessionKey of new Set(params.sessionKeys)) {
+		if (!sessionKey || sessionKey !== sessionKey.trim()) continue;
+		const loaded = loadExactSessionEntry({
+			agentId: params.agentId,
+			storePath: params.storePath,
+			sessionKey
+		});
+		if (loaded) store[sessionKey] = loaded.entry;
+	}
+	return store;
+}
 /** Resolves or rolls over the cron session entry for one isolated-agent run. */
 function resolveCronSession(params) {
 	const sessionCfg = params.cfg.session;
 	const storePath = resolveSessionStorePathCore(sessionCfg?.store, { agentId: params.agentId });
-	const store = params.store ?? Object.fromEntries(listSessionEntriesCore({
+	const store = params.store ?? (process.env.OPENCLAW_V_FULLREAD_HOTPATHS === "0" ? Object.fromEntries(listSessionEntriesCore({
 		agentId: params.agentId,
 		storePath
-	}).map(({ sessionKey, entry }) => [sessionKey, entry]));
+	}).map(({ sessionKey, entry }) => [sessionKey, entry])) : readCronSessionStoreKeys({
+		agentId: params.agentId,
+		storePath,
+		sessionKeys: [params.sessionKey, params.sourceSessionKey?.trim()]
+	}));
 	const sourceSessionKey = params.sourceSessionKey?.trim();
 	const sourceSessionDiffers = Boolean(sourceSessionKey && sourceSessionKey !== params.sessionKey);
 	const targetEntry = store[params.sessionKey];
