@@ -348,7 +348,17 @@ function createGptLiveConsultContinuationRegistry(deps) {
       }
       if (result?.meta?.error || !result || !Array.isArray(result.payloads)) throw new Error("Voice requester continuation ended without a successful final result");
       if (binding.role === "child") { binding.completed = true; return; }
-      if ([...bindings.values()].some((child) => child.role === "child" && child.completed !== true && child.isTerminal?.() !== true)) {
+      const runningChildren = [...bindings.values()].filter((child) => child.role === "child" && child.completed !== true && child.isTerminal?.() !== true);
+      if (runningChildren.length) {
+        // A requester that delegated with sessions_spawn and ended its turn
+        // without sessions_yield has not finished the task. When every running
+        // child belongs to this run's host-bound harness batch, the accepted
+        // child completion is the causal continuation, exactly as after a yield.
+        const batch = binding.pendingBatch;
+        if (batch?.implicitYield === true && batch.parent === binding && runningChildren.every((child) => child.batch === batch)) {
+          binding.yielded = true;
+          return;
+        }
         throw new Error("Voice requester ended before its accepted child tasks completed; no complete final is available");
       }
       if (pendingInputs.length) throw new Error("Voice requester ended before its pending user conditions reached a continuation checkpoint");
@@ -652,7 +662,12 @@ function createGptLiveConsultContinuationRegistry(deps) {
       binding.isCurrent = () => previousCheck?.() !== false && getChildSessionId(childSessionKey) === childSessionId;
       accepted.set(runId, { binding, childSessionKey, childSessionId, legacy: spawn.vlabGatewayOwned !== true });
     }
-    if (requesterYielded) {
+    // A requester can end its turn after sessions_spawn without sessions_yield.
+    // Its legacy Worker-owned children still report through this host scope, so
+    // the same causal batch lets their completion continue the voice task.
+    // Gateway-owned children complete through the core registry instead.
+    const implicitYield = !requesterYielded && [...accepted.values()].every((child) => child.legacy);
+    if (requesterYielded || implicitYield) {
       // The host-issued scope identity and accepted child receipt form this private batch.
       // It is separate from registry outbox generations, and cannot be reconstructed from session text.
       const previous = externalScopes.get(scope);
@@ -660,7 +675,7 @@ function createGptLiveConsultContinuationRegistry(deps) {
       const batchRunIds = [...accepted.keys()].sort();
       const rearmGeneration = (previous?.rearmGeneration ?? 0) + 1;
       const batch = { key: `harness:${JSON.stringify([requesterTurnRunId, batchRunIds, rearmGeneration])}`, owner: parent.owner, parent,
-        requesterSessionKey, requesterAgentId: parent.agentId, batchRunIds, rearmGeneration, accepted };
+        requesterSessionKey, requesterAgentId: parent.agentId, batchRunIds, rearmGeneration, accepted, implicitYield };
       parent.owner._bindBatch(batch, parent);
       for (const { binding } of accepted.values()) binding.batch = batch;
       byBatch.set(batch.key, batch); externalScopes.set(scope, batch);
