@@ -57,6 +57,10 @@ test("contracts: gateway methods, scopes and the plugin-absent regex", () => {
   assert.equal(C.RELAY_FALLBACK_RE.source, "unknown method: vrelay\\.send|missing scope: operator\\.admin");
   assert.match("unknown method: vrelay.send", C.RELAY_FALLBACK_RE);
   assert.match("missing scope: operator.admin", C.RELAY_FALLBACK_RE);
+  // The exact text the WP0 probe got for vrelay.send with the plugin absent (worker and vds).
+  assert.match(String(new Error("missing scope: operator.admin").message), C.RELAY_FALLBACK_RE);
+  // A plugin method called without explicit scopes from a worker is refused; never treat that as "absent".
+  assert.doesNotMatch("missing scope: operator.write", C.RELAY_FALLBACK_RE);
   assert.doesNotMatch("unknown method: vrelay.wait", C.RELAY_FALLBACK_RE);
   assert.doesNotMatch("gateway timeout after 20000ms", C.RELAY_FALLBACK_RE);
   assert.equal(C.TIMEOUTS.waitSliceMaxMs, 55_000);

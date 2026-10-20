@@ -77,6 +77,12 @@ export const SEND_CALL_SCOPES = Object.freeze([OPERATOR_SCOPES.write]);
  * Only an error text matching this means "plugin absent": the core then caches the
  * absence for TIMEOUTS.absentCacheMs and runs v2. Any other RPC error is reported,
  * never downgraded (a downgrade could send the same request twice). See A4 in §12.1.
+ *
+ * WP0 probe (docs/inter-session/probe-results.md): with the plugin absent, sessions_send's
+ * gatewayCall gets "missing scope: operator.admin" from a worker and from a Gateway-hosted
+ * tool, with or without scopes ["operator.write"] (unclassified methods need admin and
+ * authorization runs before the method lookup). "unknown method: vrelay.send" stays in the
+ * pattern for an admin-scoped caller.
  */
 export const RELAY_FALLBACK_RE = /unknown method: vrelay\.send|missing scope: operator\.admin/u;
 

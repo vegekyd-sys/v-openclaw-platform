@@ -1506,12 +1506,12 @@ minimal 设计里"已经汇报过就只回 NO_REPLY"的指令**删除**（J2 mus
 
 | ID | 假设 | 验证 | 不成立时的退路 |
 |---|---|---|---|
-| A1 | `replyOptions.vInterSession/runId/onAgentRunStart` 在四条渠道链路上都能原样到达 get-reply 的 `opts`。dispatch-from-config 这一层已核实（:1678-1697），渠道层未核实 | WP0 探针 | 守卫同时读 `ctx.VInterSession`（经 extra） |
-| A2 | 预设 runId 在 worker、codex、claude-cli 的入站路径上都生效（critic §三.4） | 探针：对比 `onAgentRunStart` 报回的 runId 与预设值 | 账本用实际 runId |
-| A3 | 三类工具构造处都填了 `options.runId/requesterSenderId/senderIsOwner` | 探针 | 退到 activeTurnBySession；单件批次加 warn |
-| A4 | worker client 带 operator.write 能调插件方法；插件缺席时错误文本匹配正则 | C-fallback | 改正则 |
-| A5 | 插件经 `callGatewayFromCli` 能拿到 operator.admin（agent transport 的 owner 身份） | 探针 | agent transport 一律非 owner，作为已知降级写进文档 |
-| A6 | Gateway 的 `onAgentEvent` 能看到 worker 回合的 lifecycle（start/end 带 runId 和 sessionKey） | 探针 | 改用桥的 done、预检轮询，以及 v2 的 agent.wait 兜底 |
+| A1 | `replyOptions.vInterSession/runId/onAgentRunStart` 在四条渠道链路上都能原样到达 get-reply 的 `opts`。dispatch-from-config 这一层已核实（:1678-1697），渠道层未核实 | WP0 探针。结果：飞书入站成立（worker/vds/vcc 三条都执行到 G:3584）：`opts.vInterSession` 为对象、`onBusy` 仍是函数，`opts.runId` 为预设值，`ctx.VInterSession` 也到达，`opts.onDeliberateSilentTerminalReply` 可用；Telegram/钉钉/企微留给 R2 各自的 candidate（probe-results.md） | 守卫同时读 `ctx.VInterSession`（经 extra） |
+| A2 | 预设 runId 在 worker、codex、claude-cli 的入站路径上都生效（critic §三.4） | 探针：对比 `onAgentRunStart` 报回的 runId 与预设值。结果：成立，worker、vds、vcc 报回的都是预设 `v-a2a-req-<sendId>-0`（probe-results.md） | 账本用实际 runId |
+| A3 | 三类工具构造处都填了 `options.runId/requesterSenderId/senderIsOwner` | 探针。结果：按 §3.2 接线后，worker（子进程）和 vds（Gateway 进程）的 sessions_send 都拿到预设 runId、真人 `requesterSenderId`、`senderIsOwner:true`、`agentAccountId/agentTo`；vcc 因 VLab 的 claude 登录 10/17 起失效没跑到工具，未取得 | 退到 activeTurnBySession；单件批次加 warn |
+| A4 | worker client 带 operator.write 能调插件方法；插件缺席时错误文本匹配正则 | C-fallback。结果（WP0 探针）：worker 与 vds 调未知 `vrelay.send` 都得到 `missing scope: operator.admin`（带不带 `scopes:["operator.write"]` 一样），正则命中；插件 operator.write 方法带显式 scopes 可调；worker 不带 scopes 会被拒（`missing scope: operator.write`）。vds 的工具走回环客户端，真正的进程内 dispatch（MCP loopback）未执行，源码同样先鉴权 | 改正则 |
+| A5 | 插件经 `callGatewayFromCli` 能拿到 operator.admin（agent transport 的 owner 身份） | 探针。结果：WP0 未探（不在 WP0 范围），留给 WP5/WP10 | agent transport 一律非 owner，作为已知降级写进文档 |
+| A6 | Gateway 的 `onAgentEvent` 能看到 worker 回合的 lifecycle（start/end 带 runId 和 sessionKey） | 探针。结果：部分成立。Gateway 只看到 worker 回合的 end（带 runId、sessionKey），看不到 start（start 只在 worker 进程内），之前的 `run_status` 不带 sessionKey；codex/claude-cli 回合 start、end/error 都可见。顺带发现：主配置里的插件也会在 worker 里加载（worker 配置由主配置推导），且同一进程 `register()` 被调用 3 次（probe-results.md F-a/F-b） | 改用桥的 done、预检轮询，以及 v2 的 agent.wait 兜底 |
 | A7 | 守卫早退不留 transcript、群历史和打字痕迹 | F3、F3b | 补丁里对 interSession 跳过 history 记录 |
 | A8 | run-now 在已有 embedded run 时按 session lane 串行 | F3c | 守卫 B 改成等 `waitForEmbeddedAgentRunEnd` 后再跑 |
 | A9 | inputProvenance 不影响 policy，因此 owner 插话能 steer | F4a | 文档只承诺"吸收或排后" |
@@ -1521,7 +1521,7 @@ minimal 设计里"已经汇报过就只回 NO_REPLY"的指令**删除**（J2 mus
 | A13 | 9.1 对被打断的 inter_session 入站回合的恢复字段（`restartRecoveryDelivery*`），以及楔死窗口 | F5 | §6.3 已做识别，不重排 |
 | A14 | 9.1 上 /vcc 跨轮续接是否丢上下文（#164972） | H-vcc | brief 自包含 |
 | A15 | VLab 飞书 app 没有建群写权限；共享 VLab 的 lark-cli 绑的是生产 app | 只读权限查询 | 预建池 + shim |
-| A16 | V 在 subagent-index 之后又有发版（10/20 的 #439/#440 已合 dev，是否改动 dist 未知） | WP0；stage 校验 before | 按新捕获重新生成 |
+| A16 | V 在 subagent-index 之后又有发版（10/20 的 #439/#440 已合 dev，是否改动 dist 未知） | WP0；stage 校验 before。结果：没有。10/20 16:50 只读核对，14 个 R1+R2 目标文件在 V 上与 subagent-index-20261020 捕获逐一相同，Gateway 仍跑该发版；#439/#440/#443 不涉及 dist（tests/fixtures/inter-session-v-bytes.json） | 按新捕获重新生成 |
 | A17 | 跨 agent（v-codex、short-v、xiaoai）选对 accountId | 读 config bindings | 选错时 ROUTE_MISMATCH，再走 agent transport |
 | A18 | 工作区规则在 Tianyi 确认前不生效，群聊沉默和 NO_REPLY 会让结果为空 | — | 空结果作为 noReply 如实交回，不会丢，但验收会失败；需先确认 diff |
 | A19 | `getSessionEntry` 读单个条目的开销可接受 | 实测 | 加内存缓存（30 s） |
