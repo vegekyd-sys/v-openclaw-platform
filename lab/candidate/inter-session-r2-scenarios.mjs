@@ -49,32 +49,33 @@ const asyncAsk = (tag, id, key, body, done) => `【跨会话测试 ${tag}-${id}�
 const inlineAsk = (tag, id, key, answer, seconds = 120) => `【跨会话测试 ${tag}-${id}】这是自动化测试，请严格照做：调用一次 sessions_send 工具，参数 sessionKey="${key}"，timeoutSeconds=${seconds}，message="【${tag}-${id}】这是自动化测试，请只回复 ${answer}"。拿到工具结果后，只把对方的回答原样告诉我（必须包含 ${answer}）。不要调用其他工具。`;
 
 // ---------------------------------------------------------------- F1 inline
-export function F1(env, { target = "gv", id = "F1" } = {}) {
+export function F1(env, { target = "gv", requester = "dm", vdsSide = "target", id = "F1" } = {}) {
   const { ctx, gw, rpc, ledger, ad } = env;
   const h = helpers(env);
   const { check, evidence } = ctx;
   return runScenario(ctx, id, async () => {
     const key = ad.keys[target];
     const chat = ad.chats[target];
+    const reqChat = ad.chats[requester];
     await h.idle(key);
     const t0 = Date.now();
     const answer = `${id}_ANSWER_${ctx.tag}`;
-    h.ask(inlineAsk(ctx.tag, id, key, answer));
+    ad.person(reqChat, inlineAsk(ctx.tag, id, key, answer));
     const first = await waitSend(gw, ledger, t0, (r) => r.target?.sessionKey === key, 300_000, `${id} send`);
     const rec = await h.settled(first.sendId, ["delivered_inline", "handed_back", "cancelled", "skipped"], 420_000, `${id} settled`);
-    const reply = await h.waitItem(ad.chats.dm, t0, new RegExp(answer), 300_000, `${id} requester reply`).catch(() => null);
+    const reply = await h.waitItem(reqChat, t0, new RegExp(answer), 300_000, `${id} requester reply`).catch(() => null);
     await sleep(5000);
     const anchor = h.anchors(chat, t0, rec.code);
     const targetReplies = h.items(chat, t0).filter((m) => String(m.text).includes(answer) && !anchor.includes(m));
-    const dmTools = toolsBetween((await transcript(rpc, ad.keys.dm)).items, t0);
+    const dmTools = toolsBetween((await transcript(rpc, ad.keys[requester])).items, t0);
     const users = await h.interSessionUsers(key, "request", rec.sendId);
-    const row = await sessionRow(rpc, key);
+    const row = await sessionRow(rpc, ad.keys[vdsSide === "requester" ? requester : target]);
     const modelInfo = JSON.stringify(Object.fromEntries(Object.entries(row ?? {}).filter(([k]) => /model|runtime|provider|harness/iu.test(k))));
     evidence(id, "send", sendEvidence(rec));
     evidence(id, "target", h.items(chat, t0).map(h.view));
-    evidence(id, "dm", h.items(ad.chats.dm, t0).map(h.view));
+    evidence(id, "requesterChat", h.items(reqChat, t0).map(h.view));
     evidence(id, "dmTools", dmTools);
-    evidence(id, "targetSession", modelInfo);
+    evidence(id, "vdsSession", { side: vdsSide, info: modelInfo });
     evidence(id, "log", h.relayLog(t0));
     check(id, rec.mode === "inline" && rec.edge === "delegate", "inline delegate send recorded", { mode: rec.mode, edge: rec.edge });
     check(id, rec.phase === "delivered_inline", "the answer was claimed inline (delivered_inline)", rec.phase);
@@ -84,11 +85,12 @@ export function F1(env, { target = "gv", id = "F1" } = {}) {
     check(id, anchor.length >= 1 && ad.anchorId(anchor[0]) === String(rec.request.messageId), "📨 anchor with #code in the target chat, the ledger's anchor id", anchor.map(h.view));
     check(id, targetReplies.length >= 1 && targetReplies.every((m) => m.at >= (anchor[0]?.at ?? Infinity)), "the target shows its answer, after the anchor", targetReplies.map(h.view));
     check(id, Boolean(reply), "the requester told the owner the answer (the tool result reached it)", reply && h.view(reply));
-    check(id, h.handbacks(t0).length === 0, "no hand-back line in the DM for an inline answer", h.handbacks(t0).map(h.view));
+    const reqHandbacks = h.items(reqChat, t0).filter((m) => /^(↩️|💬|⚠️|⏹)/u.test(strip(m.text)));
+    check(id, reqHandbacks.length === 0, "no hand-back line in the requester chat for an inline answer", reqHandbacks.map(h.view));
     check(id, !ledger.batches().some((b) => b.members?.includes(rec.sendId) && b.phase === "woken"), "no wake for the inline send");
     check(id, users.length === 1, "target transcript: exactly one inter_session message for the request", users.length);
     check(id, dmTools.includes("sessions_send") && dmTools.every((t) => t === "sessions_send"), "the requester only called sessions_send", dmTools);
-    if (target === "gv") check(id, /vds-deepseek-flash|codex/u.test(modelInfo), "the target session runs the vds harness", modelInfo);
+    if (vdsSide) check(id, /vds-deepseek-flash|codex/u.test(modelInfo), `the ${vdsSide} session runs the vds harness`, modelInfo);
     await ad.extra?.F1?.(env, { id, t0, rec, anchor, targetReplies });
   });
 }
