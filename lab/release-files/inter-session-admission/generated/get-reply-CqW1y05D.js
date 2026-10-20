@@ -3670,6 +3670,11 @@ async function prepareReplyRunAdmission(context) {
 			resolveBusyState: resolveQueueBusyState
 		});
 		if (queueState.kind === "reply") {
+			const vInterQueue = vInterSessionExclusive(opts, ctx);
+			if (vInterQueue) return vInterSessionBusy(vInterQueue, {
+				reason: "active_run",
+				activeSessionId
+			}, opts, typing);
 			typing.cleanup();
 			return {
 				kind: "reply",

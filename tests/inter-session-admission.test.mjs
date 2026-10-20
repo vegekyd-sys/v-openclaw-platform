@@ -99,8 +99,8 @@ test("only the intended lines change; everything V already runs (its own markers
   const interruptOld = ANCHORS.getReply[2].split("\n").filter(Boolean);
   const vGWithoutInterrupt = V_G.split("\n").filter((l) => !interruptOld.includes(l)).join("\n");
   const addedG = addedLines(vGWithoutInterrupt, GEN_G);
-  assert.equal(addedG.length, 32 + 5 + 1 + 9, "helpers, heartbeat-timeout branch, interrupt-clear condition, guard");
-  assert.equal(addedG.filter((l) => l.includes("vInterSessionExclusive(opts, ctx)")).length, 4, "declaration, heartbeat exit, interrupt clear, guard");
+  assert.equal(addedG.length, 32 + 5 + 1 + 9 + 5, "helpers, heartbeat-timeout branch, interrupt-clear condition, guard, run-now exit");
+  assert.equal(addedG.filter((l) => l.includes("vInterSessionExclusive(opts, ctx)")).length, 5, "declaration, heartbeat exit, interrupt clear, guard, run-now exit");
 
   const steerOld = ANCHORS.agentRunnerRuntime[1].split("\n").filter(Boolean);
   const vRWithoutSteer = V_R.split("\n").filter((l) => !steerOld.includes(l)).join("\n");
@@ -158,6 +158,16 @@ test("the guard sits after the queue admission state, before steer/followup and 
   // The heartbeat-timeout exit (before the guard) is silent for an exclusive turn too.
   const heartbeat = at("const vInterHeartbeat = vInterSessionExclusive(opts, ctx);");
   assert.ok(heartbeat < queueState);
+  // So is the "still shutting down" exit of the run-now wait (after the guard, before the drain).
+  const runNowExit = at("const vInterQueue = vInterSessionExclusive(opts, ctx);");
+  assert.ok(runNow < runNowExit && runNowExit < drain);
+  // No exit of the admission returns a visible reply for an exclusive turn: every native
+  // REPLY_RUN_STILL_SHUTTING_DOWN_TEXT / queueState.reply exit is preceded by the exclusive check.
+  for (const exit of ["reply: { text: REPLY_RUN_STILL_SHUTTING_DOWN_TEXT }", "reply: queueState.reply"]) {
+    const exitAt = at(exit);
+    const before = fn.slice(Math.max(0, exitAt - 400), exitAt);
+    assert.match(before, /vInterSessionExclusive\(opts, ctx\);\n\t+if \(vInter\w+\) return vInterSessionBusy\(/u, exit);
+  }
   // A "reply" admission returns before the prepared run, which is where the user turn is built and
   // persisted (9.1 get-reply-run.ts executePreparedReplyContext; get-reply-run-execute.ts).
   assert.equal(count(GEN_G, "\tif (admission.kind === \"reply\") return admission.reply;\n\treturn executePreparedReplyRun(admission);\n"), 1);
@@ -281,7 +291,10 @@ function admissionHarness(source, s = {}) {
     resolveActiveRunQueueAction,
     resolvePreparedReplyQueueState: async (p) => {
       log.push(`resolvePreparedReplyQueueState:${p.activeRunQueueAction}`);
-      return { kind: "proceed" };
+      // queueStateStillActive: the run did not let go within the settle timeout (9.1 get-reply-run-queue.ts).
+      return s.queueStateStillActive && p.activeRunQueueAction === "run-now" && p.activeSessionId
+        ? { kind: "reply", reply: { text: "still shutting down" } }
+        : { kind: "continue", busyState: p.resolveBusyState() };
     },
     interruptReplyRunTarget: async () => ({ settled: true }),
     interruptSessionWorkAdmissions: async () => true,
@@ -386,6 +399,7 @@ const SESSION_STATES = {
   followupMode: { embeddedActive: true, queueMode: "followup" },
   interruptMode: { embeddedActive: true, queueMode: "interrupt" },
   interruptQueuedIdle: { queueMode: "interrupt", laneSize: 2 },
+  interruptStillActive: { embeddedActive: true, queueMode: "interrupt", queueStateStillActive: true },
 };
 
 test("functional: turns without an exclusive vInterSession behave exactly as V's code", async () => {
@@ -472,6 +486,34 @@ test("functional: in interrupt queue mode an exclusive turn leaves the session's
   assert.equal(result.kind, "ready");
   assert.equal(busy.calls.length, 0);
   assert.ok(!exclusive.log.includes("clearCommandLane"));
+});
+
+test("functional: a flush-only admission whose run-now wait times out is BUSY, not \"still shutting down\" text", async () => {
+  // Interrupt queue mode does not queue a turn behind an active run: a person's message (and an exclusive
+  // turn that the guard let through because only a deferred memory flush was running) goes to the
+  // run-now wait, which interrupts the flush. If the session still reads active after the settle
+  // timeout, V answers with REPLY_RUN_STILL_SHUTTING_DOWN_TEXT. That would be a visible reply in the
+  // target chat for an exclusive turn, with no agent run behind it.
+  const flushOnly = { v: 1, activeAfterYield: () => false };
+  const person = admissionHarness(GEN_G, { ...SESSION_STATES.interruptStillActive, flushSeam: flushOnly });
+  assert.deepEqual(await person.run(), { kind: "reply", reply: { text: "still shutting down" } });
+  for (const vInterOn of ["opts", "ctx"]) {
+    const busy = vInterSession();
+    const h = admissionHarness(GEN_G, { ...SESSION_STATES.interruptStillActive, flushSeam: flushOnly, vInter: busy.value, vInterOn });
+    assert.deepEqual(await h.run(), { kind: "reply", reply: undefined }, vInterOn);
+    assert.deepEqual(busy.calls, [{ reason: "active_run", activeSessionId: SESSION_ID }]);
+    assert.ok(h.log.includes("resolvePreparedReplyQueueState:run-now"), "the guard let it through to the run-now wait");
+    assert.deepEqual(h.log.slice(-2), ["onDeliberateSilentTerminalReply", "typing.cleanup"]);
+    for (const forbidden of ["drainFormattedSystemEvents", "phase:reply.drain_system_events", "runReplyAgent"]) {
+      assert.ok(!h.log.some((e) => e.startsWith(forbidden)), `no ${forbidden}`);
+    }
+  }
+  // When the flush lets go in time, the exclusive turn is admitted and drains system events as usual.
+  const busy = vInterSession();
+  const settled = admissionHarness(GEN_G, { embeddedActive: true, queueMode: "interrupt", flushSeam: flushOnly, vInter: busy.value });
+  assert.equal((await settled.run()).kind, "ready");
+  assert.equal(busy.calls.length, 0);
+  assert.ok(settled.log.includes(`drainFormattedSystemEvents:${SESSION_KEY}`));
 });
 
 test("functional: onBusy throwing does not break the silent exit", async () => {

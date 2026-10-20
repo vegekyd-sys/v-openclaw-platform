@@ -14,10 +14,13 @@
 //   BUSY calls vInterSession.onBusy({ reason, activeSessionId }) once, marks the turn as a
 //   deliberate silent terminal reply (so neither core nor the channel posts a "no visible
 //   reply" fallback), cleans up typing and returns { kind: "reply", reply: undefined }, the
-//   same early exit core already uses for an unauthorized command. The heartbeat preemption
-//   timeout, which would otherwise post REPLY_RUN_STILL_SHUTTING_DOWN_TEXT into the target chat,
-//   is a BUSY "active_run" as well, and in interrupt queue mode an exclusive turn does not clear the
-//   session's queued commands before admission (two extensions of §3.3, see the test).
+//   same early exit core already uses for an unauthorized command. The two native exits that
+//   would otherwise post REPLY_RUN_STILL_SHUTTING_DOWN_TEXT into the target chat are a BUSY
+//   "active_run" as well: the heartbeat preemption timeout (before the guard), and the run-now
+//   wait after the guard (reached only when a deferred memory flush alone kept the session active
+//   in interrupt queue mode, and the interrupted flush has not let go after the settle timeout).
+//   In interrupt queue mode an exclusive turn also does not clear the session's queued commands
+//   before admission (three extensions of §3.3, see the test).
 //
 //   agent-runner.runtime:
 //     - publishes the deferred-flush seam globalThis[Symbol.for("openclaw.v.deferredMemoryFlush")]
@@ -135,6 +138,35 @@ const G_QUEUE_ADMISSION_GUARDED = `\tconst queueAdmissionState = !pendingQueue ?
 \tconst activeRunAcceptsCurrentThread = resolveActiveRunAcceptsCurrentThread({ isActive });
 `;
 
+// The run-now wait after the guard. An exclusive turn reaches it only when the guard let it through
+// because a deferred memory flush alone kept the session active (vInterSessionFlushOnly) and the
+// queue mode does not queue it (interrupt mode: the flush is interrupted, as for a person's message).
+// If the session still reads active after the settle timeout, V would post
+// REPLY_RUN_STILL_SHUTTING_DOWN_TEXT; an exclusive turn ends BUSY instead. System events are drained
+// only after this block, so nothing is lost.
+const G_RUN_NOW_REPLY = `\t\tif (queueState.kind === "reply") {
+\t\t\ttyping.cleanup();
+\t\t\treturn {
+\t\t\t\tkind: "reply",
+\t\t\t\treply: queueState.reply
+\t\t\t};
+\t\t}
+`;
+
+const G_RUN_NOW_REPLY_EXCLUSIVE = `\t\tif (queueState.kind === "reply") {
+\t\t\tconst vInterQueue = vInterSessionExclusive(opts, ctx);
+\t\t\tif (vInterQueue) return vInterSessionBusy(vInterQueue, {
+\t\t\t\treason: "${BUSY_REASONS[0]}",
+\t\t\t\tactiveSessionId
+\t\t\t}, opts, typing);
+\t\t\ttyping.cleanup();
+\t\t\treturn {
+\t\t\t\tkind: "reply",
+\t\t\t\treply: queueState.reply
+\t\t\t};
+\t\t}
+`;
+
 // ---------------------------------------------------------------- agent-runner.runtime
 
 const R_FLUSH_YIELD = `function resolveReplyActiveAfterDeferredFlushYield(params) {
@@ -195,7 +227,7 @@ function refuseTwice(source, file) {
 
 /** The anchors each patch needs, for the anchor-uniqueness test. */
 export const ANCHORS = Object.freeze({
-  getReply: Object.freeze([G_ADMISSION_START, G_HEARTBEAT_TIMEOUT, G_INTERRUPT_CLEAR, G_QUEUE_ADMISSION]),
+  getReply: Object.freeze([G_ADMISSION_START, G_HEARTBEAT_TIMEOUT, G_INTERRUPT_CLEAR, G_QUEUE_ADMISSION, G_RUN_NOW_REPLY]),
   agentRunnerRuntime: Object.freeze([R_FLUSH_YIELD, R_STEER]),
 });
 
@@ -206,6 +238,7 @@ export function patchGetReply(source) {
   out = replaceOnce(out, G_HEARTBEAT_TIMEOUT, G_HEARTBEAT_TIMEOUT_EXCLUSIVE, "heartbeat preemption timeout");
   out = replaceOnce(out, G_INTERRUPT_CLEAR, G_INTERRUPT_CLEAR_EXCLUSIVE, "interrupt-mode lane clear");
   out = replaceOnce(out, G_QUEUE_ADMISSION, G_QUEUE_ADMISSION_GUARDED, "queue admission state");
+  out = replaceOnce(out, G_RUN_NOW_REPLY, G_RUN_NOW_REPLY_EXCLUSIVE, "run-now wait still active");
   return out;
 }
 
