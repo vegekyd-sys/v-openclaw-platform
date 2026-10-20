@@ -44,6 +44,7 @@ stage 时逐个文件校验 `before`；V 上的钉钉插件目录换了 generati
 - 回复分发器里所有走 sessionWebhook 的发送（错误兜底、关卡失败降级、空闲提示、问题、迟到 block、非流式终稿、actionCard）改为主动消息发到同一聊天；dispatch 异常直接抛给桥，不发 webhook 错误回复。
 - `deliver(kind=final)` 截获终稿文字和媒体（不含 ask_user 问题载荷），作为 `RunOutcome.finals`。
 - 私聊里协作回合问的 ask_user 记在 `<accountId>:dm:<userId>` 下；对端在真实私聊里的回答照样被拦截为答案。
+- **终稿之后不再因工作视图刷新另开卡片**（所有回合，含真人回合；2026-10-20 R2 candidate 发现，`docs/inter-session/e2e-e2e-r2.md` D3）：`v-experience-dingtalk-v1` 的工作视图刷新是 ≤300 ms 的定时器，终稿关卡后、`onIdle` 封口前到点时会找不到卡而新开一张空卡，`onIdle` 再用连接器的空回复文案关掉它——群里多出「ℹ️ 暂未收到模型回复内容…visibleReplies…」，私聊多出「好的 👌 有其他问题随时找我」。现在终稿关卡时清掉待刷新的定时器，之后的刷新不再新开卡；同一回合真的有第二段终稿时，`deliver` 照样为它开卡。
 
 ## 已知差距
 

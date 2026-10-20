@@ -271,6 +271,7 @@ function createDingtalkReplyDispatcher(params) {
 	// v-experience-dingtalk-v1: what the agent is doing, shown under the streaming answer.
 	let vAnswerText = "";
 	let vRefreshTimer = null;
+	let vFinalClosedCard = false;
 	const vScheduleRefresh = () => {
 		if (vRefreshTimer) return;
 		vRefreshTimer = setTimeout(() => {
@@ -592,6 +593,7 @@ function createDingtalkReplyDispatcher(params) {
 	// v-experience-dingtalk-v1: rewrite the card with the answer so far and the work under it.
 	const vRefreshCard = async () => {
 		if (streamingSealed || asyncMode || !streamingEnabled || (!vWork.hasContent() && !vAnswerText)) return;
+		if (vFinalClosedCard && !currentCardTarget && !cardCreationPromise) return;
 		await startStreaming();
 		if (!currentCardTarget || streamingSealed) return;
 		if (Date.now() - lastUpdateTime < updateInterval) {
@@ -892,6 +894,11 @@ function createDingtalkReplyDispatcher(params) {
 					if (currentCardTarget) {
 						accumulatedText = text;
 						log.info(`[DingTalk][deliver] 调用 closeStreaming 完成 AI Card`);
+						vFinalClosedCard = true;
+						if (vRefreshTimer) {
+							clearTimeout(vRefreshTimer);
+							vRefreshTimer = null;
+						}
 						await closeStreaming();
 						deliveredFinalTexts.add(text);
 						return;

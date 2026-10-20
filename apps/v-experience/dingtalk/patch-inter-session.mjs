@@ -683,6 +683,28 @@ const handlerEdits = [
     anchor: "\tconst vChatKey = `${params.accountId ?? \"default\"}:${vData.conversationId}`;\n\tconst vSender = vData.senderStaffId || vData.senderId;\n",
     replace: "\tlet vChatKey = `${params.accountId ?? \"default\"}:${vData.conversationId}`;\n\tconst vSender = vData.senderStaffId || vData.senderId;\n\tif (vData.conversationType === \"1\" && vSender && !vExperience.hasTrackedQuestion({ channel: \"dingtalk\", chatKey: vChatKey, senderId: vSender }) && vExperience.hasTrackedQuestion({ channel: \"dingtalk\", chatKey: vInterDmChatKey(params.accountId, vSender), senderId: vSender })) vChatKey = vInterDmChatKey(params.accountId, vSender);\n",
   },
+  // v-experience-dingtalk-v1 refreshes the card with the work view on a timer (≤ 300 ms). A refresh
+  // that fires after the final closed the reply card found no card and opened a new, empty one,
+  // which onIdle then closed with the connector's empty-reply text (群聊「ℹ️ 暂未收到模型回复内容…
+  // visibleReplies…」, 单聊「好的 👌 有其他问题随时找我」) under every answer whose work view changed in
+  // its last 300 ms. Seen on every DingTalk turn of the R2 candidate (docs/inter-session/e2e-e2e-r2.md
+  // D3), sessions_send turns and people's turns alike. After the final, a refresh never opens a card;
+  // a later final still does (deliver opens its own).
+  {
+    name: "refresh-after-final-flag",
+    anchor: "\tlet vRefreshTimer = null;\n",
+    after: "\tlet vFinalClosedCard = false;\n",
+  },
+  {
+    name: "refresh-after-final-guard",
+    anchor: "\t\tif (streamingSealed || asyncMode || !streamingEnabled || (!vWork.hasContent() && !vAnswerText)) return;\n",
+    after: "\t\tif (vFinalClosedCard && !currentCardTarget && !cardCreationPromise) return;\n",
+  },
+  {
+    name: "refresh-after-final-close",
+    anchor: "\t\t\t\t\tif (currentCardTarget) {\n\t\t\t\t\t\taccumulatedText = text;\n\t\t\t\t\t\tlog.info(`[DingTalk][deliver] 调用 closeStreaming 完成 AI Card`);\n",
+    after: "\t\t\t\t\t\tvFinalClosedCard = true;\n\t\t\t\t\t\tif (vRefreshTimer) {\n\t\t\t\t\t\t\tclearTimeout(vRefreshTimer);\n\t\t\t\t\t\t\tvRefreshTimer = null;\n\t\t\t\t\t\t}\n",
+  },
 ];
 
 // ---------------------------------------------------------------- engine
