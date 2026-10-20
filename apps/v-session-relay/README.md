@@ -13,13 +13,13 @@
 | `core/policy.js` | 边分类（delegate / followup / ask）、LEAF、WAIT_CYCLE、REPLY_TO_REQUESTER、深度、扇出、预算、排队满 |
 | `core/queue.js` | 每个会话一条队列：ask > wake = collect > request，同类先到先做 |
 | `core/engine.js` | `send / wait / get / list / cancel`、pump、全局上限 4、BUSY 退避、批次封口与唤醒、W(S) 续接、后台收尾（collect）、inline 领取与退回 |
-| `core/recovery.js` | §6.3 重启恢复，四层防重复唤醒 |
+| `core/recovery.js` | §6.3 重启恢复，四层防重复唤醒；在跑的请求 / 收尾回合只跟随核心的恢复回合或报中断，绝不重跑；看起来楔死的会话先观察一段时间，看核心是否认领 |
 | `core/routes.js` `core/labels.js` | 会话在哪、走桥还是 agent、聊天里有谁、链根身份规则、§7.1 标签 |
 | `core/copy.js` `core/visible.js` | §7、§8 全部文案；可见正文的隐私裁剪、隐去密钥、渠道长度上限、markdown 转义 |
 | `core/requests.js` | 组装 StartRequest（请求 / 提问 / 收尾 / 唤醒） |
 | `core/transports/bridge.js` `agent.js` | 渠道入站桥（完整卡片体验）；没有桥时用 Gateway `agent`（deliver:true）+ 渠道 `outbound.sendText` 发可见请求 |
 | `core/tasks.js` | 往 `taskRegistryBridge.extraSources` 提供「会话请求」后台行 |
-| `core/guard.js` | `before_tool_call` 轮询闸：已交出任务的回合里 `sleep ≥ 15`、`timeout NN`、`while…sleep` 和第二次起读对方历史一律拦下（只拦，不改参数） |
+| `core/guard.js` | `before_tool_call` 轮询闸：已交出任务的回合里 `sleep ≥ 15 秒`（认 `5m`、`2h` 这类单位）、`timeout NN`、`while…sleep` 和第二次起读对方历史一律拦下（只拦，不改参数） |
 | `core/host.js` `index.js` | 一个进程一个引擎（`register()` 会被调用三次）；worker 子进程（`VLAB_WORKER_CHILD=1`）不起引擎，只在 `workerGuard` 打开时注册轮询闸 |
 
 Gateway 方法：`vrelay.send`、`vrelay.wait`（operator.write）、`vrelay.get`、`vrelay.list`（operator.read，`counts.running` 含在跑的唤醒和收尾回合，v-self-restart 的闲置门用它）、`vrelay.cancel`（operator.admin，只给运维）。
@@ -57,7 +57,8 @@ cd apps/v-session-relay/plugin && node --test 'tests/*.test.mjs'
 
 - `engine`：全部 phase、FIFO 类别、全局上限、批次、W(S) 续接、后台收尾、inline 领取 / 过期 / 竞态 / 退回、BUSY、路由不符改走 agent、楔死、撤回、排队超时。
 - `recovery`：§6.3 每个分支（进程内模拟崩溃后用同一目录重启）。
-- `crash-injection`：真子进程在 12 个落盘点 `VSR_CRASH_AT=<phase>`（含 `before:<phase>`）退出，再起一个进程恢复；断言每批最多一次唤醒、结果不丢、飞书锚点不重复、开跑过的回合不重跑。
+- `crash-injection`：真子进程在 13 个落盘点 `VSR_CRASH_AT=<phase>`（含 `before:<phase>`）退出，再起一个进程恢复；断言每批最多一次唤醒、结果不丢、飞书锚点不重复、开跑过的回合不重跑、每个 MessageSid / runId 只用一次。
+- 测试世界（`fixtures/harness.mjs`）像核心和 worker 一样拒绝重复使用的 MessageSid / runId，任何测试里出现就失败。
 - `policy`、`ledger`、`routes`、`guard`、`copy`、`host`（三次 register、worker 判定、方法 scope、经 agent transport 的端到端）。
 
 候选测试与共享 VLab 验收见设计 §10（WP10）。`VSR_TEST_START_DELAY_MS` 让引擎在开跑前多等一会儿（F3b 竞态用）。
