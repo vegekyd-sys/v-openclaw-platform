@@ -173,6 +173,7 @@
         "tests/v-experience-session-kind.test.mjs",
         "tests/patch-telegram-inter-session-bridge.test.mjs",
         "tests/patch-dingtalk-inter-session-bridge.test.mjs",
+        "tests/patch-wecom-inter-session-bridge.test.mjs",
         "tests/mcp-after-tool-call.test.mjs",
         "tests/patch-openclaw-session-hotset.test.mjs",
         "tests/prune-openclaw-session-hotset.test.mjs",

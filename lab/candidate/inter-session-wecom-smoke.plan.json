@@ -1,0 +1,21 @@
+{
+  "support": [
+    "lab/candidate/inter-session-wecom-smoke.mjs",
+    "lab/candidate/wecom-fake-aibot.mjs",
+    "apps/v-session-relay/plugin/core/contracts.js",
+    "lab/release-files/wecom-inter-session-bridge/manifest.json",
+    "lab/release-files/wecom-inter-session-bridge/dist/src/monitor.js",
+    "release/captured/v2026.9.1-db91.6-subagent-index-20261020.wecom/manifest.json",
+    "release/captured/v2026.9.1-db91.6-subagent-index-20261020.wecom/dist/dist/src/monitor.js",
+    "release/captured/v2026.9.1-db91.6-subagent-index-20261020.wecom/dist/dist/src/channel.js",
+    "release/captured/v2026.9.1-db91.6-subagent-index-20261020.wecom/dist/dist/src/v-experience.mjs",
+    "tmp/inputs/wecom-openclaw-plugin-2026.8.17-vlab.2-v.tgz"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/inter-session-wecom-smoke.mjs"
+  ],
+  "env": {},
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity"
+}
