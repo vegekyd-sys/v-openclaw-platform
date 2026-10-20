@@ -166,6 +166,7 @@
         "tests/sessions-send-reply-once.test.mjs",
         "tests/v-session-relay.test.mjs",
         "tests/inter-session-v-bytes.test.mjs",
+        "tests/patch-dingtalk-inter-session-bridge.test.mjs",
         "tests/mcp-after-tool-call.test.mjs",
         "tests/patch-openclaw-session-hotset.test.mjs",
         "tests/prune-openclaw-session-hotset.test.mjs",
