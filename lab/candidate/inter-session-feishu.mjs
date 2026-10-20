@@ -117,7 +117,8 @@ async function runInCandidate() {
       if (!def) { summary.results.push({ id, verdict: "skipped", reason: "unknown scenario" }); continue; }
       const times = id === "F2" ? repeat : 1;
       for (let i = 0; i < times; i++) {
-        const tag = `${RUN_TAG}-${id}${times > 1 ? `-${i + 1}` : ""}`;
+        const seenBefore = summary.results.filter((x) => x.id === id).length;
+        const tag = `${RUN_TAG}-${id}${times > 1 || seenBefore ? `-${seenBefore + 1}` : ""}`;
         const r = { id, tag, harness: HARNESS, envMode: ENV_MODE, variant: VARIANT, startedAt: iso(Date.now()), checks: [], readback: { windows: {}, checks: [] }, evidence: {} };
         summary.results.push(r);
         const mark = cand.mark();
