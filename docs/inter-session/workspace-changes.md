@@ -12,6 +12,7 @@
 | `AGENTS.md` | `84ebb3537644ea31b9d4660d464c487b41292924b53e5a0fbf6567907dbd1b54` |
 | `REDLINES.md` | `2546cad45cae0bead1288c673c305be0257930a46bf9d96bc63ee9a998f1fa5b` |
 | `SOUL.md` | `904d2e4ab1ede9da41aaa8d8d6008ef75863650cc0bcadd02494b95f7af1a1e4` |
+| `IDENTITY.md` | `250fb684db8e01dc84f886aa079e912dfd3616cd777fbb746cc92787184c16be` |
 | `USER.md` | `d1629ee44e7c4df631e7cb8b920417e087ae009bfd0330abe0beca80d956706d` |
 | `TOOLS.md` | `62a21bb304af413432de0ed76bea31a37ade1517f8920b5528e2b09acc2f3328` |
 | `MEMORY.md` | `5b904f4d77df52816dbd0c82a17870006b7c05dbbf2aa68049748e293394d797` |
@@ -20,6 +21,7 @@
 | `skills/background-worker-contract/SKILL.md` | `156e05415cd9051e7734692f1c4d29d6036d667a28ecae17469bbbd40e5e29dc` |
 | `skills/agent-to-agent-protocol-feishu-a2a-defaults/SKILL.md` | `deb6a597a3cff1419edd0e0b06499b80e85f368281c12d851164a960f6d83a07` |
 
+- `IDENTITY.md` 是评审时补的：同一路径、同一方式，2026-10-20 17:15 CST 拷出，并复核 `AGENTS.md` 在 V 上仍是上表的哈希。理由见第 4.3 节和第 7 节。
 - 拷贝时 V 工作区 git 显示 `AGENTS.md` 有未提交改动（10/20 Heartbeat 群取消建定时任务闸门那一条），草稿就是基于这个未提交版本做的。
 - Task Room 技能不在工作区 git 跟踪内，也不在 v-core 里，改它没有评审记录（[understand/workspace.md](understand/workspace.md) (6)）。
 
@@ -119,7 +121,7 @@ node lab/candidate/inter-session-workspace.mjs manifest \
   --private-dir /Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private
 ```
 
-- 默认取 `v-workspace/` 下的 10 个文件和 4 个 diff，在本机先把 diff 打一遍，把结果的 sha256 记进清单的 `expect`。
+- 默认取 `v-workspace/` 下的 11 个文件和 4 个 diff，在本机先把 diff 打一遍，把结果的 sha256 记进清单的 `expect`。
 - 想直接用改好的副本：加 `--files-from patched --drafts none`。
 - 输出的 `support` 列表原样放进 plan。清单只有路径、sha256、大小和权限，没有文件内容。
 
@@ -160,8 +162,10 @@ const shim = prepareLarkShim({pool: ['oc_…', 'oc_…', 'oc_…']});   // 预�
 // 启动私有 Gateway 时：env = {...process.env, ...shim.env}
 ```
 
+- **必须在启动私有 Gateway 之前调用。** Gateway 第一次看到空工作区，会按「全新工作区」写入模板（AGENTS、SOUL、IDENTITY、USER）和 `BOOTSTRAP.md`；`BOOTSTRAP.md` 不在草稿里，留下来就会触发首次见面流程。所以目标工作区里已有 `BOOTSTRAP.md` 时，加载器直接报错、一个文件都不写。
 - `applyInterSessionWorkspace` 按清单找齐文件，严格打 diff（不做模糊匹配，偏一行就报错），核对 `expect`，再写进私有工作区；拒绝写到 `$VLAB_CANDIDATE_DATA` 之外或经软链写出去。回执写在 `$VLAB_CANDIDATE_DATA/inter-session-workspace.receipt.json`，不写进工作区；回执和返回值只有 sha256 和计数，替换前后的标识也只记哈希。
 - `prepareLarkShim` 在 `$VLAB_CANDIDATE_DATA/bin/lark-cli` 放一个包装脚本，用当前 node 执行 shim，并把房间池和日志位置写死在包装里（agent 的 exec 环境就算丢了这两个变量也能用）；同时建一个空的私有 `HOME`，里面有 `.lark-cli` 就直接报错。
+- 文件清单里有 `IDENTITY.md`：缺了它，9.1 的 `ensureAgentWorkspace` 会补一份「Who Am I? Fill this in」模板，candidate 里的 V 就没有名字了（understand/workspace.md (5) 说的「被唤醒轮自称没有名字」就是这个）。`HEARTBEAT.md` 故意不带：它是 V 自己的定时巡检清单，candidate 不该照着它做事。心跳开不开由 candidate 配置决定（9.1 没有这个文件也照样跑通用心跳），WP10 应关掉。
 - 私有 `HOME` 会影响依赖 HOME 的登录（例如 /vcc 的 claude CLI）。这类 harness 要用各自的环境变量指向原登录目录，由 WP10 的驱动处理。
 
 ## 5. lark-cli shim（§10.4）
@@ -170,7 +174,7 @@ const shim = prepareLarkShim({pool: ['oc_…', 'oc_…', 'oc_…']});   // 预�
 
 | 情形 | 行为 |
 |---|---|
-| 环境变量里、`$HOME/.lark-cli/**` 或 `$LARKSUITE_CLI_CONFIG_DIR/**` 里出现 V 生产 app id | **先于一切检查**，退出 4；只报变量名和文件路径，不回显变量值 |
+| 环境变量里、`$HOME/.lark-cli/**`、`$LARKSUITE_CLI_CONFIG_DIR/**`，或 lark-cli `config bind` 会读的 OpenClaw 配置（`$OPENCLAW_CONFIG_PATH`、`$OPENCLAW_STATE_DIR/openclaw.json`、`$OPENCLAW_HOME/.openclaw/openclaw.json`、`$HOME/.openclaw/openclaw.json`）和 `$LARK_CHANNEL_CONFIG` 里出现 V 生产 app id | **先于一切检查**，退出 4；只报变量名和文件路径，不回显变量值 |
 | 不是 `im +chat-create` | 退出 3，stderr 给错误信封，什么都不发 |
 | `im +chat-create` | 从 `INTER_SESSION_ROOM_POOL` 轮转取一个 `oc_…`，stdout 输出与 lark-cli 一致的成功信封 `{ok, identity, data:{chat_id, name, chat_type, owner_id, external}}`；`-q .data.chat_id` 这类简单路径也支持 |
 | `--help`、`--dry-run` | 退出 0，不消耗房间池 |
@@ -179,13 +183,14 @@ const shim = prepareLarkShim({pool: ['oc_…', 'oc_…', 'oc_…']});   // 预�
 - 信封格式取自本机 lark-cli 1.0.89 的 `im +chat-create --help`、`lark-im-chat-create.md` 和 `lark-shared-output-contract.md`（只读文档，没有真的建群）。
 - 2026-10-20 在 vlab91 只读核对：共享 VLab Gateway 进程的环境变量里没有生产 app id，但它的 `HOME`（`/srv/vlab-production-mirror/labs/instances/db91-parity`）下 `.lark-cli/config.json` 有；root 的 `.lark-cli/openclaw/config.json` 也有。candidate 默认继承共享 Gateway 的 `HOME`（runner.mjs:194），所以不换成私有 `HOME` 时 shim 一定退出 4，这正是这道检查要拦的情况。
 - `--bots` 里带生产 app id 只记一条 `production_app_id_in_args` 警告，不拒绝：shim 不联网，这个参数不会产生任何效果。
-- 每次调用往 `$VLAB_CANDIDATE_DATA/lark-shim.log` 追加一行 JSON：参数、结果、取到的 chat、序号、是否重用、`network:"none"`。轮转序号存在 `lark-shim.state.json`，多进程并发时用目录锁串行。
+- 每次调用往 `$VLAB_CANDIDATE_DATA/lark-shim.log` 追加一行 JSON：参数、结果、取到的 chat、序号、是否重用、`network:"none"`。轮转序号存在 `lark-shim.state.json`，多进程并发时用目录锁串行；锁超过 5 秒视为被杀掉的 shim 留下的，直接接管（等待上限 15 秒，比它长）。
+- 2026-10-20 评审时只读核对：共享 VLab 的 `openclaw.json`（`shared-vlab-20260909-v3`）里生产 app id 出现 0 次，所以扫 OpenClaw 配置不会误拦。
 - 池用完后从头重用，并记 `pool_reused` 警告。预建池（「VLab 测试｜房间 1/2/3」）还需要 Tianyi 手工建（§10.4），群 id 在跑的时候传入，不进仓库。
 
 ## 6. 什么时候写进 V
 
 - 这些规则描述的是 R1 之后的行为：请求在对方聊天可见、结果按批次自动交回、拦截与唤醒。**R1 上线前不要写入**，否则 Task Room 会照新流程 sessions_send，却拿不到新行为。
-- 写入前先核对 V 上这 10 个文件的 sha256 仍等于第 1 节；变了就按新字节重新出 diff。
+- 写入前先核对 V 上这 11 个文件的 sha256 仍等于第 1 节（`IDENTITY.md` 没有草稿，只为 candidate 带上）；变了就按新字节重新出 diff。
 - 写入方式按 AGENTS 的核心文档规则：Tianyi 确认 → 在工作区根目录 `patch -p1` → 当日日报记一笔。Task Room 技能建议借这次纳入工作区 git。
 
 ## 7. 与设计的出入
@@ -196,5 +201,9 @@ const shim = prepareLarkShim({pool: ['oc_…', 'oc_…', 'oc_…']});   // 预�
 | §8.5 隐私条的引用 | 「REDLINES 49–58」 | 「REDLINES「Confidentiality & Private Sandbox」」 | 行号会随 REDLINES 修改漂移，节名不会；内容仍是 49–58 行那两条 |
 | §8.6 第 3 条模型清单 | worker、vcodex、vds、vcc | 同上，`--model` 做别名到规范模型的映射 | 规范值按 V 当前配置填，`vcodex` 现在指 `openai/gpt-6.1-sol` |
 | §8.6 brief 模板 | 缺信息用 timeoutSeconds=120 问 coordinator 或其他房间 | 另加「或在群里用 ask_user 问 Tianyi」 | 与 §8.3 目标回合提示一致 |
-| §10.4 shim 的检查范围 | 环境变量和任何配置 | 环境变量、`$HOME/.lark-cli/**`、`$LARKSUITE_CLI_CONFIG_DIR/**`（跟随软链） | lark-cli 1.0.89 只从这两处读配置；命令行参数里的生产 id 只告警 |
+| §10.4 shim 的检查范围 | 环境变量和任何配置 | 环境变量、`$HOME/.lark-cli/**`、`$LARKSUITE_CLI_CONFIG_DIR/**`（跟随软链），加上 `config bind` 会读的 OpenClaw 配置和 `$LARK_CHANNEL_CONFIG` | lark-cli 1.0.89 运行时只从前两处读配置，`config bind` 还会从 OpenClaw 配置取 appId；命令行参数里的生产 id 只告警 |
 | §10.2 加载器 | 复制 inputs 并叠草稿 | 另加 `prepareLarkShim` 和可选 `replacements` | shim 以 0600 落盘、不能直接执行，需要包装；VLab 的 bot 和 open_id 与 V 不同 |
+| §10.2 工作区文件清单 | AGENTS、REDLINES、SOUL、USER、TOOLS、MEMORY 和 Task Room 技能 | 另加 `IDENTITY.md`；`HEARTBEAT.md` 故意不带 | 缺 `IDENTITY.md` 时 9.1 会写「Who Am I?」模板，V 没有名字；V 的巡检清单不该在 candidate 里执行（心跳本身由 WP10 的配置关掉） |
+| §10.2 加载顺序 | 未规定 | 目标工作区已有 `BOOTSTRAP.md` 就拒绝 | Gateway 先启动会把空工作区当成全新的，留下首次见面流程 |
+| §8.5 第 103 行 | 设计只新增一节 | 「委派透明」那一行加半句「或用 sessions_send 把活交给别的会话」 | 原句只覆盖 subagent；新增一节说「一句话说清交给了谁」，两处说法要一致 |
+| §8.5/§8.6 范围 | 只改 AGENTS 和 Task Room 技能 | 另给 A2A 技能、后台 worker 契约各加一行（第 3.4、3.5 节） | understand/workspace.md (3)：A2A 要求 @ 和 watcher，worker 契约要求子会话不发可见消息，都和房间在自己群里可见干活冲突 |

@@ -25,12 +25,17 @@ export const MANIFEST_KIND = 'inter-session-workspace-inputs';
 export const MANIFEST_NAME = 'inter-session-workspace.manifest.json';
 export const RECEIPT_NAME = 'inter-session-workspace.receipt.json';
 export const SHIM_RELATIVE = 'lab/candidate/lark-cli-shim/lark-cli';
+export const BOOTSTRAP_NAME = 'BOOTSTRAP.md';
 export const DEFAULT_AGENT = 'makaron';
 export const DEFAULT_FILES_FROM = 'v-workspace';
 // Workspace files the inter-session candidate needs (design §10.2): V's boot documents plus the
-// skills that §8.5/§8.6 touch.
+// skills that §8.5/§8.6 touch. IDENTITY.md is not in the design's list but has to travel too: when
+// it is missing, OpenClaw 9.1 ensureAgentWorkspace writes its "Who Am I? Fill this in" template
+// (src/agents/workspace.ts, writeFileIfMissing(identityPath)) and the candidate V loses its name.
+// HEARTBEAT.md stays out on purpose: it is V's own periodic checklist, which a candidate must not
+// act on. Whether heartbeats run at all is the candidate config's business (WP10 should turn them off).
 export const DEFAULT_FILES = Object.freeze([
-  'AGENTS.md', 'REDLINES.md', 'SOUL.md', 'USER.md', 'TOOLS.md', 'MEMORY.md',
+  'AGENTS.md', 'REDLINES.md', 'SOUL.md', 'IDENTITY.md', 'USER.md', 'TOOLS.md', 'MEMORY.md',
   '.agents/skills/feishu-task-room-router/SKILL.md',
   '.agents/skills/feishu-task-room-router/scripts/create_task_room.py',
   'skills/background-worker-contract/SKILL.md',
@@ -276,6 +281,11 @@ export function applyInterSessionWorkspace({inputsDir = MODULE_ROOT, manifest, a
   const modes = new Map(m.files.map(f => [f.path, f.mode ?? 0o600]));
   fs.mkdirSync(target, {recursive: true, mode: 0o700});
   if (!inside(fs.realpathSync(data), fs.realpathSync(target))) throw new Error(`Workspace ${target} resolves outside the private candidate data dir`);
+  // A Gateway that saw this workspace empty has already seeded it as brand new: template profile
+  // files plus BOOTSTRAP.md, which stays behind after the drafts land and starts the first-run
+  // ritual. Drafts must be applied before the private Gateway starts.
+  if (fs.lstatSync(path.join(target, BOOTSTRAP_NAME), {throwIfNoEntry: false}))
+    throw new Error(`${path.join(target, BOOTSTRAP_NAME)} exists: the Gateway already seeded this workspace as brand new. Apply the workspace before starting the private Gateway, in a fresh candidate data dir.`);
   const written = [];
   for (const [rel, bytes] of applied.files) {
     refuseSymlinks(target, rel);

@@ -7,7 +7,8 @@
 //   INTER_SESSION_ROOM_POOL  comma-separated oc_… chat ids, handed out in rotation
 //   VLAB_CANDIDATE_DATA      run directory; calls are logged to $VLAB_CANDIDATE_DATA/lark-shim.log
 // Exit codes: 0 ok (also --help, --dry-run) · 2 usage or shim misconfiguration ·
-//             3 any other subcommand · 4 the production app id is reachable (env or lark-cli config).
+//             3 any other subcommand · 4 the production app id is reachable (env, lark-cli config,
+//             or an OpenClaw config that lark-cli config bind reads).
 // Written without import/require so it runs whether node loads it as CommonJS or as ESM.
 'use strict';
 const fs = process.getBuiltinModule('node:fs');
@@ -65,17 +66,35 @@ function scanConfigDir(dir, found, seen, depth) {
   }
 }
 
+function scanConfigFile(file, found, seen) {
+  let real, st;
+  try { real = fs.realpathSync(file); st = fs.statSync(real); } catch { return; }
+  if (st.isDirectory()) return scanConfigDir(real, found, seen, 0);
+  if (seen.has(real) || !st.isFile() || st.size > 4 * 1024 * 1024) return;
+  seen.add(real);
+  try { if (fs.readFileSync(real).includes(PROD_APP_ID)) found.push(real); } catch {}
+}
+
 function productionAppIdSources() {
   const sources = [];
   for (const [key, value] of Object.entries(process.env)) {
     if (key.includes(PROD_APP_ID) || String(value).includes(PROD_APP_ID)) sources.push('env:' + key);
   }
-  const home = process.env.HOME || os.homedir();
+  const env = process.env;
+  const home = env.HOME || os.homedir();
   const dirs = [path.join(home, '.lark-cli')];
-  if (process.env.LARKSUITE_CLI_CONFIG_DIR) dirs.push(process.env.LARKSUITE_CLI_CONFIG_DIR);
-  const files = [], seen = new Set();
-  for (const dir of dirs) scanConfigDir(dir, files, seen, 0);
-  for (const f of files) sources.push('file:' + f);
+  if (env.LARKSUITE_CLI_CONFIG_DIR) dirs.push(env.LARKSUITE_CLI_CONFIG_DIR);
+  // lark-cli 1.0.89 `config bind` also takes app credentials from the OpenClaw config
+  // ("configure channels.feishu.appId in openclaw.json"; source detected from OPENCLAW_HOME or
+  // LARK_CHANNEL) and from LARK_CHANNEL_CONFIG. Those files count as lark-cli configs here.
+  const files = [env.LARK_CHANNEL_CONFIG, env.OPENCLAW_CONFIG_PATH,
+    env.OPENCLAW_STATE_DIR && path.join(env.OPENCLAW_STATE_DIR, 'openclaw.json'),
+    env.OPENCLAW_HOME && path.join(env.OPENCLAW_HOME, '.openclaw', 'openclaw.json'),
+    path.join(home, '.openclaw', 'openclaw.json')].filter(Boolean);
+  const found = [], seen = new Set();
+  for (const dir of dirs) scanConfigDir(dir, found, seen, 0);
+  for (const file of files) scanConfigFile(file, found, seen);
+  for (const f of new Set(found)) sources.push('file:' + f);
   return sources;
 }
 
@@ -188,11 +207,13 @@ if (!pool.length || !pool.every(id => CHAT_ID_RE.test(id)))
 const sleeper = new Int32Array(new SharedArrayBuffer(4));
 function withLock(fn) {
   const lock = path.join(dir, 'lark-shim.lock');
-  const deadline = Date.now() + 10000;
+  // The critical section is one small read and one rename, so a lock older than 5 s belongs to a
+  // killed shim. The wait deadline is longer than that, so a waiting call always recovers.
+  const deadline = Date.now() + 15000;
   for (;;) {
     try { fs.mkdirSync(lock); break; } catch (e) {
       if (e.code !== 'EEXIST') throw e;
-      try { if (Date.now() - fs.statSync(lock).mtimeMs > 30000) fs.rmdirSync(lock); } catch {}
+      try { if (Date.now() - fs.statSync(lock).mtimeMs > 5000) fs.rmdirSync(lock); } catch {}
       if (Date.now() > deadline) throw new Error('lark-shim lock timeout');
       Atomics.wait(sleeper, 0, 0, 20);
     }

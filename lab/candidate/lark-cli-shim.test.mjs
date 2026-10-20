@@ -113,8 +113,26 @@ test('the production app id anywhere in env or in reachable lark-cli configs exi
   r = s.run(CREATE, {LARKSUITE_CLI_CONFIG_DIR: elsewhere});
   assert.equal(r.status, 4, 'LARKSUITE_CLI_CONFIG_DIR is scanned too');
 
+  // lark-cli `config bind` takes app credentials from the OpenClaw config too (and LARK_CHANNEL_CONFIG).
+  const prodConfig = path.join(s.root, 'prod-openclaw.json');
+  fs.writeFileSync(prodConfig, JSON.stringify({channels: {feishu: {appId: PROD}}}));
+  for (const extra of [{OPENCLAW_CONFIG_PATH: prodConfig}, {LARK_CHANNEL_CONFIG: prodConfig}, {OPENCLAW_STATE_DIR: elsewhere}]) {
+    if (extra.OPENCLAW_STATE_DIR) fs.copyFileSync(prodConfig, path.join(elsewhere, 'openclaw.json'));
+    r = s.run(CREATE, extra);
+    assert.equal(r.status, 4, JSON.stringify(Object.keys(extra)));
+    assert.match(r.stderr, /openclaw\.json/);
+  }
+  const ocHome = path.join(s.root, 'oc-home');
+  fs.mkdirSync(path.join(ocHome, '.openclaw'), {recursive: true});
+  fs.copyFileSync(prodConfig, path.join(ocHome, '.openclaw/openclaw.json'));
+  assert.equal(s.run(CREATE, {OPENCLAW_HOME: ocHome}).status, 4, 'OPENCLAW_HOME/.openclaw/openclaw.json');
+
   assert.equal(fs.existsSync(path.join(s.data, 'lark-shim.state.json')), false, 'no chat handed out while refusing');
   assert.ok(s.logs().every(l => l.exit === 4 && l.reason === 'production_app_id'));
+  // The candidate's own OpenClaw config names only the VLab app: no refusal.
+  const vlabConfig = path.join(s.root, 'vlab-openclaw.json');
+  fs.writeFileSync(vlabConfig, JSON.stringify({channels: {feishu: {appId: VLAB_BOT}}}));
+  assert.equal(s.run(CREATE, {OPENCLAW_CONFIG_PATH: vlabConfig, OPENCLAW_HOME: s.root}).status, 0);
   // A harmless config for another app does not trip the check.
   fs.mkdirSync(path.join(s.home, '.lark-cli')); fs.writeFileSync(path.join(s.home, '.lark-cli/config.json'), JSON.stringify({appId: VLAB_BOT}));
   assert.equal(s.run(CREATE).status, 0);
@@ -144,6 +162,20 @@ test('misconfiguration and bad flags exit 2; --help and --dry-run exit 0 without
   assert.equal(preview.dry_run, true); assert.equal(preview.request.url, '/open-apis/im/v1/chats');
   assert.equal(fs.existsSync(path.join(s.data, 'lark-shim.state.json')), false);
   assert.equal(JSON.parse(s.run(CREATE).stdout).data.chat_id, POOL[0]);
+});
+
+test('a lock left behind by a killed shim does not block the next call', t => {
+  const s = sandbox(t);
+  const lock = path.join(s.data, 'lark-shim.lock');
+  fs.mkdirSync(lock);
+  const old = new Date(Date.now() - 12000);
+  fs.utimesSync(lock, old, old);
+  const started = Date.now();
+  const r = s.run(CREATE);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).data.chat_id, POOL[0]);
+  assert.ok(Date.now() - started < 5000, 'a stale lock is taken over at once instead of timing out');
+  assert.equal(fs.existsSync(lock), false);
 });
 
 test('parallel calls get distinct chats', async t => {

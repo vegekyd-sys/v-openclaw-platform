@@ -7,7 +7,7 @@ import {spawnSync, execFileSync} from 'node:child_process';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {buildRequest} from './client.mjs';
 import {parseUnifiedDiff, applyFilePatch, applyDrafts, buildManifest, applyInterSessionWorkspace, prepareLarkShim, safeRelative,
-  MANIFEST_NAME, RECEIPT_NAME, SHIM_RELATIVE, DEFAULT_FILES, DEFAULT_DRAFTS, sha256} from './inter-session-workspace.mjs';
+  MANIFEST_NAME, RECEIPT_NAME, SHIM_RELATIVE, BOOTSTRAP_NAME, DEFAULT_FILES, DEFAULT_DRAFTS, sha256} from './inter-session-workspace.mjs';
 
 const REPO = fileURLToPath(new URL('../../', import.meta.url));
 const MODULE = fileURLToPath(new URL('./inter-session-workspace.mjs', import.meta.url));
@@ -33,7 +33,7 @@ function udiff(oldText, newText, label) {
 const BASE = {
   'AGENTS.md': '# AGENTS\n\n### Progress\n- 慢任务先播报。\n- **委派透明**：启动 subagent 前先说明。\n- 发过结果后 NO_REPLY。\n\n### Group Chat Rules\n- silence is the default\n',
   'REDLINES.md': '# REDLINES\n- private stays private\n',
-  'SOUL.md': 'soul\n', 'USER.md': 'user\n', 'TOOLS.md': 'tools uses cli_a9365919fc3a1bd6 and ou_cafe\n', 'MEMORY.md': 'memory\n',
+  'SOUL.md': 'soul\n', 'IDENTITY.md': '# IDENTITY\n- Name: V\n', 'USER.md': 'user\n', 'TOOLS.md': 'tools uses cli_a9365919fc3a1bd6 and ou_cafe\n', 'MEMORY.md': 'memory\n',
   '.agents/skills/feishu-task-room-router/SKILL.md': '---\nname: router\n---\n3. Send a complete brief into the new group.\n',
   '.agents/skills/feishu-task-room-router/scripts/create_task_room.py': '#!/usr/bin/env python3\nprint("send brief as bot")\n',
   'skills/background-worker-contract/SKILL.md': 'Do not send user-visible chat messages directly unless explicitly told.\n',
@@ -174,6 +174,32 @@ test('missing, tampered or unexpected inputs and unsafe destinations are refused
   // A draft that does not match the bytes it is applied to fails loudly.
   const files = new Map([['AGENTS.md', Buffer.from('other bytes\n')]]);
   assert.throws(() => applyDrafts(files, [{name: 'agents-md.diff', text: fs.readFileSync(path.join(dir, 'agents-md.diff'), 'utf8')}]), /draft does not apply/);
+});
+
+test('every profile file OpenClaw would otherwise seed from a template travels with the workspace', () => {
+  // OpenClaw 9.1 ensureAgentWorkspace writes templates for missing AGENTS/SOUL/IDENTITY/USER
+  // (IDENTITY's says "Who Am I? Fill this in"). Shipping all four keeps the candidate V's identity.
+  for (const name of ['AGENTS.md', 'SOUL.md', 'IDENTITY.md', 'USER.md']) assert.ok(DEFAULT_FILES.includes(name), name);
+  // Never V's heartbeat checklist, never a first-run script.
+  for (const name of ['HEARTBEAT.md', BOOTSTRAP_NAME]) assert.ok(!DEFAULT_FILES.includes(name), name);
+});
+
+test('a workspace the Gateway already seeded as brand new is refused before anything is written', t => {
+  const dir = privateDir(t);
+  const {support} = buildManifest({privateDir: dir});
+  const {inputs, data} = placeInputs(t, support);
+  const ws = path.join(data, 'workspace/makaron');
+  // What a 9.1 Gateway leaves in an empty workspace on first start: templates plus BOOTSTRAP.md.
+  fs.writeFileSync(path.join(ws, 'IDENTITY.md'), '# IDENTITY.md - Who Am I?\n');
+  fs.writeFileSync(path.join(ws, BOOTSTRAP_NAME), '# BOOTSTRAP.md - Hello, World\n');
+  assert.throws(() => applyInterSessionWorkspace({inputsDir: inputs, dataDir: data}), /BOOTSTRAP\.md exists: the Gateway already seeded/);
+  assert.deepEqual(fs.readdirSync(ws).sort(), [BOOTSTRAP_NAME, 'IDENTITY.md'], 'no draft landed next to the first-run script');
+  assert.equal(fs.readFileSync(path.join(ws, 'IDENTITY.md'), 'utf8'), '# IDENTITY.md - Who Am I?\n');
+  assert.ok(!fs.existsSync(path.join(data, RECEIPT_NAME)));
+  // Applied first, the real identity is in place before any Gateway looks.
+  fs.rmSync(path.join(ws, BOOTSTRAP_NAME)); fs.rmSync(path.join(ws, 'IDENTITY.md'));
+  applyInterSessionWorkspace({inputsDir: inputs, dataDir: data});
+  assert.equal(fs.readFileSync(path.join(ws, 'IDENTITY.md'), 'utf8'), BASE['IDENTITY.md']);
 });
 
 test('candidate-only replacements swap production identifiers and report only counts and hashes', t => {
