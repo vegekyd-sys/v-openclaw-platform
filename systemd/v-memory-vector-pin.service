@@ -1,0 +1,20 @@
+[Unit]
+Description=Pin V's memory_search vector pages in RAM (mlock)
+Documentation=file:/opt/v-sentinel/v-memory-vector-pin.py
+# Read-only and outside the Gateway: maps the agent DB PROT_READ and locks only the
+# sqlite-vec tables' pages (~760 MB). Releases them below 2 GiB MemAvailable; stopping
+# the service releases them too.
+
+[Service]
+Type=simple
+User=openclaw
+Nice=10
+# The script refuses to lock more than MAX_PIN_MB (1536); the limit sits just above it.
+LimitMEMLOCK=1600M
+ExecStart=/usr/bin/python3 /opt/v-sentinel/v-memory-vector-pin.py makaron
+Restart=on-failure
+RestartSec=60
+# No MemoryMax: locked pages cannot be reclaimed, so a cgroup limit would only OOM-kill it.
+
+[Install]
+WantedBy=multi-user.target
