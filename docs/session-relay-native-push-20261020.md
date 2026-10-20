@@ -1,5 +1,7 @@
 # 跨会话派活走飞书原生推送（2026-10-20，VLab candidate）
 
+> 历史记录：这是 v2（只改投递参数）的 candidate。现行方案与使用说明见 [inter-session/README.md](inter-session/README.md)。
+
 ## 方向
 
 Tianyi 2026-10-20：不要自建「A ⇄ B」卡片，两边都用飞书原生推送（卡片、文字、图片都行），就像对方群里有人发了一条消息、V 在自己的群里回复。

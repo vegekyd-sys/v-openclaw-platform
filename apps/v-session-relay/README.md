@@ -59,7 +59,7 @@ Gateway 方法：`vrelay.send`、`vrelay.wait`（operator.write）、`vrelay.get
 ## 止血与回滚
 
 1. 立即止血：在账本目录建 `DISABLED`（约 1 秒内生效），之后的 `sessions_send` 走 v2；在途的请求照常收尾。
-2. 停用插件：先把配置里的插件改成 `enabled: false`（会触发 worker 换代），再删目录（记忆 deleted-plugin-dir-breaks-worker-config）。
+2. 停用插件：先把配置里的插件改成 `enabled: false`（会触发 worker 换代），再删目录（记忆 deleted-plugin-dir-breaks-worker-config）。用 `scripts/configure-v-session-relay.mjs revert`，在 `v-self-restart --while-stopped` 里执行；完整步骤见 `docs/inter-session/README.md`「回滚」。
 3. `LOCK` 被另一个活着的进程持有时引擎不启动并记 error，`vrelay.send` 返回 fallback（防止 candidate 与共享 VLab 共用一个目录）。
 
 ## 测试
