@@ -75,7 +75,7 @@ test("stacked on V's Telegram experience patch; every anchor occurs exactly once
     assert.equal(count(OUT[kind], `${start}\n`), 1, `${kind}: block inserted once`);
     assert.equal(count(OUT[kind], `${end}\n`), 1);
     const inline = OUT[kind].split("\n").filter((line) => line.includes(MARKER) && !line.startsWith(`// ${MARKER}`)).length;
-    assert.equal(inline, { ingress: 2, dispatch: 13 }[kind], `${kind}: inline insertions`);
+    assert.equal(inline, { ingress: 2, dispatch: 14 }[kind], `${kind}: inline insertions`);
     assert.equal(count(OUT[kind], MARKER), inline + 2, `${kind}: no other marker`);
   }
   // the anchors that are V's own Telegram experience code (stacking proof)
@@ -123,7 +123,8 @@ test("ingress: bridge registered after the pipeline exists, removed in the bot's
   assert.equal(lines[2], "const authorization = createTelegramHandlerAuthorization(params);");
   assert.equal(lines[3], `vRegisterTelegramInterSessionBridge(params, message, authorization); // ${MARKER}`);
   const stop = between(OUT.ingress, "\tbot.stop = ((...args) => {", "\t});\n");
-  assert(stop.indexOf("vUnregisterTelegramInterSessionBridge(bot);") < stop.indexOf("return originalStop(...args);"));
+  const unregisterAt = stop.indexOf("\t\tvUnregisterTelegramInterSessionBridge(bot); //");
+  assert(unregisterAt >= 0 && unregisterAt < stop.indexOf("return originalStop(...args);"), "the stop wrapper unregisters before it stops the bot");
   const block = between(OUT.ingress, INGRESS_BLOCK_START, INGRESS_BLOCK_END);
   assert.match(block, /update: \{ vInterSession: turn \}/u, "the synthetic update carries the turn and no update_id");
   assert.doesNotMatch(block, /update_id/u);
@@ -157,8 +158,11 @@ test("dispatch: context fields last in extra, reply options last, not-started tu
 function loadBridgeBlock(fakeGlobal = {}) {
   const block = between(OUT.ingress, INGRESS_BLOCK_START, INGRESS_BLOCK_END);
   const logs = [];
-  const exportsOf = new Function("globalThis", "normalizeAccountId", "logVerbose", `"use strict";\n${block}\nreturn { vCreateTelegramInterSessionBridge, vCreateTelegramInterSessionTurn, vRegisterTelegramInterSessionBridge, vUnregisterTelegramInterSessionBridge, vTelegramBridgeErrorFrom, vTelegramTargetFromSessionKey, vTelegramTargetFromDelivery };`);
-  return { ...exportsOf(fakeGlobal, contracts.normalizeAccountId, (line) => logs.push(line)), logs, fakeGlobal };
+  const exportsOf = new Function("globalThis", "normalizeAccountId", "logVerbose", "resolveTelegramBotHasTopicsEnabled", "resolveTelegramMessageThreadSpec", `"use strict";\n${block}\nreturn { vCreateTelegramInterSessionBridge, vCreateTelegramInterSessionTurn, vRegisterTelegramInterSessionBridge, vUnregisterTelegramInterSessionBridge, vTelegramBridgeErrorFrom, vTelegramTargetFromSessionKey, vTelegramTargetFromDelivery, vTelegramInterSessionPromptBounds };`);
+  // the two chunk imports the bounds helper uses (helpers-DEd6NfQU.js): topics off; a plain thread spec
+  const topicsEnabled = (me) => me?.has_topics_enabled === true;
+  const threadSpecOf = (msg) => ({ id: msg?.message_thread_id, scope: msg?.chat?.type === "private" ? "dm" : "none" });
+  return { ...exportsOf(fakeGlobal, contracts.normalizeAccountId, (line) => logs.push(line), topicsEnabled, threadSpecOf), logs, fakeGlobal };
 }
 /** The generated turn helpers of the dispatch chunk. */
 function loadTurnHelpers() {
@@ -167,6 +171,10 @@ function loadTurnHelpers() {
 }
 /** V's own buildSyntheticTextMessage from the ingress chunk. */
 const buildSyntheticTextMessage = new Function(`"use strict";\n${between(OUT.ingress, "function buildSyntheticTextMessage(params) {", "\n}\n")}\nreturn buildSyntheticTextMessage;`)();
+/** V's own prompt-context bound helpers from the ingress chunk (what handleInboundMessageLike passes). */
+const boundHelpers = new Function("asFiniteNumber", `"use strict";\n${between(OUT.ingress, "const normalizePromptContextMinTimestampMs = ", ";\n")}\n${between(OUT.ingress, "function promptContextBoundaryOptions(timestampMs, ambientWatermark) {", "\n}\n")}\nreturn { normalizePromptContextMinTimestampMs, promptContextBoundaryOptions };`)((v) => (typeof v === "number" && Number.isFinite(v) ? v : undefined));
+const SESSION_STARTED_AT = 1760000000000;
+const WATERMARK = { messageId: "41", timestampMs: 1760000500000 };
 
 /** A small grammY-shaped Bot API client for the fake server (errors look like GrammyError). */
 function botApi(port) {
@@ -223,10 +231,22 @@ function startRequest(route, { kind = "request", id = SEND_ID, attempt = 0, sess
 function simulatedPipeline({ helpers, api }) {
   const script = [];
   const seen = [];
+  const sessionCalls = [];
   return {
     seen,
+    sessionCalls,
     queue: (...items) => script.push(...items),
     buildSyntheticTextMessage,
+    // the pipeline's session runtime (createTelegramMessageSessionRuntime), as handleInboundMessageLike uses it
+    resolveTelegramSessionState(p) {
+      sessionCalls.push({ state: p });
+      return { agentId: AGENT, sessionKey: `agent:${AGENT}:telegram:${p.isGroup ? "group" : "direct"}:${p.chatId}`, storePath: "/state/agents/makaron/sessions", sessionEntry: { sessionStartedAt: SESSION_STARTED_AT } };
+    },
+    resolvePromptContextAmbientWatermark(p) {
+      sessionCalls.at(-1).watermark = p;
+      return p.isGroup ? WATERMARK : undefined;
+    },
+    ...boundHelpers,
     async processMessageWithReplyChain(params) {
       const step = script.shift() ?? {};
       const { ctx, msg, options } = params;
@@ -263,8 +283,9 @@ function simulatedPipeline({ helpers, api }) {
   };
 }
 
+const RUNTIME_CFG = Object.freeze({ session: { store: "/state/agents/{agentId}/sessions" } });
 function allowAll(log = []) {
-  return { async authorizeInboundMessage(p) { log.push(p); return { allowed: true, context: { storeAllowFrom: ["5368086561"], threadSpec: { scope: "none" } }, resolveChannelIngress: () => ({ admitted: true }) }; } };
+  return { async authorizeInboundMessage(p) { log.push(p); return { allowed: true, context: { cfg: RUNTIME_CFG, storeAllowFrom: ["5368086561"], threadSpec: { scope: "none" }, resolvedThreadId: undefined }, resolveChannelIngress: () => ({ admitted: true }) }; } };
 }
 
 async function withFakeTelegram(fn) {
@@ -425,6 +446,12 @@ test("bridge: start runs one synthetic message; started, busy and rejected outco
     assert.equal(seen.params.options.messageIdOverride, busyReq.messageSid);
     assert.deepEqual(seen.params.storeAllowFrom, ["5368086561"]);
     assert.equal(typeof seen.params.options.channelIngressResolvers[0], "function");
+    // the prompt-context bounds of a person's message in this chat: session start and the group watermark
+    assert.equal(seen.params.options.promptContextMinTimestampMs, SESSION_STARTED_AT, "no chat history from before the session started");
+    assert.deepEqual(seen.params.options.promptContextAmbientWatermark, WATERMARK, "no group messages the transcript already has");
+    const sessionCall = pipeline.sessionCalls.at(-1);
+    assert.deepEqual({ ...sessionCall.state, threadSpec: sessionCall.state.threadSpec }, { chatId: Number(GROUP), isGroup: true, threadSpec: { scope: "none" }, botHasTopicsEnabled: false, senderId: OWNER, runtimeCfg: RUNTIME_CFG });
+    assert.deepEqual(sessionCall.watermark, { chatId: Number(GROUP), isGroup: true, resolvedThreadId: undefined, sessionKey: busyReq.sessionKey, storePath: "/state/agents/makaron/sessions" });
     assert.equal(gates.at(-1).dmAccess, "silent");
     assert.equal(gates.at(-1).senderId, OWNER);
     // the context fields of §2.a
@@ -523,6 +550,35 @@ test("bridge: start refuses what it cannot carry, before touching the pipeline",
   assert.equal(helpers.vTelegramInterSessionFromCtx(processed[0].ctx).req, req);
 });
 
+test("bridge: a turn gets the prompt-context bounds of a person's message; a failed session lookup only loses them", async () => {
+  const { vCreateTelegramInterSessionBridge } = loadBridgeBlock();
+  const helpers = loadTurnHelpers();
+  const route = { channel: "telegram", accountId: "default", to: OWNER, chatId: OWNER, chatType: "direct", peerId: OWNER, humans: "owner_only" };
+  const logs = [];
+  const make = (pipeline) => vCreateTelegramInterSessionBridge({ accountId: "default", bot: { api: {}, botInfo: { id: 1 } }, message: pipeline, authorization: allowAll(), normalizeAccountId: contracts.normalizeAccountId, log: (line) => logs.push(line) });
+  // a direct chat: the session start bounds the chat window; the ambient watermark is for groups only
+  const dm = simulatedPipeline({ helpers, api: {} });
+  dm.queue({});
+  assert.equal((await make(dm).start(startRequest(route))).status, "started");
+  const options = dm.seen.at(-1).params.options;
+  assert.equal(options.promptContextMinTimestampMs, SESSION_STARTED_AT);
+  assert.equal("promptContextAmbientWatermark" in options, false);
+  assert.equal(dm.sessionCalls.at(-1).state.senderId, OWNER, "the session is looked up for the routing peer, like the message itself");
+  // a chat that has no session yet: no lower bound (stock behaviour)
+  const fresh = simulatedPipeline({ helpers, api: {} });
+  fresh.resolveTelegramSessionState = (p) => ({ sessionKey: `agent:${AGENT}:telegram:direct:${p.chatId}`, storePath: "/s" });
+  fresh.queue({});
+  assert.equal((await make(fresh).start(startRequest(route, { attempt: 1 }))).status, "started");
+  assert.equal("promptContextMinTimestampMs" in fresh.seen.at(-1).params.options, false);
+  // the session store cannot be read: the turn still runs, without bounds, and says so in the log
+  const broken = simulatedPipeline({ helpers, api: {} });
+  broken.resolveTelegramSessionState = () => { throw new Error("session store unreadable"); };
+  broken.queue({});
+  assert.equal((await make(broken).start(startRequest(route, { attempt: 2 }))).status, "started");
+  assert.equal("promptContextMinTimestampMs" in broken.seen.at(-1).params.options, false);
+  assert.match(logs.join("\n"), /prompt-context bounds unavailable for chat 5368086561: session store unreadable/u);
+});
+
 test("turn helpers: no-ops for ordinary Telegram messages", () => {
   const helpers = loadTurnHelpers();
   const ordinary = { primaryCtx: { update: { update_id: 7, message: {} } }, route: { sessionKey: "k" }, ctxPayload: { SessionKey: "k", SenderId: "42" } };
@@ -570,7 +626,7 @@ function loadDispatchCode(stubs, { processorOnly = false } = {}) {
 
 /** Stubs for the dispatch code's neighbours; `core` plays runChannelInboundEvent (the core + §3.3 guard). */
 function dispatchHarness() {
-  const record = { fallbacks: [], watchBackground: 0, statusFinalize: [], typing: 0, sentMessages: [], coreTurns: [], delivered: [], errors: [] };
+  const record = { fallbacks: [], watchBackground: 0, statusFinalize: [], typing: 0, sentMessages: [], coreTurns: [], delivered: [], errors: [], questionSenders: [], questionRoutes: [] };
   let step = {};
   const stubs = {
     // dispatchTelegramMessage
@@ -597,9 +653,9 @@ function dispatchHarness() {
     // runTelegramDispatchTurn
     resolveChannelStreamingPreviewToolProgress: () => false,
     telegramInboundEventDelivery: { begin: () => () => {} },
-    vTelegramFor: () => ({ deliverQuestion: async () => false }),
+    vTelegramFor: () => ({ deliverQuestion: async ({ senderId }) => { record.questionSenders.push(senderId); return false; } }),
     buildTelegramThreadParams: () => undefined,
-    vExperience: { createWorkView: () => ({}), onQuestionRequested: () => () => {}, watchBackground: () => { record.watchBackground += 1; } },
+    vExperience: { createWorkView: () => ({}), onQuestionRequested: (sessionKey, deliver) => { record.questionRoutes.push(deliver); return () => {}; }, watchBackground: () => { record.watchBackground += 1; } },
     vFormatProgressLine: () => "",
     enqueueDraftEvent: async (turn, fn) => fn(),
     vRenderWork: async () => {},
@@ -736,6 +792,25 @@ test("dispatch (real code): a started turn keeps the stock behaviour and reports
   }
 });
 
+test("dispatch (real code): a turn's ask_user questions are answered by askUserAnswererId, never by the permission identity", async () => {
+  const { vCreateTelegramInterSessionTurn } = loadBridgeBlock();
+  const route = { channel: "telegram", accountId: "default", to: GROUP, chatId: GROUP, chatType: "group", humans: "shared" };
+  const req = startRequest(route, { sender: { id: `v-a2a:${CHAIN_ID}`, name: "「一个私聊」的 V（会话协作）", isOwnerIdentity: false }, routePeerId: OWNER, askUserAnswererId: OWNER });
+  for (const turnOrNot of [true, false]) {
+    const h = dispatchHarness();
+    const mod = loadDispatchCode(h.stubs);
+    const { turn } = vCreateTelegramInterSessionTurn(req);
+    h.setStep({ finals: [{ text: "", channelData: { askUser: { questionId: "q1" } } }] });
+    const context = dispatchContext({ turn: turnOrNot ? turn : undefined, sessionKey: req.sessionKey, chatId: GROUP, record: h.record });
+    context.statusReactionController = null;
+    context.ctxPayload.SenderId = turnOrNot ? req.sender.id : "70000005"; // what the context builder set (extra / the person)
+    await mod.dispatchTelegramMessage({ context, bot: { api: { sendMessage: async () => {} } }, cfg: {}, runtime: { error() {} }, replyToMode: "off", streamMode: "off", telegramCfg: {}, telegramDeps: {}, opts: {} });
+    await h.record.questionRoutes[0]({ id: "q2" });
+    const expected = turnOrNot ? OWNER : "70000005";
+    assert.deepEqual(h.record.questionSenders, [expected, expected], turnOrNot ? "the real person, not the synthetic permission identity" : "a person's own question stays theirs");
+  }
+});
+
 test("dispatch (real code): failures before the run and misrouted turns are invisible and classified", async () => {
   const { vCreateTelegramInterSessionTurn } = loadBridgeBlock();
   const route = { channel: "telegram", accountId: "default", to: OWNER, chatId: OWNER, chatType: "direct", peerId: OWNER, humans: "owner_only" };
@@ -793,5 +868,245 @@ test("processor (real code): no typing cue for a turn; the last-resort notice on
     await processMessage(context.primaryCtx, [], [], { cfg: {}, telegramCfg: {}, onDispatchStart: async () => {} }, {});
     assert.equal(h.record.typing, 1);
     assert.equal(sent.length, 1);
+  }
+});
+
+// ---------------------------------------------------------------- 5. the real patched context code
+
+/**
+ * The real buildTelegramMessageContext and buildTelegramInboundContextPayload of the generated file,
+ * every free identifier from `stubs` (an unstubbed one fails the test, as in loadDispatchCode).
+ */
+function loadContextCode(stubs) {
+  const parts = [
+    between(OUT.dispatch, DISPATCH_BLOCK_START, DISPATCH_BLOCK_END),
+    between(OUT.dispatch, "async function buildTelegramInboundContextPayload(params) {", "\n}\n"),
+    between(OUT.dispatch, "const buildTelegramMessageContext = async ({", "\n};\n"),
+  ];
+  const scope = new Proxy(stubs, {
+    has: (target, key) => typeof key === "string" && (key in target || !(key in globalThis)),
+    get: (target, key) => {
+      if (key === Symbol.unscopables) return undefined;
+      if (key in target) return target[key];
+      throw new ReferenceError(`unstubbed dependency of the generated code: ${String(key)}`);
+    },
+  });
+  return new Function("scope", `with (scope) {\n${parts.join("\n")}\nreturn { buildTelegramMessageContext, buildTelegramInboundContextPayload };\n}`)(scope);
+}
+
+/**
+ * The two core steps that decide a turn's command authority (v2026.9.1): the channel context
+ * builder (src/channels/inbound-event/context.ts: CommandTurn from `command`, then `...extra` last)
+ * and the finalize every context goes through (src/auto-reply/reply/inbound-context.ts:
+ * `CommandAuthorized = CommandTurn.authorized` for a text-slash or native turn).
+ */
+function coreInboundContext(params) {
+  const command = params.command;
+  const commandTurn = command ? { kind: command.kind, authorized: command.kind === "normal" ? false : (command.authorized ?? params.access?.commands?.authorized === true), body: command.body } : undefined;
+  const ctx = { MessageSid: params.messageId, SenderId: params.sender?.id, CommandAuthorized: params.access?.commands?.authorized === true, CommandTurn: commandTurn, ...params.extra };
+  ctx.CommandAuthorized = ctx.CommandAuthorized === true;
+  const turn = ctx.CommandTurn ?? { kind: ctx.CommandSource === "native" ? "native" : ctx.CommandSource === "text" ? "text-slash" : "normal", authorized: false };
+  if (turn.kind === "native" || turn.kind === "text-slash") {
+    ctx.CommandSource = turn.kind === "native" ? "native" : "text";
+    ctx.CommandAuthorized = turn.authorized;
+  }
+  return ctx;
+}
+
+function contextHarness() {
+  const record = { typing: 0, reactions: 0, queued: 0, statusControllers: 0, payloadParams: [], built: [], groupHistory: 0 };
+  const sessionRuntime = {
+    readSessionUpdatedAt: () => 1760000000000,
+    resolveAmbientTranscriptWatermarkKey: () => "telegram:default:chat",
+    readAmbientTranscriptWatermark: () => undefined,
+    buildChannelInboundEventContext: (params) => { record.built.push(params); return coreInboundContext(params); },
+    resolvePinnedMainDmOwnerFromAllowlist: () => null,
+    resolveInboundLastRouteSessionKey: ({ sessionKey }) => sessionKey,
+    recordInboundSession: () => {},
+  };
+  const identity = (v) => v;
+  const stubs = {
+    // buildTelegramMessageContext
+    resolveTelegramForumFlag: async () => false,
+    extractTelegramForumFlag: () => undefined,
+    resolveTelegramMessageThreadSpec: () => ({ scope: "none" }),
+    resolveTelegramEffectiveDmPolicy: ({ dmPolicy }) => dmPolicy,
+    resolveTelegramConversationRoute: ({ chatId, isGroup }) => ({ bindingMode: { kind: "none" }, route: { agentId: AGENT, accountId: "default", sessionKey: `agent:${AGENT}:telegram:${isGroup ? "group" : "direct"}:${chatId}`, mainSessionKey: `agent:${AGENT}:main`, matchedBy: "binding.channel" } }),
+    normalizeAccountId: contracts.normalizeAccountId,
+    resolveDefaultTelegramAccountId: () => "default",
+    logInboundDrop: () => {},
+    firstDefined: (...values) => values.find((v) => v !== undefined),
+    resolveTelegramDmAllow: async () => ({ effectiveAllow: { hasEntries: true, entries: [OWNER] }, allowFrom: [OWNER] }),
+    expandTelegramAllowFromWithAccessGroups: async ({ allowFrom }) => allowFrom ?? [],
+    normalizeAllowFrom: (list) => ({ hasEntries: Boolean(list?.length), entries: list ?? [] }),
+    evaluateTelegramGroupBaseAccess: () => ({ allowed: true }),
+    logVerbose: () => {},
+    withTelegramApiErrorLogging: async ({ fn }) => fn(),
+    buildTypingThreadParams: () => undefined,
+    enforceTelegramDmAccess: async () => true,
+    loadTelegramMessageContextRuntime: async () => { throw new Error("runtime is injected"); },
+    resolveTelegramConversationBaseSessionKey: ({ route }) => route.sessionKey,
+    shouldUseTelegramDmThreadSession: () => false,
+    resolveTelegramBotHasTopicsEnabled: () => false,
+    resolveThreadSessionKeys: () => null,
+    deriveLastRoutePolicy: () => "main",
+    buildTelegramInboundOriginTarget: (chatId) => `telegram:${chatId}`,
+    // what Telegram computes for a prompt that starts with a command alias, sent by the owner (allowlisted)
+    resolveTelegramInboundBody: async ({ msg }) => ({ rawBody: msg.text, bodyText: msg.text, inboundEventKind: "message", effectiveWasMentioned: true, canDetectMention: true, shouldBypassMention: false, commandAuthorized: true, hasControlCommand: msg.text.startsWith("/"), historyKey: msg.chat.type === "private" ? "" : `telegram:${msg.chat.id}`, mentionFacts: { wasMentioned: true } }),
+    resolveAckReaction: () => "👀",
+    resolveTelegramReactionEmoji: identity,
+    shouldAckReaction: () => true,
+    resolveTelegramStatusReactionEmojis: () => ({ queued: "👀", thinking: "🤔", done: "👍", error: "😱" }),
+    buildTelegramStatusReactionVariants: () => new Map(),
+    resolveTelegramAllowedReactions: async () => null,
+    resolveTelegramReactionVariant: ({ requestedEmoji }) => requestedEmoji,
+    // buildTelegramInboundContextPayload
+    describeReplyTarget: () => null,
+    normalizeForwardedContext: () => null,
+    resolveChannelContextVisibilityMode: () => "all",
+    isSenderAllowed: () => true,
+    evaluateSupplementalContextVisibility: () => ({ include: true }),
+    replyTargetToChainEntry: identity,
+    stripReplyChainForwarded: identity,
+    resolveTelegramPrimaryMedia: () => undefined,
+    getTelegramTextParts: (m) => ({ text: m?.text ?? "", entities: [] }),
+    renderTelegramTextEntities: identity,
+    formatMediaPlaceholderText: () => "",
+    formatTelegramForwardedMessageBody: ({ body }) => body,
+    formatInboundMediaUnavailableText: ({ body }) => body,
+    buildGroupLabel: (msg) => msg.chat.title,
+    buildSenderName: (msg) => msg.from?.first_name,
+    buildSenderLabel: (msg, id) => `${msg.from?.first_name} id:${id}`,
+    loadTelegramMessageContextSessionRuntime: async () => sessionRuntime,
+    resolveTelegramMessageContextStorePath: async () => "/state/agents/makaron/sessions",
+    resolveEnvelopeFormatOptions: () => ({}),
+    isTelegramChatWindowPromptContext: () => false,
+    formatInboundEnvelope: ({ body }) => body,
+    normalizeCommandBody: identity,
+    normalizeOptionalLowercaseString: (v) => (typeof v === "string" ? v.toLowerCase() : undefined),
+    createChannelHistoryWindow: () => ({ buildInboundHistory: () => [] }),
+    isTelegramHistoryEntryAfterAmbientWatermark: () => true,
+    selectTelegramGroupHistoryAfterLastSelf: identity,
+    retainTelegramGroupHistoryPromptContext: ({ promptContext }) => promptContext,
+    mergeTelegramGroupHistoryPromptContext: ({ promptContext }) => promptContext,
+    resolveTelegramGroupPromptSettings: () => ({}),
+    isTelegramMediaKind: () => false,
+    buildTelegramGroupFrom: (chatId) => `telegram:group:${chatId}`,
+    toLocationContext: () => ({}),
+    buildTelegramConversationId: ({ chatId }) => String(chatId),
+    resolveTelegramDirectPeerId: ({ chatId }) => String(chatId),
+    buildTelegramParentPeer: () => undefined,
+    resolveTelegramDirectToolPolicy: () => undefined,
+    recordTelegramGroupHistoryEntry: () => { record.groupHistory += 1; },
+    shouldLogVerbose: () => false,
+    truncateUtf16Safe: identity,
+  };
+  const runtime = {
+    recordChannelActivity: () => {},
+    createStatusReactionController: () => { record.statusControllers += 1; return { setQueued: () => { record.queued += 1; }, setThinking() {}, setDone() {}, setError() {} }; },
+  };
+  const bot = { api: { setMessageReaction: async () => { record.reactions += 1; }, getChat: async () => ({}) } };
+  const sendChatActionHandler = { sendChatAction: async () => { record.typing += 1; } };
+  return { stubs, record, runtime, bot, sendChatActionHandler };
+}
+
+async function buildContextFor(h, mod, { turn, chat, text }) {
+  const message = { message_id: 2001, date: 1760000600, chat, from: { id: Number(OWNER), is_bot: false, first_name: turn ? turn.req.sender.name : "Tianyi" }, text };
+  const primaryCtx = { message, update: turn ? { vInterSession: turn } : { update_id: 9, message }, me: { id: 100000001, username: "v_candidate_bot" } };
+  return await mod.buildTelegramMessageContext({
+    primaryCtx, allMedia: [], storeAllowFrom: [], options: turn ? { forceWasMentioned: true, messageIdOverride: turn.req.messageSid } : {},
+    bot: h.bot, cfg: { messages: { statusReactions: { enabled: true } } }, account: { accountId: "default" },
+    historyLimit: 50, dmHistoryLimit: 0, groupHistories: new Map(), dmPolicy: "pairing", allowFrom: [OWNER], groupAllowFrom: [OWNER], ackReactionScope: "all",
+    logger: { info() {} }, resolveGroupActivation: () => undefined, resolveGroupRequireMention: () => false,
+    resolveTelegramGroupConfig: () => ({ groupConfig: undefined, topicConfig: undefined }),
+    runtime: h.runtime, sessionRuntime: {}, upsertPairingRequest: async () => {}, sendChatActionHandler: h.sendChatActionHandler,
+  });
+}
+
+test("context (real code): a turn's prompt is text, never an authorized command, whatever the routing peer may run", async () => {
+  const { vCreateTelegramInterSessionTurn } = loadBridgeBlock();
+  const group = { id: Number(GROUP), type: "supergroup", title: "任务群 a" };
+  const route = { channel: "telegram", accountId: "default", to: GROUP, chatId: GROUP, chatType: "group", humans: "shared", label: "任务群 a" };
+  // a non-owner chain: the permission identity is synthetic, the routing peer is the owner (§2.a)
+  const req = startRequest(route, { sender: { id: `v-a2a:${CHAIN_ID}`, name: "「一个私聊」的 V（会话协作）", isOwnerIdentity: false }, routePeerId: OWNER });
+  for (const prompt of ["/new 换个思路重新做", "/status", "/stop"]) {
+    const h = contextHarness();
+    const mod = loadContextCode(h.stubs);
+    const { turn } = vCreateTelegramInterSessionTurn({ ...req, promptText: prompt });
+    const context = await buildContextFor(h, mod, { turn, chat: group, text: prompt });
+    const payload = h.record.built.at(-1);
+    assert.equal(payload.access.commands.authorized, false, `${prompt}: no command authority from the routing peer`);
+    assert.equal(payload.command, undefined, `${prompt}: not a command turn`);
+    assert.equal(context.ctxPayload.CommandAuthorized, false, `${prompt}: CommandAuthorized stays false after the core's finalize`);
+    assert.equal(context.ctxPayload.CommandTurn, undefined);
+    assert.equal(context.ctxPayload.SenderId, req.sender.id, "the permission identity, not the routing peer");
+    assert.equal(context.ctxPayload.CommandInterpretationSuppressed, true);
+    assert.equal(context.ctxPayload.MessageSid, req.messageSid);
+  }
+  // the same text from the owner is an authorized command, as before
+  const h = contextHarness();
+  const mod = loadContextCode(h.stubs);
+  const person = await buildContextFor(h, mod, { turn: undefined, chat: group, text: "/status" });
+  assert.equal(h.record.built.at(-1).command.authorized, true);
+  assert.equal(person.ctxPayload.CommandAuthorized, true);
+  assert.equal(person.ctxPayload.CommandTurn.kind, "text-slash");
+});
+
+test("context (real code): the core's finalize would undo CommandAuthorized:false in extra for a slash prompt (why the source is patched)", async () => {
+  const { vCreateTelegramInterSessionTurn } = loadBridgeBlock();
+  const h = contextHarness();
+  const mod = loadContextCode(h.stubs);
+  const route = { channel: "telegram", accountId: "default", to: OWNER, chatId: OWNER, chatType: "direct", peerId: OWNER, humans: "owner_only" };
+  const { turn } = vCreateTelegramInterSessionTurn({ ...startRequest(route), promptText: "/new" });
+  const message = { message_id: 2001, date: 1760000600, chat: { id: Number(OWNER), type: "private" }, from: { id: Number(OWNER), is_bot: false, first_name: "x" }, text: "/new" };
+  // V's buildTelegramInboundContextPayload as the unpatched call site would call it for the turn
+  const { ctxPayload } = await mod.buildTelegramInboundContextPayload({
+    cfg: {}, primaryCtx: { message, update: { vInterSession: turn }, me: { username: "v_candidate_bot" } }, msg: message, allMedia: [], replyMedia: [], replyChain: [], promptContext: [],
+    isGroup: false, isForum: false, chatId: Number(OWNER), senderId: OWNER, senderUsername: "", threadSpec: { scope: "none" },
+    route: { agentId: AGENT, accountId: "default", sessionKey: turn.req.sessionKey, mainSessionKey: `agent:${AGENT}:main` },
+    rawBody: "/new", bodyText: "/new", historyKey: "", historyLimit: 50, dmHistoryLimit: 0, groupHistories: new Map(),
+    effectiveWasMentioned: true, inboundEventKind: "message", groupRequireMention: false, mentionFacts: {}, hasControlCommand: true,
+    commandAuthorized: true, options: { messageIdOverride: turn.req.messageSid }, dmAllowFrom: [OWNER], sessionRuntime: {},
+  });
+  assert.equal(ctxPayload.CommandAuthorized, true, "extra said false, the authorized text-slash CommandTurn wins");
+});
+
+test("context (real code): a turn sends no early typing cue and no ack or status reaction; a person's message does", async () => {
+  const { vCreateTelegramInterSessionTurn } = loadBridgeBlock();
+  const route = { channel: "telegram", accountId: "default", to: OWNER, chatId: OWNER, chatType: "direct", peerId: OWNER, humans: "owner_only" };
+  const dm = { id: Number(OWNER), type: "private", first_name: "Tianyi" };
+  {
+    const h = contextHarness();
+    const mod = loadContextCode(h.stubs);
+    const { turn } = vCreateTelegramInterSessionTurn(startRequest(route));
+    const context = await buildContextFor(h, mod, { turn, chat: dm, text: "汇总一下" });
+    assert.equal(h.record.typing, 0, "no early typing cue");
+    assert.equal(context.initialTypingCueSent, false);
+    assert.equal(h.record.statusControllers, 0, "no status reaction controller");
+    assert.equal(context.statusReactionController, null);
+    assert.equal(context.ackReactionPromise, null);
+    assert.equal(h.record.reactions + h.record.queued, 0, "no reaction on the anchor");
+    assert.equal(h.record.groupHistory, 0);
+  }
+  {
+    const h = contextHarness();
+    const mod = loadContextCode(h.stubs);
+    const context = await buildContextFor(h, mod, { turn: undefined, chat: dm, text: "汇总一下" });
+    await context.ackReactionPromise;
+    assert.equal(h.record.typing, 1);
+    assert.equal(h.record.statusControllers, 1);
+    assert.equal(h.record.queued, 1);
+  }
+  {
+    // groups: a person's message enters the group history window, a turn's synthetic message does not
+    const group = { id: Number(GROUP), type: "supergroup", title: "任务群 a" };
+    const groupRoute = { channel: "telegram", accountId: "default", to: GROUP, chatId: GROUP, chatType: "group", humans: "shared" };
+    const h = contextHarness();
+    const mod = loadContextCode(h.stubs);
+    const { turn } = vCreateTelegramInterSessionTurn(startRequest(groupRoute));
+    await buildContextFor(h, mod, { turn, chat: group, text: "汇总一下" });
+    assert.equal(h.record.groupHistory, 0, "a BUSY retry would otherwise add the prompt each time");
+    await buildContextFor(h, mod, { turn: undefined, chat: group, text: "汇总一下" });
+    assert.equal(h.record.groupHistory, 1);
   }
 });
