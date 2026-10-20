@@ -13,15 +13,16 @@
 //   2. Its files come from VLab's own release record (the bytes VLab runs), are
 //      checked against the recorded after-hash, and are mapped to V's paths by
 //      scripts/lib/runtime-components.mjs (core dist, worker plugin, Feishu,
-//      DingTalk and WeCom plugins, the npm-managed Codex plugin; anything else
-//      is refused).
+//      DingTalk and WeCom plugins, the npm-managed Codex plugin, the
+//      v-session-relay plugin; anything else is refused).
 //   3. Every target on V must still hold the release's `before` bytes, i.e. V
 //      is exactly what VLab was before this release. Otherwise refuse.
 //   4. Old files go to /opt/v-release-backups/<name>/ with undo.json; new bytes
-//      are installed as fresh inodes with the old owner and mode.
-//   5. Recapture V into release/captured/<name>{,.worker,.feishu,.codex,.dingtalk,.wecom}
-//      (every captured component of the table), install the drift sentinel's
-//      expectations, and run `vlab.mjs align`.
+//      are installed as fresh inodes with the old owner and mode (new files:
+//      root, 0644, in new directories root 0755 that undo removes again).
+//   5. Recapture V into release/captured/<name>{,.worker,.feishu,.codex,.dingtalk,.wecom,.session-relay}
+//      (every captured component of the table that V has), install the drift
+//      sentinel's expectations, and run `vlab.mjs align`.
 //
 // Sidecars (desktop handoff, secret entry, V Browser) are installed by their own scripts,
 // not by this one. If the release carried one, install it on V from the same
@@ -31,6 +32,9 @@
 // It never restarts V. Most dist changes only take effect at the next Gateway
 // start; when to restart production is a human decision (cold start, worker
 // pool). The plan says which files are affected so that decision is informed.
+// It never writes V's config either: a release that also needs a config
+// change (the session relay: scripts/configure-v-session-relay.mjs) makes it in
+// that restart, with v-self-restart --while-stopped.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -39,7 +43,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { COMPONENTS, captureRuns, resolveVDirs, vPathForTarget } from './lib/runtime-components.mjs';
+import { COMPONENTS, captureRuns, presentCaptureRuns, resolveVDirs, vPathForTarget } from './lib/runtime-components.mjs';
 
 // H5-only releases keep the Gateway runtime/current metadata unchanged. The
 // entry controller requires a frozen shared H5 proof and an idle voice entry.
@@ -79,6 +83,9 @@ export function assertPromotionLease(status, owner) {
 
 // Runs as root on V. install: check before-hashes, back up, install, undo.json.
 // undo: reverse.
+// A new file in a directory V does not have yet (a new plugin) creates the
+// missing directories (root, 0755) and records them in undo.json; undo removes
+// them again once they are empty, so V's extensions directory is left as it was.
 export const REMOTE = String.raw`
 const fs=require('fs'),path=require('path'),crypto=require('crypto');
 const [mode,dir]=process.argv.slice(2);
@@ -93,10 +100,11 @@ if(mode==='check'||mode==='install'){
   for(const [i,f] of plan.files.entries()){
     const st=f.before===null?null:fs.statSync(f.vPath),backup=path.join(dir,'backup',String(i));
     if(st){fs.mkdirSync(path.dirname(backup),{recursive:true});fs.copyFileSync(f.vPath,backup);fs.chownSync(backup,st.uid,st.gid);fs.chmodSync(backup,st.mode&0o7777)}
-    undo.push({vPath:f.vPath,backup:st?backup:null,...(st?{uid:st.uid,gid:st.gid,mode:st.mode&0o7777}:{})});
+    const created=[];for(let d=path.dirname(f.vPath);!fs.existsSync(d);d=path.dirname(d))created.unshift(d);
+    undo.push({vPath:f.vPath,backup:st?backup:null,...(st?{uid:st.uid,gid:st.gid,mode:st.mode&0o7777}:{}),...(created.length?{createdDirs:created}:{})});
     fs.writeFileSync(path.join(dir,'undo.json'),JSON.stringify(undo,null,1));
     const tmp=f.vPath+'.promote-tmp-'+process.pid;
-    fs.mkdirSync(path.dirname(f.vPath),{recursive:true});
+    for(const d of created){fs.mkdirSync(d,{mode:0o755});fs.chmodSync(d,0o755)}
     fs.copyFileSync(path.join(dir,'files',String(i)),tmp);
     if(st){fs.chownSync(tmp,st.uid,st.gid);fs.chmodSync(tmp,st.mode&0o7777)}else fs.chmodSync(tmp,0o644);
     fs.renameSync(tmp,f.vPath);
@@ -114,7 +122,11 @@ if(mode==='undo'){
       if(!explicit)console.error('legacy undo: using backup metadata; original owner cannot be certified: '+u.vPath);
       const tmp=u.vPath+'.undo-tmp-'+process.pid;fs.copyFileSync(u.backup,tmp);fs.chownSync(tmp,st.uid,st.gid);fs.chmodSync(tmp,st.mode&0o7777);fs.renameSync(tmp,u.vPath)
     }
-    else fs.rmSync(u.vPath,{force:true});
+    else {
+      fs.rmSync(u.vPath,{force:true});
+      // Deepest first; a directory something else has put files into stays.
+      for(const d of [...(u.createdDirs??[])].reverse()){try{fs.rmdirSync(d)}catch(e){if(!['ENOENT','ENOTEMPTY','EEXIST'].includes(e.code))throw e}}
+    }
   }
   console.log('restored '+undo.length+' files');process.exit(0);
 }
@@ -199,7 +211,12 @@ assertAcceptedReleaseBinding(installStatus.current, args.release, manifestBytes,
 console.log(ssh(V, `sudo ${V_NODE} - install ${sq(dir)}`, REMOTE).trim());
 
 // ---- 5. bookkeeping: capture, sentinel, align --------------------------------------
-const runs = captureRuns(args.name, vDirs);
+// A component V does not have yet (absentOk, before its first release) is not captured.
+const runs = presentCaptureRuns(captureRuns(args.name, vDirs),
+  (dir) => ssh(V, `sudo test -d ${sq(dir)} && echo present || echo absent`).trim() === 'present');
+for (const r of captureRuns(args.name, vDirs)) {
+  if (!runs.some((x) => x.id === r.id)) console.log(`not captured: ${r.id} (${r.runtime} is not on V; its first release has not reached V)`);
+}
 for (const r of runs) {
   execFileSync('node', [join(repo, 'scripts/capture-production-runtime.mjs'),
     '--host', V, '--release', r.release, '--runtime', r.runtime, ...r.args, '--out', r.out], { cwd: repo, stdio: 'inherit' });

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   COMPONENTS, V_FEISHU, VLAB_RUNTIME, captureRuns, diffReleaseComponents, captureSourceForTarget, captureSuffixes, componentOfTarget,
-  parityPairs, releaseNoteComponents, resolveSidecarDirs, resolveVDirs, vPathForTarget,
+  parityPairs, presentCaptureRuns, releaseNoteComponents, resolveSidecarDirs, resolveVDirs, vPathForTarget,
 } from './runtime-components.mjs';
 import { evaluateParity } from './parity.mjs';
 
@@ -23,6 +23,7 @@ test('V directories: core from ExecStart, Worker beside it, Feishu fixed, Codex 
     codex: V_CODEX,
     dingtalk: V_DT,
     wecom: '/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin',
+    'session-relay': '/home/openclaw/.openclaw/extensions/v-session-relay',
     handoff: '/opt/v-desktop-handoff',
     'secret-entry': '/opt/v-secret-entry',
     'browser-fill': '/opt/v-browser-fill',
@@ -62,12 +63,17 @@ test('promote mapping: existing targets map exactly as before; new channel plugi
     '/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin/dist/src/monitor.js');
   assert.equal(vPathForTarget('extensions/other-plugin/index.js', vDirs), null, 'only known extensions');
   assert.equal(componentOfTarget('extensions/wecom-openclaw-plugin/package.json').id, 'wecom');
+  // The session relay plugin: a whole directory beside WeCom in V's extensions.
+  assert.equal(vPathForTarget('extensions/v-session-relay/core/transports/bridge.js', vDirs),
+    '/home/openclaw/.openclaw/extensions/v-session-relay/core/transports/bridge.js');
+  assert.equal(componentOfTarget('extensions/v-session-relay/openclaw.plugin.json').id, 'session-relay');
+  assert.equal(vPathForTarget('extensions/v-session-relay-old/index.js', vDirs), null, 'the directory name is exact');
   assert.equal(componentOfTarget('sidecar:handoff/plugin/index.js'), null, 'sidecars are never stage targets');
 });
 
-test('captures: the three existing runs are unchanged, Codex, DingTalk and WeCom are whole-directory captures', () => {
+test('captures: the three existing runs are unchanged, Codex, DingTalk, WeCom and the session relay are whole-directory captures', () => {
   const runs = captureRuns('rel', vDirs);
-  assert.deepEqual(runs.map((r) => r.suffix), ['', '.worker', '.feishu', '.codex', '.dingtalk', '.wecom']);
+  assert.deepEqual(runs.map((r) => r.suffix), ['', '.worker', '.feishu', '.codex', '.dingtalk', '.wecom', '.session-relay']);
   // Exactly the arguments promote-to-v.mjs passed before.
   assert.deepEqual(runs.slice(0, 3).map((r) => [r.release, r.runtime, r.args, r.out]), [
     ['rel', `${V_CORE}/dist`, ['--base', 'npm:openclaw@2026.9.1', '--upstream', '2026.9.1', '--sourceCheckout', '/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/source'], 'release/captured/rel'],
@@ -79,8 +85,22 @@ test('captures: the three existing runs are unchanged, Codex, DingTalk and WeCom
   assert.equal(runs[4].runtime, V_DT);
   assert.deepEqual(runs[4].args.slice(0, 4), ['--base', 'none', '--exclude', 'node_modules']);
   assert.equal(runs[5].manifest, 'release/captured/rel.wecom/manifest.json');
-  assert.deepEqual(captureSuffixes(), ['.worker', '.feishu', '.codex', '.dingtalk', '.wecom']);
-  assert.deepEqual(releaseNoteComponents(), [['core', ''], ['worker', '.worker'], ['feishu', '.feishu'], ['codex', '.codex'], ['dingtalk', '.dingtalk'], ['wecom', '.wecom']]);
+  assert.deepEqual([runs[6].release, runs[6].runtime, runs[6].args, runs[6].out, runs[6].optional], ['rel.session-relay',
+    '/home/openclaw/.openclaw/extensions/v-session-relay', ['--base', 'none', '--exclude', 'node_modules', '--sudo'], 'release/captured/rel.session-relay', true]);
+  assert.deepEqual(runs.filter((r) => r.optional).map((r) => r.id), ['session-relay'], 'only the session relay may be missing on V');
+  assert.deepEqual(captureSuffixes(), ['.worker', '.feishu', '.codex', '.dingtalk', '.wecom', '.session-relay']);
+  assert.deepEqual(releaseNoteComponents(), [['core', ''], ['worker', '.worker'], ['feishu', '.feishu'], ['codex', '.codex'], ['dingtalk', '.dingtalk'], ['wecom', '.wecom'], ['session-relay', '.session-relay']]);
+});
+
+test('captures: a promotion before the session relay release skips its capture; afterwards it is captured', () => {
+  const runs = captureRuns('rel', vDirs);
+  const asked = [];
+  const before = presentCaptureRuns(runs, (dir) => { asked.push(dir); return false; });
+  assert.deepEqual(before.map((r) => r.suffix), ['', '.worker', '.feishu', '.codex', '.dingtalk', '.wecom']);
+  assert.deepEqual(asked, ['/home/openclaw/.openclaw/extensions/v-session-relay'], 'only optional components are looked up on V');
+  assert.deepEqual(presentCaptureRuns(runs, () => true), runs);
+  // A required component that is missing still fails loudly in the capture itself, never silently.
+  assert.equal(presentCaptureRuns(runs, () => false).find((r) => r.id === 'wecom').runtime, vDirs.wecom);
 });
 
 test('sync: a target\'s bytes come from the matching capture; core outside dist and uncaptured components have none', () => {
@@ -92,6 +112,7 @@ test('sync: a target\'s bytes come from the matching capture; core outside dist 
   assert.equal(captureSourceForTarget('r', 'openclaw/package.json'), null);
   assert.equal(captureSourceForTarget('r', `${CODEX_T}/dist/run-attempt-D1hJO4fX.js`), 'release/captured/r.codex/dist/dist/run-attempt-D1hJO4fX.js');
   assert.equal(captureSourceForTarget('r', 'sidecar:handoff/plugin/index.js'), null);
+  assert.equal(captureSourceForTarget('r', 'extensions/v-session-relay/core/engine.js'), 'release/captured/r.session-relay/dist/core/engine.js');
 });
 
 const LEGACY = '/srv/vlab-production-mirror/labs/instances/db91-parity/capability-alignment-20260911/plugin-sources/home/openclaw/.openclaw';
@@ -122,7 +143,11 @@ test('parity pairs: existing three unchanged; DingTalk/WeCom follow VLab\'s load
   assert.deepEqual([dt.prefix, dt.v, dt.vlab, dt.note], [`npm/projects/${DT}/node_modules/@dingtalk-real-ai/dingtalk-connector`, V_DT,
     `${VLAB_RUNTIME}/npm/projects/${DT}/node_modules/@dingtalk-real-ai/dingtalk-connector`, undefined]);
   assert.deepEqual([wc.prefix, wc.vlab], ['extensions/wecom-openclaw-plugin', `${VLAB_RUNTIME}/extensions/wecom-openclaw-plugin`]);
-  assert.deepEqual(after.slice(7).map((p) => [p.component, p.prefix, p.v, p.vlab, p.blocking]), [
+  // The session relay: same place on both, may be absent on both (optional), still blocking.
+  assert.deepEqual([after[7].component, after[7].prefix, after[7].v, after[7].vlab, after[7].blocking, after[7].optional],
+    ['session-relay', 'extensions/v-session-relay', '/home/openclaw/.openclaw/extensions/v-session-relay', `${VLAB_RUNTIME}/extensions/v-session-relay`, true, true]);
+  assert.equal(after.slice(0, 7).some((p) => p.optional), false, 'every other runtime directory must exist');
+  assert.deepEqual(after.slice(8).map((p) => [p.component, p.prefix, p.v, p.vlab, p.blocking]), [
     ['handoff', 'sidecar:handoff/plugin', '/opt/v-desktop-handoff/plugin', '/opt/vlab-v-desktop-handoff/plugin', false],
     ['handoff', 'sidecar:handoff/service', '/opt/v-desktop-handoff/service', '/opt/vlab-v-desktop-handoff/service', false],
     ['handoff', 'sidecar:handoff/desktop', '/opt/v-desktop-handoff/desktop', '/opt/vlab-v-desktop-handoff/desktop', false],
@@ -269,9 +294,10 @@ test('release notes: a component missing from the previous release is a first ap
 });
 
 test('captures of V channel plugins read as root (they live under /home/openclaw/.openclaw)', () => {
-  const vDirs = { core: '/opt/x/core', worker: '/opt/w', feishu: '/opt/f', codex: V_CODEX, dingtalk: '/home/openclaw/.openclaw/npm/projects/d/node_modules/@dingtalk-real-ai/dingtalk-connector', wecom: '/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin' };
+  const vDirs = { core: '/opt/x/core', worker: '/opt/w', feishu: '/opt/f', codex: V_CODEX, dingtalk: '/home/openclaw/.openclaw/npm/projects/d/node_modules/@dingtalk-real-ai/dingtalk-connector', wecom: '/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin',
+    'session-relay': '/home/openclaw/.openclaw/extensions/v-session-relay' };
   const runs = Object.fromEntries(captureRuns('r', vDirs).map((r) => [r.id, r.args]));
-  assert(runs.codex.includes('--sudo') && runs.dingtalk.includes('--sudo') && runs.wecom.includes('--sudo'));
+  assert(runs.codex.includes('--sudo') && runs.dingtalk.includes('--sudo') && runs.wecom.includes('--sudo') && runs['session-relay'].includes('--sudo'));
   assert(!runs.core.includes('--sudo') && !runs.feishu.includes('--sudo'));
 });
 
@@ -294,4 +320,28 @@ test('Codex: a release reaches both VLab copies or parity says which one it miss
   // V's residue is counted once, not per VLab copy.
   const res = T({ [f]: h('a'), [`${f}.bak-1`]: h('e') });
   assert.equal(evaluateParity({ pairs, trees: [{ v: res, vlab: tree('a') }, { v: res, vlab: tree('a') }] }).residue.v.length, 1);
+});
+
+test('session relay parity: absent on both hosts is aligned; on VLab only is drift unless the release is pending; on both is aligned', () => {
+  const pairs = pairsFor('core', 'session-relay');
+  assert.deepEqual(pairs.map((p) => [p.component, p.optional ?? false]), [['core', false], ['session-relay', true]]);
+  const core = { v: T({ 'dist/a.js': h('a') }), vlab: T({ 'dist/a.js': h('a') }) };
+  // Before the release: neither host has the directory (hashTree returns null for an optional pair).
+  const none = evaluateParity({ pairs, trees: [core, { v: null, vlab: null }] });
+  assert.deepEqual([none.state, none.findings], ['ALIGNED', []]);
+  // Staged and deployed on VLab, not yet on V.
+  const plugin = T({ 'index.js': h('1'), 'core/engine.js': h('2') });
+  const staged = [core, { v: null, vlab: plugin }];
+  const drift = evaluateParity({ pairs, trees: staged });
+  assert.equal(drift.state, 'DIVERGED');
+  assert.deepEqual(drift.findings.map((f) => [f.kind, f.target]), [['only-on-vlab', 'extensions/v-session-relay/core/engine.js'], ['only-on-vlab', 'extensions/v-session-relay/index.js']]);
+  const pending = new Map([
+    ['extensions/v-session-relay/index.js', { plan: 'lab/inter-session.plan.json', before: null, after: h('1') }],
+    ['extensions/v-session-relay/core/engine.js', { plan: 'lab/inter-session.plan.json', before: null, after: h('2') }],
+  ]);
+  assert.equal(evaluateParity({ pairs, trees: staged, pending }).state, 'AHEAD');
+  // Promoted: same bytes on both.
+  assert.equal(evaluateParity({ pairs, trees: [core, { v: plugin, vlab: plugin }] }).state, 'ALIGNED');
+  // Removed from V by hand (or by promote --undo) while VLab keeps it: drift, so a rollback that forgot VLab shows.
+  assert.equal(evaluateParity({ pairs, trees: [core, { v: null, vlab: plugin }] }).state, 'DIVERGED');
 });
