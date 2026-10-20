@@ -1,7 +1,7 @@
 {
   "id": "v-session-relay",
   "name": "V Session Relay",
-  "description": "Follows the native sessions_send: one Feishu thread card per exchange between two conversations' V's, the requester's closing words posted, replies that survive a Gateway restart.",
+  "description": "Gateway ledger for sessions_send: the request is posted in the target chat and worked on there, results come back once per batch, restarts are recovered, and loops are stopped.",
   "activation": {
     "onStartup": true
   },
@@ -9,46 +9,31 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "storeDir": {
-        "type": "string"
-      },
-      "owners": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
-      },
-      "ownerName": {
-        "type": "string"
-      },
-      "agentNames": {
+      "role": { "type": "string", "enum": ["gateway", "worker-guard"] },
+      "workerGuard": { "type": "boolean" },
+      "ledgerDir": { "type": "string" },
+      "ownerName": { "type": "string" },
+      "agentNames": { "type": "object", "additionalProperties": { "type": "string" } },
+      "limits": {
         "type": "object",
-        "additionalProperties": {
-          "type": "string"
+        "additionalProperties": false,
+        "properties": {
+          "maxDepth": { "type": "integer", "minimum": 0 },
+          "maxFanoutPerRun": { "type": "integer", "minimum": 0 },
+          "maxChainMembers": { "type": "integer", "minimum": 0 },
+          "maxSendsPerChain": { "type": "integer", "minimum": 0 },
+          "maxPerPair": { "type": "integer", "minimum": 0 },
+          "maxSendsPerMinute": { "type": "integer", "minimum": 0 },
+          "chainIdleTtlMs": { "type": "integer", "minimum": 0 },
+          "chainHardTtlMs": { "type": "integer", "minimum": 0 },
+          "maxWakeRoundsPerSend": { "type": "integer", "minimum": 0 },
+          "queueTimeoutMs": { "type": "integer", "minimum": 0 },
+          "runTimeoutMs": { "type": "integer", "minimum": 0 },
+          "inlineMaxMs": { "type": "integer", "minimum": 0 },
+          "maxConcurrentRequestTurns": { "type": "integer", "minimum": 0 },
+          "maxQueuePerTarget": { "type": "integer", "minimum": 0 },
+          "sharedVisibleChars": { "type": "integer", "minimum": 0 }
         }
-      },
-      "maxChain": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 50
-      },
-      "pollMs": {
-        "type": "integer",
-        "minimum": 200,
-        "maximum": 60000
-      },
-      "waitSliceMs": {
-        "type": "integer",
-        "minimum": 1000,
-        "maximum": 3600000
-      },
-      "maxWaitMs": {
-        "type": "integer",
-        "minimum": 60000,
-        "maximum": 172800000
-      },
-      "guidance": {
-        "type": "boolean"
       }
     }
   }
