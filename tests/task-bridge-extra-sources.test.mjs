@@ -170,12 +170,53 @@ test("rows without a taskId are skipped and a taskId is listed once", () => {
   const core = loadBridge();
   core.put({ taskId: "exec-1", runtime: "cli", taskKind: "exec", status: "running", ownerKey: KEY, requesterSessionKey: KEY });
   const row = relayRow("s_mgk3x1a2f9c1d2e3f4a5");
+  // Malformed rows come first: each is dropped on its own, and they do not end the pass.
+  core.bridge.extraSources.add(() => [{}, { taskId: "" }, null, undefined, row]);
   // e.g. register() runs three times in one Gateway (probe F-b) and each run adds its own closure.
-  core.bridge.extraSources.add(() => [row, null, {}, { taskId: "" }]);
   core.bridge.extraSources.add(() => [{ ...row }]);
   core.bridge.extraSources.add(() => [{ taskId: "exec-1", runtime: "session", taskKind: "sessions_send" }]);
-  assert.deepEqual(ids(core.bridge.listActive(KEY)), ["exec-1", "v-a2a:s_mgk3x1a2f9c1d2e3f4a5"]);
-  assert.equal(core.bridge.listActive(KEY)[0].runtime, "cli", "a registry task wins over a source row with its id");
+  core.bridge.extraSources.add(() => [relayRow("s_mgk3x1a2f9aabbccddee")]);
+  const rows = core.bridge.listActive(KEY);
+  assert.deepEqual(ids(rows), ["exec-1", "v-a2a:s_mgk3x1a2f9c1d2e3f4a5", "v-a2a:s_mgk3x1a2f9aabbccddee"], "a later source still contributes");
+  assert.ok(rows.every((r) => typeof r?.taskId === "string" && r.taskId), "every listed row has a taskId");
+  assert.equal(rows[0].runtime, "cli", "a registry task wins over a source row with its id");
+});
+
+test("a source gets the session key exactly as the caller passed it, only trimmed", () => {
+  const core = loadBridge();
+  const asked = [];
+  core.bridge.extraSources.add((sessionKey) => { asked.push(sessionKey); return []; });
+  core.bridge.listActive("  agent:main:dingtalk-connector:group:CidAbC== \n");
+  // Not lower-cased: a source that keys rows by session compares case-insensitively itself
+  // (v-experience and the Feishu card match notices case-insensitively).
+  assert.deepEqual(asked, ["agent:main:dingtalk-connector:group:CidAbC=="]);
+});
+
+test("evaluating the chunk again keeps the set, its sources and the listeners", () => {
+  // listActive is reassigned whenever the chunk is evaluated (why the hook lives in the dist);
+  // the sources the plugin added survive that and are read at call time.
+  const out = generated();
+  const start = out.indexOf(`// ${BRIDGE_MARKER}`);
+  const end = out.indexOf("\n}\n", out.indexOf("function vTaskRegistryBridgeNotify(event) {")) + 3;
+  const chunk = `(() => {
+    const tasks = new Map();
+    const taskIdsByRelatedSessionKey = new Map();
+    const isTerminalTaskStatus = () => false;
+    ${out.slice(start, end)}
+  })();`;
+  const context = vm.createContext({ queueMicrotask });
+  vm.runInContext(chunk, context);
+  const bridge = vm.runInContext(`globalThis[Symbol.for("${BRIDGE_SYMBOL_KEY}")]`, context);
+  const firstListActive = bridge.listActive;
+  const listener = () => {};
+  bridge.listeners.add(listener);
+  bridge.extraSources.add(() => [relayRow("s_mgk3x1a2f9c1d2e3f4a5")]);
+  const set = bridge.extraSources;
+  vm.runInContext(chunk, context);
+  assert.notEqual(bridge.listActive, firstListActive, "the second evaluation installed its own listActive");
+  assert.equal(bridge.extraSources, set);
+  assert.ok(bridge.listeners.has(listener));
+  assert.deepEqual(ids(bridge.listActive(KEY)), ["v-a2a:s_mgk3x1a2f9c1d2e3f4a5"]);
 });
 
 test("a source removed from the set stops contributing", () => {
@@ -215,4 +256,43 @@ test("the persisted rows of V's bridge still work beside the extra sources", () 
   core.bridge.listActiveSubagentsPersisted = () => [{ taskId: "subagent-run:r2", runId: "r2", runtime: "subagent", childSessionKey: "agent:main:subagent:b", status: "running" }];
   core.bridge.extraSources.add(() => [relayRow("s_mgk3x1a2f9c1d2e3f4a5"), { taskId: "worker-exec", runtime: "session" }]);
   assert.deepEqual(ids(core.bridge.listActive(KEY)), ["worker-exec", "subagent-run:r2", "v-a2a:s_mgk3x1a2f9c1d2e3f4a5"]);
+});
+
+// ---- end to end: the patched listActive feeds the lines the channels draw ----
+
+const FEISHU_MONITOR = new URL("../release/captured/v2026.9.1-db91.6-subagent-index-20261020.feishu/dist/dist/monitor.account-WFdlCDhR.js", import.meta.url);
+const EXPERIENCE_V = new URL("../release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/v-experience.js", import.meta.url);
+const EXPERIENCE_PATCHED = new URL("../lab/release-files/v-experience-session-kind/openclaw/dist/v-experience.js", import.meta.url);
+
+/** The Feishu card's pure line functions, cut from the monitor bytes V runs (no WP4 patch). */
+function feishuLineFunctions() {
+  const src = fs.readFileSync(FEISHU_MONITOR, "utf8");
+  const from = "const V_TASK_STATUS_KIND_ORDER = ";
+  const to = "/** The card element that carries the line: small grey text above the footer. */";
+  assert.equal(count(src, from), 1);
+  assert.equal(count(src, to), 1);
+  const context = vm.createContext({});
+  vm.runInContext(`${src.slice(src.indexOf(from), src.indexOf(to))}
+    globalThis.fns = { feishuBackgroundTasks, renderFeishuTaskStatusLine };`, context);
+  return context.fns;
+}
+
+test("a source's rows reach the Feishu card line and the v-experience line", async () => {
+  const core = loadBridge();
+  core.put({ taskId: "exec-1", runtime: "cli", taskKind: "exec", status: "running", ownerKey: KEY, requesterSessionKey: KEY });
+  // The session's own foreground run is a cli task without a kind whose child is the session.
+  core.put({ taskId: "fg", runtime: "cli", status: "running", ownerKey: KEY, requesterSessionKey: KEY, childSessionKey: KEY });
+  core.bridge.extraSources.add((k) => (k === KEY ? [relayRow("s_mgk3x1a2f9c1d2e3f4a5"), relayRow("s_mgk3x1a2f9aabbccddee", { status: "queued" })] : []));
+  const rows = Array.from(core.bridge.listActive(KEY));
+
+  const feishu = feishuLineFunctions();
+  const feishuActive = feishu.feishuBackgroundTasks(rows, KEY);
+  assert.deepEqual(ids(feishuActive), ["exec-1", "v-a2a:s_mgk3x1a2f9c1d2e3f4a5", "v-a2a:s_mgk3x1a2f9aabbccddee"], "the card keeps session rows");
+  // R1 before the Feishu bridge (WP4) maps the kind: the accepted fallback.
+  assert.equal(feishu.renderFeishuTaskStatusLine(feishuActive), "⏳ 后台 3 项进行中 · 后台命令 1 · 后台任务 2");
+
+  const v = await import(EXPERIENCE_V.href);
+  const patched = await import(EXPERIENCE_PATCHED.href);
+  assert.equal(v.backgroundLine(v.backgroundTasks(rows, KEY)), "⏳ 后台 3 项进行中 · 后台命令 1 · 后台任务 2", "V's v-experience today");
+  assert.equal(patched.backgroundLine(patched.backgroundTasks(rows, KEY)), "⏳ 后台 3 项进行中 · 会话请求 2 · 后台命令 1", "design §7.9");
 });
