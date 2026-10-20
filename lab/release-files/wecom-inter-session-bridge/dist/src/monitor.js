@@ -404,9 +404,11 @@ function vIsCreateRun(req) {
         run.control.exclusive = false;
         const error = run.error ?? err;
         const message = error === undefined ? "" : String(error?.message ?? error);
+        const wedged = error !== undefined && V_IS_RESTART_WEDGE.test(message);
         if (run.phase === "pending") {
-            if (run.delivered > 0 || run.finalText.trim() || run.terminal !== undefined) {
+            if (!wedged && (run.delivered > 0 || run.finalText.trim() || run.terminal !== undefined)) {
                 // The turn ran although no run start was reported: never report it as not started.
+                // A restart wedge is never such a run (the rule of every channel bridge).
                 run.phase = "started";
                 settle({ status: "started", runId: run.runId, done });
             }

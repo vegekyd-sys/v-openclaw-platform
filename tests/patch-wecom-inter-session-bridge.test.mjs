@@ -594,6 +594,27 @@ test("start: neither started nor busy → GATED; restart wedge and other failure
   await queueIdle("Failed");
 });
 
+test("start: a run the core reported on without a run start is started; a restart wedge never is (the rule of every bridge)", async () => {
+  // executeAgentTurn failed before its harness took the turn: no onAgentRunStart, nothing delivered,
+  // only the core's terminal outcome. It ran: started with an error, never GATED.
+  h.script = async ({ replyOptions }) => { replyOptions.onAgentRunTerminalOutcome?.("failed"); };
+  const bare = await h.bridge.start(startRequest({ chatId: "FailedBare" }));
+  assert.equal(bare.status, "started");
+  assert.deepEqual(await bare.done, { status: "error", finals: [], visibleReplySent: false, finalCount: 0, error: "the agent run failed" });
+  await queueIdle("FailedBare");
+  // a restart wedge stays RESTART_WEDGE even when the core had already handed over a notice
+  // (Feishu, Telegram and DingTalk never late-start a wedged turn either)
+  const message = "restart recovery claim changed for agent:makaron:wecom:default:direct:wedgenotice";
+  h.script = async ({ replyOptions, dispatcherOptions }) => {
+    await dispatcherOptions.deliver({ text: "⚠️ 恢复中", isError: true }, { kind: "final" });
+    replyOptions.onAgentRunTerminalOutcome?.("failed");
+    throw new Error(message);
+  };
+  const wedged = await h.bridge.start(startRequest({ chatId: "WedgeNotice" }));
+  assert.deepEqual(wedged, { status: "rejected", code: "RESTART_WEDGE", message, started: false });
+  await queueIdle("WedgeNotice");
+});
+
 test("start: a group turn, a turn that ran without a run-start signal, and a long answer in parts", async () => {
   const group = startRequest({ chatType: "group", chatId: "wrkGroupA" });
   h.script = async ({ ctx, replyOptions, dispatcherOptions }) => {
