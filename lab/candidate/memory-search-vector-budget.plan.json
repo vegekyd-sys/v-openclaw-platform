@@ -1,0 +1,41 @@
+{
+  "tests": [
+    "lab/candidate/memory-search-vector-budget.test.mjs"
+  ],
+  "support": [],
+  "files": [
+    {
+      "source": "lab/release-files/memory-search-vector-budget/manager-runtime.js",
+      "target": "openclaw/dist/extensions/memory-core/manager-runtime.js",
+      "before": "134cc6f6dfcda254be4e727cd9a0b47649aa88d8697043fc5f509c3a64270e87"
+    },
+    {
+      "source": "lab/release-files/memory-search-vector-budget/tools-Byg09TOP.js",
+      "target": "openclaw/dist/tools-Byg09TOP.js",
+      "before": "091c318773a6bd3f4c332ef40c42d8ca10aa0c586346527dde986e2fb0433e30"
+    },
+    {
+      "source": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/extensions/memory-core/manager-runtime.js",
+      "target": "openclaw/dist/extensions/memory-core/manager-runtime.stock.js"
+    },
+    {
+      "source": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/extensions/memory-core/manager-runtime.js",
+      "target": "openclaw/dist/extensions/memory-core/manager-runtime.stock2.js"
+    },
+    {
+      "source": "lab/release-files/memory-search-vector-budget/manager-runtime.js",
+      "target": "openclaw/dist/extensions/memory-core/manager-runtime.small-budget.js"
+    },
+    {
+      "source": "lab/candidate/memory-search-knn-slow.child.js",
+      "target": "openclaw/dist/extensions/memory-core/memory-search-knn.child.js",
+      "before": "97c542fbac2e4fe0e3f52e628f39a37003a678caab01bf4212dda756ef485a40"
+    },
+    {
+      "source": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/extensions/memory-core/memory-search-knn.child.js",
+      "target": "openclaw/dist/extensions/memory-core/memory-search-knn.child.real.js"
+    }
+  ],
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity"
+}

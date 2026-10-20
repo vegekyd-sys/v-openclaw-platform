@@ -160,6 +160,7 @@
         "tests/patch-feishu-latest-snapshot-streaming.test.mjs",
         "tests/patch-feishu-progress-stream.test.mjs",
         "tests/patch-feishu-task-status.test.mjs",
+        "tests/patch-memory-search-vector-budget.test.mjs",
         "tests/patch-openclaw-media-completion-relay.test.mjs",
         "tests/media-completion-worker-relay-91.test.mjs",
         "tests/patch-openclaw91-sessions-send-owner.test.mjs",
@@ -495,6 +496,10 @@
     {
       "file": "lab/candidate/memory-search-fast.test.mjs",
       "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/candidate/memory-search-vector-budget.test.mjs",
+      "reason": "需要 VLab 候选运行时和共享 makaron 记忆索引（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
     },
     {
       "file": "lab/candidate/memory-indexer-burst.test.mjs",
