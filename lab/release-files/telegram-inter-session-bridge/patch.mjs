@@ -16,7 +16,8 @@
 //     - start(): a synthetic text message based on the anchor message, sent by the request's
 //       routePeerId, carrying `update.vInterSession` (the turn record) and no update_id (an
 //       update_id would move the ingress watermark), checked by the account's own access rules
-//       (silently: never a pairing challenge), then run through
+//       (silently: never a pairing challenge), with the prompt-context bounds a person's message gets
+//       (session start, group ambient watermark), then run through
 //       message.processMessageWithReplyChain({ forceWasMentioned, messageIdOverride: messageSid }).
 //       The StartOutcome settles on onAgentRunStart (started), on the exclusive-admission guard's
 //       onBusy (busy), or when the handler returns without either (rejected).
@@ -25,7 +26,9 @@
 //     - the inbound context gets InputProvenance, ChannelPromptContext,
 //       CommandInterpretationSuppressed, CommandAuthorized:false, SenderId/SenderName (the
 //       chain-root permission identity, not the routing peer), MessageSid and VInterSession
-//       through the context builder's `extra` (spread last);
+//       through the context builder's `extra` (spread last), and the routing peer's command
+//       authorization is not passed on (a prompt starting with "/new" is text, not an authorized
+//       command turn whose CommandAuthorized the core's finalize would set back to true);
 //     - runTelegramDispatchTurn refuses a turn Telegram routed to another session
 //       (ROUTE_MISMATCH, nothing runs) and adds runId, vInterSession and onAgentRunStart to the
 //       reply options;
@@ -231,6 +234,40 @@ function vCreateTelegramInterSessionTurn(req) {
   };
   return { turn, outcome };
 }
+/**
+* The prompt-context bounds a person's message in this chat gets (handleInboundMessageLike): the
+* chat window starts at the session's start (nothing from before a /new) and, in a group, after the
+* ambient transcript watermark (nothing the session already has). Without them a turn's prompt
+* carries up to historyLimit cached chat messages regardless of resets. Best effort: on any error
+* the turn runs unbounded, like the stock synthetic messages (poll answers, button submits).
+*/
+function vTelegramInterSessionPromptBounds({ message, gate, msg, chatId, isGroup, isForum, self, senderId, log }) {
+  try {
+    if (typeof message.resolveTelegramSessionState !== "function" || typeof message.promptContextBoundaryOptions !== "function") return {};
+    const context = gate?.context ?? {};
+    const threadSpec = context.threadSpec ?? resolveTelegramMessageThreadSpec(msg, isForum);
+    const sessionState = message.resolveTelegramSessionState({
+      chatId,
+      isGroup,
+      threadSpec,
+      botHasTopicsEnabled: resolveTelegramBotHasTopicsEnabled(self),
+      senderId,
+      runtimeCfg: context.cfg
+    });
+    const minTimestampMs = message.normalizePromptContextMinTimestampMs(sessionState?.sessionEntry?.sessionStartedAt);
+    const watermark = message.resolvePromptContextAmbientWatermark({
+      chatId,
+      isGroup,
+      resolvedThreadId: context.resolvedThreadId,
+      sessionKey: sessionState?.sessionKey,
+      storePath: sessionState?.storePath
+    });
+    return message.promptContextBoundaryOptions(minTimestampMs, watermark) ?? {};
+  } catch (err) {
+    log?.("telegram inter-session: prompt-context bounds unavailable for chat " + chatId + ": " + String(err?.message ?? err));
+    return {};
+  }
+}
 /** The InterSessionBridge of one Telegram account (§2.a). */
 function vCreateTelegramInterSessionBridge({ accountId, bot, botInfo, message, authorization, normalizeAccountId, log }) {
   const chats = /* @__PURE__ */ new Map();
@@ -357,6 +394,7 @@ function vCreateTelegramInterSessionBridge({ accountId, bot, botInfo, message, a
           dmAccess: "silent"
         });
         if (!gate?.allowed) return rejected("GATED", "Telegram access rules refused sender " + peer + " in chat " + chatId);
+        const bounds = vTelegramInterSessionPromptBounds({ message, gate, msg, chatId: Number(chatId), isGroup, isForum: chat.is_forum === true, self, senderId: String(peer), log });
         const { turn, outcome } = vCreateTelegramInterSessionTurn(req);
         const ctx = {
           message: msg,
@@ -375,6 +413,7 @@ function vCreateTelegramInterSessionBridge({ accountId, bot, botInfo, message, a
             forceWasMentioned: true,
             messageIdOverride: req.messageSid,
             receivedAtMs: Date.now(),
+            ...bounds,
             ...gate.context?.threadSpec ? { threadSpec: gate.context.threadSpec } : {},
             ...typeof gate.resolveChannelIngress === "function" ? { channelIngressResolvers: [gate.resolveChannelIngress] } : {}
           }
@@ -521,6 +560,16 @@ const dispatchReplacements = [
     name: "context-extra",
     anchor: EXTRA_END_ANCHOR,
     replace: `\t\t\tIsForum: isForum,\n\t\t\tTopicName: isForum && topicName ? topicName : void 0,\n\t\t\t...vTelegramInterSessionCtxFields(primaryCtx) // ${MARKER}\n\t\t}\n\t});\n\tif (isGroup && historyKey && !vTelegramInterSessionFromCtx(primaryCtx)) recordTelegramGroupHistoryEntry({\n`,
+  },
+  {
+    // The routing peer's command authorization must not make the prompt a command. Telegram derives
+    // the turn's CommandTurn ("text-slash", authorized) from it when the prompt starts with a command
+    // alias, and the core's context finalize then sets CommandAuthorized = CommandTurn.authorized,
+    // overriding the CommandAuthorized:false in extra. With false here the turn is a plain message
+    // (no CommandTurn, CommandAuthorized false), like Feishu's access.commands.authorized=false (§3.6).
+    name: "command-authorized",
+    anchor: "\t\tcommandAuthorized: bodyResult.commandAuthorized,\n",
+    replace: `\t\tcommandAuthorized: bodyResult.commandAuthorized && !vTelegramInterSessionFromCtx(primaryCtx), // ${MARKER}\n`,
   },
   {
     // No early typing cue: a BUSY attempt must leave nothing in the chat; a started run gets the

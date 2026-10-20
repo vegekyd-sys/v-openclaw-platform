@@ -4189,6 +4189,40 @@ function vCreateTelegramInterSessionTurn(req) {
 	};
 	return { turn, outcome };
 }
+/**
+* The prompt-context bounds a person's message in this chat gets (handleInboundMessageLike): the
+* chat window starts at the session's start (nothing from before a /new) and, in a group, after the
+* ambient transcript watermark (nothing the session already has). Without them a turn's prompt
+* carries up to historyLimit cached chat messages regardless of resets. Best effort: on any error
+* the turn runs unbounded, like the stock synthetic messages (poll answers, button submits).
+*/
+function vTelegramInterSessionPromptBounds({ message, gate, msg, chatId, isGroup, isForum, self, senderId, log }) {
+	try {
+		if (typeof message.resolveTelegramSessionState !== "function" || typeof message.promptContextBoundaryOptions !== "function") return {};
+		const context = gate?.context ?? {};
+		const threadSpec = context.threadSpec ?? resolveTelegramMessageThreadSpec(msg, isForum);
+		const sessionState = message.resolveTelegramSessionState({
+			chatId,
+			isGroup,
+			threadSpec,
+			botHasTopicsEnabled: resolveTelegramBotHasTopicsEnabled(self),
+			senderId,
+			runtimeCfg: context.cfg
+		});
+		const minTimestampMs = message.normalizePromptContextMinTimestampMs(sessionState?.sessionEntry?.sessionStartedAt);
+		const watermark = message.resolvePromptContextAmbientWatermark({
+			chatId,
+			isGroup,
+			resolvedThreadId: context.resolvedThreadId,
+			sessionKey: sessionState?.sessionKey,
+			storePath: sessionState?.storePath
+		});
+		return message.promptContextBoundaryOptions(minTimestampMs, watermark) ?? {};
+	} catch (err) {
+		log?.("telegram inter-session: prompt-context bounds unavailable for chat " + chatId + ": " + String(err?.message ?? err));
+		return {};
+	}
+}
 /** The InterSessionBridge of one Telegram account (§2.a). */
 function vCreateTelegramInterSessionBridge({ accountId, bot, botInfo, message, authorization, normalizeAccountId, log }) {
 	const chats = /* @__PURE__ */ new Map();
@@ -4315,6 +4349,7 @@ function vCreateTelegramInterSessionBridge({ accountId, bot, botInfo, message, a
 					dmAccess: "silent"
 				});
 				if (!gate?.allowed) return rejected("GATED", "Telegram access rules refused sender " + peer + " in chat " + chatId);
+				const bounds = vTelegramInterSessionPromptBounds({ message, gate, msg, chatId: Number(chatId), isGroup, isForum: chat.is_forum === true, self, senderId: String(peer), log });
 				const { turn, outcome } = vCreateTelegramInterSessionTurn(req);
 				const ctx = {
 					message: msg,
@@ -4333,6 +4368,7 @@ function vCreateTelegramInterSessionBridge({ accountId, bot, botInfo, message, a
 						forceWasMentioned: true,
 						messageIdOverride: req.messageSid,
 						receivedAtMs: Date.now(),
+						...bounds,
 						...gate.context?.threadSpec ? { threadSpec: gate.context.threadSpec } : {},
 						...typeof gate.resolveChannelIngress === "function" ? { channelIngressResolvers: [gate.resolveChannelIngress] } : {}
 					}

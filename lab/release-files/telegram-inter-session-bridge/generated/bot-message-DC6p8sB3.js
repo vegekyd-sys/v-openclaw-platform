@@ -1468,7 +1468,7 @@ const buildTelegramMessageContext = async ({ primaryCtx, allMedia, replyMedia = 
 		options,
 		dmAllowFrom: dmAllow.allowFrom,
 		effectiveGroupAllow,
-		commandAuthorized: bodyResult.commandAuthorized,
+		commandAuthorized: bodyResult.commandAuthorized && !vTelegramInterSessionFromCtx(primaryCtx), // v-telegram-inter-session-bridge-v1
 		topicName,
 		sessionRuntime
 	});

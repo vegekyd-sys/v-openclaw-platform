@@ -14,7 +14,7 @@
     "lab/candidate/inter-session-telegram-smoke.mjs"
   ],
   "env": {
-    "ISC_TG_SCENARIOS": "dm,group,busy,gated,mismatch"
+    "ISC_TG_SCENARIOS": "dm,group,command,busy,gated,mismatch,probes"
   },
   "timeoutSeconds": 1800,
   "user": "lab-db91-parity"
