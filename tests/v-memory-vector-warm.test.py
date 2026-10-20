@@ -48,8 +48,16 @@ def digest(path):
     return hashlib.sha256(open(path, "rb").read()).hexdigest()
 
 
-def run(state, *agents):
-    env = {**os.environ, "STATE_DIR": state}
+def meminfo(state, available_kb):
+    path = os.path.join(state, f"meminfo-{available_kb}")
+    with open(path, "w") as f:
+        f.write(f"MemTotal:       31457280 kB\nMemFree:         1048576 kB\nMemAvailable:   {available_kb} kB\n")
+    return path
+
+
+def run(state, *agents, **extra):
+    # A roomy fake /proc/meminfo unless a test sets its own: the CI host's memory is not the point.
+    env = {**os.environ, "STATE_DIR": state, "MEMINFO": meminfo(state, 16 * 2**20), **extra}
     p = subprocess.run([sys.executable, SCRIPT, *agents], env=env, capture_output=True, text=True, timeout=60)
     return p.returncode, [json.loads(line) for line in p.stdout.splitlines() if line.strip()], p.stderr
 
@@ -93,6 +101,59 @@ def test_batches_do_not_pin_a_snapshot():
         assert not db.in_transaction
         db.close()
         writer.close()
+
+
+def test_low_memory_skips_the_round_without_opening_the_db():
+    # 2026-10-19 21:10 V had 3.7 GB available and the Gateway stalled: do not add 743 MB of reads then.
+    with tempfile.TemporaryDirectory() as state:
+        path, writer = make_agent_db(state)
+        writer.close()
+        os.chmod(path, 0)  # opening it would fail: the brake must come first
+        try:
+            code, out, err = run(state, MEMINFO=meminfo(state, 3_800_000))
+        finally:
+            os.chmod(path, 0o600)
+        assert code == 0, err
+        assert out == [{"event": "vector-warm", "agent": "makaron", "skipped": "low-memory", "memAvailableMb": 3710}], out
+
+
+def test_enough_memory_warms():
+    with tempfile.TemporaryDirectory() as state:
+        _, writer = make_agent_db(state)
+        code, out, err = run(state, MEMINFO=meminfo(state, 4 * 2**20 + 1024))
+        assert code == 0 and "MB" in out[0] and "skipped" not in out[0], (out, err)
+        writer.close()
+
+
+def test_time_budget_stops_between_batches_and_says_so():
+    # A cold pass is ~23 s of random reads on V; past the budget it stops and reports
+    # "aborted" (not a plain slow pass), and the next round starts over.
+    with tempfile.TemporaryDirectory() as state:
+        _, writer = make_agent_db(state, chunk_rows=warm.BATCH_ROWS * 3)
+        code, out, err = run(state, TIME_BUDGET_MS="0")
+        assert code == 0, err
+        [r] = out
+        assert r["aborted"] == "time-budget" and "MB" not in r, r
+        assert isinstance(r["ms"], int) and r["touchedMB"] < round(warm.BATCH_ROWS * 3 * CHUNK_BYTES / 2**20, 1), r
+        writer.close()
+
+
+def test_time_budget_counts_bytes_already_read():
+    with tempfile.TemporaryDirectory() as state:
+        path, writer = make_agent_db(state, chunk_rows=warm.BATCH_ROWS * 2)
+        db = warm.connect_read_only(path)
+        clock = iter([0.0, 99.0])  # first batch in budget, second check past it
+        real = warm.time.monotonic
+        warm.time.monotonic = lambda: next(clock)
+        try:
+            warm.read_vector_chunks(db, "memory_index_chunks_vec_vector_chunks00", deadline=1.0, touched_before=7)
+            raise AssertionError("expected OverBudget")
+        except warm.OverBudget as stop:
+            assert stop.touched == 7 + warm.BATCH_ROWS * CHUNK_BYTES, stop.touched
+        finally:
+            warm.time.monotonic = real
+            db.close()
+            writer.close()
 
 
 def test_missing_agent_or_table_is_skipped_not_failed():
