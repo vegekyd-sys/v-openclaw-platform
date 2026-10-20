@@ -269,10 +269,28 @@ try {
   const tokenA = `ISC_WECOM_OK_${crypto.randomBytes(3).toString("hex")}`;
   report.scenarios.S2 = await drive("S2", { userId: "candIscA", sessionKey: keyA, text: `这是一条会话协作测试请求。只回复 ${tokenA}，不要调用任何工具，不要做别的。`, token: tokenA });
   try {
-    const history = await rpc("chat.history", { sessionKey: keyA, limit: 4 }, 30_000);
-    report.scenarios.S2.transcriptTail = redact(JSON.stringify(history)).slice(-1500);
+    const history = await rpc("chat.history", { sessionKey: keyA, limit: 6 }, 30_000);
+    const hits = [];
+    const walk = (v) => {
+      if (Array.isArray(v)) return v.forEach(walk);
+      if (!v || typeof v !== "object") return;
+      for (const [k, x] of Object.entries(v)) {
+        if (/provenance/iu.test(k)) hits.push({ [k]: x });
+        else walk(x);
+      }
+    };
+    walk(history);
+    const serialized = JSON.stringify(history);
+    report.scenarios.S2.transcript = {
+      provenance: redact(JSON.stringify(hits)).slice(0, 1500),
+      mentionsInterSession: /inter_session|Inter-session/u.test(serialized),
+      mentionsOrigin: serialized.includes(":req:" + report.scenarios.S2.started.sendId),
+      lastRunId: /"lastRunId":"([^"]+)"/u.exec(serialized)?.[1] ?? null,
+      agentRuntime: /"agentRuntime":\{"id":"([^"]+)"/u.exec(serialized)?.[1] ?? null,
+      deliveryContext: /"deliveryContext":(\{[^}]*\})/u.exec(serialized)?.[1] ?? null,
+    };
   }
-  catch (e) { report.scenarios.S2.transcriptTail = `chat.history failed: ${String(e?.message ?? e).slice(0, 200)}`; }
+  catch (e) { report.scenarios.S2.transcript = `chat.history failed: ${String(e?.message ?? e).slice(0, 200)}`; }
 
   // S3: a session that never had an inbound (the key S1's route would give candIscB).
   const keyB = keyA.replace(/candisca/iu, "candiscb");
