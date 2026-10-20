@@ -14,7 +14,13 @@
 // Scenarios: dm (started, preset runId, finals, ctx fields at G), group (label, started), busy (a
 // second request while the first runs a 30 s exec: busy, nothing visible; retried after: started),
 // gated (a peer the access rules refuse: rejected GATED, no pairing message), mismatch (a session of
-// another agent: rejected ROUTE_MISMATCH, nothing runs).
+// another agent: rejected ROUTE_MISMATCH, nothing runs), command (a non-owner chain in a group, the
+// owner as routing peer, a prompt starting with an activeRunSafe command alias: plain text at G,
+// CommandAuthorized false, the synthetic SenderId, prompt-context bounds applied).
+// Observation-only probes (recorded under coreProbes, never failures): reset ("/new …" as a prompt)
+// and abort ("停止" as a prompt) show whether the core's session-reset trigger and fast-abort path,
+// which run before the G admission guard and do not read CommandInterpretationSuppressed, act on an
+// inter-session turn when commands.allowFrom authorizes every sender (V's configuration).
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
@@ -38,6 +44,7 @@ const OWNER = "70000001";
 const STRANGER = "70000099";
 const GROUP = "-1009990000001";
 const GROUP_TITLE = "VLab 测试｜TG 房间";
+const PROBE_GROUP = "-1009990000002";
 const AGENT = "makaron";
 const LOG = path.join(data, "isc-tg-smoke.jsonl");
 const T0 = Date.now();
@@ -84,7 +91,7 @@ const ADMISSION = '\tconst queueAdmissionState = !pendingQueue ? "empty" : pendi
   src = src.replace(ADMISSION, () => `${ADMISSION}`
     + "\t// isc-tg-smoke (candidate-only): log, then the design §3.3 guard (WP1 stand-in)\n"
     + "\tconst __vI = opts?.vInterSession ?? ctx?.VInterSession;\n"
-    + `\tif (__vI) try { process.getBuiltinModule("node:fs").appendFileSync(${JSON.stringify(LOG)}, JSON.stringify({ at: Date.now(), probe: "admission", sessionKey, optsRunId: opts?.runId ?? null, vInterSessionId: __vI.id ?? null, exclusive: __vI.exclusive ?? null, onBusy: typeof __vI.onBusy, sameObject: opts?.vInterSession === ctx?.VInterSession, provenanceKind: ctx?.InputProvenance?.kind ?? null, originSessionId: ctx?.InputProvenance?.originSessionId ?? null, senderId: ctx?.SenderId ?? null, senderName: ctx?.SenderName ?? null, commandAuthorized: ctx?.CommandAuthorized ?? null, commandSuppressed: ctx?.CommandInterpretationSuppressed ?? null, messageSid: ctx?.MessageSid ?? null, channelPromptContext: typeof ctx?.ChannelPromptContext, onDeliberateSilent: typeof opts?.onDeliberateSilentTerminalReply, isActive, queueAdmissionState, recoveryOwnerActive }) + "\\n"); } catch {}\n`
+    + `\tif (__vI) try { process.getBuiltinModule("node:fs").appendFileSync(${JSON.stringify(LOG)}, JSON.stringify({ at: Date.now(), probe: "admission", sessionKey, optsRunId: opts?.runId ?? null, vInterSessionId: __vI.id ?? null, exclusive: __vI.exclusive ?? null, onBusy: typeof __vI.onBusy, sameObject: opts?.vInterSession === ctx?.VInterSession, provenanceKind: ctx?.InputProvenance?.kind ?? null, originSessionId: ctx?.InputProvenance?.originSessionId ?? null, senderId: ctx?.SenderId ?? null, senderName: ctx?.SenderName ?? null, commandAuthorized: ctx?.CommandAuthorized ?? null, commandSuppressed: ctx?.CommandInterpretationSuppressed ?? null, commandTurnKind: ctx?.CommandTurn?.kind ?? null, commandTurnAuthorized: ctx?.CommandTurn?.authorized ?? null, resetTriggered: effectiveResetTriggered ?? null, isNewSession: isNewSession ?? null, sessionId: sessionId ?? null, messageSid: ctx?.MessageSid ?? null, channelPromptContext: typeof ctx?.ChannelPromptContext, onDeliberateSilent: typeof opts?.onDeliberateSilentTerminalReply, isActive, queueAdmissionState, recoveryOwnerActive }) + "\\n"); } catch {}\n`
     + "\tif (__vI?.exclusive === true) {\n"
     + '\t\tconst __busy = recoveryOwnerActive ? "recovery_owner" : queueAdmissionState !== "empty" ? "pending_queue" : isActive ? "active_run" : void 0;\n'
     + "\t\tif (__busy) {\n"
@@ -145,6 +152,7 @@ export default definePluginEntry({
 const fake = createFakeTelegramBotApi();
 const apiPort = await fake.listen();
 fake.setChat({ chatId: GROUP, title: GROUP_TITLE });
+fake.setChat({ chatId: PROBE_GROUP, title: "VLab 测试｜TG 探针" });
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 const port = Number(config.gateway?.port);
 const gatewayToken = config.gateway?.auth?.token;
@@ -232,13 +240,13 @@ const bridgeCall = (params, timeoutMs) => rpc("isctg.call", params, timeoutMs);
 const chatCalls = (chatId, from, to = Infinity) => fake.calls.filter((c) => c.at >= from && c.at <= to && String(c.params?.chat_id) === String(chatId));
 const VISIBLE = new Set(["sendMessage", "editMessageText", "editMessageReplyMarkup", "editMessageMedia", "editMessageCaption", "deleteMessage", "setMessageReaction", "sendPhoto", "sendDocument"]);
 
-function startRequest(route, { sessionKey, id, kind = "request", attempt = 0, anchorMessageId = null, promptText, routePeerId }) {
+function startRequest(route, { sessionKey, id, kind = "request", attempt = 0, anchorMessageId = null, promptText, routePeerId, sender }) {
   const chainId = contracts.newChainId();
   const req = {
     route, sessionKey, agentId: AGENT, kind, id, attempt, ...contracts.startIds({ channel: "telegram", kind, id, attempt }),
     anchorMessageId, promptText, channelPromptContext: "这是 VLab 候选测试里另一个会话交来的请求；照做，直接给出结果。",
     provenance: { kind: "inter_session", sourceSessionKey: `agent:${AGENT}:feishu:direct:ou_isctgsmoke`, sourceChannel: "feishu", sourceTool: "sessions_send", originSessionId: contracts.originSessionIdFor({ chainId, depth: 1, kind, id }) },
-    sender: { id: OWNER, name: "「Tianyi 私聊」的 V（会话协作）", isOwnerIdentity: true },
+    sender: sender ?? { id: OWNER, name: "「Tianyi 私聊」的 V（会话协作）", isOwnerIdentity: true },
     routePeerId: routePeerId ?? (route.chatType === "direct" ? route.peerId : OWNER),
     askUserAnswererId: OWNER,
   };
@@ -247,12 +255,12 @@ function startRequest(route, { sessionKey, id, kind = "request", attempt = 0, an
   return req;
 }
 
-async function startedRun(scenario, { sessionKey, ownerIds = [OWNER], anchorText, promptText, expect, id = contracts.newSendId() }) {
+async function startedRun(scenario, { sessionKey, ownerIds = [OWNER], anchorText, promptText, expect, id = contracts.newSendId(), sender }) {
   const routed = await bridgeCall({ op: "resolveRoute", query: { sessionKey, agentId: AGENT, ownerIds } });
   check(scenario, routed.ok === true && contracts.validateRoute(routed.route).ok, "resolveRoute ok", routed);
   const anchor = await bridgeCall({ op: "post", post: { route: routed.route, text: anchorText, idempotencyKey: `smoke:${id}` } });
   check(scenario, /^\d+$/u.test(anchor.messageId ?? ""), "anchor posted", anchor);
-  const req = startRequest(routed.route, { sessionKey, id, anchorMessageId: anchor.messageId, promptText });
+  const req = startRequest(routed.route, { sessionKey, id, anchorMessageId: anchor.messageId, promptText, sender });
   const t0 = Date.now();
   const out = await bridgeCall({ op: "start", req }, TURN_MS);
   check(scenario, out.status === "started" && out.runId === req.runId, "started with the preset runId", out);
@@ -269,9 +277,25 @@ async function startedRun(scenario, { sessionKey, ownerIds = [OWNER], anchorText
   const a = admission[0] ?? {};
   check(scenario, a.vInterSessionId === id && a.exclusive === true && a.onBusy === "function" && a.sameObject === true, "replyOptions.vInterSession reaches G (and is ctx.VInterSession)", a);
   check(scenario, a.provenanceKind === "inter_session" && a.originSessionId === req.provenance.originSessionId, "InputProvenance reaches G", a);
-  check(scenario, a.senderId === OWNER && a.senderName === req.sender.name && a.commandAuthorized === false && a.commandSuppressed === true && a.messageSid === req.messageSid && a.channelPromptContext === "string", "ctx fields of §2.a reach G", a);
+  check(scenario, a.senderId === req.sender.id && a.senderName === req.sender.name && a.commandAuthorized === false && a.commandSuppressed === true && a.messageSid === req.messageSid && a.channelPromptContext === "string", "ctx fields of §2.a reach G", a);
+  check(scenario, a.commandTurnKind === "normal" && a.commandTurnAuthorized === false, "the prompt is a plain message at G (no command turn)", a);
   check(scenario, a.onDeliberateSilent === "function", "onDeliberateSilentTerminalReply available at G", a);
-  return { routed, anchor, req, out, done };
+  return { routed, anchor, req, out, done, admission: a };
+}
+
+/** One probe turn: start, wait for the end or the rejection, report what the chat and G saw. */
+async function probeRun(name, { sessionKey, promptText }) {
+  const routed = await bridgeCall({ op: "resolveRoute", query: { sessionKey, agentId: AGENT, ownerIds: [OWNER] } });
+  const id = contracts.newSendId();
+  const anchor = await bridgeCall({ op: "post", post: { route: routed.route, text: `📨 #${name}`, idempotencyKey: `smoke:${id}` } });
+  const req = startRequest(routed.route, { sessionKey, id, anchorMessageId: anchor.messageId, promptText });
+  const t0 = Date.now();
+  const out = await bridgeCall({ op: "start", req }, TURN_MS);
+  const done = out.status === "started" ? await bridgeCall({ op: "done", runId: out.runId, timeoutMs: TURN_MS }, TURN_MS + 30_000) : undefined;
+  await sleep(1500);
+  const visible = fake.messages().filter((m) => m.chatId === routed.route.chatId && m.createdAt >= t0).map((m) => (m.history.at(-1)?.text ?? "").slice(0, 120));
+  const g = readLog().filter((l) => l.probe === "admission" && l.optsRunId === req.runId).map(({ resetTriggered, isNewSession, sessionId, commandAuthorized, commandTurnKind }) => ({ resetTriggered, isNewSession, sessionId, commandAuthorized, commandTurnKind }));
+  return { outcome: out.status === "started" ? { status: "started", finals: (done?.finals ?? []).map((f) => (f.text ?? "").slice(0, 120)) } : out, visible, admission: g };
 }
 
 async function main() {
@@ -326,6 +350,21 @@ async function main() {
     const g = readLog().filter((l) => l.probe === "admission" && l.optsRunId === reqB0.runId);
     check("busy", g.length === 1 && g[0].isActive === true, "BUSY decided at G with the session active", g);
     step("busy done", { busy, retry: outB.status });
+  }
+  if (SCENARIOS.includes("command")) {
+    // a non-owner chain: the permission identity is synthetic; the owner only routes the message (§2.a)
+    const sender = { id: `v-a2a:${contracts.newChainId()}`, name: "「一个私聊」的 V（会话协作）", isOwnerIdentity: false };
+    const r = await startedRun("command", { sessionKey: `agent:${AGENT}:telegram:group:${GROUP}`, sender, anchorText: "📨 来自「一个私聊」的请求 #T3CM\n—\n候选测试", promptText: "/think 这是自动化测试，开头的斜杠只是文字。只回复：ISC_TG_CMD_OK", expect: "ISC_TG_CMD_OK" });
+    check("command", r.admission?.resetTriggered === false, "no session reset", r.admission);
+    step("command done", { status: r.done?.status });
+  }
+  if (SCENARIOS.includes("probes")) {
+    const key = `agent:${AGENT}:telegram:group:${PROBE_GROUP}`;
+    const base = await probeRun("P0", { sessionKey: key, promptText: "这是自动化测试。只回复：ISC_TG_PROBE_BASE" });
+    const reset = await probeRun("P1", { sessionKey: key, promptText: "/new 这是自动化测试。只回复：ISC_TG_PROBE_NEW" });
+    const abort = await probeRun("P2", { sessionKey: key, promptText: "停止" });
+    summary.coreProbes = { base, reset, abort, sessionRotated: Boolean(base.admission[0]?.sessionId && reset.admission[0]?.sessionId && base.admission[0].sessionId !== reset.admission[0].sessionId) };
+    step("probes done", summary.coreProbes);
   }
   if (SCENARIOS.includes("gated")) {
     const key = `agent:${AGENT}:telegram:direct:${STRANGER}`;
