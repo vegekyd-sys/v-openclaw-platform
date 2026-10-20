@@ -24,6 +24,20 @@
 
 Gateway 方法：`vrelay.send`、`vrelay.wait`（operator.write）、`vrelay.get`、`vrelay.list`（operator.read，`counts.running` 含在跑的唤醒和收尾回合，v-self-restart 的闲置门用它）、`vrelay.cancel`（operator.admin，只给运维）。
 
+## 与其他包对齐的约定（各包评审报告给出的接口事实）
+
+- **`vrelay.send` 从不抛错。** 核心看到抛出的错误文本匹配 `unknown method: vrelay.send|missing scope: operator.admin` 时会认定插件缺席，改走 v2，同一件事就发了两次。所以引擎和 host 都兜住异常：已经落盘的请求照常回 `accepted`（恢复会把它做完），还没落盘的回 `{status:"error"}`，错误文本里去掉这两句。
+- **幂等 = 同一个 `idempotencyKey` 且同一条内容。** provider 可能复用 toolCallId，同一回合里两条不同的发送会算出同一个键。键相同但内容（发起方、目标、正文）不同时当作新请求受理，并记一条 warn；每次重试仍找回各自的记录。
+- **`vrelay.wait` 遇到非 inline 的记录**（inline 调用被内容去重到一条异步请求上，`inline.until=0`）立刻回 `expired`，note 用「同样的请求 #code 已在进行，结果会自动回来」。它的结果由批次唤醒交回，所以即使它已撤回也不在这里报 `failed`。
+- **`senderIsOwner === null` 按非 owner 处理**：principal 不是 owner，没有 owner 名字，agent transport 用 operator.write；即使 senderId 恰好是 owner 的 id，在目标聊天里也不会以 owner 身份出现（改用合成 id）。
+- **轮询闸**按 accepted 表里的 resolvedKey 和 displayKey 两种键匹配 `sessions_history` / `session_status` 的 sessionKey，不区分大小写（钉钉的 key 是小写），也认键尾（`main`、`feishu:group:oc_x`）。
+- **开跑不设超时。** 飞书、企微的 `bridge.start` 可能在聊天队列里等最多约 10 分钟才回 busy 或 started；引擎一直等，绝不提前放弃重试（否则同一回合可能跑两次）。锚点在受理时最多同步等 5 s，之后在后台继续，不会在途中再发；只有发送报 transient 失败才用同一个 idempotencyKey 重发。飞书按 uuid 去重；钉钉、企微、Telegram 和 agent transport 不能去重，所以一条其实已送达却报失败的锚点（例如企微自己的 15 s 超时）会出现两次，带同一个 #code。这是至少一次语义，只对这些不幂等的渠道可接受。开跑在外的这段时间里，目标会话有回合结束（多半就是它排在后面的那个），即使随后答复是 BUSY 也不再退避，马上重试。
+- **桥调用在干净的异步上下文里进行。** `start` / `post` / `edit` 一律在插件第一次加载时（Gateway 启动，host 创建时）取的 `AsyncLocalStorage.snapshot()` 里执行，不继承调用方的上下文：`vrelay.send` 可能在某条 Telegram 更新的处理帧里被调用，lifecycle 事件来自真人的回合；合成回合如果挂在那个帧上，失败会把那条更新标成 failed-retryable，让发起方的回合重跑，还会带上那个回合的 store（模型运行时的 generation、gateway 调用者身份）。不在服务启动时取：9.1 改配置触发插件运行时替换时会重启服务，而重载跑在写配置那一方的异步上下文里（例如 agent 回合经 gateway 工具 `config.patch`）。
+- **「会话请求」后台行**：数据源函数同步、只读内存、从不调用 `listActive`；sessionKey 不区分大小写；请求一到 `result_ready` / `failure_ready` 就去掉这一行（不等 `handed_back`），唤醒回合的卡片不会再显示它；变化时按 T 的写法用 `queueMicrotask` 加 try/catch 通知 listeners，`kind:"v-a2a"`。引擎自己的 listener 忽略 `v-a2a` 通知。
+- **W(S) 的后台过滤**只等 subagent / acp 以及 exec / 生图 / 视频 / 音乐任务，排除 `taskKind:"sessions_send"`（含 `v-a2a:` 行）和 cron（`runtime` 或 `taskKind` 为 cron）。
+- **钉钉**：会话记的投递渠道是 `dingtalk-connector`，桥的键是 `dingtalk:<acct>`（V 上账号是 `__default__`；没有账号的会话走 `dingtalk:default`，桥两个键都注册）。`route.channel` 一律用桥的渠道名 `dingtalk`；agent transport 另用 `route.deliveryChannel`（`dingtalk-connector`）找出站适配器、填 `agent` 的 channel。`commands.ownerAllowFrom` 里的 `dingtalk-connector:<staffId>` 也算钉钉的 owner。桥没给群名时，用会话条目的 `subject` 填 `route.label`，桥把它当群名传给核心，群会话的标签就不会被改成 id。不用 `displayName`：9.1 的群 displayName 一律是 `<渠道>:g-<slug>`（没有 subject 时是群 id 的 slug），传过去会被核心存成群名。
+- **RunOutcome 只有一条规则**（与各桥一致）：`ok`（completed）和 `error`（failed）照用；其他（`aborted`，或者没有可用的 status，即核心没给终态）只有交出过非错误的 final（文字或媒体）才算 `ok`，否则是 `aborted`。桥、agent transport、丢了 done 的回合和恢复都走 `requests.normalizeRunOutcome`。
+
 ## 配置
 
 只写 Gateway 主配置（worker 配置由它自动推导，插件会被加载进每个 worker，但在 worker 里什么都不启动）：
@@ -60,6 +74,8 @@ cd apps/v-session-relay/plugin && node --test 'tests/*.test.mjs'
 - `crash-injection`：真子进程在 13 个落盘点 `VSR_CRASH_AT=<phase>`（含 `before:<phase>`）退出，再起一个进程恢复；断言每批最多一次唤醒、结果不丢、飞书锚点不重复、开跑过的回合不重跑、每个 MessageSid / runId 只用一次。
 - 测试世界（`fixtures/harness.mjs`）像核心和 worker 一样拒绝重复使用的 MessageSid / runId，任何测试里出现就失败。
 - `policy`、`ledger`、`routes`、`guard`、`copy`、`host`（三次 register、worker 判定、方法 scope、经 agent transport 的端到端）。
+- `interface-alignment`：上一节的每条约定各有一组测试。
+- `candidates`：`lab/candidate/` 里引用本插件文件的计划和脚本都指向存在的文件；1.x 的 `session-relay*` 候选脚本已删，只留 `session-relay-native*`（只打 v2 核心补丁，文件头标为历史参考）。
 
 候选测试与共享 VLab 验收见设计 §10（WP10）。`VSR_TEST_START_DELAY_MS` 让引擎在开跑前多等一会儿（F3b 竞态用）。
 

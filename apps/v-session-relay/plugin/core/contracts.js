@@ -282,6 +282,20 @@ export function normalizeAccountId(value) {
 /** Registry key of a bridge: `${channel}:${normalizeAccountId(accountId)}`. */
 export const bridgeKey = (channel, accountId) => `${channel}:${normalizeAccountId(accountId)}`;
 
+/**
+ * Channel ids a session's delivery context may carry for a bridge channel. DingTalk sessions record
+ * the connector plugin's id, "dingtalk-connector", while its bridge registers as "dingtalk"
+ * (review-dingtalk); `commands.ownerAllowFrom` uses the connector's id too.
+ */
+export const CHANNEL_ALIASES = Object.freeze({ "dingtalk-connector": "dingtalk" });
+
+/** The bridge channel (one of CHANNELS) for a delivery channel id; unknown ids come back as they are. */
+export function bridgeChannelOf(channel) {
+  if (typeof channel !== "string" || !channel.trim()) return channel ?? null;
+  const c = channel.trim().toLowerCase();
+  return CHANNEL_ALIASES[c] ?? c;
+}
+
 /** The one registry object every patch and the plugin share (created on first use). */
 export function getBridgeRegistry(target = globalThis) {
   target[BRIDGES] ??= { v: 1, bridges: new Map(), listeners: new Set() };

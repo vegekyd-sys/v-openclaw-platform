@@ -1,3 +1,10 @@
+// HISTORICAL (2026-10-20, kept as the v2 reference): this candidate applies only the v2 core
+// patch (lab/release-files/sessions-send-reply-once) and runs the stock 9.1 path with the
+// v-session-relay plugin disabled. Since sessions_send v3 (lab/release-files/sessions-send-relay,
+// marker v-sessions-send-relay-v3) the core hands every send to v-session-relay 2.0 and falls back
+// to exactly this v2 path when the plugin is absent or DISABLED, so C-fallback / F16 compare against
+// these receipts. It does not apply v3 and does not test plugin 2.0; the inter-session-* candidates do.
+//
 // Candidate: native sessions_send, posted natively. Only the core patch
 // v-sessions-send-reply-once-v2 is applied; the v-session-relay plugin is NOT loaded,
 // so nothing here draws its own cards. What each V says in the target's turn and in

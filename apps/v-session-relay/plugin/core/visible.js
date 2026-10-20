@@ -2,7 +2,7 @@
 // MEDIA lines are folded, secrets are hidden, the audience rule and the channel limits apply.
 // The model always gets the full text; only the visible copy is trimmed here.
 
-import { CHANNEL_CAPS } from "./contracts.js";
+import { CHANNEL_CAPS, bridgeChannelOf } from "./contracts.js";
 
 export const REDACTED = "‹已隐去›";
 
@@ -80,8 +80,8 @@ export function firstBytes(s, maxBytes) {
 export function audienceFor(route, principal) {
   if (!route) return "full"; // no chat: nothing is visible anyway
   if (route.humans === "owner_only") return "full";
-  if (route.humans === "single_peer" && principal?.id && route.peerId
-    && principal.channel === route.channel && principal.id === route.peerId) return "full";
+  if (route.humans === "single_peer" && principal?.id && route.peerId && principal.channel && route.channel
+    && bridgeChannelOf(principal.channel) === bridgeChannelOf(route.channel) && principal.id === route.peerId) return "full";
   return "shared";
 }
 
@@ -93,7 +93,7 @@ export function visibleRequestBody(message, { audience = "shared", sharedChars =
   const full = String(message ?? "");
   const folded = foldMediaLines(full);
   const { text: redacted, redactions } = redactSecrets(folded.text);
-  const cap = caps ?? CHANNEL_CAPS[channel] ?? CHANNEL_CAPS.feishu;
+  const cap = caps ?? CHANNEL_CAPS[bridgeChannelOf(channel)] ?? CHANNEL_CAPS.feishu;
   const limit = audience === "full" ? cap.maxVisibleChars : Math.min(sharedChars, cap.maxVisibleChars);
   let body = redacted.trim();
   let trimmed = false;
@@ -118,7 +118,8 @@ export function escapeMarkdown(text) {
  * with the first line bold and everything escaped. WeCom is also held under its byte budget by
  * shortening the longest line (the body) first.
  */
-export function formatForChannel(channel, lines, { caps } = {}) {
+export function formatForChannel(deliveryChannel, lines, { caps } = {}) {
+  const channel = bridgeChannelOf(deliveryChannel);
   const clean = lines.filter((l) => l !== undefined && l !== null && l !== "");
   if (channel !== "dingtalk" && channel !== "wecom") return clean.join("\n");
   // The first line is ours (labels may still carry markup) and is bolded; "#" mid-line is not a

@@ -9,7 +9,7 @@
 // Nothing is re-run once it may have started: a target turn that was running is followed
 // through the core's own restart recovery, or reported as interrupted.
 
-import { RESTART_WEDGE_RE, feishuPostUuid } from "./contracts.js";
+import { RESTART_WEDGE_RE, bridgeChannelOf, feishuPostUuid } from "./contracts.js";
 import { reasonText, summaryInterruptedNote } from "./copy.js";
 import { isBatchTerminal, isSendTerminal } from "./ledger.js";
 import { formatForChannel } from "./visible.js";
@@ -217,7 +217,7 @@ async function recoverInterruptedWake(engine, batchId, report) {
     text = await engine._transcriptReply(key, "wake", batchId).catch(() => null);
   } else {
     report.interrupted += 1;
-    const side = { transport: b.wake.transport ?? "agent", bridgeKey: b.requester.route ? `${b.requester.route.channel}:${b.requester.route.accountId}` : null, route: b.requester.route };
+    const side = { transport: b.wake.transport ?? "agent", bridgeKey: b.requester.route ? `${bridgeChannelOf(b.requester.route.channel)}:${b.requester.route.accountId}` : null, route: b.requester.route };
     const codes = b.members.map((id) => engine.ledger.getSend(id)?.code).filter(Boolean);
     if (side.route) {
       try {
@@ -312,11 +312,11 @@ export async function recover(engine, { waitForBridges = true } = {}) {
       if (claimed) await adoptRecoveryRun(engine, turnRunRecord(r, role, claimed)).catch(() => {});
     }
     if (waitForBridges) {
-      const routeKey = (route) => (route?.channel ? `${route.channel}:${route.accountId ?? "default"}` : null);
+      const routeKey = (route) => (route?.channel ? `${bridgeChannelOf(route.channel)}:${route.accountId ?? "default"}` : null);
       const keys = new Set([
         ...ledger.sendsWhere((r) => !isSendTerminal(r)).map((r) => r.target.bridgeKey),
         ...ledger.sendsWhere((r) => !isSendTerminal(r)).map((r) => routeKey(r.requester?.route)),
-        ...ledger.batchesWhere((b) => !isBatchTerminal(b) || !b.wake?.endedAt).map((b) => (b.requester?.route ? `${b.requester.route.channel}:${b.requester.route.accountId}` : null)),
+        ...ledger.batchesWhere((b) => !isBatchTerminal(b) || !b.wake?.endedAt).map((b) => routeKey(b.requester?.route)),
       ].filter(Boolean));
       await Promise.all([...keys].map((k) => engine.bridge.waitFor(k, timing.bridgeReadyMs)));
     }

@@ -45,14 +45,22 @@ function targetsOf(entry) {
   return new Map();
 }
 
+/**
+ * The accepted target a `sessionKey` argument names. The core keys targets by resolvedKey and
+ * keeps the displayKey in the entry (review-core-send); the model may pass either, in any case
+ * (DingTalk keys are lower-cased), or the tail of one ("main", "feishu:group:oc_x").
+ */
 function matchTarget(targets, wanted) {
   if (typeof wanted !== "string" || !wanted.trim()) return null;
   const w = wanted.trim();
   if (targets.has(w)) return [w, targets.get(w)];
   const lw = w.toLowerCase();
+  const names = (k) => {
+    const lk = typeof k === "string" ? k.trim().toLowerCase() : "";
+    return Boolean(lk) && (lk === lw || lk.endsWith(`:${lw}`));
+  };
   for (const [key, value] of targets) {
-    const lk = key.toLowerCase();
-    if (lk === lw || lk.endsWith(`:${lw}`) || (value?.label && value.label === w)) return [key, value];
+    if (names(key) || names(value?.displayKey) || (value?.label && value.label === w)) return [key, value];
   }
   return null;
 }
