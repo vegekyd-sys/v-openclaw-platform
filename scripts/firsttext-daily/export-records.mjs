@@ -72,6 +72,11 @@ export function exportRecords(text) {
     for (const k of E2E_FIELDS) if (Number.isFinite(r[k])) out[k] = r[k];
     if (typeof r.runId === 'string') out.runId = r.runId;
     for (const k of ['agentRuntime', 'provider', 'model']) if (typeof r[k] === 'string') out[k] = r[k];
+    // inter-session (sessions_send) turns are not a person's 首字: keep the mark the report filters on
+    if (r.origin === 'inter_session') {
+      out.origin = r.origin;
+      if (Number.isSafeInteger(r.attempt)) out.attempt = r.attempt;
+    }
     out.chat = /:feishu:(group|direct|dm):/u.exec(r.sessionKey ?? '')?.[1] ?? 'other';
     if (typeof r.sessionKey === 'string') out.session = createHash('sha256').update(r.sessionKey).digest('hex').slice(0, 10);
     const p = phases.get(r.runId) ?? {};
