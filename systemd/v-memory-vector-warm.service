@@ -8,8 +8,11 @@ Documentation=file:/opt/v-sentinel/v-memory-vector-warm.py
 Type=oneshot
 User=openclaw
 Nice=19
-IOSchedulingClass=best-effort
-IOSchedulingPriority=7
+# V's vda uses mq-deadline, which ignores IO classes: what actually bounds the IO is the
+# script's own brakes (IO PSI, MemAvailable, 10 s per pass, backoff when nothing stays cached).
+IOSchedulingClass=idle
+# Resume point and backoff (/var/lib/v-memory-vector-warm/<agent>.json).
+StateDirectory=v-memory-vector-warm
 ExecStart=/usr/bin/python3 /opt/v-sentinel/v-memory-vector-warm.py makaron
-# A warm pass takes ~0.3 s; a fully cold one ~25 s of random reads.
-TimeoutStartSec=300
+# A warm pass takes ~0.3 s; a pass stops itself after 10 s.
+TimeoutStartSec=120

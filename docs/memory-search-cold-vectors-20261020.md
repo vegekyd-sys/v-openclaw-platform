@@ -67,3 +67,15 @@ OpenClaw 没有向量常驻或预热的配置；官方整理碎片的手段是 `
 
 1. **整理碎片**：`openclaw doctor --session-sqlite compact --session-sqlite-agent makaron`，需要停 Gateway（9/19 停机 9 分 23 秒，现在库 20 GB 会更久），流程见 `docs/memory-search-latency-quality-20261002.md` 与 9/19 的 compact 记录。整理后冷读从 24 s 降到约 5 s，预热即使偶尔失手也不会撞截止，还能把表缩回约 510 MB。
 2. **工具层兜底**（dist 补丁，要重启）：向量阶段超过预算时退回关键词结果，而不是整个 25 s 截止后什么都不给；并且 query embedding 的单次超时（60 s）比工具截止（25 s）还长，也应收紧。
+
+## 2026-10-20 16:19 更正：内存压力下预热留不住（timer 已停）
+
+#440 上线后 16:11 起每一遍都撞 10 s 预算中止，touchedMB 停在 388–412，从没读完。我在 PR 里说「下一轮会走得更远」，前提是读过的页留在缓存里，这个前提不成立。当时 page cache 只剩 4.1 GB（上午 11–12 GB），整个库只有 0.8 GB 在缓存；刚读完 388 MB 立刻用 mincore 查，向量表只剩 27%，也就是同一遍里就被挤出去了。Monitor 按我的判断停掉并 disable 了 timer。
+
+后续 PR 的改动：
+- **断点续读**：rowid 记在 `/var/lib/v-memory-vector-warm/<agent>.json`，下一轮接着读。没有压力时，冷表要 2–3 轮才能读满。
+- **IO 压力刹车**：`/proc/pressure/io` 的 full avg10 > 5% 就跳过本轮。
+- **留不住就退避**：一个续读周期完成后，从头读又撞预算，就退避 5→10→20→40→60 分钟；从头一遍读完则清零。
+- V 的 vda 用 mq-deadline，不认 IO 优先级，所以 unit 里的 IO 级别不起作用，只能靠上面这些刹车。
+
+结论：预热只在内存宽松时有效。内存紧时冷读不可避免，要让冷读本身变快，得做 doctor compact，或者给向量阶段加预算、超时退回关键词结果。这两样都要停 Gateway 或重启。
