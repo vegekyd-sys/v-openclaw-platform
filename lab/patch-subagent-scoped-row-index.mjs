@@ -27,7 +27,8 @@ export const FILES = {
 //   - every run whose requester is in the closure (descendant walk), whose children join the closure.
 // The closure starts at rootKeys and also follows inMemoryRuns. Rows are returned in the whole
 // registry's order (created_at, run_id), parsed by the same rowToSubagentRunRecord, with the closure's
-// child and requester keys so the caller can select the in-memory runs the same way.
+// child and requester keys so the caller can select the in-memory runs the same way. Returns null when
+// the key has more than maxRuns direct runs or the closure grows past 4 x maxRuns.
 function loadSubagentRunTreeFromSqlite(params) {
 	const { db } = openOpenClawStateDatabase();
 	const stateDb = getNodeSqliteKysely(db);
@@ -62,6 +63,13 @@ function loadSubagentRunTreeFromSqlite(params) {
 			for (let offset = 0; offset < keys.length; offset += 400) rows.push(...executeSqliteQuerySync(db, stateDb.selectFrom("subagent_runs").selectAll().where(column, "in", keys.slice(offset, offset + 400))).rows);
 			return rows;
 		};
+		// A key with many direct runs (agent:makaron:main: ~4,300) reads about the whole table either way;
+		// the caller keeps the cached whole-registry snapshot for it (null), which is cheaper under bursts.
+		const maxRuns = params.maxRuns ?? Infinity;
+		if (Number.isFinite(maxRuns) && controllerKey) {
+			const direct = executeSqliteQuerySync(db, stateDb.selectFrom("subagent_runs").select((eb) => eb.fn.countAll().as("count")).where((eb) => eb.or([eb("requester_session_key", "=", controllerKey), eb("controller_session_key", "=", controllerKey)]))).rows[0];
+			if (Number(direct?.count ?? 0) > maxRuns) return null;
+		}
 		for (const key of params.rootKeys) addKey(key);
 		if (controllerKey) for (const row of executeSqliteQuerySync(db, stateDb.selectFrom("subagent_runs").selectAll().where((eb) => eb.or([eb("controller_session_key", "=", controllerKey), eb.and([eb.or([eb("controller_session_key", "is", null), eb("controller_session_key", "=", "")]), eb("requester_session_key", "=", controllerKey)])]))).rows) {
 			const run = parse(row);
@@ -77,7 +85,11 @@ function loadSubagentRunTreeFromSqlite(params) {
 			}
 			const children = pendingChild;
 			pendingChild = [];
-			select("child_session_key", children).forEach(parse);
+			// Other generations of these children: run ids from the child index, full rows only for new ones.
+			const unseen = [];
+			for (let offset = 0; offset < children.length; offset += 400) for (const row of executeSqliteQuerySync(db, stateDb.selectFrom("subagent_runs").select("run_id").where("child_session_key", "in", children.slice(offset, offset + 400))).rows) if (!parsed.has(row.run_id)) unseen.push(row.run_id);
+			select("run_id", unseen).forEach(parse);
+			if (parsed.size > maxRuns * 4) return null;
 			for (const entry of inMemoryRuns) if (requesterKeys.has(entry.requesterSessionKey) || controllerKey && (entry.controllerSessionKey?.trim() || entry.requesterSessionKey) === controllerKey) addKey(entry.childSessionKey);
 		}
 		return {
@@ -115,11 +127,14 @@ function loadSubagentRegistryFromSqlite() {`,
 function buildSingleRowSubagentRunIndex(now, scope) {
 	if (scope?.key && process.env.OPENCLAW_V_SCOPED_ROW_SUBAGENT_RUNS !== "0") try {
 		const key = scope.key.trim();
+		const maxRuns = Number(process.env.OPENCLAW_V_SCOPED_ROW_MAX_RUNS ?? 256);
 		const tree = loadSubagentRunTreeFromSqlite({
+			maxRuns,
 			controllerKey: key,
 			rootKeys: [key, ...scope.store ? buildStoreChildSessionCandidateIndex(scope.store, new Set([key])).get(key) ?? [] : []],
 			inMemoryRuns: subagentRunRegistry.values()
 		});
+		if (!tree) throw new Error("subagent run closure above OPENCLAW_V_SCOPED_ROW_MAX_RUNS");
 		const runs = /* @__PURE__ */ new Map();
 		for (const entry of tree.runs) runs.set(entry.runId, entry);
 		// The Gateway restores every persisted run into memory; keep the ones in the closure, and any

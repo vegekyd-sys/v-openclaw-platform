@@ -780,11 +780,14 @@ function buildSingleRowStoreChildSessionsByKey(params) {
 function buildSingleRowSubagentRunIndex(now, scope) {
 	if (scope?.key && process.env.OPENCLAW_V_SCOPED_ROW_SUBAGENT_RUNS !== "0") try {
 		const key = scope.key.trim();
+		const maxRuns = Number(process.env.OPENCLAW_V_SCOPED_ROW_MAX_RUNS ?? 256);
 		const tree = loadSubagentRunTreeFromSqlite({
+			maxRuns,
 			controllerKey: key,
 			rootKeys: [key, ...scope.store ? buildStoreChildSessionCandidateIndex(scope.store, new Set([key])).get(key) ?? [] : []],
 			inMemoryRuns: subagentRunRegistry.values()
 		});
+		if (!tree) throw new Error("subagent run closure above OPENCLAW_V_SCOPED_ROW_MAX_RUNS");
 		const runs = /* @__PURE__ */ new Map();
 		for (const entry of tree.runs) runs.set(entry.runId, entry);
 		// The Gateway restores every persisted run into memory; keep the ones in the closure, and any
