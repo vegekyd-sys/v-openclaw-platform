@@ -155,11 +155,17 @@ function vTelegramInterSessionCtxFields(primaryCtx) {
 	const req = turn.req;
 	return {
 		InputProvenance: req.provenance,
-		ChannelPromptContext: req.channelPromptContext,
+		// 9.1 takes ChannelPromptContext as a list of entries: appendChannelPromptContext drops anything
+		// that is not an array, so the model would never see a plain string.
+		ChannelPromptContext: typeof req.channelPromptContext === "string" && req.channelPromptContext.trim() ? [req.channelPromptContext] : void 0,
 		CommandInterpretationSuppressed: true,
 		CommandAuthorized: false,
 		SenderId: req.sender.id,
 		SenderName: req.sender.name,
+		// In a direct chat the core reads From as a sender identity too (elevated allowFrom,
+		// shouldUseFromAsSenderFallback): it carries the chain root, never the chat's person, who still
+		// routes the turn and passes the access check (the synthetic message's sender).
+		...req.route?.chatType === "direct" ? { From: "telegram:" + req.sender.id } : {},
 		MessageSid: req.messageSid,
 		VInterSession: turn.vInter
 	};
@@ -174,7 +180,7 @@ function vTelegramInterSessionAdmit(context) {
 	turn.reject("ROUTE_MISMATCH", "Telegram routed the turn to " + (sessionKey ?? "no session") + ", not " + turn.req.sessionKey);
 	return false;
 }
-/** Reply options of the turn (§2.a core seam): the preset runId, the exclusive-admission request, run start. */
+/** Reply options of the turn (§2.a core seam): the preset runId, the exclusive-admission request, run start and outcome. */
 function vTelegramInterSessionReplyOptions(context) {
 	const turn = vTelegramInterSessionOf(context);
 	if (!turn) return {};
@@ -183,6 +189,9 @@ function vTelegramInterSessionReplyOptions(context) {
 		vInterSession: turn.vInter,
 		onAgentRunStart: (runId) => {
 			turn.onAgentRunStart(runId);
+		},
+		onAgentRunTerminalOutcome: (value) => {
+			turn.onTerminalOutcome(value);
 		}
 	};
 }
@@ -4107,7 +4116,7 @@ const dispatchTelegramMessage = async (dispatchParams) => {
 	// v-telegram-inter-session-bridge-v1
 	const vInterSessionTurn = vTelegramInterSessionOf(dispatchContext);
 	if (vInterSessionTurn && !vInterSessionTurn.started) {
-		vInterSessionTurn.noteNotStarted(turn.dispatchError);
+		vInterSessionTurn.noteNotStarted(turn.dispatchError, turn.deliveryState.snapshot().delivered === true);
 		return { kind: "completed" };
 	}
 	if (turnDispatched === false) return { kind: "completed" };

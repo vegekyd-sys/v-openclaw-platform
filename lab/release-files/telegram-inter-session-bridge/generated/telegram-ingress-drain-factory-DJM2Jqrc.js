@@ -4101,6 +4101,16 @@ function vTelegramTargetFromSessionKey(sessionKey) {
 * The turn record a synthetic message carries in update.vInterSession; the dispatch chunk reports
 * into it. outcome settles once: started (onAgentRunStart), busy (onBusy) or rejected (the handler
 * returned without either); done settles once a started turn's handler returns.
+* A second onAgentRunStart of the same start (the core re-running a stranded reply) changes nothing;
+* its finals join done while it is open. A run that reported a terminal outcome or a final without
+* onAgentRunStart (it failed before its harness took the turn) still ran: started, never GATED.
+* When the handler returns the record closes: a followup drain may run a person's turn with this
+* turn's options, and nothing that turn reports is this request's; closing also retires the
+* exclusive-admission seam, so the core admits such a reused turn like any other.
+* RunOutcome.status (same rule in every channel bridge): error when the handler failed, the dispatch
+* failed or the core reported "failed"; ok when the core reported "completed"; with no terminal
+* outcome (the core reports none for an aborted run) ok only if a non-error final was captured, else
+* aborted. Error notices (isError finals) go in error, never in finals.
 */
 function vCreateTelegramInterSessionTurn(req) {
 	let settleOutcome;
@@ -4124,60 +4134,87 @@ function vCreateTelegramInterSessionTurn(req) {
 		v: 1,
 		req,
 		started: false,
+		closed: false,
 		runId: void 0,
 		busyReason: void 0,
 		rejection: void 0,
 		error: void 0,
 		end: void 0,
+		terminal: void 0,
+		visibleWithoutStart: false,
 		finals: [],
+		errors: [],
 		vInter: void 0,
 		onAgentRunStart(runId) {
-			if (turn.started || outcomeSettled) return;
+			if (turn.closed || turn.started || outcomeSettled) return;
 			turn.started = true;
 			turn.runId = typeof runId === "string" && runId ? runId : req.runId;
 			settle({ status: "started", runId: turn.runId, done });
 		},
 		onBusy(info) {
-			if (turn.started || outcomeSettled) return;
+			if (turn.closed || turn.started || outcomeSettled) return;
 			turn.busyReason = V_TELEGRAM_INTER_SESSION_BUSY_REASONS.includes(info?.reason) ? info.reason : "active_run";
 			settle({ status: "busy", reason: turn.busyReason });
+		},
+		/** The core's terminal outcome of the run ("completed" | "failed"; none for an aborted run). */
+		onTerminalOutcome(value) {
+			if (turn.closed || turn.busyReason) return;
+			if (value === "failed" || turn.terminal === void 0) turn.terminal = value;
 		},
 		reject(code, message) {
 			if (!turn.started && !turn.rejection) turn.rejection = { code, message: String(message ?? code) };
 		},
-		/** A final reply payload of the turn (deliver kind "final"); ask_user questions and reasoning are not results. */
+		/** A final reply payload of the turn (deliver kind "final"); ask_user questions and reasoning are not results, error notices go to error. */
 		captureFinal(payload) {
-			if (!turn.started || !payload || payload.channelData?.askUser || payload.isReasoning === true) return;
+			if (turn.closed || turn.busyReason || !payload || payload.channelData?.askUser || payload.isReasoning === true) return;
 			const text = typeof payload.text === "string" && payload.text.trim() ? payload.text : void 0;
+			if (payload.isError === true) {
+				if (text) turn.errors.push(text.trim());
+				return;
+			}
 			const media = [...Array.isArray(payload.mediaUrls) ? payload.mediaUrls : [], ...typeof payload.mediaUrl === "string" ? [payload.mediaUrl] : []].filter((url) => typeof url === "string" && url);
 			if (!text && media.length === 0) return;
 			turn.finals.push({ ...text ? { text } : {}, ...media.length ? { mediaUrls: [...new Set(media)] } : {} });
 		},
-		noteNotStarted(error) {
+		/** The dispatch ended without onAgentRunStart; visible: the core still delivered something (a run that failed early). */
+		noteNotStarted(error, visible) {
+			if (turn.closed) return;
 			if (error != null && turn.error == null) turn.error = error;
+			if (visible === true) turn.visibleWithoutStart = true;
 		},
 		noteDispatchEnd(summary) {
-			turn.end = summary;
+			if (!turn.closed) turn.end = summary;
 		},
 		/** The handler (processMessageWithReplyChain) returned or threw. */
 		finish(result, thrown) {
+			if (turn.closed) return;
 			const message = errorText(thrown) ?? (result?.kind === "failed-retryable" ? errorText(result.error) ?? "telegram processing failed" : void 0) ?? errorText(turn.error);
+			const wedged = message !== void 0 && V_TELEGRAM_INTER_SESSION_RESTART_WEDGE_RE.test(message);
+			if (!turn.started && !outcomeSettled && !turn.rejection && !wedged && (turn.terminal !== void 0 || turn.finals.length > 0 || turn.errors.length > 0)) {
+				turn.started = true;
+				turn.runId = req.runId;
+				settle({ status: "started", runId: turn.runId, done });
+			}
+			turn.closed = true;
+			if (turn.vInter) turn.vInter.exclusive = false;
 			if (!turn.started) {
 				if (outcomeSettled) return;
 				if (turn.rejection) return rejected(turn.rejection.code, turn.rejection.message);
-				if (message !== void 0) return rejected(V_TELEGRAM_INTER_SESSION_RESTART_WEDGE_RE.test(message) ? "RESTART_WEDGE" : "INTERNAL", message);
+				if (message !== void 0) return rejected(wedged ? "RESTART_WEDGE" : "INTERNAL", message);
 				return rejected("GATED", result?.kind === "skipped" ? "Telegram dropped the synthetic message (access, mention or binding rules)" : "the turn ended without starting a run or reporting busy");
 			}
 			if (doneSettled) return;
 			doneSettled = true;
 			const end = turn.end ?? {};
-			const failure = message ?? errorText(end.dispatchError) ?? (end.agentRunFailed === true ? "the agent run failed" : void 0);
+			const failure = message ?? errorText(end.dispatchError);
+			const status = failure !== void 0 || turn.terminal === "failed" || end.agentRunFailed === true ? "error" : turn.terminal === "completed" || turn.finals.length > 0 ? "ok" : "aborted";
+			const error = failure ?? (turn.errors.length > 0 ? turn.errors.join("\n") : status === "error" ? "the agent run failed" : void 0);
 			resolveDone({
-				status: failure === void 0 ? "ok" : "error",
-				finals: turn.finals,
-				visibleReplySent: end.visibleReplySent === true,
+				status,
+				finals: turn.finals.map((final) => ({ ...final, ...final.mediaUrls ? { mediaUrls: [...final.mediaUrls] } : {} })),
+				visibleReplySent: end.visibleReplySent === true || turn.visibleWithoutStart === true,
 				finalCount: turn.finals.length,
-				...failure === void 0 ? {} : { error: failure }
+				...error === void 0 ? {} : { error }
 			});
 		}
 	};

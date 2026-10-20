@@ -17,6 +17,7 @@ import test from "node:test";
 
 import * as contracts from "../apps/v-session-relay/plugin/core/contracts.js";
 import { FAKE_BOT_TOKEN, createFakeTelegramBotApi } from "../lab/candidate/telegram-fake-bot-api.mjs";
+import { vAppendChannelPromptContext, vElevatedSenderCheck } from "./fixtures/inter-session-core-probes.mjs";
 import {
   ANCHORS,
   BASE_MARKER,
@@ -269,14 +270,32 @@ function simulatedPipeline({ helpers, api }) {
         helpers.vTelegramInterSessionOf(context).noteNotStarted(void 0);
         return { kind: "completed" };
       }
+      seen.at(-1).context = context;
+      const deliverFinals = async (payloads) => {
+        for (const payload of payloads ?? []) {
+          helpers.vTelegramInterSessionCaptureFinal(context, payload, { kind: "final" });
+          if (payload.text && typeof api.sendMessage === "function") await api.sendMessage(Number(msg.chat.id), payload.text);
+        }
+      };
+      if (step.failBeforeRunStart) {
+        // executeAgentTurn failed before its harness took the turn: no onAgentRunStart, an error
+        // final, terminal outcome "failed"; dispatchTelegramMessage then takes its not-started exit
+        await deliverFinals(step.finals);
+        opts.onAgentRunTerminalOutcome?.("failed");
+        helpers.vTelegramInterSessionOf(context).noteNotStarted(void 0, (step.finals ?? []).some((p) => p.text));
+        return { kind: "completed" };
+      }
       opts.onAgentRunStart(step.reportRunId ?? opts.runId);
       if (step.holdRun) await step.holdRun;
-      for (const payload of step.finals ?? []) {
-        helpers.vTelegramInterSessionCaptureFinal(context, payload, { kind: "final" });
-        if (payload.text) await api.sendMessage(Number(msg.chat.id), payload.text);
+      await deliverFinals(step.finals);
+      if (step.rerun) {
+        // stranded-reply recovery runs the same turn once more: a second onAgentRunStart for this start
+        opts.onAgentRunStart(opts.runId);
+        await deliverFinals(step.rerun);
       }
+      if (step.terminal) opts.onAgentRunTerminalOutcome?.(step.terminal);
       helpers.vTelegramInterSessionCaptureFinal(context, { text: "block text" }, { kind: "block" });
-      helpers.vTelegramInterSessionOf(context).noteDispatchEnd({ agentRunFailed: step.agentRunFailed === true, dispatchError: void 0, visibleReplySent: (step.finals ?? []).some((p) => p.text) });
+      helpers.vTelegramInterSessionOf(context).noteDispatchEnd({ agentRunFailed: step.agentRunFailed === true, dispatchError: void 0, visibleReplySent: step.visible ?? (step.finals ?? []).some((p) => p.text) });
       if (step.throwAfterRun) throw new Error(step.throwAfterRun);
       return { kind: "completed" };
     },
@@ -461,7 +480,7 @@ test("bridge: start runs one synthetic message; started, busy and rejected outco
       SenderId: busyReq.sender.id,
       CommandAuthorized: false,
       InputProvenance: busyReq.provenance,
-      ChannelPromptContext: busyReq.channelPromptContext,
+      ChannelPromptContext: [busyReq.channelPromptContext], // 9.1's string[]
       CommandInterpretationSuppressed: true,
       SenderName: busyReq.sender.name,
       VInterSession: "[object]",
@@ -683,6 +702,7 @@ function dispatchHarness() {
       }
       opts?.onAgentRunStart?.(opts.runId ?? "8d2f9d6e-0000-4000-8000-00000000000a");
       for (const payload of step.finals ?? []) await resolved.delivery.deliverWithProviderMessageSending(payload, { kind: "final" });
+      if (step.terminal !== null) opts?.onAgentRunTerminalOutcome?.(step.terminal ?? (step.agentRunFailed ? "failed" : "completed"));
       if (step.throwAfterRun) throw new Error(step.throwAfterRun);
       return { dispatched: true, dispatchResult: { queuedFinal: (step.finals ?? []).length > 0, noVisibleReplyFallbackEligible: !step.silent } };
     },
@@ -903,7 +923,7 @@ function loadContextCode(stubs) {
 function coreInboundContext(params) {
   const command = params.command;
   const commandTurn = command ? { kind: command.kind, authorized: command.kind === "normal" ? false : (command.authorized ?? params.access?.commands?.authorized === true), body: command.body } : undefined;
-  const ctx = { MessageSid: params.messageId, SenderId: params.sender?.id, CommandAuthorized: params.access?.commands?.authorized === true, CommandTurn: commandTurn, ...params.extra };
+  const ctx = { From: params.from, MessageSid: params.messageId, SenderId: params.sender?.id, ChatType: params.conversation?.kind, CommandAuthorized: params.access?.commands?.authorized === true, CommandTurn: commandTurn, ...params.extra };
   ctx.CommandAuthorized = ctx.CommandAuthorized === true;
   const turn = ctx.CommandTurn ?? { kind: ctx.CommandSource === "native" ? "native" : ctx.CommandSource === "text" ? "text-slash" : "normal", authorized: false };
   if (turn.kind === "native" || turn.kind === "text-slash") {
@@ -1109,4 +1129,138 @@ test("context (real code): a turn sends no early typing cue and no ack or status
     await buildContextFor(h, mod, { turn: undefined, chat: group, text: "汇总一下" });
     assert.equal(h.record.groupHistory, 1);
   }
+});
+
+// ---------------------------------------------------------------- 6. what the target model and the core see; RunOutcome; late events
+
+test("context (real code): the request context is 9.1's string[]; a direct-chat turn's From is the chain root while the person routes it", async () => {
+  const { vCreateTelegramInterSessionTurn } = loadBridgeBlock();
+  const appendChannelPromptContext = vAppendChannelPromptContext();
+  const elevated = vElevatedSenderCheck();
+  const dmRoute = { channel: "telegram", accountId: "default", to: OWNER, chatId: OWNER, chatType: "direct", peerId: OWNER, humans: "owner_only" };
+  const dm = { id: Number(OWNER), type: "private", first_name: "Tianyi" };
+  const synthetic = `v-a2a:${CHAIN_ID}`;
+  {
+    // the owner's direct chat, asked by a chain whose root is not the owner
+    const h = contextHarness();
+    const mod = loadContextCode(h.stubs);
+    const req = startRequest(dmRoute, { sender: { id: synthetic, name: "「任务群 a」的 V（会话协作）", isOwnerIdentity: false } });
+    const { turn } = vCreateTelegramInterSessionTurn(req);
+    const { ctxPayload } = await buildContextFor(h, mod, { turn, chat: dm, text: req.promptText });
+    const built = h.record.built.at(-1);
+    assert.deepEqual(ctxPayload.ChannelPromptContext, [req.channelPromptContext]);
+    assert.equal(appendChannelPromptContext("BODY", req.channelPromptContext), "BODY", "V drops a bare string");
+    assert.equal(appendChannelPromptContext("BODY", ctxPayload.ChannelPromptContext), `BODY\n\nContext:\n${req.channelPromptContext}`);
+    assert.equal(built.sender.id, OWNER, "the person routes the turn and passes the access check");
+    assert.equal(built.from, `telegram:${OWNER}`, "Telegram's own From for this chat names the person");
+    assert.deepEqual([ctxPayload.SenderId, ctxPayload.From, ctxPayload.ChatType], [synthetic, `telegram:${synthetic}`, "direct"]);
+    assert.equal(elevated.fromIsSender(ctxPayload), true, "in a direct chat V reads From as a sender identity");
+    assert.equal(elevated.approved({ provider: "telegram", allowFrom: [`telegram:${OWNER}`], ctx: ctxPayload }), false, "the owner's elevated rights are not lent to a non-owner chain");
+    assert.equal(elevated.approved({ provider: "telegram", allowFrom: [`telegram:${OWNER}`], ctx: { ...ctxPayload, From: built.from } }), true, "with the person's From they would be");
+  }
+  {
+    // an owner chain keeps the owner's own identity; an empty context is no entry
+    const h = contextHarness();
+    const mod = loadContextCode(h.stubs);
+    const req = { ...startRequest(dmRoute), channelPromptContext: "" };
+    const { turn } = vCreateTelegramInterSessionTurn(req);
+    const { ctxPayload } = await buildContextFor(h, mod, { turn, chat: dm, text: req.promptText });
+    assert.deepEqual([ctxPayload.SenderId, ctxPayload.From], [OWNER, `telegram:${OWNER}`]);
+    assert.equal(ctxPayload.ChannelPromptContext, undefined);
+  }
+  {
+    // a group's From names the group, which V never reads as a sender: left as Telegram sets it
+    const h = contextHarness();
+    const mod = loadContextCode(h.stubs);
+    const groupRoute = { channel: "telegram", accountId: "default", to: GROUP, chatId: GROUP, chatType: "group", humans: "shared" };
+    const { turn } = vCreateTelegramInterSessionTurn(startRequest(groupRoute, { sender: { id: synthetic, name: "x", isOwnerIdentity: false }, routePeerId: OWNER }));
+    const { ctxPayload } = await buildContextFor(h, mod, { turn, chat: { id: Number(GROUP), type: "supergroup", title: "任务群 a" }, text: "汇总" });
+    assert.equal(ctxPayload.From, `telegram:group:${GROUP}`);
+    assert.equal(elevated.fromIsSender(ctxPayload), false);
+  }
+});
+
+test("bridge: with no terminal outcome a run is ok only with a non-error final, else aborted; error notices are never results", async () => {
+  const { vCreateTelegramInterSessionBridge } = loadBridgeBlock();
+  const helpers = loadTurnHelpers();
+  const route = { channel: "telegram", accountId: "default", to: OWNER, chatId: OWNER, chatType: "direct", peerId: OWNER, humans: "owner_only" };
+  const pipeline = simulatedPipeline({ helpers, api: {} });
+  const bridge = vCreateTelegramInterSessionBridge({ accountId: "default", bot: { api: {}, botInfo: { id: 1 } }, message: pipeline, authorization: allowAll(), normalizeAccountId: contracts.normalizeAccountId });
+  let attempt = 0;
+  const run = async (step) => {
+    pipeline.queue(step);
+    const outcome = await bridge.start(startRequest(route, { attempt: attempt++ }));
+    assert.equal(outcome.status, "started", JSON.stringify(step));
+    const done = await outcome.done;
+    assert(contracts.validateRunOutcome(done).ok, contracts.validateRunOutcome(done).errors.join("; "));
+    return done;
+  };
+  // stopped after some text streamed: the core reports no terminal outcome, nothing final
+  assert.deepEqual(await run({ finals: [], visible: true }), { status: "aborted", finals: [], visibleReplySent: true, finalCount: 0 });
+  // a stalled run's interruption notice is an error final, not a result
+  assert.deepEqual(await run({ finals: [{ text: "⚠️ This turn was interrupted because it stopped making progress. Please try again.", isError: true }] }), { status: "aborted", finals: [], visibleReplySent: true, finalCount: 0, error: "⚠️ This turn was interrupted because it stopped making progress. Please try again." });
+  // a non-error final without a terminal outcome: ok
+  assert.equal((await run({ finals: [{ text: "结果" }] })).status, "ok");
+  // completed with nothing to say (NO_REPLY): ok without finals
+  assert.deepEqual(await run({ finals: [], terminal: "completed", visible: false }), { status: "ok", finals: [], visibleReplySent: false, finalCount: 0 });
+  // the core reported failed: error, with its notice as the error
+  assert.deepEqual(await run({ finals: [{ text: "⚠️ Agent failed: model unavailable", isError: true }], terminal: "failed" }), { status: "error", finals: [], visibleReplySent: true, finalCount: 0, error: "⚠️ Agent failed: model unavailable" });
+  // a run that failed before its harness took the turn still ran: started with an error, never GATED
+  pipeline.queue({ failBeforeRunStart: true, finals: [{ text: "⚠️ Unknown model", isError: true }] });
+  const early = await bridge.start(startRequest(route, { attempt: attempt++ }));
+  assert.deepEqual([early.status, early.runId], ["started", contracts.runIdFor("request", SEND_ID, attempt - 1)]);
+  assert.deepEqual(await early.done, { status: "error", finals: [], visibleReplySent: true, finalCount: 0, error: "⚠️ Unknown model" });
+});
+
+test("bridge: events after done are not the request's; a second run start of the same start is tolerated", async () => {
+  const { vCreateTelegramInterSessionBridge } = loadBridgeBlock();
+  const helpers = loadTurnHelpers();
+  const route = { channel: "telegram", accountId: "default", to: OWNER, chatId: OWNER, chatType: "direct", peerId: OWNER, humans: "owner_only" };
+  const pipeline = simulatedPipeline({ helpers, api: {} });
+  const bridge = vCreateTelegramInterSessionBridge({ accountId: "default", bot: { api: {}, botInfo: { id: 1 } }, message: pipeline, authorization: allowAll(), normalizeAccountId: contracts.normalizeAccountId });
+  pipeline.queue({ finals: [{ text: "第一份" }], rerun: [{ text: "第二份" }], terminal: "completed" });
+  const req = startRequest(route);
+  const outcome = await bridge.start(req);
+  assert.deepEqual([outcome.status, outcome.runId], ["started", req.runId], "started once, with the first run start");
+  const run = await outcome.done;
+  assert.deepEqual(run, { status: "ok", finals: [{ text: "第一份" }, { text: "第二份" }], visibleReplySent: true, finalCount: 2 }, "the re-run's finals belong to the same done");
+  const snapshot = structuredClone(run);
+  // a followup drain that reuses this turn's options runs a person's message with them
+  const { opts, context } = pipeline.seen.at(-1);
+  opts.onAgentRunStart("person-followup-run");
+  helpers.vTelegramInterSessionCaptureFinal(context, { text: "给真人的回复" }, { kind: "final" });
+  opts.onAgentRunTerminalOutcome?.("failed");
+  opts.vInterSession.onBusy({ reason: "active_run" });
+  helpers.vTelegramInterSessionOf(context).noteDispatchEnd({ agentRunFailed: true, visibleReplySent: false });
+  helpers.vTelegramInterSessionOf(context).finish(void 0, new Error("late"));
+  assert.deepEqual(await outcome.done, snapshot);
+  assert.deepEqual(run, snapshot, "the resolved outcome is never touched");
+  assert.equal(opts.vInterSession.exclusive, false, "once done the seam stops asking the core for exclusive admission");
+  // a BUSY attempt stays busy whatever arrives later
+  pipeline.queue({ busy: "active_run" });
+  const busy = await bridge.start(startRequest(route, { attempt: 1 }));
+  assert.deepEqual(busy, { status: "busy", reason: "active_run" });
+  const later = pipeline.seen.at(-1);
+  later.opts.onAgentRunStart(later.opts.runId);
+  assert.equal(helpers.vTelegramInterSessionOf(later.context ?? { primaryCtx: later.params.ctx }).started, false);
+});
+
+test("dispatch (real code): the run's terminal outcome reaches the turn; an aborted run is aborted, not ok", async () => {
+  const { vCreateTelegramInterSessionTurn } = loadBridgeBlock();
+  const route = { channel: "telegram", accountId: "default", to: OWNER, chatId: OWNER, chatType: "direct", peerId: OWNER, humans: "owner_only" };
+  for (const [step, status] of [[{ terminal: null, finals: [] }, "aborted"], [{ finals: [] }, "ok"], [{ terminal: null, finals: [{ text: "答复" }] }, "ok"]]) {
+    const h = dispatchHarness();
+    const mod = loadDispatchCode(h.stubs);
+    const req = startRequest(route);
+    const { turn, outcome } = vCreateTelegramInterSessionTurn(req);
+    const result = await runDispatch(h, mod, { turn, sessionKey: req.sessionKey, step: { ...step, silent: true } });
+    assert.equal(typeof h.record.coreTurns[0].opts.onAgentRunTerminalOutcome, "function", "the core forwards the run's outcome to the turn");
+    turn.finish(result);
+    assert.equal((await (await outcome).done).status, status, JSON.stringify(step));
+  }
+  // a person's message gets no inter-session outcome callback
+  const h = dispatchHarness();
+  const mod = loadDispatchCode(h.stubs);
+  await runDispatch(h, mod, { turn: undefined, sessionKey: `agent:${AGENT}:telegram:direct:${OWNER}`, step: {} });
+  assert.equal(h.record.coreTurns[0].opts.onAgentRunTerminalOutcome, undefined);
 });
