@@ -118,6 +118,8 @@ def test_refresh_locks_the_new_mapping_before_dropping_the_old():
         first = p.mapping
         writer.execute("INSERT INTO memory_index_chunks_vec_vector_chunks00 VALUES (999, ?)", (os.urandom(50_000),))
         writer.commit()
+        # Pages still only in the WAL lie past the main file's end: neither locked nor cached.
+        writer.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         _, out = quiet(p.pin)
         kinds = [c[0] for c in libc.calls]
         second_map = kinds.index("map", 1)
