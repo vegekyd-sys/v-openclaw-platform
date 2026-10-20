@@ -7,6 +7,8 @@ import test from "node:test";
 import * as contracts from "../apps/v-session-relay/plugin/core/contracts.js";
 import {
   CAPTURE_DIR,
+  EXECUTE,
+  EXECUTE_V3,
   FILES,
   GUIDANCE,
   HANDOFF_ANCHOR,
@@ -106,7 +108,7 @@ test("patching twice, a changed file or a file without v2 is refused", () => {
 // ---------------------------------------------------------------- placement and static shape
 
 test("the hand-off sits after the native checks and before the baseline history read", () => {
-  const execute = between(GEN_TOOL, "\t\texecute: async (_toolCallId, args) => {\n", "//#endregion\n//#region src/agents/subagents/spawn/subagent-attachments.ts");
+  const execute = between(GEN_TOOL, EXECUTE_V3, "//#endregion\n//#region src/agents/subagents/spawn/subagent-attachments.ts");
   const at = (needle) => {
     const i = execute.indexOf(needle);
     assert.ok(i >= 0, `missing ${needle}`);
@@ -125,6 +127,20 @@ test("the hand-off sits after the native checks and before the baseline history 
   assert.ok(helpersAt > GEN_TOOL.indexOf('const log = createSubsystemLogger("agents/sessions-send");'), "helpers come after the logger they use");
   assert.ok(helpersAt < GEN_TOOL.indexOf("function createSessionsSendTool(opts) {\n"));
   assert.ok(GEN_TOOL.indexOf(HELPERS_END) < GEN_TOOL.indexOf("function createSessionsSendTool(opts) {\n"));
+});
+
+test("execute takes the harness abort signal and the inline wait uses it", () => {
+  // V's sessions_send drops the signal every harness passes as execute's third argument, and
+  // openclaw-tools never sets opts.signal: without this an aborted requester run (or a Codex
+  // dynamic-tool timeout) cannot stop an inline wait.
+  assert.equal(count(V_TOOL, EXECUTE), 1);
+  assert.ok(!/opts\?\.signal|signal:/u.test(between(V_TOOLS, "\t\t\tcreateSessionsSendTool({\n", "\t\t\t})")), "openclaw-tools passes no signal option");
+  assert.equal(count(GEN_TOOL, EXECUTE), 0);
+  assert.equal(count(GEN_TOOL, EXECUTE_V3), 1);
+  const execute = between(GEN_TOOL, "function createSessionsSendTool(opts) {\n", HANDOFF_ANCHOR);
+  assert.ok(execute.includes(EXECUTE_V3), "the signal is taken by the execute that reaches the hand-off");
+  assert.equal(count(between(GEN_TOOL, HANDOFF_BEGIN, HANDOFF_ANCHOR), "signal: vRelayToolSignal ?? opts?.signal,"), 1);
+  assert.match(GEN_TOOL, /execute: async \(_toolCallId, args, signal\) => \{/u, "sessions_spawn already takes it the same way");
 });
 
 test("the tool description carries the §8.2 guidance", () => {
@@ -222,7 +238,7 @@ const LOCALS = [
   "_toolCallId", "params", "opts", "gatewayCall", "message", "timeoutSeconds", "cfg", "effectiveRequesterKey",
   "requesterAgentId", "requesterSessionKey", "replyRequesterSessionKey", "resolvedKey", "displayKey", "targetAgentId",
   "expectedSessionId", "visibleSession", "requesterChannel", "sameSessionA2A", "isIsolatedCronRequester",
-  "registerWatchIfRequested", "promptedAt",
+  "registerWatchIfRequested", "promptedAt", "vRelayToolSignal",
 ];
 const FALLTHROUGH = Symbol("v2 path");
 const ACCEPTED_KEY = Symbol.for(contracts.SYMBOL_KEYS.sessionsSendAccepted);
@@ -295,8 +311,9 @@ function context(overrides = {}) {
     requesterChannel: "feishu",
     sameSessionA2A: false,
     isIsolatedCronRequester: false,
-    registerWatchIfRequested: (key) => { watches.push(key); return {}; },
+    registerWatchIfRequested: (key) => { watches.push(key); return overrides.watch ?? {}; },
     promptedAt: 1,
+    vRelayToolSignal: undefined,
     ...overrides.ctx,
   };
   return { ctx, calls, watches, replies };
@@ -406,6 +423,35 @@ test("async: a second send of the same run keeps the guard's history counter and
   assert.equal(row.targets.get(TARGET).historyReads, 1);
   assert.deepEqual(row.targets.get(OTHER), { code: "9K2M", label: OTHER, historyReads: 0, sendId: "s_mgk3x1a2f9aaaaaaaaaa", displayKey: OTHER });
   assert.notEqual(second.calls[0].params.idempotencyKey, first.calls[0].params.idempotencyKey);
+});
+
+test("async: the same target accepted again keeps its history counter; stale runs are pruned", async (t) => {
+  resetTable();
+  const clock = fakeClock(t);
+  const relay = loadRelay();
+  await relay.execute(context({ replies: [accepted()], ctx: { opts: { runId: "run-old" } } }).ctx);
+  clock.advance(60_000);
+  await relay.execute(context({ replies: [accepted()] }).ctx);
+  acceptedTable().get("run-A").targets.get(TARGET).historyReads = 2;
+  await relay.execute(context({ replies: [accepted({ code: "9K2M", sendId: "s_mgk3x1a2f9bbbbbbbbbb" })], ctx: { _toolCallId: "call_2" } }).ctx);
+  const again = acceptedTable().get("run-A").targets.get(TARGET);
+  assert.equal(again.historyReads, 2, "the guard's count survives a second send to the same target");
+  assert.equal(again.code, "9K2M", "the latest #code wins");
+  assert.ok(acceptedTable().has("run-old"));
+  clock.advance(6 * 3_600_000);
+  await relay.execute(context({ replies: [accepted()], ctx: { opts: { runId: "run-new" } } }).ctx);
+  assert.ok(!acceptedTable().has("run-old"), "rows older than 6 h are pruned on write");
+  assert.ok(!acceptedTable().has("run-A"));
+  assert.ok(acceptedTable().has("run-new"));
+});
+
+test("requester.replySessionKey is the v2 reply session, not the requester session", async () => {
+  resetTable();
+  const relay = loadRelay();
+  const { ctx, calls } = context({ replies: [accepted()], ctx: { replyRequesterSessionKey: "agent:makaron:main" } });
+  await relay.execute(ctx);
+  assert.equal(calls[0].params.requester.sessionKey, REQUESTER);
+  assert.equal(calls[0].params.requester.replySessionKey, "agent:makaron:main");
 });
 
 test("async without a plugin note: the core's own hand-off note (no sleep, no polling)", async () => {
@@ -540,10 +586,77 @@ test("inline: an aborted requester run stops polling and turns async", async () 
   const relay = loadRelay();
   const controller = new AbortController();
   controller.abort();
-  const { ctx, calls } = inlineContext([], { opts: { runId: "run-A", signal: controller.signal } });
+  const { ctx, calls } = inlineContext([], { vRelayToolSignal: controller.signal });
   const result = await relay.execute(ctx);
   assert.equal(calls.length, 1, "no vrelay.wait after the run was aborted");
   assert.equal(result.details.status, "accepted");
+  assert.match(result.details.note, /等待中断了，但请求 #7F3A 已受理/u);
+  assertSchema(result.details);
+  assert.ok(acceptedTable().get("run-A").targets.has(TARGET), "recorded for the polling guard");
+  assert.ok(relay.record.warns.some((w) => w.message.startsWith("vrelay.wait abandoned")));
+  // opts.signal still works for a caller that sets it.
+  const legacy = new AbortController();
+  legacy.abort();
+  const viaOpts = inlineContext([], { opts: { runId: "run-B", signal: legacy.signal } });
+  assert.equal((await relay.execute(viaOpts.ctx)).details.status, "accepted");
+  assert.equal(viaOpts.calls.length, 1);
+});
+
+test("inline: an abort during a long-poll slice returns at once, without an unhandled rejection", { timeout: 5_000 }, async (t) => {
+  resetTable();
+  const unhandled = [];
+  const onUnhandled = (reason) => unhandled.push(reason);
+  process.on("unhandledRejection", onUnhandled);
+  t.after(() => process.off("unhandledRejection", onUnhandled));
+  const relay = loadRelay();
+  const controller = new AbortController();
+  let rejectSlice;
+  const { ctx, calls } = inlineContext([() => new Promise((_resolve, reject) => { rejectSlice = reject; })], { vRelayToolSignal: controller.signal });
+  const pending = relay.execute(ctx);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, 2, "the slice is in flight");
+  const startedAt = Date.now();
+  controller.abort();
+  const result = await pending;
+  assert.ok(Date.now() - startedAt < 1_000, "the 55 s slice did not have to finish");
+  assert.equal(result.details.status, "accepted");
+  assert.match(result.details.note, /等待中断了/u);
+  assert.ok(acceptedTable().get("run-A").targets.has(TARGET));
+  rejectSlice(new Error("gateway closed (1006)"));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(unhandled, [], "the abandoned slice's late failure is swallowed");
+});
+
+test("inline: a plugin that answers pending at once is not hammered", async () => {
+  resetTable();
+  const relay = loadRelay();
+  const pending = () => ({ status: "pending", code: "7F3A" });
+  const { ctx, calls } = inlineContext(Array(50).fill(pending), { timeoutSeconds: 1 });
+  const result = await relay.execute(ctx);
+  assert.ok(calls.length - 1 <= 2, `≤ 1 vrelay.wait per second (got ${calls.length - 1})`);
+  assert.match(result.details.note, /还在处理/u);
+});
+
+test("the watch the model asked for is reported on every accepted-send result", async () => {
+  const watch = { watched: true };
+  const answers = [
+    [0, [], "accepted"],
+    [120, [{ status: "ok", code: "7F3A", reply: "r" }], "ok"],
+    [120, [{ status: "no_reply", code: "7F3A" }], "no_reply"],
+    [120, [{ status: "failed", code: "7F3A", failure: { reason: "x" } }], "error"],
+    [120, [{ status: "expired", code: "7F3A" }], "accepted"],
+    [120, [() => { throw new Error("gateway closed"); }], "accepted"],
+  ];
+  for (const [timeoutSeconds, waits, status] of answers) {
+    resetTable();
+    const relay = loadRelay();
+    const { ctx, watches } = context({ replies: [accepted(), ...waits], ctx: { timeoutSeconds }, watch });
+    const result = await relay.execute(ctx);
+    assert.equal(result.details.status, status);
+    assert.equal(result.details.watched, true, `${status} carries watched`);
+    assert.deepEqual(watches, [TARGET]);
+    assertSchema(result.details);
+  }
 });
 
 test("forbidden and error answers pass through as tool results", async () => {

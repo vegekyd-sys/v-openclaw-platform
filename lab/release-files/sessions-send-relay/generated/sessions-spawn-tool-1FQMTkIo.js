@@ -989,6 +989,22 @@ async function vSessionRelaySend(p) {
 		result: vRelayErrorResult("error", vRelayUnknownStateText("vrelay.send status " + String(r?.status)), void 0, p.displayKey)
 	};
 }
+const V_RELAY_ABORTED = Symbol("vrelay.wait abandoned");
+function vRelayAbortable(signal, promise) {
+	if (typeof signal?.addEventListener !== "function") return promise;
+	return new Promise((resolve, reject) => {
+		const onAbort = () => resolve(V_RELAY_ABORTED);
+		if (signal.aborted) onAbort();
+		else signal.addEventListener("abort", onAbort, { once: true });
+		Promise.resolve(promise).then((value) => {
+			signal.removeEventListener("abort", onAbort);
+			resolve(value);
+		}, (err) => {
+			signal.removeEventListener("abort", onAbort);
+			reject(err);
+		});
+	});
+}
 function vAcceptedResult(accepted, displayKey, watch, note) {
 	const code = vRelayCode(accepted);
 	return {
@@ -1047,14 +1063,19 @@ async function vWaitInline(p) {
 	};
 	const sendId = vRelayStr(accepted?.sendId);
 	if (!sendId) return turnAsync(vRelayInterruptedNote(label, code));
+	const abandoned = () => {
+		log.warn("vrelay.wait abandoned: the requester run was aborted; the send stays accepted", { sendId });
+		return turnAsync(vRelayInterruptedNote(label, code));
+	};
 	for (;;) {
+		if (p.signal?.aborted) return abandoned();
 		const remaining = deadline - Date.now();
-		if (remaining <= 0 || p.signal?.aborted) break;
+		if (remaining <= 0) break;
 		const sliceMs = Math.min(V_RELAY.waitSliceMaxMs, remaining);
 		const sliceStartedAt = Date.now();
 		let w;
 		try {
-			w = await p.gatewayCall({
+			w = await vRelayAbortable(p.signal, p.gatewayCall({
 				method: V_RELAY.waitMethod,
 				params: {
 					v: 1,
@@ -1063,7 +1084,7 @@ async function vWaitInline(p) {
 				},
 				scopes: [...V_RELAY.scopes],
 				timeoutMs: sliceMs + V_RELAY.waitRpcGraceMs
-			});
+			}));
 		} catch (err) {
 			log.warn("vrelay.wait failed; the send stays accepted", {
 				sendId,
@@ -1071,6 +1092,7 @@ async function vWaitInline(p) {
 			});
 			return turnAsync(vRelayInterruptedNote(label, code));
 		}
+		if (w === V_RELAY_ABORTED) return abandoned();
 		const note = typeof w?.note === "string" && w.note ? w.note : void 0;
 		if (w?.status === "ok") {
 			const media = Array.isArray(w.media) ? w.media.filter((item) => typeof item === "string" && item) : [];
@@ -1129,7 +1151,7 @@ function createSessionsSendTool(opts) {
 		parameters: SessionsSendToolSchema,
 		outputSchema: SessionsSendOutputSchema,
 		prepareArguments: normalizeSessionsSendArguments,
-		execute: async (_toolCallId, args) => {
+		execute: async (_toolCallId, args, vRelayToolSignal) => {
 			const promptedAt = Date.now();
 			const params = normalizeSessionsSendArguments(args);
 			const gatewayCall = opts?.callGateway ?? callAgentToolGatewayRequest;
@@ -1521,7 +1543,7 @@ function createSessionsSendTool(opts) {
 								targetSessionKey: resolvedKey,
 								displayKey,
 								inlineTimeoutMs: vRelay.inlineTimeoutMs,
-								signal: opts?.signal,
+								signal: vRelayToolSignal ?? opts?.signal,
 								watch: vWatch
 							}));
 						}

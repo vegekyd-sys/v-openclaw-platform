@@ -12,7 +12,9 @@
 //     process-wide accepted table (`Symbol.for("openclaw.v.sessionsSendAccepted")`) that the
 //     before_tool_call polling guard reads;
 //   - for an inline send long-polls `vrelay.wait` in ≤55 s slices (≤300 s in all) and maps the
-//     answer to the tool result; a send that outlives the window turns async (and is recorded).
+//     answer to the tool result; a send that outlives the window, or whose requester run is
+//     aborted (the abort signal execute now takes as its third argument), turns async (and is
+//     recorded).
 // Only "plugin absent" (an error text matching V_RELAY_FALLBACK_RE, cached 60 s per process)
 // or a `fallback` answer lets the v2 path below run. Any other RPC failure is reported as an
 // unknown state and never retried through v2: the plugin may already have accepted it.
@@ -41,6 +43,12 @@ export const GUIDANCE =
 // ---------------------------------------------------------------- anchors (each must occur exactly once)
 
 const TOOL_START = "function createSessionsSendTool(opts) {\n";
+// V's sessions_send execute drops the abort signal every harness passes as the third argument
+// (pi-agent-core; the Codex dynamic-tool bridge when its 90 s / timeoutSeconds+30 s budget runs
+// out; the MCP loopback), and openclaw-tools never sets opts.signal. v3 takes the argument, the
+// way sessions_spawn does, so an inline wait stops when the requester's run is aborted.
+export const EXECUTE = "\t\texecute: async (_toolCallId, args) => {\n";
+export const EXECUTE_V3 = "\t\texecute: async (_toolCallId, args, vRelayToolSignal) => {\n";
 const DESCRIPTION = "\t\tdescription: describeSessionsSendTool(),\n";
 const DESCRIPTION_V3 = "\t\tdescription: describeSessionsSendTool() + V_SESSIONS_SEND_GUIDANCE,\n";
 const SCHEMA_START = "const SessionsSendOutputSchema = Type.Union([\n";
@@ -69,7 +77,7 @@ const REQUIRED_SCOPE = [
   " t as recordSessionParticipantBestEffort }",
   " o as resolveSessionStorePathCore }",
   " t as jsonResult }",
-  "\t\texecute: async (_toolCallId, args) => {\n",
+  EXECUTE,
   "\t\t\tconst promptedAt = Date.now();\n",
   "\t\t\tconst gatewayCall = opts?.callGateway ?? callAgentToolGatewayRequest;\n",
   "\t\t\tconst requesterSessionKey = rawRequesterSessionKey;\n",
@@ -87,7 +95,7 @@ export const NEW_IDENTIFIERS = Object.freeze([
   "vRelayIdempotencyKey", "vRelayLabel", "vRelayCode", "vRelayAsyncNote", "vRelayStillWorkingNote",
   "vRelayInterruptedNote", "vRelayFailedNote", "vRelayUnknownStateText", "vRelayErrorResult",
   "vSessionRelaySend", "vAcceptedResult", "vRecordAccepted", "vWaitInline", "vRelaySkip", "vRelay",
-  "vTargetEntry", "vAcpMeta", "vWatch",
+  "vTargetEntry", "vAcpMeta", "vWatch", "V_RELAY_ABORTED", "vRelayAbortable", "vRelayToolSignal",
 ]);
 
 /** Two-space indented source → the tab indentation the dist uses, shifted by `base` tabs. */
@@ -237,6 +245,22 @@ async function vSessionRelaySend(p) {
     result: vRelayErrorResult("error", vRelayUnknownStateText("vrelay.send status " + String(r?.status)), void 0, p.displayKey)
   };
 }
+const V_RELAY_ABORTED = Symbol("vrelay.wait abandoned");
+function vRelayAbortable(signal, promise) {
+  if (typeof signal?.addEventListener !== "function") return promise;
+  return new Promise((resolve, reject) => {
+    const onAbort = () => resolve(V_RELAY_ABORTED);
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(promise).then((value) => {
+      signal.removeEventListener("abort", onAbort);
+      resolve(value);
+    }, (err) => {
+      signal.removeEventListener("abort", onAbort);
+      reject(err);
+    });
+  });
+}
 function vAcceptedResult(accepted, displayKey, watch, note) {
   const code = vRelayCode(accepted);
   return {
@@ -295,14 +319,19 @@ async function vWaitInline(p) {
   };
   const sendId = vRelayStr(accepted?.sendId);
   if (!sendId) return turnAsync(vRelayInterruptedNote(label, code));
+  const abandoned = () => {
+    log.warn("vrelay.wait abandoned: the requester run was aborted; the send stays accepted", { sendId });
+    return turnAsync(vRelayInterruptedNote(label, code));
+  };
   for (;;) {
+    if (p.signal?.aborted) return abandoned();
     const remaining = deadline - Date.now();
-    if (remaining <= 0 || p.signal?.aborted) break;
+    if (remaining <= 0) break;
     const sliceMs = Math.min(V_RELAY.waitSliceMaxMs, remaining);
     const sliceStartedAt = Date.now();
     let w;
     try {
-      w = await p.gatewayCall({
+      w = await vRelayAbortable(p.signal, p.gatewayCall({
         method: V_RELAY.waitMethod,
         params: {
           v: 1,
@@ -311,7 +340,7 @@ async function vWaitInline(p) {
         },
         scopes: [...V_RELAY.scopes],
         timeoutMs: sliceMs + V_RELAY.waitRpcGraceMs
-      });
+      }));
     } catch (err) {
       log.warn("vrelay.wait failed; the send stays accepted", {
         sendId,
@@ -319,6 +348,7 @@ async function vWaitInline(p) {
       });
       return turnAsync(vRelayInterruptedNote(label, code));
     }
+    if (w === V_RELAY_ABORTED) return abandoned();
     const note = typeof w?.note === "string" && w.note ? w.note : void 0;
     if (w?.status === "ok") {
       const media = Array.isArray(w.media) ? w.media.filter((item) => typeof item === "string" && item) : [];
@@ -443,7 +473,7 @@ if (!vRelaySkip) {
       targetSessionKey: resolvedKey,
       displayKey,
       inlineTimeoutMs: vRelay.inlineTimeoutMs,
-      signal: opts?.signal,
+      signal: vRelayToolSignal ?? opts?.signal,
       watch: vWatch
     }));
   }
@@ -499,6 +529,9 @@ function applyV3(source) {
   }
   const [beforeTool, afterTool] = once(source, TOOL_START, "createSessionsSendTool");
   let out = `${beforeTool}${HELPERS}${TOOL_START}${afterTool}`;
+  const [beforeExecute, afterExecute] = once(out, EXECUTE, "sessions_send execute");
+  if (!beforeExecute.includes(TOOL_START) || !afterExecute.includes(HANDOFF_ANCHOR)) throw new Error("sessions_send execute: not inside createSessionsSendTool");
+  out = `${beforeExecute}${EXECUTE_V3}${afterExecute}`;
   const [beforeDescription, afterDescription] = once(out, DESCRIPTION, "sessions_send description");
   out = `${beforeDescription}${DESCRIPTION_V3}${afterDescription}`;
   out = patchOutputSchema(out);
