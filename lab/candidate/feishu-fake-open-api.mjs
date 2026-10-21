@@ -11,7 +11,7 @@ export class FakeFeishu {
     Object.assign(this, {directory, owner, dmChat, chats});
     this.messages = new Map(); this.cards = new Map(); this.uuids = new Map();
     this.requests = []; this.unimplemented = []; this.snapshots = []; this.reactions = new Map(); this.next = 0;
-    this.bot = 'ou_isc_mock_bot';
+    this.bot = 'ou_00000000000000000000000000000001';
     this.members = new Map();
   }
   async start() {
@@ -47,7 +47,7 @@ export class FakeFeishu {
     const p = parent ? this.messages.get(parent) : null;
     const recipient = body.receive_id;
     const chat = p?.chat_id ?? (recipient === this.owner || recipient === `user:${this.owner}` ? this.dmChat : String(recipient).replace(/^chat:/, ''));
-    const m = {message_id: `om_mock_${++this.next}`, chat_id: chat, msg_type: body.msg_type, create_time: String(Date.now()), update_time: String(Date.now()), parent_id: parent ?? '', sender: {sender_type: 'app', id: 'cli_isc_mock'}, body: {content: body.content ?? '{}'}};
+    const m = {message_id: `om_mock_${++this.next}`, chat_id: chat, msg_type: body.msg_type, create_time: String(Date.now()), update_time: String(Date.now()), parent_id: parent ?? '', sender: {sender_type: 'app', id: 'cli_0000000000000000'}, body: {content: body.content ?? '{}'}};
     this.messages.set(m.message_id, m);
     if (body.uuid) this.uuids.set(body.uuid, m.message_id);
     return this.remember(m);

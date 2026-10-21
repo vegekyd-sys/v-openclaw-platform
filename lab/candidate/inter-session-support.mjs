@@ -22,10 +22,9 @@
 //     readChat()           the owner's view of a chat through the Mac's lark-cli (user identity,
 //                          read-only GET /open-apis/im/v1/messages), with server create/update times in ms.
 //
-// Product patches are never applied here: core, Feishu bridge and plugin bytes arrive through the
-// plan's `files` mapping with `before` sha256 (the receipt records them); checkRuntimeFiles() only
-// confirms the runtime carries what the plan says. The candidate-only allowance every Feishu
-// candidate needs (the trusted-runtime gate for the relocated Feishu plugin) is recorded with sha256.
+// Release bytes arrive through the plan's `files` mapping with `before` sha256. Candidate-only
+// allowances (relocated-plugin trust, deterministic race barriers, and the optional F9 silent
+// stimulus) are recorded separately with before/after hashes; they never enter release artifacts.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
@@ -151,7 +150,7 @@ export async function prepareCandidate(opts = {}) {
   let fake = null;
   if (platformMode === "mock") {
     fake = await new FakeFeishu({directory: path.join(data, "fake-feishu"), owner: OWNER, dmChat: DM_CHAT, chats: CHAT_NAMES}).start();
-    Object.assign(feishu, {appId: "cli_isc_mock", appSecret: "isc-mock-not-a-credential", domain: fake.url, resolveSenderNames: false});
+    Object.assign(feishu, {appId: "cli_0000000000000000", appSecret: "isc-mock-not-a-credential", domain: fake.url, resolveSenderNames: false});
     delete feishu.accounts;
     notes.push("mock Feishu: loopback API, synthetic app credentials, real platform hosts blocked");
   }
@@ -235,7 +234,7 @@ export async function prepareCandidate(opts = {}) {
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 
   // ---- vds: the shared managed npm plugins (Codex with V's /vds patches) + DeepSeek in codex-home
-  if (harness === "vds") {
+  if (harness === "vds" || process.env.ISC_TASKROOM_MIXED === '1') {
     const sharedNpm = path.join(process.env.VLAB_SHARED_STATE_DIR, "npm");
     if (!fs.existsSync(path.join(stateDir, "npm"))) assert.equal(spawnSync("cp", ["-a", "--reflink=auto", sharedNpm, path.join(stateDir, "npm")]).status, 0, "copy managed npm plugins");
     const codexHome = path.join(makaron.agentDir, "codex-home");
@@ -577,7 +576,7 @@ export class Candidate {
     const sdk = await import(path.join(this.dist, 'plugin-sdk', 'session-store-runtime.js'));
     const entry = sdk.getSessionEntry({agentId:AGENT,sessionKey:key,env:this.env});
     if (!entry) return null;
-    const selected = Object.fromEntries(['sessionId','label','subject','delivery','chatType','model','modelProvider','systemSent'].filter(k => entry[k] !== undefined).map(k => [k,entry[k]]));
+    const selected = Object.fromEntries(['sessionId','label','subject','delivery','chatType','model','modelProvider','agentHarnessId','systemSent'].filter(k => entry[k] !== undefined).map(k => [k,entry[k]]));
     return JSON.parse(redact(JSON.stringify(selected)));
   }
 
