@@ -1,0 +1,17 @@
+{
+  "support": [
+    "lab/candidate/card-memory-read-only.mjs"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/card-memory-read-only/tool-loop-detection-config-Dftl-DTD.js",
+      "target": "openclaw/dist/tool-loop-detection-config-Dftl-DTD.js"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "--no-warnings",
+    "lab/candidate/card-memory-read-only.mjs"
+  ],
+  "timeoutSeconds": 600
+}

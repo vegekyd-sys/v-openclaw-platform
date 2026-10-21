@@ -1,0 +1,11 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/card-memory-read-only/tool-loop-detection-config-Dftl-DTD.js",
+      "target": "openclaw/dist/tool-loop-detection-config-Dftl-DTD.js",
+      "before": "30dc362314e99fadeab934f87ad3596524aaa3570b6cee4c4237b2a193d0865e",
+      "after": "fd9708d2b218daf0331d60ca16492d8d0e1bde4375be1e25a259a60f261b0c59"
+    }
+  ]
+}
