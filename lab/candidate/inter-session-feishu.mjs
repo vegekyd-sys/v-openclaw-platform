@@ -706,7 +706,7 @@ const SCENARIOS = {
   // ---- F15: background work: the room starts a 90 s background exec and ends its turn
   F15: { async run(ctx) {
     const { cand, r, tag } = ctx;
-    await asyncSingle(ctx, { target: ROOMS[1], anchors: 2, work: `必须使用 OpenClaw 的 exec 工具并设置 background:true，在后台启动 \`sleep 90 && echo ${tag}-done\`；不要用原生 bash/nohup/尾部 & 自己脱离任务系统，不要前台等待。启动后马上结束本轮，说明已在后台运行。如果没有提供这个工具，请明确说不支持，不能假装已进入可跟踪的后台队列`, settleMs: 720_000, extraChecks: async ({ s, end }) => {
+    await asyncSingle(ctx, { target: ROOMS[1], anchors: 2, work: `用 exec 在后台启动 \`sleep 90 && echo ${tag}-done\`（background 方式，不要等它结束），启动后马上结束本轮，说明已在后台运行`, settleMs: 720_000, extraChecks: async ({ s, end }) => {
       r.checks = r.checks.filter((c) => c.id !== "result-carries-tag");
       const phases = (s.history ?? []).map((h) => h.phase);
       check(r, "went-awaiting_background", phases.includes("awaiting_background"), phases);

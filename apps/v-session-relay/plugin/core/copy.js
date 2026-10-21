@@ -169,6 +169,7 @@ export function requestContext({ code, from, fromKey, rootName, depth, maxDepth 
     `- 请求已原样显示在本聊天。你在这里的最终回复（文字、图片、文件）就是交回的结果，会自动送回「${from}」一次：要写完整；不要 NO_REPLY，不要 message.send 后 NO_REPLY，群聊沉默规则对本轮不适用；不要再 sessions_send 给「${from}」。`,
     `- 缺信息：在这里用 ask_user 问人，或 sessions_send(sessionKey="${fromKey}", timeoutSeconds=120) 当场问「${from}」。`,
     `- ${delegate}`,
+    '- 后台命令用 OpenClaw exec(background:true) 交给任务系统，不要用 nohup 或 shell 的 & 脱离跟踪；没有受管理工具时，前台等实际完成后再交回，不把“已启动”当最终结果。',
     `- 「${from}」看不到本聊天的其他内容，回复里写它需要的全部内容。`,
   ].join("\n");
 }

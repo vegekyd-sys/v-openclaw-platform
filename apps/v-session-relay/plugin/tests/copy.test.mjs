@@ -90,6 +90,9 @@ test("copy: §8.3 contexts, §8.4 wake prompt with limits and category hints", (
   assert.match(ctx1, /sessions_send\(sessionKey="agent:makaron:feishu:direct:ou_1", timeoutSeconds=120\)/u);
   assert.match(ctx1, /需要时可以把子任务交给别的会话（timeoutSeconds=0）/u);
   assert.doesNotMatch(ctx1, /转来/u);
+  assert.match(ctx1, /OpenClaw exec\(background:true\)/u);
+  assert.match(ctx1, /不要用 nohup 或 shell 的 & 脱离跟踪/u);
+  assert.match(ctx1, /前台等实际完成后再交回/u);
   const ctx2 = copy.requestContext({ code: "7F3A", from: "X", fromKey: "k", rootName: "Tianyi", depth: 2, maxDepth: 2, via: "X" });
   assert.match(ctx2, /代表 Tianyi（经「X」转来）/u);
   assert.match(ctx2, /不能再把活转给新的会话；可以用 timeoutSeconds=120 问本任务里的其他会话。/u);

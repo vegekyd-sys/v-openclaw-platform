@@ -249,6 +249,17 @@ export async function prepareCandidate(opts = {}) {
   // ---- candidate-only allowance (as every Feishu candidate): the relocated Feishu plugin has no
   // official install record, so the trusted-runtime gate would refuse its ingress queue.
   const allowance = {};
+  if (process.env.ISC_ENABLE_SILENT_PROBE === '1') {
+    const file = path.join(pluginDir, 'core', 'requests.js');
+    const before = fs.readFileSync(file, 'utf8');
+    const anchor = '    channelPromptContext = requestContext({ code: rec.code, from, fromKey: rec.requester.sessionKey, rootName, depth: rec.depth, maxDepth, via: from });';
+    assert.equal(before.split(anchor).length, 2);
+    // The product correctly tells models not to be silent. A negative transport
+    // test must explicitly permit the NO_REPLY stimulus, only for its F9 target.
+    const after = before.replace(anchor, anchor + `\n    if (/-F9\\b/u.test(rec.message.text)) channelPromptContext = channelPromptContext.replace("不要 NO_REPLY，不要 message.send 后 NO_REPLY", "这是沉默结果容错测试：本轮必须只回复 NO_REPLY，不附加标签或说明");`);
+    fs.writeFileSync(file, after);
+    allowance.silentProbe = {file:'v-session-relay/core/requests.js',before:sha256(before),after:sha256(after),purpose:'candidate-only F9 silent-output stimulus; other requests unchanged'};
+  }
   if (process.env.ISC_ENABLE_ADMISSION_RACE === "1") {
     const file = path.join(dist, "agent-runner.runtime-CAdsMsQt.js");
     const before = fs.readFileSync(file, "utf8");
