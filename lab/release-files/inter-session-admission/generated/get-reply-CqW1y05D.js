@@ -3273,6 +3273,7 @@ async function drainFormattedSystemEvents(params) {
 }
 //#endregion
 //#region src/auto-reply/reply/get-reply-run-admission.ts
+import { d as vInterSessionEmbeddedHandleActive } from "./runs-5WnDPZ0V.js";
 // v-inter-session-exclusive-v1: a turn started by a channel inbound bridge for v-session-relay
 // (replyOptions.vInterSession, mirrored on ctx.VInterSession) never steers into, queues behind or
 // interrupts another turn. When the session is busy it tells the bridge and ends silently, before
@@ -3592,7 +3593,7 @@ async function prepareReplyRunAdmission(context) {
 			activeSessionId: void 0,
 			isActive: false
 		};
-		const vCompetingEmbeddedRun = vInterSessionExclusive(opts, ctx) && embeddedActiveSessionId != null && (embeddedAgentRuntime?.isEmbeddedAgentRunActive(embeddedActiveSessionId) ?? false);
+		const vCompetingEmbeddedRun = vInterSessionExclusive(opts, ctx) && embeddedActiveSessionId != null && vInterSessionEmbeddedHandleActive(embeddedActiveSessionId);
 		if (!recoveryOwnerRelease && isOwnPreDispatchOperationSession(activeSessionId) && !vCompetingEmbeddedRun) return {
 			activeSessionId,
 			isActive: false

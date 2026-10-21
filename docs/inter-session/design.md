@@ -565,6 +565,8 @@ agentAccountId: options?.agentAccountId, agentTo: options?.agentTo, agentThreadI
 
 ### 3.3 核心 `G:` get-reply 独占准入守卫一（WP1，marker `v-inter-session-exclusive-v1`）
 
+2026-10-21 候选补正：`resolveQueueBusyState` 忽略本轮 queued ReplyOperation 占位之前，先检查同 session 是否有真正的 embedded RPC 执行句柄。用 `runs-5WnDPZ0V.js` 的 `isEmbeddedAgentRunHandleActive`（导出 `d`），不能用包含 ReplyOperation 占位的 `isEmbeddedAgentRunActive`，否则会漏拦并发或在 RPC 结束后永久 BUSY。普通回合沿用原判断，flush-only 仍通过已有接缝让路。
+
 插在 `const queueAdmissionState = …;`（G:3584，唯一）之后、`const activeRunAcceptsCurrentThread`（G:3585）之前。作用域在 `prepareReplyRunAdmission`（G:3275），其中 `ctx/opts/typing/sessionKey/queueKey/providedReplyOperation/recoveryOwnerActive/isActive/activeSessionId` 都可用【核实 G:3277、3536、3560、3581】。
 
 ```js

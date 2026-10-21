@@ -466,6 +466,7 @@ const SCENARIOS = {
     check(r, "one-outcome-for-requester", b?.phase === "woken" && b.wake?.attempt <= 1, b?.wake);
     check(r, "outcome-is-result-or-interrupted", s.result || s.failure?.class === "interrupted", { result: Boolean(s.result), failure: s.failure });
     check(r, "room-answers-after-restart", Boolean(answered), Boolean(answered));
+    check(r, "interrupted-task-not-redispatched", cand.sendsWhere(x => x.createdAt >= t0 && x.requester?.sessionKey === dmKey() && x.target?.sessionKey === B_KEY).length === 1, null);
     window(r, GROUP_B, t0, end);
     rb(r, { id: "one-anchor", chat: GROUP_B, kind: "count", from: t0, to: end, textRe: `^📨.*#${s.code}`, equals: 1 });
     rb(r, { id: "restart-note-or-recovery-run", chat: GROUP_B, kind: "count", from: r.evidence.kill.killedAt, to: post.seed.createMs, senderType: "app", min: 1 });

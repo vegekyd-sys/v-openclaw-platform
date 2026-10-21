@@ -88,6 +88,7 @@ export const BUSY_REASONS = Object.freeze(["active_run", "pending_queue", "recov
 const G_ADMISSION_START = "//#region src/auto-reply/reply/get-reply-run-admission.ts\nasync function prepareReplyRunAdmission(context) {\n";
 
 const G_HELPERS = `//#region src/auto-reply/reply/get-reply-run-admission.ts
+import { d as vInterSessionEmbeddedHandleActive } from "./runs-5WnDPZ0V.js";
 // ${MARKER}: a turn started by a channel inbound bridge for v-session-relay
 // (replyOptions.vInterSession, mirrored on ctx.VInterSession) never steers into, queues behind or
 // interrupts another turn. When the session is busy it tells the bridge and ends silently, before
@@ -165,9 +166,11 @@ const G_INTERRUPT_CLEAR_EXCLUSIVE = `\tif (activeRunQueueMode === "interrupt" &&
 
 // A queued dispatch operation is only a placeholder. Its session id can also name a
 // different embedded RPC that bypassed dispatch; exclusive requests must still see it.
+// The generic isEmbeddedAgentRunActive includes the queued placeholder itself; use the
+// raw execution-handle registry so an idle placeholder cannot keep returning BUSY.
 const G_OWN_QUEUED = `\t\tif (!recoveryOwnerRelease && isOwnPreDispatchOperationSession(activeSessionId)) return {
 `;
-const G_OWN_QUEUED_EXCLUSIVE = `\t\tconst vCompetingEmbeddedRun = vInterSessionExclusive(opts, ctx) && embeddedActiveSessionId != null && (embeddedAgentRuntime?.isEmbeddedAgentRunActive(embeddedActiveSessionId) ?? false);
+const G_OWN_QUEUED_EXCLUSIVE = `\t\tconst vCompetingEmbeddedRun = vInterSessionExclusive(opts, ctx) && embeddedActiveSessionId != null && vInterSessionEmbeddedHandleActive(embeddedActiveSessionId);
 \t\tif (!recoveryOwnerRelease && isOwnPreDispatchOperationSession(activeSessionId) && !vCompetingEmbeddedRun) return {
 `;
 

@@ -165,6 +165,13 @@ test("only the intended lines change; everything V already runs (its own markers
   assert.equal(count(GEN_D, "finishReplyOperationBusyDispatch("), count(V_D, "finishReplyOperationBusyDispatch("), "no busy exit added or lost");
 });
 
+test("the competing RPC check reads raw handles, not reply-operation activity", () => {
+  const runs = read(`${CAPTURE}/runs-5WnDPZ0V.js`);
+  assert.match(runs, /function isEmbeddedAgentRunHandleActive\(sessionId\) \{\n\tconst active = ACTIVE_EMBEDDED_RUNS.has\(sessionId\);/u);
+  assert.match(runs, /isEmbeddedAgentRunHandleActive as d/u);
+  assert.match(GEN_G, /import \{ d as vInterSessionEmbeddedHandleActive \} from "\.\/runs-5WnDPZ0V\.js"/u);
+});
+
 test("the inlined literals agree with apps/v-session-relay/plugin/core/contracts.js", () => {
   assert.equal(MARKER, contracts.MARKERS.interSessionExclusive);
   assert.equal(DEFERRED_MEMORY_FLUSH_KEY, contracts.SYMBOL_KEYS.deferredMemoryFlush);
@@ -291,18 +298,19 @@ function admissionHarness(source, s = {}) {
   const fakeGlobal = {};
   if (s.flushSeam) fakeGlobal[Symbol.for(DEFERRED_MEMORY_FLUSH_KEY)] = s.flushSeam;
   const embeddedRuntime = {
-    resolveActiveEmbeddedRunSessionId: () => (s.embeddedActive ? SESSION_ID : undefined),
+    resolveActiveEmbeddedRunSessionId: () => (s.embeddedActive || s.queuedProjection ? SESSION_ID : undefined),
     resolveActiveEmbeddedRunSessionIdBySessionFile: () => undefined,
     resolveEmbeddedSessionLane: (key) => `session:${key}`,
     preemptAndDrainEmbeddedHeartbeatRun: async () => {
       log.push("heartbeat.preempt");
       return s.heartbeat ?? "not-heartbeat";
     },
-    isEmbeddedAgentRunActive: () => s.embeddedActive === true,
+    isEmbeddedAgentRunActive: () => s.embeddedActive === true || s.queuedProjection === true,
     waitForEmbeddedAgentRunEnd: async () => undefined,
   };
   const scope = {
     globalThis: fakeGlobal,
+    vInterSessionEmbeddedHandleActive: () => s.embeddedActive === true,
     normalizeOptionalString: (v) => (typeof v === "string" && v.trim() ? v.trim() : undefined),
     normalizeThinkLevel: () => undefined,
     getReplySystemEventSessionKey: () => undefined,
@@ -446,7 +454,7 @@ const SESSION_STATES = {
   idle: {},
   embeddedActive: { embeddedActive: true },
   ownQueuedWithEmbeddedRPC: { embeddedActive: true, replyPhase: 'queued' },
-  ownQueuedIdle: { replyPhase: 'queued' },
+  ownQueuedIdle: { replyPhase: 'queued', queuedProjection: true },
   replyOpActive: { replyOpActive: true },
   recoveryOwner: { recoveryOwner: true },
   pendingReady: { pendingQueue: PENDING_READY },
