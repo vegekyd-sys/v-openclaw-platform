@@ -819,7 +819,7 @@ async function taskRoomScenario(ctx, restart) {
   const roomModels = [mixed ? other : cand.model, cand.model, mixed ? other : cand.model];
   for (let i=0;i<3;i++) assert((await cand.ensureSession(ROOM_KEYS[i], {model:roomModels[i]})).ok, 'pin Task Room model');
   const commands = ['a', 'b', 'c'].map((x,i) => `python3 ${helper} --name '${tag}-${x}' --model '${roomModels[i]}' --no-pin --bot-app-id cli_0000000000000000 --user-open-id ${OWNER}`).join(' ; ');
-  const tasks = `先用 exec 执行以下三个创建房间的命令（测试 shim 只返回房间，不联网）：${commands}。然后同一轮用 sessions_send(timeoutSeconds=0) 给返回的三个房间分别派活：房间1 ${ROOM_KEYS[0]} 先当场问房间2 ${ROOM_KEYS[1]}（timeoutSeconds=120）：你从协调者拿到的口令是什么？最终回复包含 ${tag}-a 和口令；房间2 ${ROOM_KEYS[1]} 先当场问协调者 ${coordinator}（timeoutSeconds=120）口令是什么，口令为 ${token}，拿到后用 exec 执行 sleep 15，再回复 ${tag}-b 和口令；房间3 ${ROOM_KEYS[2]} 用 exec 执行 sleep ${restart ? 180 : 90}，然后回复 ${tag}-c 完成。三件结果回来后汇总一次，逐项报告成功或中断，必须包含三个验收码和已拿到的口令；不要重新派失败项。`;
+  const tasks = `先用 exec 执行以下三个创建房间的命令（测试 shim 只返回房间，不联网）：${commands}。然后同一轮用 sessions_send(timeoutSeconds=0) 派活，必须先交房间2、收到 accepted 后再交房间1和3（不等任务完成），保证提供口令的任务先排上队：房间1 ${ROOM_KEYS[0]} 先当场问房间2 ${ROOM_KEYS[1]}（timeoutSeconds=120）：本次 ${tag} 从协调者拿到的口令是什么？不能使用此前任务的口令；最终回复包含 ${tag}-a 和口令；房间2 ${ROOM_KEYS[1]} 先当场问协调者 ${coordinator}（timeoutSeconds=120）本次 ${tag} 的口令是什么，口令为 ${token}，拿到后用 exec 执行 sleep 15，再回复 ${tag}-b 和口令；房间3 ${ROOM_KEYS[2]} 用 exec 执行 sleep ${restart ? 180 : 90}，然后回复 ${tag}-c 完成。三件结果回来后汇总一次，逐项报告成功或中断，必须包含三个验收码和已拿到的口令；不要重新派失败项。`;
   const prompt = restart ? `请把下面整件事交给${keyLine(GROUP_B)}（不用等）：${tasks}。协调者完成后的汇总交回我。` : tasks;
   await cand.dm(dmPrompt(tag, prompt));
   const [top] = restart ? await waitSends(cand, {since: t0, targets: [B_KEY]}) : [];

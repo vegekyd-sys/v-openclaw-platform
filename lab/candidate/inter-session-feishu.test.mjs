@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import os from "node:os";
 import {spawnSync} from "node:child_process";
 
-import { evalReadbackCheck, messageText, normalizeMessage, requesterTailMs, tailStats, SLEEP_RE, summaryProof, interjectionProof, requesterToolCalls } from "./inter-session-support.mjs";
+import { evalReadbackCheck, messageText, normalizeMessage, requesterTailMs, tailStats, SLEEP_RE, summaryProof, interjectionProof, requesterToolCalls, admissionBusyHookSource } from "./inter-session-support.mjs";
 import {FakeFeishu} from "./feishu-fake-open-api.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -169,6 +169,22 @@ test("requester polling checks exclude the result wake even when it follows imme
   ];
   assert.deepEqual(requesterToolCalls(hist,1000,2000).map(x=>x.name),['sessions_send']);
   assert.deepEqual(requesterToolCalls([{atMs:1000,tools:[{name:'exec',command:'sleep 75'}]}],1000,2000).map(x=>x.command),['sleep 75']);
+});
+
+test("BUSY fixture really enters the barrier with the bundled admission context shape", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'isc-admission-'));
+  try {
+    const gate = path.join(dir,'admission-busy-barrier');
+    fs.writeFileSync(gate+'.release','release');
+    const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+    const hook = new AsyncFunction('context','process',admissionBusyHookSource());
+    const proc = {env:{ISC_FORCE_ADMISSION_BUSY:'1',VLAB_CANDIDATE_DATA:dir}};
+    await hook({params:{opts:{vInterSession:{kind:'request'}}}},proc);
+    assert.equal(fs.readFileSync(gate,'utf8'),'entered-admission');
+    fs.rmSync(gate);
+    await hook({params:{opts:{}}},proc);
+    assert.equal(fs.existsSync(gate),false,'ordinary turns must not stop at the test barrier');
+  } finally { fs.rmSync(dir,{recursive:true,force:true}); }
 });
 
 test("mock Feishu preserves reply parents, dedupe and earlier edited anchor snapshots", async () => {

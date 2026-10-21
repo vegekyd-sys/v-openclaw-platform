@@ -115,6 +115,20 @@ export function checkRuntimeFiles(runtime, expectations) {
   return out;
 }
 
+export function admissionBusyHookSource() { return `\tif (process.env.ISC_FORCE_ADMISSION_BUSY === "1" && (context.params?.opts?.vInterSession ?? context.params?.ctx?.VInterSession)?.kind === "request") {
+\t\tconst fs = await import("node:fs");
+\t\tconst file = process.env.VLAB_CANDIDATE_DATA + "/admission-busy-barrier";
+\t\tif (!fs.existsSync(file)) {
+\t\t\tfs.writeFileSync(file, "entered-admission");
+\t\t\tconst until = Date.now() + 60000;
+\t\t\twhile (!fs.existsSync(file + ".release")) {
+\t\t\t\tif (Date.now() > until) throw new Error("candidate admission-busy barrier timed out");
+\t\t\t\tawait new Promise(r => setTimeout(r, 25));
+\t\t\t}
+\t\t}
+\t}
+`; }
+
 // ------------------------------------------------------------------ candidate preparation
 /**
  * opts: harness (worker|vds|vcc), envMode (v|vlab), plugin ("on" | "off" = configured with
@@ -286,19 +300,7 @@ export async function prepareCandidate(opts = {}) {
     const admissionBefore = fs.readFileSync(admissionFile, 'utf8');
     const admissionAnchor = 'async function prepareReplyRunAdmission(context) {\n';
     assert.equal(admissionBefore.split(admissionAnchor).length, 2);
-    const admissionHook = `\tif (process.env.ISC_FORCE_ADMISSION_BUSY === "1" && context.opts?.vInterSession?.kind === "request") {
-\t\tconst fs = await import("node:fs");
-\t\tconst file = process.env.VLAB_CANDIDATE_DATA + "/admission-busy-barrier";
-\t\tif (!fs.existsSync(file)) {
-\t\t\tfs.writeFileSync(file, "entered-admission");
-\t\t\tconst until = Date.now() + 60000;
-\t\t\twhile (!fs.existsSync(file + ".release")) {
-\t\t\t\tif (Date.now() > until) throw new Error("candidate admission-busy barrier timed out");
-\t\t\t\tawait new Promise(r => setTimeout(r, 25));
-\t\t\t}
-\t\t}
-\t}
-`;
+    const admissionHook = admissionBusyHookSource();
     const admissionAfter = admissionBefore.replace(admissionAnchor, admissionAnchor + admissionHook);
     fs.writeFileSync(admissionFile, admissionAfter);
     allowance.admissionBusy = {file:path.basename(admissionFile),before:sha256(admissionBefore),after:sha256(admissionAfter),purpose:'candidate-only pre-admission active-run race'};
