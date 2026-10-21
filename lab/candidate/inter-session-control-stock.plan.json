@@ -1,0 +1,35 @@
+{
+  "support": [
+    "lab/candidate/inter-session-feishu.mjs",
+    "lab/candidate/inter-session-support.mjs",
+    "tests/fixtures/inter-session-v-bytes.json",
+    "lab/candidate/inter-session-workspace.mjs",
+    "lab/candidate/lark-cli-shim/lark-cli",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/inter-session-workspace.manifest.json",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/v-workspace/AGENTS.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/v-workspace/REDLINES.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/v-workspace/SOUL.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/v-workspace/IDENTITY.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/v-workspace/USER.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/v-workspace/TOOLS.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/v-workspace/MEMORY.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/v-workspace/.agents/skills/feishu-task-room-router/SKILL.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/v-workspace/.agents/skills/feishu-task-room-router/scripts/create_task_room.py",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/v-workspace/skills/background-worker-contract/SKILL.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/v-workspace/skills/agent-to-agent-protocol-feishu-a2a-defaults/SKILL.md"
+  ],
+  "files": [],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/inter-session-feishu.mjs",
+    "run"
+  ],
+  "env": {
+    "ISC_VARIANT": "stock",
+    "ISC_ENV": "v",
+    "RELAY_HARNESS": "worker",
+    "ISC_SCENARIOS": "C1,C2,C3"
+  },
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity"
+}

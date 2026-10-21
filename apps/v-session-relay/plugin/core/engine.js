@@ -1579,6 +1579,14 @@ export function findTagIndex(messages, kind, id) {
   return -1;
 }
 
+/**
+ * The prompt the core's restart recovery puts in front of an interrupted turn (9.1
+ * main-session-restart-dispatch: "[System] Your previous turn was interrupted by a gateway restart
+ * while OpenClaw was waiting on tool/model work. Continue …"). The turn it opens continues the
+ * interrupted one, so it does not end the reply we are reading.
+ */
+export const CORE_RESTART_RESUME_RE = /\[System\] Your previous turn was interrupted by a gateway restart/u;
+
 export function transcriptReplyOf(messages, kind, id) {
   const start = findTagIndex(messages, kind, id);
   if (start < 0) return null;
@@ -1587,8 +1595,11 @@ export function transcriptReplyOf(messages, kind, id) {
     const m = messages[i];
     if (roleOf(m) === "user") {
       const origin = provenanceOf(m)?.originSessionId;
-      if (!(typeof origin === "string" && origin.startsWith("v-a2a:") && origin.endsWith(`:${id}`))) break;
-      continue;
+      if (typeof origin === "string" && origin.startsWith("v-a2a:") && origin.endsWith(`:${id}`)) continue;
+      // The core's recovery run of this very turn: what it says supersedes the text written before
+      // the restart (often only "I'll run the command now"), so the reply is read from here on.
+      if (CORE_RESTART_RESUME_RE.test(textOf(m))) { last = null; continue; }
+      break;
     }
     if (roleOf(m) === "assistant") {
       const text = textOf(m).trim();
