@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import os from "node:os";
 import {spawnSync} from "node:child_process";
 
-import { evalReadbackCheck, messageText, normalizeMessage, requesterTailMs, tailStats, SLEEP_RE, summaryProof, interjectionProof } from "./inter-session-support.mjs";
+import { evalReadbackCheck, messageText, normalizeMessage, requesterTailMs, tailStats, SLEEP_RE, summaryProof, interjectionProof, requesterToolCalls } from "./inter-session-support.mjs";
 import {FakeFeishu} from "./feishu-fake-open-api.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -153,11 +153,22 @@ test("summary proof rejects early, missing, partial and numerically wrong result
 test("owner steering can be committed without another user row; non-owner influence still fails", () => {
   const owner = interjectionProof({owner:true,resultText:'插话已收到，原任务完成',endedAt:100});
   assert.equal(owner.handled, true); assert.equal(owner.steered, true);
-  const intruder = interjectionProof({owner:false,user:{atMs:200},resultText:'插话已收到',endedAt:100});
+  const intruder = interjectionProof({owner:false,user:{atMs:200},userAfterResult:true,resultText:'插话已收到'});
   assert.equal(intruder.nonOwnerIsolated, false);
-  const queued = interjectionProof({owner:false,user:{atMs:200},resultText:'原任务完成',endedAt:100});
+  const queued = interjectionProof({owner:false,user:{atMs:50},userAfterResult:true,resultText:'原任务完成'});
   assert.equal(queued.handled && queued.nonOwnerIsolated, true);
+  assert.equal(interjectionProof({owner:false,user:{atMs:200},resultText:'原任务完成'}).nonOwnerIsolated, false, 'missing committed ordering is not evidence of isolation');
   assert.equal(interjectionProof({owner:true,resultText:'原任务完成',endedAt:100}).handled, false);
+});
+
+test("requester polling checks exclude the result wake even when it follows immediately", () => {
+  const hist = [
+    {atMs:1000,tools:[{name:'sessions_send'}]},
+    {atMs:1800,provenance:{kind:'inter_session',originSessionId:'chain:wake:b'}},
+    {atMs:1900,tools:[{name:'sessions_history'}]},
+  ];
+  assert.deepEqual(requesterToolCalls(hist,1000,2000).map(x=>x.name),['sessions_send']);
+  assert.deepEqual(requesterToolCalls([{atMs:1000,tools:[{name:'exec',command:'sleep 75'}]}],1000,2000).map(x=>x.command),['sleep 75']);
 });
 
 test("mock Feishu preserves reply parents, dedupe and earlier edited anchor snapshots", async () => {

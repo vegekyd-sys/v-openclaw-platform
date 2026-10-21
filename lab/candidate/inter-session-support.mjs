@@ -560,10 +560,13 @@ export class Candidate {
   }
 
   async sessionEntry(key) {
-    const res = await this.rpc("sessions.list", { agentId: AGENT, limit: 200 }).catch((e) => ({ error: e.message }));
-    const rows = res?.sessions ?? res?.items ?? res?.entries ?? [];
-    const row = rows.find((r) => (r.key ?? r.sessionKey) === key);
-    return row ? JSON.parse(redact(JSON.stringify(row))) : null;
+    // sessions.list is a UI projection and omits canonical delivery.kind. Read the
+    // private candidate's native entry rather than interpreting that omission as data loss.
+    const sdk = await import(path.join(this.dist, 'plugin-sdk', 'session-store-runtime.js'));
+    const entry = sdk.getSessionEntry({agentId:AGENT,sessionKey:key,env:this.env});
+    if (!entry) return null;
+    const selected = Object.fromEntries(['sessionId','label','subject','delivery','chatType','model','modelProvider','systemSent'].filter(k => entry[k] !== undefined).map(k => [k,entry[k]]));
+    return JSON.parse(redact(JSON.stringify(selected)));
   }
 
   /** chat.history reduced to what the assertions read: roles, provenance, text, tool calls/results. */
@@ -666,12 +669,18 @@ export function reduceMessage(m) {
   };
 }
 export const toolCalls = (hist) => (Array.isArray(hist) ? hist.flatMap((m) => (m.tools ?? []).map((t) => ({ ...t, at: m.at, atMs: m.atMs }))) : []);
+
+export function requesterToolCalls(hist, fromMs, toMs) {
+  const wake = hist.findIndex(m => m.provenance?.kind === 'inter_session' && String(m.provenance.originSessionId ?? '').includes(':wake:'));
+  const initial = wake >= 0 ? hist.slice(0, wake) : hist;
+  return toolCalls(initial.filter(m => m.atMs >= fromMs - 2000 && m.atMs <= toMs));
+}
 export const SLEEP_RE = /\bsleep\s+\d|\btimeout\s+\d{2,}|while\b[^;]*;\s*do\b[\s\S]*\bsleep\b/u;
 
-export function interjectionProof({owner, user, resultText = '', endedAt}) {
+export function interjectionProof({owner, user, userAfterResult, resultText = ''}) {
   const absorbedInResult = resultText.includes('插话已收到');
-  const steered = absorbedInResult || Boolean(user && user.atMs < endedAt);
-  return {absorbedInResult, steered, handled: Boolean(user) || Boolean(owner && absorbedInResult), nonOwnerIsolated: owner || !steered};
+  const steered = absorbedInResult || Boolean(user && userAfterResult === false);
+  return {absorbedInResult, steered, handled: Boolean(user) || Boolean(owner && absorbedInResult), nonOwnerIsolated: owner || (!absorbedInResult && userAfterResult === true)};
 }
 
 // Prove that the collected wake's result contains all three actual outputs, not a

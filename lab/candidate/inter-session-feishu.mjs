@@ -245,7 +245,7 @@ async function transcript(cand, key, sinceMs) {
 
 /** Tool calls of the requester between `fromMs` and `toMs` (its own turn, before any wake turn). */
 function requesterTools(hist, fromMs, toMs) {
-  return S.toolCalls(Array.isArray(hist) ? hist.filter((m) => m.atMs >= fromMs - 2_000 && m.atMs <= toMs + 2_000) : []);
+  return S.requesterToolCalls(Array.isArray(hist) ? hist : [], fromMs, toMs);
 }
 
 /** The DM side of an async hand-back: exactly one ↩️ for this batch, then exactly one wake card. */
@@ -552,6 +552,9 @@ const SCENARIOS = {
       const r = ctx.r;
       for (const id of ["result-carries-tag", "target-run-ok"]) r.checks = r.checks.filter((c) => c.id !== id);
       check(r, "result-is-noReply", s.result?.noReply === true, s.result);
+      // NO_REPLY is deliberately silent: it may never open an answer card. The request
+      // anchor and the requester's explicit no-text hand-back are the visible contract.
+      r.readback.checks = r.readback.checks.filter(c => !c.id.startsWith('card-under-anchor-'));
       rb(r, { id: "handback-says-no-text", chat: DM_CHAT, kind: "message", messageId: ctx.r.evidence.batches?.[0]?.wake?.handbackMessageId, includesAll: ["没有文字结果"] });
     } });
   } },
@@ -577,7 +580,8 @@ const SCENARIOS = {
     const { cand, r, tag, t0 } = ctx;
     const fake = `sk-isctest${"0123456789abcdef".repeat(2)}ZZ`;
     const filler = "这是一段用来测试可见正文长度的说明文字，内容本身没有意义，只是为了让正文超过两百个字。".repeat(4);
-    const ev = await cand.dm(dmPrompt(tag, `把下面这段话原样交给${keyLine(ROOMS[0])}里的 V（不用等），请它数一数这段话里有几个「测试」两个字并回复带 ${tag} 的数字。这段话是：「${filler} 结尾附一个假的测试串 ${fake}，它不是真的密钥。」`));
+    const expectedHash = S.sha256(fake);
+    const ev = await cand.dm(dmPrompt(tag, `把下面整段原样交给${keyLine(ROOMS[0])}里的 V（不用等）：请用 exec 计算下面假的测试串（仅 sk- 开头的串，不含标点）的 UTF-8 SHA256，然后只回复 ${tag}、哈希值和段尾验收码，不要回显测试串。这段话是：「${filler} 结尾附一个假的测试串 ${fake}，它不是真的密钥。段尾验收码 ${tag}-END。」`));
     r.evidence.injected = [{ chat: DM_CHAT, messageId: ev.messageId, at: iso(ev.at) }];
     const [send] = await waitSends(cand, { since: t0, targets: [ROOM_KEYS[0]] });
     await waitSettled(cand, [send.sendId], { timeoutMs: 420_000 });
@@ -593,7 +597,9 @@ const SCENARIOS = {
     check(r, "requester-passed-the-fake-key", fakeSent, fakeSent);
     check(r, "fake-key-hidden-in-visible-text", !fakeSent || ((s.message?.redactions ?? 0) >= 1 && !s.message?.visibleText?.includes("sk-isctest") && s.message?.visibleText?.includes("‹已隐去›")), { redactions: s.message?.redactions });
     const req = tHist.find((m) => isInter(m, `:req:${s.sendId}`));
-    check(r, "model-got-full-text", Boolean(req) && (!fakeSent || req.text.includes("sk-isctest")) && req.text.length >= (s.message?.chars ?? 0) * 0.9, { len: req?.text?.length });
+    // chat.history deliberately masks key-shaped text; its masked projection cannot
+    // prove the model's original input. Computing the original string's hash can.
+    check(r, "model-got-full-text", (s.result?.text ?? '').includes(expectedHash) && s.result.text.includes(`${tag}-END`), {expectedHash,result:s.result?.text,historyMasksKey:!req?.text?.includes(fake)});
     expectTargetSide(r, { send: s, chat: ROOMS[0], from: t0, to: end });
     rb(r, { id: "anchor-hides-fake-key", chat: ROOMS[0], kind: "message", messageId: s.request?.messageId, excludesAll: ["sk-isctest"], includesAll: fakeSent ? ["‹已隐去›"] : [] });
     rb(r, { id: "anchor-not-truncated", chat: ROOMS[0], kind: "message", messageId: s.request?.messageId, excludesAll: ["全文", "已交给 V"] });
@@ -700,7 +706,7 @@ const SCENARIOS = {
   // ---- F15: background work: the room starts a 90 s background exec and ends its turn
   F15: { async run(ctx) {
     const { cand, r, tag } = ctx;
-    await asyncSingle(ctx, { target: ROOMS[1], anchors: 2, work: `用 exec 在后台启动 \`sleep 90 && echo ${tag}-done\`（background 方式，不要等它结束），启动后马上结束本轮，说明已在后台运行`, settleMs: 720_000, extraChecks: async ({ s, end }) => {
+    await asyncSingle(ctx, { target: ROOMS[1], anchors: 2, work: `必须使用 OpenClaw 的 exec 工具并设置 background:true，在后台启动 \`sleep 90 && echo ${tag}-done\`；不要用原生 bash/nohup/尾部 & 自己脱离任务系统，不要前台等待。启动后马上结束本轮，说明已在后台运行。如果没有提供这个工具，请明确说不支持，不能假装已进入可跟踪的后台队列`, settleMs: 720_000, extraChecks: async ({ s, end }) => {
       r.checks = r.checks.filter((c) => c.id !== "result-carries-tag");
       const phases = (s.history ?? []).map((h) => h.phase);
       check(r, "went-awaiting_background", phases.includes("awaiting_background"), phases);
@@ -932,11 +938,16 @@ async function interjectScenario(ctx, who) {
   r.evidence.batches = [reduceBatch(b)];
   r.evidence.transcripts = { groupB: bHist, dm: await transcript(cand, dmKey(), t0) };
   const interUser = bHist.find((m) => m.role === "user" && m.text.includes(`${tag}-I`));
-  const proof = S.interjectionProof({owner:who === OWNER,user:interUser,resultText:s.result?.text,endedAt:s.targetRun?.endedAt ?? 0});
+  // Input timestamps are stamped on receive, even for a queued turn. Inspect committed
+  // transcript order and the handed-back result to distinguish queueing from steering.
+  const interIndex = bHist.indexOf(interUser);
+  const resultIndex = bHist.findIndex(m => m.role === 'assistant' && s.result?.text && m.text.trim() === s.result.text.trim());
+  const userAfterResult = interIndex >= 0 && resultIndex >= 0 ? interIndex > resultIndex : undefined;
+  const proof = S.interjectionProof({owner:who === OWNER,user:interUser,userAfterResult,resultText:s.result?.text});
   const {absorbedInResult,steered} = proof;
-  r.evidence.behaviour = { steeredIntoCollabTurn: steered, interjectionAt: interUser?.at, collabEnded: iso(s.targetRun?.endedAt), resultMentionsIt: (s.result?.text ?? "").includes("插话已收到") };
+  r.evidence.behaviour = { steeredIntoCollabTurn: steered, interjectionAt: interUser?.at, interIndex, resultIndex, userAfterResult, collabEnded: iso(s.targetRun?.endedAt), resultMentionsIt: (s.result?.text ?? "").includes("插话已收到") };
   check(r, "result-handed-back-once", s.phase === "handed_back" && b?.phase === "woken" && b.wake?.attempt === 0, { phase: s.phase, wake: b?.wake });
-  if (who !== OWNER) check(r, "non-owner-not-steered", !steered && !(s.result?.text ?? "").includes("插话已收到"), r.evidence.behaviour);
+  if (who !== OWNER) check(r, "non-owner-not-steered", proof.nonOwnerIsolated, r.evidence.behaviour);
   check(r, "interjection-handled", proof.handled, {transcriptUser:Boolean(interUser),absorbedInResult});
   expectTargetSide(r, { send: s, chat: GROUP_B, from: t0, to: end });
   window(r, GROUP_B, t0, end);
