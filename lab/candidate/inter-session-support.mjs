@@ -283,26 +283,27 @@ export async function prepareCandidate(opts = {}) {
     const after = before.replace(anchor, anchor + hook);
     fs.writeFileSync(file, after);
     allowance.admissionRace = {file: path.basename(file), before: sha256(before), after: sha256(after), purpose: "candidate-only admission-to-run barrier"};
-    const engineFile = path.join(pluginDir, 'core', 'engine.js');
-    const engineBefore = fs.readFileSync(engineFile, 'utf8');
-    const engineAnchor = '  async _testStartDelay() {\n';
-    assert.equal(engineBefore.split(engineAnchor).length, 2);
-    const engineHook = `    if (this.env?.ISC_FORCE_START_RACE === "1") {
-      const fs = await import("node:fs");
-      const file = process.env.VLAB_CANDIDATE_DATA + "/start-barrier";
-      if (!fs.existsSync(file)) {
-        fs.writeFileSync(file, "starting");
-        const until = Date.now() + 60000;
-        while (!fs.existsSync(file + ".release")) {
-          if (Date.now() > until) throw new Error("candidate start barrier timed out");
-          await new Promise(r => setTimeout(r, 25));
-        }
-      }
-    }
+    const admissionFile = path.join(dist, 'get-reply-CqW1y05D.js');
+    const admissionBefore = fs.readFileSync(admissionFile, 'utf8');
+    const admissionAnchor = 'async function prepareReplyRunAdmission(context) {\n';
+    assert.equal(admissionBefore.split(admissionAnchor).length, 2);
+    const admissionHook = `\tif (process.env.ISC_FORCE_ADMISSION_BUSY === "1" && context.opts?.vInterSession?.kind === "request") {
+\t\tconst fs = await import("node:fs");
+\t\tconst file = process.env.VLAB_CANDIDATE_DATA + "/admission-busy-barrier";
+\t\tif (!fs.existsSync(file)) {
+\t\t\tfs.writeFileSync(file, "entered-admission");
+\t\t\tconst until = Date.now() + 60000;
+\t\t\twhile (!fs.existsSync(file + ".release")) {
+\t\t\t\tif (Date.now() > until) throw new Error("candidate admission-busy barrier timed out");
+\t\t\t\tawait new Promise(r => setTimeout(r, 25));
+\t\t\t}
+\t\t}
+\t}
 `;
-    const engineAfter = engineBefore.replace(engineAnchor, engineAnchor + engineHook);
-    fs.writeFileSync(engineFile, engineAfter);
-    allowance.startRace = {file:'v-session-relay/core/engine.js', before:sha256(engineBefore), after:sha256(engineAfter), purpose:'candidate-only pre-start barrier'};
+    const admissionAfter = admissionBefore.replace(admissionAnchor, admissionAnchor + admissionHook);
+    fs.writeFileSync(admissionFile, admissionAfter);
+    allowance.admissionBusy = {file:path.basename(admissionFile),before:sha256(admissionBefore),after:sha256(admissionAfter),purpose:'candidate-only pre-admission active-run race'};
+
   }
   {
     const gate = 'if (record?.origin !== "bundled" && record?.trustedOfficialInstall !== true) throw new Error(`${methodName} is only available for trusted plugins';

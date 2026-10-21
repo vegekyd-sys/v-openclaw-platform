@@ -424,7 +424,7 @@ const SCENARIOS = {
   // ---- F3b: the race window: the engine waits VSR_TEST_START_DELAY_MS before start; a human writes then
   F3b: { env: { VSR_TEST_START_DELAY_MS: "3000" }, async run(ctx) { await raceScenario(ctx, "human"); } },
   // ---- F3b-rpc: same window, but the competing turn is an agent RPC turn (the G guard must answer BUSY)
-  "F3b-rpc": { env: { VSR_TEST_START_DELAY_MS: "3000", ISC_FORCE_START_RACE: "1" }, async run(ctx) { await raceScenario(ctx, "rpc"); } },
+  "F3b-rpc": { env: { VSR_TEST_START_DELAY_MS: "3000", ISC_FORCE_ADMISSION_BUSY: "1" }, async run(ctx) { await raceScenario(ctx, "rpc"); } },
   F3c: { async run(ctx) { await admissionGapScenario(ctx); } },
   TR1: { async run(ctx) { await taskRoomScenario(ctx, false); } },
   TR2: { async run(ctx) { await taskRoomScenario(ctx, true); } },
@@ -868,9 +868,9 @@ async function raceScenario(ctx, competitor) {
     const human = await cand.humanInGroup(GROUP_B, { text: `【测试 ${tag}-H】请用 exec 执行 \`sleep 20 && date\`，然后回复「${tag}-H 完成」。` });
     r.evidence.injected.push({ chat: GROUP_B, messageId: human.messageId, seed: human.seed, at: iso(human.at) });
   } else {
-    assert(cand.allowance.startRace, 'F3b-rpc requires the recorded candidate-only pre-start barrier');
-    const gate = path.join(cand.data, 'start-barrier');
-    await S.until(() => fs.existsSync(gate), {timeoutMs:10000,intervalMs:25,label:'pre-start barrier'});
+    assert(cand.allowance.admissionBusy, 'F3b-rpc requires the recorded candidate-only admission barrier');
+    const gate = path.join(cand.data, 'admission-busy-barrier');
+    await S.until(() => fs.existsSync(gate), {timeoutMs:15000,intervalMs:25,label:'admission entered before RPC competitor'});
     const res = await cand.rpc("agent", { sessionKey: B_KEY, agentId: S.AGENT, message: `【测试 ${tag}-R】（后台 RPC 回合）请用 exec 执行 \`sleep 20 && date\`，然后回复「${tag}-R 完成」。`, deliver: false, idempotencyKey: `isc-${tag}-rpc` }, 60_000).catch((e) => ({ error: e.message }));
     r.evidence.rpc = JSON.parse(redact(JSON.stringify(res ?? null)));
     try {
