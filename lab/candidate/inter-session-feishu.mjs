@@ -997,9 +997,14 @@ async function controlScenario(ctx, kind, { fallback = false } = {}) {
   const sessionsSendCalls = r.evidence.requesterTools.filter((t) => t.name === "sessions_send");
   r.evidence.timeoutSeconds = sessionsSendCalls.map((t) => t.timeoutSeconds ?? "default(30)");
   if (fallback) {
+    // The console line drops the log call's meta; the JSON file log carries the error text the
+    // core matched against RELAY_FALLBACK_RE (A4).
     const fb = cand.logSince(0, /vrelay absent; sessions_send uses v2/u, 5);
+    const fbFile = cand.fileLogGrep(/vrelay absent; sessions_send uses v2/u, 5);
     r.evidence.fallbackLog = fb;
-    check(r, "fallback-logged-with-regex-text", fb.length >= 1 && /missing scope: operator\.admin|unknown method: vrelay\.send/u.test(fb.join("\n")), fb);
+    r.evidence.fallbackFileLog = fbFile;
+    check(r, "fallback-logged", fb.length >= 1, fb);
+    check(r, "fallback-error-text-matches-regex", fbFile.length >= 1 && /missing scope: operator\.admin|unknown method: vrelay\.send/u.test(fbFile.join("\n")), fbFile);
     check(r, "no-ledger", cand.ledger().sends.length === 0, cand.ledger().sends.length);
   }
   const targetAnswered = bHist.some((m) => m.role === "assistant" && m.text.includes(tag));

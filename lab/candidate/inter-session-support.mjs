@@ -522,6 +522,28 @@ export class Candidate {
     if (on) fs.writeFileSync(f, `candidate ${new Date().toISOString()}\n`); else fs.rmSync(f, { force: true });
   }
 
+  /**
+   * Lines of OpenClaw's JSON file logs (Gateway and Worker children) matching `re`. The console
+   * line drops a log call's meta (e.g. the fallback's error text); the file log keeps it. With
+   * /tmp/openclaw owned by root, 9.1 writes to <TMPDIR>/openclaw-<uid>/openclaw-<date>.log.
+   */
+  fileLogGrep(re, max = 20) {
+    const out = [];
+    const walk = (dir, depth) => {
+      let entries;
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const e of entries) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory() && depth < 6 && !["node_modules", "npm", "workspace", "agents", "media"].includes(e.name)) walk(p, depth + 1);
+        else if (e.isFile() && /^openclaw(?:-[a-z0-9-]+)?-\d{4}-\d{2}-\d{2}\.log$/u.test(e.name)) {
+          for (const line of fs.readFileSync(p, "utf8").split("\n")) if (re.test(line)) out.push(redact(line).slice(0, 1500));
+        }
+      }
+    };
+    for (const root of new Set([this.shortTmp, this.stateDir, this.data])) walk(root, 0);
+    return out.slice(-max);
+  }
+
   cleanup() { fs.rmSync(this.shortTmp, { recursive: true, force: true }); }
 }
 
