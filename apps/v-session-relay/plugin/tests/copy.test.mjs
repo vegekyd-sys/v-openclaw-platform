@@ -116,7 +116,7 @@ test("copy: §8.3 contexts, §8.4 wake prompt with limits and category hints", (
   const five = copy.wakePrompt({ at, items: Array.from({ length: 5 }, (_, i) => ({ to: `r${i}`, code: `C00${i}`, outcome: "result", request: "x", text: "字".repeat(4000) })) });
   assert(([...five].filter((c) => c === "字").length) <= 16000);
 
-  assert.equal(copy.wakeContext({ rootName: "Tianyi" }), "[会话协作结果] 这是回程，不是 Tianyi 的新消息。对照最初的需求核对是否真的完成，在本聊天汇报一次；不要把结果再发回这些会话。没做完可以再交一次。");
+  assert.equal(copy.wakeContext({ rootName: "Tianyi" }), "[会话协作结果] 这是回程，不是 Tianyi 的新消息。对照最初的需求核对是否真的完成，在本聊天汇报一次；不要把结果再发回这些会话。没做完先按各项提示处理：已开始后失败、中断、取消或超时的任务，先汇报，未经用户要求不得重试、重发或重新派活；只有未开始或成功结果仍缺必要项的任务可以补交一次。");
   assert.match(copy.wakeContext({ rootName: "Tianyi", continuation: { parent: "Tianyi 私聊", code: "7F3A" } }), /\n你在为「Tianyi 私聊」的请求 #7F3A 做这件事，本轮最终回复会作为结果交回它：写完整，绝不能 NO_REPLY。$/u);
   assert.doesNotMatch(copy.wakeContext({ rootName: "Tianyi" }), /只回 NO_REPLY/u);
 

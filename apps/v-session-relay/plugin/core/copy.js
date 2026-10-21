@@ -225,7 +225,7 @@ export function wakePrompt({ at, items }) {
 
 /** ChannelPromptContext of a wake turn; `continuation` when this turn's reply is S's result. */
 export function wakeContext({ rootName, continuation }) {
-  const lines = [`[会话协作结果] 这是回程，不是 ${rootName} 的新消息。对照最初的需求核对是否真的完成，在本聊天汇报一次；不要把结果再发回这些会话。没做完可以再交一次。`];
+  const lines = [`[会话协作结果] 这是回程，不是 ${rootName} 的新消息。对照最初的需求核对是否真的完成，在本聊天汇报一次；不要把结果再发回这些会话。没做完先按各项提示处理：已开始后失败、中断、取消或超时的任务，先汇报，未经用户要求不得重试、重发或重新派活；只有未开始或成功结果仍缺必要项的任务可以补交一次。`];
   if (continuation) lines.push(`你在为「${continuation.parent}」的请求 #${continuation.code} 做这件事，本轮最终回复会作为结果交回它：写完整，绝不能 NO_REPLY。`);
   return lines.join("\n");
 }

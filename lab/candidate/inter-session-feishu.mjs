@@ -274,12 +274,12 @@ const dmPrompt = (tag, body) => `【跨会话测试 ${tag}】${body}（这是 V 
 const keyLine = (chat) => `「${label(chat)}」（sessionKey: ${groupKey(chat)}）`;
 
 // ---------------------------------------------------------------- the generic async F2 flow
-async function asyncSingle(ctx, { target = GROUP_B, work, settleMs = 600_000, extraChecks, anchors = 1 } = {}) {
+async function asyncSingle(ctx, { target = GROUP_B, work, settleMs = 600_000, extraChecks, anchors = 1, asyncOnly = false } = {}) {
   const { cand, r, tag, t0 } = ctx;
   // A hand-off in Tianyi's words: "交给…" (no instruction about waiting or ending the turn; the tool
   // description, the result note and AGENTS decide that). Asking "做完告诉我" instead makes models
   // pick an inline wait (run 7d319a1e: timeoutSeconds=120, tail 81 s), which is allowed but is not F2.
-  const text = dmPrompt(tag, `把这件事交给${keyLine(target)}里的 V：${work ?? `用 exec 执行 \`sleep 75 && date\`，然后把输出的时间连同 ${tag} 回复出来`}。`);
+  const text = dmPrompt(tag, `把这件事交给${keyLine(target)}里的 V${asyncOnly ? "（sessions_send timeoutSeconds=0，交出后结束本轮，不当场等待结果）" : ""}：${work ?? `用 exec 执行 \`sleep 75 && date\`，然后把输出的时间连同 ${tag} 回复出来`}。`);
   const ev = await cand.dm(text);
   r.evidence.injected = [{ chat: DM_CHAT, messageId: ev.messageId, at: iso(ev.at) }];
   const [send] = await waitSends(cand, { since: t0, targets: [groupKey(target)] });
@@ -568,6 +568,8 @@ const SCENARIOS = {
       await asyncSingle(ctx, { target: ROOMS[2], work: `回复一句「${ctx.tag} 收到」`, settleMs: 420_000, extraChecks: async ({ s }) => {
         r.checks = r.checks.filter((c) => !["result-carries-tag", "target-run-ok", "accepted-then-handed-back"].includes(c.id));
         check(r, "failure-started_failed", s.failure?.class === "started_failed" && s.phase === "handed_back", { phase: s.phase, failure: s.failure });
+        const accepted = cand.sendsWhere(x => x.createdAt >= ctx.t0 && x.requester?.sessionKey === dmKey() && x.target?.sessionKey === key);
+        check(r, "failed-task-not-redispatched", accepted.length === 1, accepted.map(x => ({sendId:x.sendId,phase:x.phase})));
         rb(r, { id: "handback-is-failure", chat: DM_CHAT, kind: "message", messageId: r.evidence.batches?.[0]?.wake?.handbackMessageId, includesAll: ["⚠️", "没能完成"] });
       } });
     } finally {
@@ -706,12 +708,12 @@ const SCENARIOS = {
   // ---- F15: background work: the room starts a 90 s background exec and ends its turn
   F15: { async run(ctx) {
     const { cand, r, tag } = ctx;
-    await asyncSingle(ctx, { target: ROOMS[1], anchors: 2, work: `用 exec 在后台启动 \`sleep 90 && echo ${tag}-done\`（background 方式，不要等它结束），启动后马上结束本轮，说明已在后台运行`, settleMs: 720_000, extraChecks: async ({ s, end }) => {
+    await asyncSingle(ctx, { target: ROOMS[1], anchors: 2, asyncOnly: true, work: `用 exec 在后台启动 \`sleep 90 && echo ${tag}-done\`（background 方式，不要等它结束），启动后马上结束本轮，说明已在后台运行`, settleMs: 720_000, extraChecks: async ({ s, end }) => {
       r.checks = r.checks.filter((c) => c.id !== "result-carries-tag");
       const phases = (s.history ?? []).map((h) => h.phase);
       check(r, "went-awaiting_background", phases.includes("awaiting_background"), phases);
       check(r, "collect-turn-ran", (cand.ledger().runs ?? []).some((x) => String(x.runId).startsWith(`v-a2a-col-${s.sendId}`)) || r.log?.some?.((l) => l.includes(`v-a2a-col-${s.sendId}`)), null);
-      check(r, "result-from-collect", (s.result?.text ?? "").includes(`${tag}-done`) || /done|完成|结束/u.test(s.result?.text ?? ""), (s.result?.text ?? "").slice(0, 200));
+      check(r, "result-from-collect", s.collect?.runId && s.result?.fromRunId === s.collect.runId && (s.result?.text ?? "").includes(`${tag}-done`), {collect: s.collect, result: s.result});
       window(r, ROOMS[1], s.createdAt, end);
       rb(r, { id: "collect-anchor", chat: ROOMS[1], kind: "count", from: s.createdAt, to: end, textRe: `^📨 #${s.code} 的后台工作都结束了`, equals: 1 });
     } });
