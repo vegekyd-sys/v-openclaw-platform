@@ -20,7 +20,9 @@
     "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/agents-md.diff",
     "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/task-room-skill.diff",
     "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/a2a-skill.diff",
-    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/background-worker-contract.diff"
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/background-worker-contract.diff",
+    "lab/candidate/feishu-fake-open-api.mjs",
+    "lab/candidate/feishu-no-live.cjs"
   ],
   "files": [
     {
@@ -163,7 +165,8 @@
     "ISC_VARIANT": "full",
     "ISC_ENV": "v",
     "RELAY_HARNESS": "worker",
-    "ISC_SCENARIOS": "F5,F6-posting,F6-running,F6-waking"
+    "ISC_SCENARIOS": "F5,F6-posting,F6-running,F6-waking",
+    "ISC_FEISHU_MODE": "mock"
   },
   "timeoutSeconds": 7200,
   "user": "lab-db91-parity"

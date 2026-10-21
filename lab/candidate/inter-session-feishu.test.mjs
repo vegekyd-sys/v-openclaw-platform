@@ -6,14 +6,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import os from "node:os";
+import {spawnSync} from "node:child_process";
 
-import { evalReadbackCheck, messageText, normalizeMessage, requesterTailMs, tailStats, SLEEP_RE } from "./inter-session-support.mjs";
+import { evalReadbackCheck, messageText, normalizeMessage, requesterTailMs, tailStats, SLEEP_RE, summaryProof, interjectionProof } from "./inter-session-support.mjs";
+import {FakeFeishu} from "./feishu-fake-open-api.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..", "..");
 const fixture = JSON.parse(fs.readFileSync(path.join(REPO, "tests/fixtures/inter-session-v-bytes.json"), "utf8"));
 const vSha = Object.fromEntries(fixture.files.map((f) => [f.file, f.sha256]));
-const PLANS = ["inter-session-feishu-v-env", "inter-session-feishu-vlab-env", "inter-session-control-stock", "inter-session-control-fallback", "inter-session-crash", "inter-session-tail"];
+const PLANS = ["inter-session-feishu-v-env", "inter-session-feishu-vlab-env", "inter-session-control-stock", "inter-session-control-fallback", "inter-session-crash", "inter-session-tail", "inter-session-taskroom"];
 const R1 = ["sessions-spawn-tool-1FQMTkIo.js", "openclaw-tools-BODVdJQD.js", "get-reply-CqW1y05D.js", "agent-runner.runtime-CAdsMsQt.js", "dispatch-from-config-DOJq_7CI.js", "task-registry-activity-DSlVVJwD.js", "monitor.account-WFdlCDhR.js"];
 
 function pluginFiles() {
@@ -37,6 +40,8 @@ test("plans: every e2e plan runs the driver as lab-db91-parity and carries the s
     for (const f of plan.support.filter((p) => !path.isAbsolute(p))) assert(fs.existsSync(path.join(REPO, f)), `${name}: ${f} does not exist`);
     assert.equal(plan.support.filter((p) => p.endsWith("inter-session-workspace.manifest.json")).length, 1, `${name}: exactly one workspace manifest`);
     assert(["full", "stock", "fallback"].includes(plan.env.ISC_VARIANT), name);
+    assert.equal(plan.env.ISC_FEISHU_MODE, "mock", `${name}: live sends must be an explicit override`);
+    for (const file of ["feishu-fake-open-api.mjs", "feishu-no-live.cjs"]) assert(plan.support.includes(`lab/candidate/${file}`));
   }
 });
 
@@ -132,4 +137,55 @@ test("codex transcripts: a toolResult message whose content is a toolResult bloc
   const S = await import("./inter-session-support.mjs");
   const [m] = S.reduceMessages({ role: "toolResult", toolName: "sessions_send", timestamp: 1, content: [{ type: "toolResult", content: [{ type: "text", text: "{\"status\":\"ok\",\"reply\":\"TAG-2\"}" }] }] });
   assert.match(m.text, /TAG-2/u);
+});
+
+test("summary proof rejects early, missing, partial and numerically wrong results", () => {
+  const rooms = ['T-a=323', 'T-b=667', 'T-c=1792580000'].map(text => ({result: {text}}));
+  const args = {tag: 'T', wakeRunId: 'wake-1', rooms, result: {fromRunId: 'wake-1', text: 'T-a=323; T-b=667; T-c=1792580000'}};
+  assert.equal(summaryProof(args).ok, true);
+  assert.equal(summaryProof({...args, result: {...args.result, fromRunId: 'initial'}}).ok, false);
+  assert.equal(summaryProof({...args, result: {...args.result, text: '已开工，同一个操作执行一次'}}).ok, false);
+  assert.equal(summaryProof({...args, result: {...args.result, text: 'T-a=323; T-b=667'}}).ok, false);
+  assert.equal(summaryProof({...args, result: {...args.result, text: 'T-a=3230; T-b=667; T-c=1792580000'}}).ok, false);
+  assert.equal(summaryProof({...args, rooms: [{result: {text: 'T-a=324'}}, ...rooms.slice(1)]}).ok, false);
+});
+
+test("owner steering can be committed without another user row; non-owner influence still fails", () => {
+  const owner = interjectionProof({owner:true,resultText:'插话已收到，原任务完成',endedAt:100});
+  assert.equal(owner.handled, true); assert.equal(owner.steered, true);
+  const intruder = interjectionProof({owner:false,user:{atMs:200},resultText:'插话已收到',endedAt:100});
+  assert.equal(intruder.nonOwnerIsolated, false);
+  const queued = interjectionProof({owner:false,user:{atMs:200},resultText:'原任务完成',endedAt:100});
+  assert.equal(queued.handled && queued.nonOwnerIsolated, true);
+  assert.equal(interjectionProof({owner:true,resultText:'原任务完成',endedAt:100}).handled, false);
+});
+
+test("mock Feishu preserves reply parents, dedupe and earlier edited anchor snapshots", async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'isc-mock-'));
+  const fake = new FakeFeishu({directory, owner: 'owner', dmChat: 'dm', chats: {room: 'Room'}});
+  try {
+    await fake.start();
+    const anchor = fake.handle('POST', '/open-apis/im/v1/messages', {receive_id: 'room', msg_type: 'text', content: '{"text":"📨 #A ⏳"}', uuid: 'one'}).data;
+    assert.equal(fake.handle('POST', '/open-apis/im/v1/messages', {uuid: 'one'}).data.message_id, anchor.message_id);
+    const card = fake.handle('POST', '/open-apis/cardkit/v1/cards', {data: '{"body":{"elements":[]}}'}).data.card_id;
+    fake.handle('POST', `/open-apis/im/v1/messages/${anchor.message_id}/reply`, {msg_type: 'interactive', content: JSON.stringify({type: 'card', data: {card_id: card}})});
+    fake.handle('PATCH', `/open-apis/im/v1/messages/${anchor.message_id}`, {content: '{"text":"📨 #A"}'});
+    fake.handle('POST', `/open-apis/cardkit/v1/cards/${card}/elements`, {elements: '[{"content":"结果"}]'});
+    const msgs = fake.list('room').map(normalizeMessage);
+    assert.equal(msgs.length, 2);
+    assert.equal(msgs[1].parentId, anchor.message_id);
+    assert.match(msgs[1].text, /结果/);
+    assert.doesNotMatch(msgs[0].text, /⏳/);
+    assert(fake.snapshots.some(s => s.message.body.content.includes('⏳')));
+    assert.equal(fake.handle('GET', '/unimplemented', {}).code, 404, 'unknown API shapes must fail');
+  } finally { await fake.close(); fs.rmSync(directory, {recursive: true, force: true}); }
+});
+
+test("candidate preload blocks real Feishu through Node fetch and HTTPS before opening a socket", () => {
+  const guard = path.join(HERE, 'feishu-no-live.cjs');
+  for (const code of ["require('node:https').request('https://open.feishu.cn/open-apis/im/v1/messages')", "fetch('https://open.feishu.cn/open-apis/im/v1/messages')"]) {
+    const r = spawnSync(process.execPath, ['--require', guard, '-e', code], {encoding: 'utf8'});
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /ISC_NO_LIVE_FEISHU/);
+  }
 });

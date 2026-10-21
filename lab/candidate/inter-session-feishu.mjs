@@ -58,7 +58,11 @@ async function runInCandidate() {
     kind: "inter-session-feishu", v: 1, runTag: RUN_TAG, variant: VARIANT, harness: HARNESS, envMode: ENV_MODE, scenarios: ORDER,
     candidateId: env.VLAB_CANDIDATE_ID ?? null, startedAt: iso(T0), notes: [], results: [], chats: {},
   };
-  const step = (msg, extra) => console.error(`[${since()}] ${msg}${extra ? ` ${redact(JSON.stringify(extra)).slice(0, 600)}` : ""}`);
+  const step = (msg, extra) => {
+    const line = `[${since()}] ${msg}${extra ? ` ${redact(JSON.stringify(extra)).slice(0, 600)}` : ""}`;
+    console.error(line);
+    fs.appendFileSync(path.join(env.VLAB_CANDIDATE_DATA, "inter-session-progress.log"), line + "\n");
+  };
   assert(["full", "stock", "fallback"].includes(VARIANT), `ISC_VARIANT must be full|stock|fallback, got ${VARIANT}`);
 
   // ---- bytes: the plan's `files` put them there; check they are what this variant claims
@@ -149,13 +153,30 @@ async function runInCandidate() {
     summary.ok = false;
     summary.error = redact(e?.stack ?? e).slice(0, 3000);
   } finally {
+    if (cand.fake) {
+      const watchIndex = new Map();
+      for (const snap of cand.fake.snapshots) {
+        const m = S.normalizeMessage(snap.message);
+        if (!watchIndex.has(snap.message.chat_id)) watchIndex.set(snap.message.chat_id, []);
+        watchIndex.get(snap.message.chat_id).push({...m, seenAt: snap.at});
+      }
+      for (const r of summary.results) {
+        r.platformChecks = (r.readback?.checks ?? []).map(spec => ({id: spec.id, optional: Boolean(spec.optional), ...S.evalReadbackCheck(spec, cand.fake.list(spec.chat).map(S.normalizeMessage), watchIndex, {readReactions: id => cand.fake.reactions.get(id)?.size ?? 0})}));
+        r.verdict = r.error ? "error" : r.inCandidate === "pass" && r.platformChecks.every(c => c.optional || c.ok === true) ? "pass" : "fail";
+      }
+      summary.ok = summary.results.every(r => r.verdict === "pass");
+      const blockedFile = path.join(cand.data, 'blocked-platform.jsonl');
+      const blocked = fs.existsSync(blockedFile) ? fs.readFileSync(blockedFile, 'utf8').trim().split('\n').filter(Boolean).length : 0;
+      summary.platform = {mode: "mock", realFeishuSends: 0, credentials: "synthetic", outboundDomain: 'loopback', networkGuard: "feishu-no-live.cjs", blockedLiveRequests: blocked, apiRequests: cand.fake.requests.length, messages: cand.fake.messages.size, unimplemented: [...new Set(cand.fake.unimplemented)]};
+      if (blocked) summary.ok = false;
+    } else summary.platform = {mode: "live"};
     summary.endedAt = iso(Date.now());
     summary.totalMs = Date.now() - T0;
     summary.ledgerTotals = (() => { const L = cand.ledger(); return { sends: L.sends.length, batches: L.batches.length, chains: L.chains.length }; })();
     summary.gatewayTail = cand.lines.slice(-60).map((l) => `${iso(l.at).slice(11, 23)} ${redact(l.line).slice(0, 300)}`);
     console.log(JSON.stringify(summary));
     await cand.stop();
-    cand.cleanup();
+    await cand.cleanup();
     if (!summary.ok) process.exitCode = 1;
   }
 }
@@ -188,7 +209,7 @@ function reduceSend(s) {
     message: { chars: s.message?.chars, trimmed: s.message?.trimmed, redactions: s.message?.redactions, visibleText: redact(s.message?.visibleText ?? "").slice(0, 400) },
     request: { messageId: s.request?.messageId, postedAt: iso(s.request?.postedAt), postAttempts: s.request?.postAttempts, queuedLine: s.request?.queuedLine, queueNoteEditedAt: iso(s.request?.queueNoteEditedAt), text: redact(s.request?.text ?? "").slice(0, 400) },
     targetRun: s.targetRun ? { ...s.targetRun, startedAtIso: iso(s.targetRun.startedAt), endedAtIso: iso(s.targetRun.endedAt) } : null,
-    inline: s.inline, result: s.result ? { noReply: s.result.noReply, source: s.result.source, media: s.result.media?.length ?? 0, text: redact(s.result.text ?? "").slice(0, 600) } : null,
+    inline: s.inline, result: s.result ? { noReply: s.result.noReply, source: s.result.source, fromRunId: s.result.fromRunId ?? null, media: s.result.media?.length ?? 0, text: redact(s.result.text ?? "").slice(0, 4000) } : null,
     failure: s.failure, wakeRounds: s.wakeRounds,
     history: (s.history ?? []).map((h) => `${iso(h.at)?.slice(11, 23)} ${h.phase}${h.note ? ` (${redact(h.note).slice(0, 120)})` : ""}`),
   };
@@ -403,7 +424,10 @@ const SCENARIOS = {
   // ---- F3b: the race window: the engine waits VSR_TEST_START_DELAY_MS before start; a human writes then
   F3b: { env: { VSR_TEST_START_DELAY_MS: "3000" }, async run(ctx) { await raceScenario(ctx, "human"); } },
   // ---- F3b-rpc: same window, but the competing turn is an agent RPC turn (the G guard must answer BUSY)
-  "F3b-rpc": { env: { VSR_TEST_START_DELAY_MS: "3000" }, async run(ctx) { await raceScenario(ctx, "rpc"); } },
+  "F3b-rpc": { env: { VSR_TEST_START_DELAY_MS: "3000", ISC_FORCE_START_RACE: "1" }, async run(ctx) { await raceScenario(ctx, "rpc"); } },
+  F3c: { async run(ctx) { await admissionGapScenario(ctx); } },
+  TR1: { async run(ctx) { await taskRoomScenario(ctx, false); } },
+  TR2: { async run(ctx) { await taskRoomScenario(ctx, true); } },
 
   // ---- F4a / F4b: someone writes in the target chat while the collaboration turn runs (env=v)
   F4a: { async run(ctx) { await interjectScenario(ctx, OWNER); } },
@@ -458,7 +482,7 @@ const SCENARIOS = {
   F7: { async run(ctx) {
     const { cand, r, tag, t0 } = ctx;
     const mark0 = cand.mark();
-    const ev = await cand.dm(dmPrompt(tag, `把下面三件事分别交给三个测试房间（都不用等，同一轮交出去）：${keyLine(ROOMS[0])}：用一句话解释什么是 CRDT，开头写 ${tag}-a；${keyLine(ROOMS[1])}：列出三种排序算法的名字，开头写 ${tag}-b；${keyLine(ROOMS[2])}：用 exec 执行 \`sleep 40 && date\` 后回复时间，开头写 ${tag}-c。三个都回来后汇总告诉我`));
+    const ev = await cand.dm(dmPrompt(tag, `把下面三件事分别交给三个测试房间（都不用等，同一轮交出去）：${keyLine(ROOMS[0])}：先用 exec 执行 \`sleep 20 && date\`，再用一句话解释什么是 CRDT，开头写 ${tag}-a；${keyLine(ROOMS[1])}：先用 exec 执行 \`sleep 25 && date\`，再列出三种排序算法的名字，开头写 ${tag}-b；${keyLine(ROOMS[2])}：用 exec 执行 \`sleep 40 && date\` 后回复时间，开头写 ${tag}-c。三个都回来后汇总告诉我`));
     r.evidence.injected = [{ chat: DM_CHAT, messageId: ev.messageId, at: iso(ev.at) }];
     const sends = await waitSends(cand, { since: t0, targets: ROOM_KEYS, n: 3 });
     await waitSettled(cand, sends.map((s) => s.sendId), { timeoutMs: 600_000 });
@@ -490,6 +514,8 @@ const SCENARIOS = {
     const settledAt = (raw) => (raw.history ?? []).find((h) => ["result_ready", "failure_ready", "skipped", "cancelled"].includes(h.phase))?.at ?? Infinity;
     const raws = ss.map((x) => L.sends.find((y) => y.sendId === x.sendId));
     const peak = Math.max(...raws.map((a) => raws.filter((b) => b.createdAt <= a.createdAt && settledAt(b) > a.createdAt).length));
+    const overlapMs = Math.min(...raws.map(settledAt)) - Math.max(...raws.map(a => a.createdAt));
+    check(r, "three-requests-overlapped-over-refresh-window", peak === 3 && overlapMs >= 5000, {peak, overlapMs});
     r.evidence.expectedPeakInFlight = peak;
     const counts = rows.map((l) => Number(l.match(/后台 (\d+) 项进行中 · 会话请求/u)?.[1] ?? NaN)).filter(Number.isFinite);
     check(r, "background-row-counted-peak-session-requests", peak >= 1 && counts.includes(peak) && Math.max(...counts) === peak, { peak, counts, rows: rows.slice(0, 6) });
@@ -573,6 +599,27 @@ const SCENARIOS = {
     rb(r, { id: "anchor-not-truncated", chat: ROOMS[0], kind: "message", messageId: s.request?.messageId, excludesAll: ["全文", "已交给 V"] });
   } },
 
+  "F11-shared": { async run(ctx) {
+    const {cand, r, tag, t0} = ctx;
+    assert(cand.fake, "shared-members fixture must never change a real chat");
+    cand.fake.members.set(ROOMS[0], 3);
+    await cand.stop(); await cand.start(); // discard the bridge's chat-info cache
+    try {
+      const body = '共享群的裁剪测试内容。'.repeat(50) + `${tag}-END`;
+      await cand.dm(dmPrompt(tag, `把以下整段原样交给${keyLine(ROOMS[0])}里的 V（不用等），请它回复这段文字最末尾的验收码：${body}`));
+      const [send] = await waitSends(cand, {since:t0, targets:[ROOM_KEYS[0]]});
+      await waitSettled(cand, [send.sendId]);
+      const s = cand.ledger().sends.find(x => x.sendId === send.sendId);
+      const h = await transcript(cand, ROOM_KEYS[0], t0);
+      const req = h.find(m => isInter(m, `:req:${s.sendId}`));
+      r.evidence = {sends:[reduceSend(s)],transcripts:{room:h}};
+      check(r, 'shared-group-detected', s.target?.route?.humans === 'shared', s.target?.route?.humans);
+      check(r, 'visible-request-trimmed', s.message?.trimmed === true && s.message.visibleText.length <= 260 && !s.request.text.includes(`${tag}-END`), {chars:s.message?.chars,visible:s.message?.visibleText});
+      check(r, 'model-kept-full-request', Boolean(req?.text.includes(`${tag}-END`)) && s.result?.text.includes(`${tag}-END`), {tail:req?.text.slice(-100),result:s.result?.text});
+      expectTargetSide(r, {send:s,chat:ROOMS[0],from:t0,to:Date.now()});
+    } finally { cand.fake.members.delete(ROOMS[0]); await cand.stop(); await cand.start(); }
+  } },
+
   // ---- F12: a room that only ever had sessions.patch (no inbound) gets its route from the key
   F12: { async run(ctx) {
     const { cand, r, tag } = ctx;
@@ -590,7 +637,7 @@ const SCENARIOS = {
   // ---- F13: continuation A → X → three rooms; A gets X's summary, not its "started" line
   F13: { async run(ctx) {
     const { cand, r, tag, t0 } = ctx;
-    const ev = await cand.dm(dmPrompt(tag, `请把这件事交给${keyLine(GROUP_B)}里的 V（不用等）：「请你把三件小事分别交给三个测试房间（同一轮交出去，都不用等）：${keyLine(ROOMS[0])}：用一句话说明什么是幂等，开头写 ${tag}-a；${keyLine(ROOMS[1])}：说出一个质数，开头写 ${tag}-b；${keyLine(ROOMS[2])}：用 exec 执行 \`sleep 30 && date\` 后回复时间，开头写 ${tag}-c。三个都回来后，你写一份汇总（包含每个房间的回答），这份汇总就是你交回的最终结果。」`));
+    const ev = await cand.dm(dmPrompt(tag, `请把这件事交给${keyLine(GROUP_B)}里的 V（不用等）：「请你把三件小事分别交给三个测试房间（同一轮交出去，都不用等）：${keyLine(ROOMS[0])}：计算 17*19，回复格式必须为 ${tag}-a=计算结果；${keyLine(ROOMS[1])}：计算 23*29，回复格式必须为 ${tag}-b=计算结果；${keyLine(ROOMS[2])}：用 exec 执行 \`sleep 30 && date -u +%s\` 后回复时间戳，回复格式必须为 ${tag}-c=时间戳。三个都回来后，你写一份汇总，逐字保留每个房间的验收码和数值（不要改写或省略），这份汇总就是你交回的最终结果。」`));
     r.evidence.injected = [{ chat: DM_CHAT, messageId: ev.messageId, at: iso(ev.at) }];
     const [top] = await waitSends(cand, { since: t0, targets: [B_KEY] });
     const rooms = await waitSends(cand, { since: t0, requesterKey: B_KEY, targets: ROOM_KEYS, n: 3, timeoutMs: 420_000, labelText: "group B fans out to three rooms" });
@@ -615,13 +662,8 @@ const SCENARIOS = {
     // A gets what X wrote in the wake turn that collected the three rooms (not X's "started" reply),
     // and that text carries each room's answer (the model may drop the -a/-b/-c tags when summing up).
     const roomsWake = bRooms[0]?.wake?.runId;
-    const carries = (room) => {
-      const body = (room.result?.text ?? "").replaceAll(`${tag}-a`, "").replaceAll(`${tag}-b`, "").replaceAll(`${tag}-c`, "").replace(/[\s：:，,。.`*|-]/gu, "");
-      const flat = res.replace(/[\s：:，,。.`*|-]/gu, "");
-      for (let i = 0; i + 4 <= body.length; i++) if (flat.includes(body.slice(i, i + 4))) return true;
-      return false;
-    };
-    check(r, "a-gets-the-summary", Boolean(roomsWake) && S0.result?.fromRunId === roomsWake && RS.every(carries), { fromRunId: S0.result?.fromRunId, roomsWake, carries: RS.map(carries), text: res.slice(0, 500) });
+    const proof = S.summaryProof({tag, result: S0.result, wakeRunId: roomsWake, rooms: [...RS].sort((a, b) => ROOM_KEYS.indexOf(a.target.sessionKey) - ROOM_KEYS.indexOf(b.target.sessionKey))});
+    check(r, "a-gets-the-summary", proof.ok, proof);
     check(r, "a-woken-once", bTop?.phase === "woken" && bTop.wake?.attempt === 0, bTop?.wake);
     const aWake = dmHist.filter((m) => isInter(m, `:wake:${bTop?.batchId}`));
     check(r, "one-wake-turn-in-dm", aWake.length === 1, aWake.length);
@@ -728,6 +770,86 @@ const SCENARIOS = {
 };
 
 // ---------------------------------------------------------------- F3b, F4, F6 bodies
+async function admissionGapScenario(ctx) {
+  const {cand, r, tag, t0} = ctx;
+  assert(cand.allowance.admissionRace, "F3c requires the recorded candidate-only barrier");
+  const gate = path.join(cand.data, "guard-gap");
+  await cand.stop(); await cand.start({extraEnv: {ISC_GUARD_GAP_FILE: gate}});
+  try {
+    await cand.dm(dmPrompt(tag, `请让${keyLine(GROUP_B)}回复「${tag} 收到」（不用等）`));
+    const [send] = await waitSends(cand, {since: t0, targets: [B_KEY]});
+    await S.until(() => fs.existsSync(gate), {timeoutMs: 180000, intervalMs: 50, label: "post-admission barrier"});
+    const competitor = await cand.rpc("agent", {sessionKey: B_KEY, agentId: S.AGENT, message: `请用 exec 执行 \`sleep 20 && date\`，然后只回复「${tag}-R 完成」。`, deliver: false, idempotencyKey: `gap-${tag}`});
+    await S.until(async () => {
+      const h = await transcript(cand, B_KEY, t0);
+      return S.toolCalls(h).some(x => /sleep 20/u.test(x.command ?? ''));
+    }, {timeoutMs: 45000, intervalMs: 250, label: "competing RPC actually executing"});
+    fs.writeFileSync(gate + ".release", "release");
+    await waitSettled(cand, [send.sendId]);
+    const s = cand.ledger().sends.find(x => x.sendId === send.sendId);
+    const h = await transcript(cand, B_KEY, t0);
+    const observed = JSON.parse(fs.readFileSync(gate + ".observed", "utf8"));
+    const priorReply = h.find(m => m.role === "assistant" && m.text.includes(`${tag}-R 完成`));
+    const request = h.find(m => isInter(m, `:req:${s.sendId}`));
+    r.evidence = {barrier: observed, competitor, sends: [reduceSend(s)], transcripts: {groupB: h}};
+    check(r, "competing-run-present-after-admission", observed.active, observed);
+    // A queued turn may already have a persisted inbound timestamp. Its actual execution
+    // start must follow the competing run's final reply; timestamps of input are not starts.
+    check(r, "RPC-finishes-before-request-start", Boolean(priorReply && request && priorReply.atMs <= s.targetRun?.startedAt), {prior: priorReply?.at, requestInput: request?.at, requestStart:S.iso(s.targetRun?.startedAt)});
+    check(r, "request-not-steered-into-RPC", !h.filter(m => m.atMs < (priorReply?.atMs ?? 0) && m.role === 'user').some(m => isInter(m, `:req:${s.sendId}`)), null);
+    check(r, "request-returned-after-RPC", s.phase === 'handed_back' && s.result?.text?.includes(tag), s.phase);
+    expectTargetSide(r, {send: s, chat: GROUP_B, from: t0, to: Date.now()});
+  } finally { fs.writeFileSync(gate + ".release", "release"); await cand.stop(); await cand.start(); }
+}
+
+async function taskRoomScenario(ctx, restart) {
+  const {cand, r, tag, t0} = ctx;
+  assert(cand.fake, "Task Room acceptance currently requires the no-network creation shim");
+  const coordinator = restart ? B_KEY : dmKey();
+  const helper = '.agents/skills/feishu-task-room-router/scripts/create_task_room.py';
+  const token = `${tag}-answer-739`;
+  const commands = ['a', 'b', 'c'].map(x => `python3 ${helper} --name '${tag}-${x}' --model '${cand.model}' --no-pin --bot-app-id cli_isc_mock --user-open-id ${OWNER}`).join(' ; ');
+  const tasks = `先用 exec 执行以下三个创建房间的命令（测试 shim 只返回房间，不联网）：${commands}。然后同一轮用 sessions_send(timeoutSeconds=0) 给返回的三个房间分别派活：房间1 ${ROOM_KEYS[0]} 先当场问房间2 ${ROOM_KEYS[1]}（timeoutSeconds=120）：你从协调者拿到的口令是什么？最终回复包含 ${tag}-a 和口令；房间2 ${ROOM_KEYS[1]} 先当场问协调者 ${coordinator}（timeoutSeconds=120）口令是什么，口令为 ${token}，拿到后用 exec 执行 sleep 15，再回复 ${tag}-b 和口令；房间3 ${ROOM_KEYS[2]} 用 exec 执行 sleep ${restart ? 180 : 90}，然后回复 ${tag}-c 完成。三件结果回来后汇总一次，逐项报告成功或中断，必须包含三个验收码和已拿到的口令；不要重新派失败项。`;
+  const prompt = restart ? `请把下面整件事交给${keyLine(GROUP_B)}（不用等）：${tasks}。协调者完成后的汇总交回我。` : tasks;
+  await cand.dm(dmPrompt(tag, prompt));
+  const [top] = restart ? await waitSends(cand, {since: t0, targets: [B_KEY]}) : [];
+  const rooms = await waitSends(cand, {since: t0, requesterKey: coordinator, targets: ROOM_KEYS, n: 3, timeoutMs: 300000});
+  const asks = await S.until(() => {
+    const a = cand.sendsWhere(s => s.createdAt >= t0 && s.edge === 'ask');
+    return a.length >= 2 && a.every(s => s.phase === 'delivered_inline') ? a : null;
+  }, {timeoutMs: 300000, intervalMs: 500, label: 'both Task Room inline questions answered'});
+  if (restart) {
+    r.evidence.beforeKill = rooms.map(s => reduceSend(cand.ledger().sends.find(x => x.sendId === s.sendId)));
+    check(r, 'restart-interrupted-an-active-room', r.evidence.beforeKill.some(s => s.phase === 'running'), r.evidence.beforeKill.map(s => s.phase));
+    r.evidence.kill = await cand.kill9(); await sleep(2000); r.evidence.restart = await cand.start();
+  }
+  await waitSettled(cand, [...(top ? [top.sendId] : []), ...rooms.map(s => s.sendId)], {timeoutMs: 720000});
+  await sleep(6000);
+  const L = cand.ledger();
+  const records = rooms.map(s => L.sends.find(x => x.sendId === s.sendId));
+  const batchIds = [...new Set(records.map(s => s.batchId))];
+  const batch = cand.batch(batchIds[0]);
+  const log = fs.readFileSync(path.join(cand.data, 'lark-shim.log'), 'utf8').trim().split('\n').map(JSON.parse).filter(x => Date.parse(x.at) >= t0);
+  r.evidence.shim = log;
+  r.evidence.sends = [...(top ? [reduceSend(L.sends.find(s => s.sendId === top.sendId))] : []), ...records.map(reduceSend), ...asks.map(reduceSend)];
+  r.evidence.batches = [reduceBatch(batch)];
+  const h = await transcript(cand, dmKey(), t0);
+  r.evidence.transcripts = {dm: h, coordinator: await transcript(cand, coordinator, t0)};
+  const outcome = top ? L.sends.find(s => s.sendId === top.sendId).result?.text ?? '' : h.filter(m => m.role === 'assistant').at(-1)?.text ?? '';
+  check(r, 'created-three-distinct-rooms-through-shim', log.filter(x => x.result === 'created').length === 3 && new Set(log.filter(x => x.result === 'created').map(x => x.chatId)).size === 3, log.map(x => ({result:x.result, chat:x.chatId})));
+  check(r, 'room-creation-never-used-network', log.length >= 3 && log.every(x => x.network === 'none'), log.map(x => x.network));
+  check(r, 'a-asked-b-and-b-asked-coordinator', asks.some(s => s.requester.sessionKey === ROOM_KEYS[0] && s.target.sessionKey === ROOM_KEYS[1]) && asks.some(s => s.requester.sessionKey === ROOM_KEYS[1] && s.target.sessionKey === coordinator), asks.map(s => ({from:s.requester.sessionKey,to:s.target.sessionKey})));
+  check(r, 'questions-returned-the-actual-token', asks.every(s => s.result?.text?.includes(token)), asks.map(s => s.result?.text));
+  check(r, 'three-rooms-one-batch-one-wake', batchIds.length === 1 && batch?.phase === 'woken' && batch.wake?.attempt <= (restart ? 1 : 0), batch?.wake);
+  check(r, 'final-summary-includes-every-room', ['-a','-b','-c'].every(s => outcome.includes(tag+s)) && outcome.includes(token), outcome);
+  check(r, 'rooms-all-terminal', records.every(s => TERMINAL.includes(s.phase)), records.map(s => s.phase));
+  const end = Date.now();
+  records.forEach(s => expectTargetSide(r, {send:s, chat:ROOMS[ROOM_KEYS.indexOf(s.target.sessionKey)],from:t0,to:end}));
+  asks.forEach(s => expectTargetSide(r, {send:s, chat:s.target.sessionKey === coordinator ? (restart ? GROUP_B : DM_CHAT) : ROOMS[1], icon:'❓',from:t0,to:end}));
+  const root = top ? L.sends.find(s => s.sendId === top.sendId) : null;
+  expectHandback(r, {batch: root ? cand.batch(root.batchId) : batch, sends:root ? [root] : records, from:t0,to:end,single:Boolean(root)});
+}
+
 async function raceScenario(ctx, competitor) {
   const { cand, r, tag, t0 } = ctx;
   const ev = await cand.dm(dmPrompt(tag, `请让${keyLine(GROUP_B)}里的 V 回复一句「${tag} 收到」（不用等它，交出去就行）`));
@@ -740,8 +862,18 @@ async function raceScenario(ctx, competitor) {
     const human = await cand.humanInGroup(GROUP_B, { text: `【测试 ${tag}-H】请用 exec 执行 \`sleep 20 && date\`，然后回复「${tag}-H 完成」。` });
     r.evidence.injected.push({ chat: GROUP_B, messageId: human.messageId, seed: human.seed, at: iso(human.at) });
   } else {
+    assert(cand.allowance.startRace, 'F3b-rpc requires the recorded candidate-only pre-start barrier');
+    const gate = path.join(cand.data, 'start-barrier');
+    await S.until(() => fs.existsSync(gate), {timeoutMs:10000,intervalMs:25,label:'pre-start barrier'});
     const res = await cand.rpc("agent", { sessionKey: B_KEY, agentId: S.AGENT, message: `【测试 ${tag}-R】（后台 RPC 回合）请用 exec 执行 \`sleep 20 && date\`，然后回复「${tag}-R 完成」。`, deliver: false, idempotencyKey: `isc-${tag}-rpc` }, 60_000).catch((e) => ({ error: e.message }));
     r.evidence.rpc = JSON.parse(redact(JSON.stringify(res ?? null)));
+    try {
+      await S.until(async () => {
+        const h = await transcript(cand, B_KEY, t0);
+        return S.toolCalls(h).some(t => /sleep 20/u.test(t.command ?? ''));
+      }, {timeoutMs:45000,intervalMs:250,label:'RPC actually active before bridge admission'});
+      r.evidence.preStartBarrierTriggered = true;
+    } finally { fs.writeFileSync(gate + '.release', 'release'); }
   }
   await waitSettled(cand, [send.sendId], { timeoutMs: 600_000 });
   await sleep(6_000);
@@ -786,7 +918,11 @@ async function interjectScenario(ctx, who) {
   const inter = await cand.humanInGroup(GROUP_B, { sender: who, text: `【测试 ${tag}-I】插一句：结果开头请加上「插话已收到」。` });
   r.evidence.injected.push({ chat: GROUP_B, messageId: inter.messageId, seed: inter.seed, at: iso(inter.at), sender: who === OWNER ? "owner" : "non-owner" });
   await waitSettled(cand, [send.sendId], { timeoutMs: 600_000 });
-  await S.maybeUntil(async () => { const h = await transcript(cand, B_KEY, inter.at); return Array.isArray(h) && h.some((m) => m.role === "user" && m.text.includes(`${tag}-I`)) ? h : null; }, { timeoutMs: 240_000, intervalMs: 3_000 });
+  await S.maybeUntil(async () => {
+    const h = await transcript(cand, B_KEY, inter.at);
+    const result = cand.ledger().sends.find(s => s.sendId === send.sendId)?.result?.text ?? '';
+    return (Array.isArray(h) && h.some(m => m.role === 'user' && m.text.includes(`${tag}-I`))) || (who === OWNER && result.includes('插话已收到'));
+  }, { timeoutMs: 240_000, intervalMs: 3_000 });
   await sleep(20_000);
   const s = cand.ledger().sends.find((x) => x.sendId === send.sendId);
   const b = s.batchId ? cand.batch(s.batchId) : null;
@@ -796,11 +932,12 @@ async function interjectScenario(ctx, who) {
   r.evidence.batches = [reduceBatch(b)];
   r.evidence.transcripts = { groupB: bHist, dm: await transcript(cand, dmKey(), t0) };
   const interUser = bHist.find((m) => m.role === "user" && m.text.includes(`${tag}-I`));
-  const steered = Boolean(interUser) && interUser.atMs < (s.targetRun?.endedAt ?? 0);
+  const proof = S.interjectionProof({owner:who === OWNER,user:interUser,resultText:s.result?.text,endedAt:s.targetRun?.endedAt ?? 0});
+  const {absorbedInResult,steered} = proof;
   r.evidence.behaviour = { steeredIntoCollabTurn: steered, interjectionAt: interUser?.at, collabEnded: iso(s.targetRun?.endedAt), resultMentionsIt: (s.result?.text ?? "").includes("插话已收到") };
   check(r, "result-handed-back-once", s.phase === "handed_back" && b?.phase === "woken" && b.wake?.attempt === 0, { phase: s.phase, wake: b?.wake });
   if (who !== OWNER) check(r, "non-owner-not-steered", !steered && !(s.result?.text ?? "").includes("插话已收到"), r.evidence.behaviour);
-  check(r, "interjection-handled", Boolean(interUser), Boolean(interUser));
+  check(r, "interjection-handled", proof.handled, {transcriptUser:Boolean(interUser),absorbedInResult});
   expectTargetSide(r, { send: s, chat: GROUP_B, from: t0, to: end });
   window(r, GROUP_B, t0, end);
   rb(r, { id: "interjection-answer-visible", chat: GROUP_B, kind: "count", from: inter.seed.createMs, to: end, senderType: "app", min: 1 });
@@ -865,6 +1002,11 @@ async function verify(args) {
   const receiptPath = args.find((a) => !a.startsWith("--") && a.endsWith(".json"));
   assert(receiptPath, "usage: verify <receipt.json> [--watch file.jsonl] [--out file.json]");
   const { receipt, summary } = loadSummary(receiptPath);
+  if (summary.platform?.mode === "mock") {
+    for (const r of summary.results) console.log(`${r.verdict.toUpperCase()} ${r.tag}`);
+    assert(summary.ok, "mock candidate failed; inspect its internal and platform checks");
+    return;
+  }
   const watchFile = argOf(args, "--watch");
   const watchIndex = new Map();
   if (watchFile && fs.existsSync(watchFile)) {
@@ -950,9 +1092,9 @@ function writePlans() {
   const stockWs = "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private";
   const stockSupport = drafts.filter((p) => !p.endsWith(".diff")).map((p) => p.replace("/isc-wp9-private/", "/isc-e2e-feishu-private/"));
   assert(fs.existsSync(path.join(stockWs, "inter-session-workspace.manifest.json")), "stock workspace manifest missing (node lab/candidate/inter-session-workspace.mjs manifest --private-dir <private> --drafts none)");
-  const base = ["lab/candidate/inter-session-feishu.mjs", "lab/candidate/inter-session-support.mjs", "tests/fixtures/inter-session-v-bytes.json"];
+  const base = ["lab/candidate/inter-session-feishu.mjs", "lab/candidate/inter-session-support.mjs", "lab/candidate/feishu-fake-open-api.mjs", "lab/candidate/feishu-no-live.cjs", "tests/fixtures/inter-session-v-bytes.json"];
   const NODE = "/opt/vlab/node-v22.23.1-linux-x64/bin/node";
-  const plan = ({ env, files, support, timeoutSeconds = 7200 }) => ({ support: [...base, ...support], files, command: [NODE, "lab/candidate/inter-session-feishu.mjs", "run"], env, timeoutSeconds, user: "lab-db91-parity" });
+  const plan = ({ env, files, support, timeoutSeconds = 7200 }) => ({ support: [...base, ...support], files, command: [NODE, "lab/candidate/inter-session-feishu.mjs", "run"], env: {ISC_FEISHU_MODE: 'mock', ...env}, timeoutSeconds, user: "lab-db91-parity" });
   const plans = {
     "inter-session-feishu-v-env.plan.json": plan({ env: { ISC_VARIANT: "full", ISC_ENV: "v", RELAY_HARNESS: "worker", ISC_SCENARIOS: "F1i,F1,F2,F3,F7,F13" }, files: [...core, ...plugin], support: drafts }),
     "inter-session-feishu-vlab-env.plan.json": plan({ env: { ISC_VARIANT: "full", ISC_ENV: "vlab", RELAY_HARNESS: "worker", ISC_SCENARIOS: "F1i,F2,F3" }, files: [...core, ...plugin], support: drafts }),

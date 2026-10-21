@@ -33,6 +33,8 @@ import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { FakeFeishu } from "./feishu-fake-open-api.mjs";
 
 // ------------------------------------------------------------------ fixed identities (VLab app)
 export const OWNER = "ou_775a78b0aaae67da5e15eeaf102e3cd9"; // Tianyi under the VLab app (cli_aae2…)
@@ -138,10 +140,21 @@ export async function prepareCandidate(opts = {}) {
   const gatewayToken = config.gateway?.auth?.token;
   addSecret(gatewayToken);
 
-  // ---- Feishu: loopback webhook inbound, the real VLab app outbound
+  // Default to a local platform. Live sends require a separate, explicit opt-in.
+  const platformMode = process.env.ISC_FEISHU_MODE ?? "mock";
+  assert(["mock", "live"].includes(platformMode), "ISC_FEISHU_MODE must be mock or live");
+  assert(platformMode !== "live" || process.env.ISC_ALLOW_LIVE_FEISHU === "1", "live Feishu sends require ISC_ALLOW_LIVE_FEISHU=1");
+  // ---- Feishu: loopback webhook inbound
   const feishu = config.channels?.feishu;
   assert(feishu && typeof feishu.appId === "string" && typeof feishu.appSecret === "string", "VLab Feishu app credentials are not plain strings");
   addSecret(feishu.appSecret);
+  let fake = null;
+  if (platformMode === "mock") {
+    fake = await new FakeFeishu({directory: path.join(data, "fake-feishu"), owner: OWNER, dmChat: DM_CHAT, chats: CHAT_NAMES}).start();
+    Object.assign(feishu, {appId: "cli_isc_mock", appSecret: "isc-mock-not-a-credential", domain: fake.url, resolveSenderNames: false});
+    delete feishu.accounts;
+    notes.push("mock Feishu: loopback API, synthetic app credentials, real platform hosts blocked");
+  }
   const webhook = { port: await freePort(), path: "/candidate/inter-session", token: `isc-${crypto.randomBytes(12).toString("hex")}`, key: crypto.randomBytes(16).toString("hex") };
   addSecret(webhook.token); addSecret(webhook.key);
   Object.assign(feishu, { enabled: true, connectionMode: "webhook", webhookHost: "127.0.0.1", webhookPort: webhook.port, webhookPath: webhook.path, verificationToken: webhook.token, encryptKey: webhook.key });
@@ -236,6 +249,50 @@ export async function prepareCandidate(opts = {}) {
   // ---- candidate-only allowance (as every Feishu candidate): the relocated Feishu plugin has no
   // official install record, so the trusted-runtime gate would refuse its ingress queue.
   const allowance = {};
+  if (process.env.ISC_ENABLE_ADMISSION_RACE === "1") {
+    const file = path.join(dist, "agent-runner.runtime-CAdsMsQt.js");
+    const before = fs.readFileSync(file, "utf8");
+    const anchor = "async function runReplyAgent(params) {\n";
+    assert.equal(before.split(anchor).length, 2, "candidate guard-gap seam must be unique");
+    const hook = `\t// Candidate-only barrier after get-reply admission, before runReplyAgent decisions.
+\tif (process.env.ISC_GUARD_GAP_FILE && params.opts?.vInterSession?.kind === "request") {
+\t\tconst fs = await import("node:fs");
+\t\tconst file = process.env.ISC_GUARD_GAP_FILE;
+\t\tif (!fs.existsSync(file)) {
+\t\t\tfs.writeFileSync(file, JSON.stringify({sessionKey: params.sessionKey, runId: params.opts?.runId}));
+\t\t\tconst until = Date.now() + 60000;
+\t\t\twhile (!fs.existsSync(file + ".release")) {
+\t\t\t\tif (Date.now() > until) throw new Error("candidate guard-gap release timed out");
+\t\t\t\tawait new Promise(r => setTimeout(r, 25));
+\t\t\t}
+\t\t\tfs.writeFileSync(file + ".observed", JSON.stringify({active: params.isRunActive?.() === true}));
+\t\t}
+\t}
+`;
+    const after = before.replace(anchor, anchor + hook);
+    fs.writeFileSync(file, after);
+    allowance.admissionRace = {file: path.basename(file), before: sha256(before), after: sha256(after), purpose: "candidate-only admission-to-run barrier"};
+    const engineFile = path.join(pluginDir, 'core', 'engine.js');
+    const engineBefore = fs.readFileSync(engineFile, 'utf8');
+    const engineAnchor = '  async _testStartDelay() {\n';
+    assert.equal(engineBefore.split(engineAnchor).length, 2);
+    const engineHook = `    if (this.env?.ISC_FORCE_START_RACE === "1") {
+      const fs = await import("node:fs");
+      const file = process.env.VLAB_CANDIDATE_DATA + "/start-barrier";
+      if (!fs.existsSync(file)) {
+        fs.writeFileSync(file, "starting");
+        const until = Date.now() + 60000;
+        while (!fs.existsSync(file + ".release")) {
+          if (Date.now() > until) throw new Error("candidate start barrier timed out");
+          await new Promise(r => setTimeout(r, 25));
+        }
+      }
+    }
+`;
+    const engineAfter = engineBefore.replace(engineAnchor, engineAnchor + engineHook);
+    fs.writeFileSync(engineFile, engineAfter);
+    allowance.startRace = {file:'v-session-relay/core/engine.js', before:sha256(engineBefore), after:sha256(engineAfter), purpose:'candidate-only pre-start barrier'};
+  }
   {
     const gate = 'if (record?.origin !== "bundled" && record?.trustedOfficialInstall !== true) throw new Error(`${methodName} is only available for trusted plugins';
     const loaderFile = fs.readdirSync(dist).filter((n) => /^loader-[\w-]{8}\.js$/u.test(n)).map((n) => path.join(dist, n)).find((f) => fs.readFileSync(f, "utf8").includes(gate));
@@ -259,6 +316,17 @@ export async function prepareCandidate(opts = {}) {
   const cacheDir = path.join(data, "cache");
   fs.mkdirSync(cacheDir, { recursive: true, mode: 0o700 });
   const env = { ...process.env, OPENCLAW_GATEWAY_PORT: String(port), TMPDIR: shortTmp, XDG_CACHE_HOME: cacheDir, npm_config_cache: path.join(cacheDir, "npm") };
+  if (fake) {
+    env.NODE_EXTRA_CA_CERTS = fake.certFile;
+    const guard = fileURLToPath(new URL("./feishu-no-live.cjs", import.meta.url));
+    env.NODE_OPTIONS = `${env.NODE_OPTIONS ?? ""} --require=${guard}`.trim();
+    env.ISC_BLOCKED_PLATFORM_LOG = path.join(data, 'blocked-platform.jsonl');
+    // Never inherit a direct platform credential from the host's service environment.
+    for (const key of Object.keys(env)) if (/^(FEISHU|LARK)_.*(SECRET|TOKEN|APP_ID|KEY)$/u.test(key)) delete env[key];
+    const {prepareLarkShim} = await import("./inter-session-workspace.mjs");
+    const shim = prepareLarkShim({dataDir: data, pool: ROOMS, pathEnv: env.PATH});
+    Object.assign(env, shim.env);
+  }
   for (const k of Object.keys(STEER_ENV)) delete env[k];
   if (envMode === "v") Object.assign(env, STEER_ENV);
   if (!env.DEEPSEEK_API_KEY) env.DEEPSEEK_API_KEY = readSecretsEnv("DEEPSEEK_API_KEY");
@@ -266,7 +334,7 @@ export async function prepareCandidate(opts = {}) {
   addSecret(env.DEEPSEEK_API_KEY);
   for (const [k, v] of Object.entries(opts.extraEnv ?? {})) env[k] = String(v);
 
-  return new Candidate({ runtime, configPath, stateDir, data, dist, config, port, gatewayToken, feishu, webhook, env, ledgerDir, harness, envMode, pluginMode, model, notes, allowance, workspace, shortTmp });
+  return new Candidate({ runtime, configPath, stateDir, data, dist, config, port, gatewayToken, feishu, webhook, env, ledgerDir, harness, envMode, pluginMode, model, notes, allowance, workspace, shortTmp, fake, platformMode });
 }
 
 // ------------------------------------------------------------------ the private Gateway
@@ -392,6 +460,7 @@ export class Candidate {
 
   // ---------------------------------------------------------------- Feishu (real VLab app; outbound only)
   async feishuApi(method, pathname, { query, body } = {}) {
+    if (this.fake) return this.fake.handle(method, pathname, body ?? {}, new URLSearchParams(query));
     if (!this.tenantToken || this.tenantToken.until < Date.now()) {
       const r = await fetch(`${this.feishuBase}/open-apis/auth/v3/tenant_access_token/internal`, { method: "POST", headers: { "content-type": "application/json; charset=utf-8" }, body: JSON.stringify({ app_id: this.feishu.appId, app_secret: this.feishu.appSecret }) });
       const j = await r.json();
@@ -544,7 +613,7 @@ export class Candidate {
     return out.slice(-max);
   }
 
-  cleanup() { fs.rmSync(this.shortTmp, { recursive: true, force: true }); }
+  async cleanup() { if (this.fake) await this.fake.close(); fs.rmSync(this.shortTmp, { recursive: true, force: true }); }
 }
 
 // ------------------------------------------------------------------ transcripts
@@ -598,6 +667,24 @@ export function reduceMessage(m) {
 }
 export const toolCalls = (hist) => (Array.isArray(hist) ? hist.flatMap((m) => (m.tools ?? []).map((t) => ({ ...t, at: m.at, atMs: m.atMs }))) : []);
 export const SLEEP_RE = /\bsleep\s+\d|\btimeout\s+\d{2,}|while\b[^;]*;\s*do\b[\s\S]*\bsleep\b/u;
+
+export function interjectionProof({owner, user, resultText = '', endedAt}) {
+  const absorbedInResult = resultText.includes('插话已收到');
+  const steered = absorbedInResult || Boolean(user && user.atMs < endedAt);
+  return {absorbedInResult, steered, handled: Boolean(user) || Boolean(owner && absorbedInResult), nonOwnerIsolated: owner || !steered};
+}
+
+// Prove that the collected wake's result contains all three actual outputs, not a
+// generic overlap with a room's text or the coordinator's earlier "started" reply.
+export function summaryProof({tag, result, wakeRunId, rooms}) {
+  const outputs = ['a', 'b', 'c'].map((suffix, i) => {
+    const match = (rooms[i]?.result?.text ?? '').match(new RegExp(`${tag}-${suffix}\\s*=\\s*(\\d+)`, 'u'));
+    return match ? {code: `${tag}-${suffix}`, value: match[1]} : null;
+  });
+  const carries = outputs.map(x => Boolean(x && new RegExp(`${x.code}\\s*=\\s*${x.value}(?!\\d)`, 'u').test(result?.text ?? '')));
+  const answersCorrect = outputs[0]?.value === '323' && outputs[1]?.value === '667' && /^\d{10}$/u.test(outputs[2]?.value ?? '');
+  return {ok: Boolean(wakeRunId) && result?.fromRunId === wakeRunId && answersCorrect && carries.every(Boolean), fromRunId: result?.fromRunId ?? null, wakeRunId, outputs, carries, answersCorrect};
+}
 
 // ------------------------------------------------------------------ requester_tail_ms (§8.7.4)
 /** The batch is sealed when the requester run's lifecycle end reaches the Gateway. */

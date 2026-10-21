@@ -16,7 +16,9 @@
     "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/v-workspace/.agents/skills/feishu-task-room-router/SKILL.md",
     "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/v-workspace/.agents/skills/feishu-task-room-router/scripts/create_task_room.py",
     "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/v-workspace/skills/background-worker-contract/SKILL.md",
-    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/v-workspace/skills/agent-to-agent-protocol-feishu-a2a-defaults/SKILL.md"
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-e2e-feishu-private/v-workspace/skills/agent-to-agent-protocol-feishu-a2a-defaults/SKILL.md",
+    "lab/candidate/feishu-fake-open-api.mjs",
+    "lab/candidate/feishu-no-live.cjs"
   ],
   "files": [],
   "command": [
@@ -28,7 +30,8 @@
     "ISC_VARIANT": "stock",
     "ISC_ENV": "v",
     "RELAY_HARNESS": "worker",
-    "ISC_SCENARIOS": "C1,C2,C3"
+    "ISC_SCENARIOS": "C1,C2,C3",
+    "ISC_FEISHU_MODE": "mock"
   },
   "timeoutSeconds": 3600,
   "user": "lab-db91-parity"
