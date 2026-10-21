@@ -92,7 +92,7 @@ const plan = JSON.parse(fs.readFileSync("lab/subagent-scoped-row-index.plan.json
 const planFor = (name) => plan.find((f) => f.target.endsWith(`/${name}`));
 const storeName = "subagent-registry.store.sqlite-hzGu4QSk.js";
 assert.equal(sha(fs.readFileSync(path.join(DIST, storeName))), planFor(storeName).after, "candidate dist must carry the release store chunk");
-const baseSource = fs.readFileSync(path.join(DIST, NAME), "utf8");
+const baseSource = fs.readFileSync(path.join(process.env.BASELINE_DIST ?? DIST, NAME), "utf8");
 assert.equal(sha(baseSource), planFor(NAME).before, "candidate session-utils-list is not V's bytes");
 const releaseSource = fs.readFileSync(path.join(RELEASE_DIR, NAME), "utf8");
 assert.equal(sha(releaseSource), planFor(NAME).after);

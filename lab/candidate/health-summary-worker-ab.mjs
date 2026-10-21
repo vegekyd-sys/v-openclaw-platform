@@ -69,7 +69,7 @@ const planFor = (name) => plan.find((f) => f.target.endsWith(`/${name}`));
 const workerName = "v-health-session-summary-worker.mjs";
 const workerPath = path.join(DIST, workerName);
 assert.equal(sha(fs.readFileSync(workerPath)), planFor(workerName).after, "candidate dist must carry the worker module");
-const baseSource = fs.readFileSync(path.join(DIST, NAME), "utf8");
+const baseSource = fs.readFileSync(path.join(process.env.BASELINE_DIST ?? DIST, NAME), "utf8");
 assert.equal(sha(baseSource), planFor(NAME).before, "candidate collector is not V's bytes");
 const releaseSource = fs.readFileSync(path.resolve("lab/release-files/health-summary-worker", NAME), "utf8");
 assert.equal(sha(releaseSource), planFor(NAME).after);
