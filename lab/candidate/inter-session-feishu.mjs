@@ -485,7 +485,14 @@ const SCENARIOS = {
     // not readable through the user API: "请升级至最新版本客户端")
     const rows = cand.logSince(mark0, /task-status card=/u, 80);
     r.evidence.taskStatus = rows;
-    check(r, "background-row-counted-3-session-requests", rows.some((l) => /会话请求 ?3|3 项进行中/u.test(l)), rows.slice(0, 6));
+    // The row counts sends in flight. A harness that calls tools one after another (codex) may see a
+    // fast room finish before the third send is accepted, so the expected peak comes from the ledger.
+    const settledAt = (raw) => (raw.history ?? []).find((h) => ["result_ready", "failure_ready", "skipped", "cancelled"].includes(h.phase))?.at ?? Infinity;
+    const raws = ss.map((x) => L.sends.find((y) => y.sendId === x.sendId));
+    const peak = Math.max(...raws.map((a) => raws.filter((b) => b.createdAt <= a.createdAt && settledAt(b) > a.createdAt).length));
+    r.evidence.expectedPeakInFlight = peak;
+    const counts = rows.map((l) => Number(l.match(/后台 (\d+) 项进行中 · 会话请求/u)?.[1] ?? NaN)).filter(Number.isFinite);
+    check(r, "background-row-counted-peak-session-requests", peak >= 1 && counts.includes(peak) && Math.max(...counts) === peak, { peak, counts, rows: rows.slice(0, 6) });
     check(r, "background-row-ended", rows.some((l) => /后台任务已结束/u.test(l)), rows.slice(-3));
   } },
 
@@ -605,7 +612,16 @@ const SCENARIOS = {
     check(r, "x-woken-once-by-one-batch", bRooms.length === 1 && bRooms[0]?.phase === "woken" && bRooms[0]?.servesSendId === S0.sendId && bRooms[0]?.wake?.attempt === 0, bRooms.map(reduceBatch));
     check(r, "top-went-through-awaiting_children", (S0.history ?? []).some((h) => h.phase === "awaiting_children"), (S0.history ?? []).map((h) => h.phase));
     const res = S0.result?.text ?? "";
-    check(r, "a-gets-the-summary", ["-a", "-b", "-c"].every((x) => res.includes(`${tag}${x}`)), res.slice(0, 500));
+    // A gets what X wrote in the wake turn that collected the three rooms (not X's "started" reply),
+    // and that text carries each room's answer (the model may drop the -a/-b/-c tags when summing up).
+    const roomsWake = bRooms[0]?.wake?.runId;
+    const carries = (room) => {
+      const body = (room.result?.text ?? "").replaceAll(`${tag}-a`, "").replaceAll(`${tag}-b`, "").replaceAll(`${tag}-c`, "").replace(/[\s：:，,。.`*|-]/gu, "");
+      const flat = res.replace(/[\s：:，,。.`*|-]/gu, "");
+      for (let i = 0; i + 4 <= body.length; i++) if (flat.includes(body.slice(i, i + 4))) return true;
+      return false;
+    };
+    check(r, "a-gets-the-summary", Boolean(roomsWake) && S0.result?.fromRunId === roomsWake && RS.every(carries), { fromRunId: S0.result?.fromRunId, roomsWake, carries: RS.map(carries), text: res.slice(0, 500) });
     check(r, "a-woken-once", bTop?.phase === "woken" && bTop.wake?.attempt === 0, bTop?.wake);
     const aWake = dmHist.filter((m) => isInter(m, `:wake:${bTop?.batchId}`));
     check(r, "one-wake-turn-in-dm", aWake.length === 1, aWake.length);

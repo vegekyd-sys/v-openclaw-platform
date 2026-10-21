@@ -548,7 +548,13 @@ export class Candidate {
 }
 
 // ------------------------------------------------------------------ transcripts
-const textOfContent = (content) => (typeof content === "string" ? content : Array.isArray(content) ? content.filter((b) => b?.type === "text").map((b) => b.text).join("\n") : "");
+// Text blocks, plus the text inside a tool result block: the codex harness (vds) stores a tool's
+// output as a toolResult message whose content is one "toolResult" block, not a text block.
+const textOfContent = (content) => (typeof content === "string" ? content : Array.isArray(content) ? content.map((b) => {
+  if (b?.type === "text") return b.text;
+  if (isToolResultBlock(b)) return textOfContent(b.content) || (typeof b.text === "string" ? b.text : "") || (typeof b.output === "string" ? b.output : "");
+  return "";
+}).filter(Boolean).join("\n") : "");
 // claude-cli transcripts (9.1 cli-session-history.claude) store tool calls as "toolcall" / "tool_use"
 // blocks named "mcp__openclaw__<tool>" for OpenClaw tools, and their results as "tool_result" blocks
 // inside a message instead of a toolResult message.
@@ -587,7 +593,7 @@ export function reduceMessage(m) {
     ...(m?.toolName ? { toolName: toolNameOf(m.toolName) } : {}),
     text: redact(textOfContent(m?.content)).slice(0, m?.role === "toolResult" ? 800 : 1500),
     ...(tools.length ? { tools } : {}),
-    ...(Array.isArray(m?.content) && m.content.some((b) => b?.type !== "text") ? { blocks: m.content.map((b) => String(b?.type)).slice(0, 12) } : {}),
+    ...(Array.isArray(m?.content) && m.content.some((b) => b?.type !== "text") ? { blocks: m.content.map((b) => `${b?.type}${isToolResultBlock(b) ? `{${Object.keys(b).join(",")}}` : ""}`).slice(0, 12) } : {}),
   };
 }
 export const toolCalls = (hist) => (Array.isArray(hist) ? hist.flatMap((m) => (m.tools ?? []).map((t) => ({ ...t, at: m.at, atMs: m.atMs }))) : []);

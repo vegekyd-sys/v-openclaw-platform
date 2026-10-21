@@ -127,3 +127,9 @@ test("claude-cli transcripts: toolcall blocks named mcp__openclaw__* and embedde
   // a native toolResult message stays one entry
   assert.equal(S.reduceMessages({ role: "toolResult", toolName: "sessions_send", content: [{ type: "text", text: "x" }] }).length, 1);
 });
+
+test("codex transcripts: a toolResult message whose content is a toolResult block keeps its text", async () => {
+  const S = await import("./inter-session-support.mjs");
+  const [m] = S.reduceMessages({ role: "toolResult", toolName: "sessions_send", timestamp: 1, content: [{ type: "toolResult", content: [{ type: "text", text: "{\"status\":\"ok\",\"reply\":\"TAG-2\"}" }] }] });
+  assert.match(m.text, /TAG-2/u);
+});
