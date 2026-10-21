@@ -163,6 +163,14 @@ const G_INTERRUPT_CLEAR = `\tif (activeRunQueueMode === "interrupt" && !isRoomEv
 const G_INTERRUPT_CLEAR_EXCLUSIVE = `\tif (activeRunQueueMode === "interrupt" && !isRoomEvent && sessionLaneKey && (laneSize > 0 || activeSessionIdForInterrupt) && !vInterSessionExclusive(opts, ctx)) {
 `;
 
+// A queued dispatch operation is only a placeholder. Its session id can also name a
+// different embedded RPC that bypassed dispatch; exclusive requests must still see it.
+const G_OWN_QUEUED = `\t\tif (!recoveryOwnerRelease && isOwnPreDispatchOperationSession(activeSessionId)) return {
+`;
+const G_OWN_QUEUED_EXCLUSIVE = `\t\tconst vCompetingEmbeddedRun = vInterSessionExclusive(opts, ctx) && embeddedActiveSessionId != null && (embeddedAgentRuntime?.isEmbeddedAgentRunActive(embeddedActiveSessionId) ?? false);
+\t\tif (!recoveryOwnerRelease && isOwnPreDispatchOperationSession(activeSessionId) && !vCompetingEmbeddedRun) return {
+`;
+
 const G_QUEUE_ADMISSION = `\tconst queueAdmissionState = !pendingQueue ? "empty" : pendingQueue.items.some((item) => !item.steerPending) || pendingQueue.inFlight.size > 0 || pendingQueue.droppedCount > 0 ? "ready" : "steering";
 \tconst activeRunAcceptsCurrentThread = resolveActiveRunAcceptsCurrentThread({ isActive });
 `;
@@ -443,7 +451,7 @@ function refuseTwice(source, file) {
 /** The anchors each patch needs, for the anchor-uniqueness test. */
 export const ANCHORS = Object.freeze({
   getReply: Object.freeze([
-    G_ADMISSION_START, G_HEARTBEAT_TIMEOUT, G_INTERRUPT_CLEAR, G_QUEUE_ADMISSION, G_RUN_NOW_REPLY,
+    G_ADMISSION_START, G_HEARTBEAT_TIMEOUT, G_INTERRUPT_CLEAR, G_OWN_QUEUED, G_QUEUE_ADMISSION, G_RUN_NOW_REPLY,
     G_DIRECTIVES, G_INLINE_CUTOFF, G_INLINE_SKILLS, G_INLINE_COMMAND, G_INLINE_RUN_COMMANDS,
     G_NATIVE_SLASH, G_RUN_CONTEXT, G_SESSION_RESET, G_EXPLICIT_STEER, G_NATIVE_DIRECTIVE, G_THINK_SHORTHAND,
   ]),
@@ -460,6 +468,7 @@ export function patchGetReply(source) {
   let out = replaceOnce(source, G_ADMISSION_START, G_HELPERS, "prepareReplyRunAdmission start");
   out = replaceOnce(out, G_HEARTBEAT_TIMEOUT, G_HEARTBEAT_TIMEOUT_EXCLUSIVE, "heartbeat preemption timeout");
   out = replaceOnce(out, G_INTERRUPT_CLEAR, G_INTERRUPT_CLEAR_EXCLUSIVE, "interrupt-mode lane clear");
+  out = replaceOnce(out, G_OWN_QUEUED, G_OWN_QUEUED_EXCLUSIVE, "queued placeholder over competing RPC");
   out = replaceOnce(out, G_QUEUE_ADMISSION, G_QUEUE_ADMISSION_GUARDED, "queue admission state");
   out = replaceOnce(out, G_RUN_NOW_REPLY, G_RUN_NOW_REPLY_EXCLUSIVE, "run-now wait still active");
   out = replaceOnce(out, G_DIRECTIVES, G_DIRECTIVES_LITERAL, "directive interpretation gate");

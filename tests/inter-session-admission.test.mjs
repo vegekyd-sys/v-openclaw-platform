@@ -84,7 +84,8 @@ test("patching twice or a changed file is refused", () => {
   assert.throws(() => patchGetReply("async function other() {}"), /expected exactly one anchor, found 0/u);
   assert.throws(() => patchAgentRunnerRuntime("async function other() {}"), /expected exactly one anchor, found 0/u);
   assert.throws(() => patchDispatchFromConfig("async function other() {}"), /expected exactly one anchor, found 0/u);
-  const doubled = V_G.replace(ANCHORS.getReply[3], `${ANCHORS.getReply[3]}${ANCHORS.getReply[3]}`);
+  const queueAnchor = ANCHORS.getReply.find((anchor) => anchor.includes("const queueAdmissionState ="));
+  const doubled = V_G.replace(queueAnchor, `${queueAnchor}${queueAnchor}`);
   assert.throws(() => patchGetReply(doubled), /queue admission state: expected exactly one anchor, found 2/u);
   const doubledD = V_D.replace(ANCHORS.dispatchFromConfig[3], `${ANCHORS.dispatchFromConfig[3]}${ANCHORS.dispatchFromConfig[3]}`);
   assert.throws(() => patchDispatchFromConfig(doubledD), /fast abort: expected exactly one anchor, found 2/u);
@@ -148,9 +149,9 @@ function assertOnlyAnchorsChange(captured, generated, anchors, file) {
 test("only the intended lines change; everything V already runs (its own markers included) stays", () => {
   const hunksG = assertOnlyAnchorsChange(V_G, GEN_G, ANCHORS.getReply, FILES.getReply);
   const removedG = hunksG.flatMap((h) => h.removed);
-  assert.equal(removedG.length, 1 + 1 + 1 + 2 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1, "only the interrupt-clear condition and the literal-text conditions are rewritten");
+  assert.equal(removedG.length, 1 + 1 + 1 + 1 + 2 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1, "only the queued-placeholder, interrupt-clear and literal-text conditions are rewritten");
   assert.ok(removedG.every((l) => !/^\s*(?:\/\/|\/?\*)/u.test(l)), "no comment of V's is removed");
-  assert.equal(count(GEN_G, "vInterSessionExclusive(opts, ctx)"), 5, "declaration, heartbeat exit, interrupt clear, guard, run-now exit");
+  assert.equal(count(GEN_G, "vInterSessionExclusive(opts, ctx)"), 6, "declaration, heartbeat exit, interrupt clear, queued placeholder, guard, run-now exit");
   assert.equal(count(GEN_G, "vInterSessionLiteralText("), 9, "declaration + directives, native directive, inline actions, native slash, run context, think-level word, session reset, explicit steer");
 
   const hunksR = assertOnlyAnchorsChange(V_R, GEN_R, ANCHORS.agentRunnerRuntime, FILES.agentRunnerRuntime);
@@ -363,7 +364,7 @@ function admissionHarness(source, s = {}) {
     : "";
   const prepare = compile(`${helpers}${fnSource}`, "prepareReplyRunAdmission", scope);
 
-  const replyOperation = { key: SESSION_KEY, sessionId: SESSION_ID, result: null, phase: "running", updateSessionId() {} };
+  const replyOperation = { key: SESSION_KEY, sessionId: SESSION_ID, result: null, phase: s.replyPhase ?? "running", updateSessionId() {} };
   const opts = {
     replyOperation,
     onDeliberateSilentTerminalReply: () => log.push("onDeliberateSilentTerminalReply"),
@@ -444,6 +445,8 @@ const PENDING_STEERING = { items: [{ steerPending: true }], inFlight: new Set(),
 const SESSION_STATES = {
   idle: {},
   embeddedActive: { embeddedActive: true },
+  ownQueuedWithEmbeddedRPC: { embeddedActive: true, replyPhase: 'queued' },
+  ownQueuedIdle: { replyPhase: 'queued' },
   replyOpActive: { replyOpActive: true },
   recoveryOwner: { recoveryOwner: true },
   pendingReady: { pendingQueue: PENDING_READY },
@@ -486,6 +489,25 @@ test("functional: an exclusive turn on an idle session admits exactly like a per
     assert.equal(busy.calls.length, 0, "onBusy is not called");
     assert.ok(after.log.includes(`drainFormattedSystemEvents:${SESSION_KEY}`), "system events are drained into this turn as usual");
   }
+});
+
+test('functional: own queued reply operation does not hide a competing embedded RPC from an exclusive turn', async () => {
+  const busy = vInterSession();
+  const h = admissionHarness(GEN_G, {...SESSION_STATES.ownQueuedWithEmbeddedRPC,vInter:busy.value});
+  assert.deepEqual(await h.run(), {kind:'reply',reply:undefined});
+  assert.deepEqual(busy.calls, [{reason:'active_run',activeSessionId:SESSION_ID}]);
+  assert(!h.log.some(x=>x.startsWith('drainFormattedSystemEvents:')), 'BUSY must happen before transcript and system-event side effects');
+  const idle = admissionHarness(GEN_G, {...SESSION_STATES.ownQueuedIdle,vInter:vInterSession().value});
+  assert.equal((await idle.run()).kind,'ready','a queued placeholder without another run is still idle');
+  const flush = vInterSession();
+  const flushOnly = admissionHarness(GEN_G, {
+    ...SESSION_STATES.ownQueuedWithEmbeddedRPC,
+    vInter: flush.value,
+    flushSeam: {v:1,activeAfterYield:()=>false},
+  });
+  assert.equal((await flushOnly.run()).kind, 'ready', 'a deferred memory flush still yields to a queued exclusive turn');
+  assert.equal(flush.calls.length, 0);
+
 });
 
 const BUSY_CASES = [

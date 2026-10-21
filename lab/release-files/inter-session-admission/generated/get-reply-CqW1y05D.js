@@ -3592,7 +3592,8 @@ async function prepareReplyRunAdmission(context) {
 			activeSessionId: void 0,
 			isActive: false
 		};
-		if (!recoveryOwnerRelease && isOwnPreDispatchOperationSession(activeSessionId)) return {
+		const vCompetingEmbeddedRun = vInterSessionExclusive(opts, ctx) && embeddedActiveSessionId != null && (embeddedAgentRuntime?.isEmbeddedAgentRunActive(embeddedActiveSessionId) ?? false);
+		if (!recoveryOwnerRelease && isOwnPreDispatchOperationSession(activeSessionId) && !vCompetingEmbeddedRun) return {
 			activeSessionId,
 			isActive: false
 		};
