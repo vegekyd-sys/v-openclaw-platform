@@ -11,6 +11,30 @@
 
 ---
 
+## v2026.9.1-db91.6-nightshift-throughput-20261022
+
+上线：2026-10-22 02:13 CST v-self-restart 生效（PID 352681 → 760077）  ·  tag `v2026.9.1-db91.6-nightshift-throughput-20261022`
+
+**摘要**：#454 夜班提效，Gateway 侧三项改动，一次重启生效：
+- worker 插件 schema 的上限放宽（maxWorkers 16→32，warmSpareWorkers 15→31），配置同时把 `maxWorkers` 从 15 调到 24（`v-self-restart --set`，配置不在捕获里）；
+- `agent:*:subagent:workboard-*` 卡片会话不再做 memory flush，避免卡片流水写进 daily memory（10-12..22 这些文件里 55–90% 是卡片流水）；
+- 卡片 notes 截断上限从 4,000 提到 Workboard 自己的 12,000。
+
+**文件变化**：
+- `core/dist/runtime-api-1CCazqtv.js` 3300629f… → 3bc03ce6…
+- `core/dist/agent-runner-memory-7VF-zwNt.js` 7d5eaa38… → befc094d…
+- `worker/openclaw.plugin.json` 1ec103e3… → 2223bae7…
+
+三个文件都来自 VLab 发版 `nightshift-throughput-v1`（dev e822d251，负责人 nightshift-throughput），验收证据记在 VLab 的 accept 里。
+
+**重启**：Codex 的 memory guard 显示 ready；`--check` dry-run 用新 schema 验证 maxWorkers=24 通过。用 `--idle-timeout 60 --if-busy wait-then-proceed` 重启，等满 62 s 后照常执行，打断了 11 个夜班回合，65 s 就绪。各项检查结果：worker 5/5 ready，invalidConfig 0。被打断的卡由夜班自动重试，02:15–02:21 之间重新开跑。
+
+**上线后验收**：
+- 日志出现 "started with 5-24 elastic workers"；`vlab.workers.status` 返回 workerCapacity 24、capacity 72；
+- 三个文件的哈希与计划一致；
+- Gateway 拒绝卡片写 memory 的日志（"Memory flush writes are restricted"）：18:00–02:13 共 9 条，重启后 0 条；
+- 夜班的 Worker 余量从 2 升到 11。
+
 ## v2026.9.1-db91.6-gateway-451-452-20261021
 
 上线：2026-10-22 00:17 CST Gateway ready（PID 62954 → 352681）。本节记录运行时产物，尚未创建 git tag。
