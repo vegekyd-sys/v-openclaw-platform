@@ -49,7 +49,7 @@ export const TENANT_KEY = "13205dde5ccfd75d"; // the VLab tenant (not a secret; 
 export const AGENT = "makaron";
 export const dmKey = (openId = OWNER) => `agent:${AGENT}:feishu:direct:${openId}`;
 export const groupKey = (chatId) => `agent:${AGENT}:feishu:group:${chatId}`;
-export const HARNESS_MODELS = Object.freeze({ worker: "deepseek/deepseek-flash", vds: "deepseek/vds-deepseek-flash", vcc: "anthropic/claude-opus-5" });
+export const HARNESS_MODELS = Object.freeze({ worker: "deepseek/deepseek-flash", vds: "deepseek/vds-deepseek-flash", vcc: "anthropic/claude-opus-5-5" }); // vcc = V's alias (claude-opus-5-5, claude-cli)
 export const RUNTIME_OF = Object.freeze({ worker: "vlab-worker", vds: "codex", vcc: "claude-cli" });
 export const BROKEN_MODEL = "deepseek/isc-e2e-no-such-model"; // F10: allowed by config, refused by DeepSeek
 export const STEER_ENV = Object.freeze({ VLAB_FEISHU_STEER_ENABLED: "1", VLAB_FEISHU_STEER_CHAT_IDS: "*", CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1" });
@@ -184,6 +184,17 @@ export async function prepareCandidate(opts = {}) {
   const allow = config.agents.defaults.modelPolicy?.allow;
   for (const m of [model, BROKEN_MODEL]) if (Array.isArray(allow) && !allow.includes(m)) allow.push(m);
   const makaron = config.agents.entries[AGENT];
+  // V's /vcc is anthropic/claude-opus-5-5; shared VLab's config still names claude-opus-5 (its vcc).
+  // Same runtime (claude-cli) and params, V's model id.
+  makaron.models ??= {};
+  if (harness === "vcc" && !makaron.models[model]) {
+    const src = makaron.models?.["anthropic/claude-opus-5"] ?? config.agents.defaults.models?.["anthropic/claude-opus-5"];
+    assert(src, "no anthropic/claude-opus-5 entry to derive V's vcc model from");
+    makaron.models[model] = structuredClone(src);
+    if (config.agents.defaults.models && !config.agents.defaults.models[model]) config.agents.defaults.models[model] = structuredClone(config.agents.defaults.models["anthropic/claude-opus-5"] ?? src);
+    for (const entry of [makaron.models["anthropic/claude-opus-5"], config.agents.defaults.models?.["anthropic/claude-opus-5"]]) if (entry?.alias === "vcc") delete entry.alias;
+    notes.push(`vcc: ${model} derived from anthropic/claude-opus-5 (runtime ${makaron.models[model].agentRuntime?.id})`);
+  }
   makaron.model = { ...(makaron.model ?? {}), primary: model, fallbacks: [] };
   makaron.models ??= {};
   const { alias: _alias, ...harnessModelEntry } = structuredClone(makaron.models[model] ?? {});

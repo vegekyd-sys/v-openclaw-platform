@@ -16,7 +16,7 @@
 //   ISC_VARIANT    full (R1 core + Feishu bridge + plugin 2.0) | stock (V's bytes, V's workspace, no plugin:
 //                  C-stock) | fallback (R1 patched, plugin configured enabled:false: C-fallback)
 //   ISC_ENV        v (VLAB_FEISHU_STEER_*, CLAUDE_CODE_DISABLE_BACKGROUND_TASKS) | vlab (without them)
-//   RELAY_HARNESS  worker | vds (vcc needs VLab's claude login; vcodex never runs in a candidate)
+//   RELAY_HARNESS  worker | vds | vcc (claude-cli with the shared user's login; vcodex never runs in a candidate)
 //   ISC_SCENARIOS  comma list, run in order (see SCENARIOS below); ISC_REPEAT repeats F2 for S-tail
 //   RUN_TAG        unique tag carried by every message this run causes (default IS + 6 hex)
 //
