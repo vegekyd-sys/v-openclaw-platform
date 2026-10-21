@@ -10,7 +10,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import {
   DEFERRED_MEMORY_FLUSH, RESTART_WEDGE_RE, SEND_SETTLED_PHASES, SEND_TERMINAL_PHASES, TASK_REGISTRY_BRIDGE, TIMEOUTS,
-  bridgeChannelOf, feishuPostUuid, isBridgeError, messageSha256, newBatchId, newChainId, newCode, newSendId, parseInterSessionRunId,
+  bridgeChannelOf, feishuPostUuid, isBridgeError, isCoreRestartResumeProvenance, messageSha256, newBatchId, newChainId, newCode, newSendId, parseInterSessionRunId,
   runIdFor, sendContentKey, validateSendParams, validateStartOutcome,
 } from "./contracts.js";
 import {
@@ -57,6 +57,11 @@ export function cleanContextRunner() {
   return (fn, ...args) => fn(...args);
 }
 const ENDED_RUNS_MAX = 2000;
+// Records read back from a transcript (recovery, lost runs). A request turn that worked with tools
+// writes two records per call (call + result), so the tag of a turn with a dozen tool calls was
+// already beyond the last 20 and its answer was lost ("没有文字结果"); 200 covers ~100 tool calls.
+// Read only after a restart or a lost run (sessions.get tail read, bounded by the core at 1000).
+export const TRANSCRIPT_READ_LIMIT = 200;
 const MAX_REJECTS = 3;
 
 const sleep = (ms) => new Promise((r) => { const t = setTimeout(r, Math.max(0, ms)); t.unref?.(); });
@@ -1437,7 +1442,7 @@ export class Engine {
     this._transcriptGate = new Promise((r) => { release = r; });
     await prev;
     try {
-      const res = await this.runtime.getSessionMessages({ sessionKey, limit: 20 });
+      const res = await this.runtime.getSessionMessages({ sessionKey, limit: TRANSCRIPT_READ_LIMIT });
       return Array.isArray(res?.messages) ? res.messages : Array.isArray(res) ? res : [];
     } finally {
       setTimeout(release, this.timing.transcriptGapMs).unref?.();
@@ -1596,9 +1601,11 @@ export function transcriptReplyOf(messages, kind, id) {
     if (roleOf(m) === "user") {
       const origin = provenanceOf(m)?.originSessionId;
       if (typeof origin === "string" && origin.startsWith("v-a2a:") && origin.endsWith(`:${id}`)) continue;
-      // The core's recovery run of this very turn: what it says supersedes the text written before
-      // the restart (often only "I'll run the command now"), so the reply is read from here on.
-      if (CORE_RESTART_RESUME_RE.test(textOf(m))) { last = null; continue; }
+      // The core's restart recovery resumes this very turn with its own user message (recognised by
+      // provenance, or by its text when provenance is missing). What the recovery run says supersedes
+      // the text written before the restart (often only "I'll run the command now"), so the reply is
+      // read from here on.
+      if (isCoreRestartResumeProvenance(provenanceOf(m)) || CORE_RESTART_RESUME_RE.test(textOf(m))) { last = null; continue; }
       break;
     }
     if (roleOf(m) === "assistant") {

@@ -223,6 +223,7 @@ function createCore(state) {
           await r.onPartialReply?.({ text: "partial answer" });
           await scenario.duringRun?.(p);
           for (const payload of scenario.finals ?? [{ text: "final answer" }]) await d.deliver(payload, { kind: "final" });
+          await scenario.afterFinals?.(p);
           if (scenario.terminal !== null) r.onAgentRunTerminalOutcome?.(scenario.terminal ?? "completed");
           if (scenario.throwAfterStart) throw new Error(scenario.throwAfterStart);
           d.onCleanup?.();
@@ -520,6 +521,30 @@ test("functional: the DingTalk bridge through the generated chunks", async (t) =
     assert.deepEqual([ctx.SessionKey, ctx.To, ctx.OriginatingTo, ctx.AccountId, ctx.ChatType], [GROUP_KEY, CID, CID, "__default__", "group"]);
     assert.match(ctx.BodyForAgent, /^\/new 新会话 \/西游 请继续/u, "the request text is never turned into /new or a game command");
     assert.equal(ctx.GroupSystemPrompt, undefined);
+  });
+
+  await t.test("a work-view refresh due after the final never opens a second, empty-reply card (e2e-r2 D3)", async () => {
+    // R2 candidate: every DingTalk answer whose work view changed in its last 300 ms got a second card
+    // with the connector's empty-reply text (群聊「ℹ️ 暂未收到模型回复内容…」, 单聊「好的 👌 有其他问题随时找我」).
+    const emptyText = "（这一轮没有文字回复）";
+    state.reset({
+      finals: [{ text: "这是答复" }],
+      duringRun: async () => { for (const l of globalThis[PROGRESS_LISTENERS]) l({ sessionKey: GROUP_KEY, card: { steps: [{ step: "整理", status: "in_progress" }] } }); },
+      afterFinals: async () => { await sleep(450); }, // the refresh timer (≤ 300 ms) is due before onIdle seals the stream
+    });
+    const run = await (await bridge.start(request())).done;
+    assert.equal(run.status, "ok");
+    assert.equal(state.named("createAICardForTarget").length, 1, "one reply card: no card opened after the final");
+    assert(!state.named("finishAICard").some((c) => String(c.args[1]).includes(emptyText)), "no empty-reply text");
+    assert(state.named("finishAICard").some((c) => String(c.args[1]).includes("这是答复")), "the answer card was finished");
+  });
+
+  await t.test("a second final still opens its own card (the refresh guard only stops refreshes)", async () => {
+    state.reset({ finals: [{ text: "第一段" }, { text: "第二段" }] });
+    const run = await (await bridge.start(request())).done;
+    assert.equal(run.status, "ok");
+    assert.equal(state.named("createAICardForTarget").length, 2);
+    for (const text of ["第一段", "第二段"]) assert(state.named("finishAICard").some((c) => String(c.args[1]).includes(text)), text);
   });
 
   await t.test("a failed AI card: the answer still arrives, proactively, never through a webhook", async () => {

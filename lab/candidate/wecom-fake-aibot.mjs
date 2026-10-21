@@ -73,14 +73,14 @@ export function createFakeWeComAibot({ WebSocketServer, streamLifetimeMs = 6 * 6
             st.finished = Boolean(s.finish);
             st.history.push({ at: Date.now(), content: st.content, finish: st.finished });
           } else {
-            proactive.push({ at: Date.now(), chatId: callbacks.get(reqId), msgtype: body.msgtype, text: body.markdown?.content ?? body.text?.content ?? JSON.stringify(body).slice(0, 500), passive: true });
+            proactive.push({ at: Date.now(), reqId, chatId: callbacks.get(reqId), msgtype: body.msgtype, text: body.markdown?.content ?? body.text?.content ?? JSON.stringify(body).slice(0, 500), passive: true });
           }
           ack(ws, reqId);
           return;
         }
         case "aibot_send_msg": {
           const body = frame.body ?? {};
-          proactive.push({ at: Date.now(), chatId: body.chatid, msgtype: body.msgtype, text: body.markdown?.content ?? body.text?.content ?? JSON.stringify(body).slice(0, 500), ...(body.template_card ? { templateCard: body.template_card } : {}), ...(body.image ? { mediaId: body.image.media_id } : {}) });
+          proactive.push({ at: Date.now(), reqId, chatId: body.chatid, msgtype: body.msgtype, text: body.markdown?.content ?? body.text?.content ?? JSON.stringify(body).slice(0, 500), ...(body.template_card ? { templateCard: body.template_card } : {}), ...(body.image ? { mediaId: body.image.media_id } : {}) });
           ack(ws, reqId);
           return;
         }
@@ -144,9 +144,9 @@ export function createFakeWeComAibot({ WebSocketServer, streamLifetimeMs = 6 * 6
       for (const ws of sockets) ws.send(JSON.stringify({ cmd: "aibot_event_callback", headers: { req_id: reqId }, body }));
       return { chatId, reqId, at: Date.now() };
     },
-    /** A user writes to the robot (direct chat unless `group`). */
-    sendUserText({ userId, text, group = false }) {
-      const chatId = group ? `group-${userId}` : userId;
+    /** A user writes to the robot (direct chat unless `group`; a group may be named by `chatId`). */
+    sendUserText({ userId, text, group = false, chatId: groupChatId }) {
+      const chatId = group ? (groupChatId ?? `group-${userId}`) : userId;
       const reqId = `aibot_msg_callback_${Date.now()}_${nextId++}`;
       callbacks.set(reqId, chatId);
       const body = {
