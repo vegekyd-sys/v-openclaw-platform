@@ -501,7 +501,7 @@ export class Candidate {
   async history(sessionKey, limit = 80) {
     const res = await this.rpc("chat.history", { sessionKey, limit }).catch((e) => ({ error: e.message }));
     if (res?.error) return { error: redact(res.error) };
-    return (res?.messages ?? []).map(reduceMessage);
+    return (res?.messages ?? []).flatMap(reduceMessages);
   }
 
   // ---------------------------------------------------------------- ledger (read-only)
@@ -549,14 +549,34 @@ export class Candidate {
 
 // ------------------------------------------------------------------ transcripts
 const textOfContent = (content) => (typeof content === "string" ? content : Array.isArray(content) ? content.filter((b) => b?.type === "text").map((b) => b.text).join("\n") : "");
+// claude-cli transcripts (9.1 cli-session-history.claude) store tool calls as "toolcall" / "tool_use"
+// blocks named "mcp__openclaw__<tool>" for OpenClaw tools, and their results as "tool_result" blocks
+// inside a message instead of a toolResult message.
+const isToolCallBlock = (b) => ["toolcall", "tool_call", "tooluse", "tool_use"].includes(String(b?.type ?? "").toLowerCase());
+const isToolResultBlock = (b) => ["toolresult", "tool_result"].includes(String(b?.type ?? "").toLowerCase());
+export const toolNameOf = (name) => String(name ?? "").replace(/^mcp__openclaw__/u, "");
+
+/** One transcript message → its reduced form, plus one toolResult entry per embedded tool_result block. */
+export function reduceMessages(m) {
+  const main = reduceMessage(m);
+  if (!Array.isArray(m?.content) || m?.role === "toolResult") return [main];
+  const names = new Map(m.content.filter(isToolCallBlock).map((b) => [b.id, toolNameOf(b.name)]));
+  const extra = m.content.filter(isToolResultBlock).map((b) => ({
+    role: "toolResult", at: main.at, atMs: main.atMs, toolName: toolNameOf(b.name ?? names.get(b.tool_use_id ?? b.toolUseId ?? b.toolCallId) ?? ""),
+    text: redact(textOfContent(b.content) || (typeof b.text === "string" ? b.text : "")).slice(0, 800), embedded: true,
+  }));
+  return [main, ...extra];
+}
+
 export function reduceMessage(m) {
-  const tools = Array.isArray(m?.content) ? m.content.filter((b) => b?.type === "toolCall" || b?.type === "tool_use").map((b) => {
+  const tools = Array.isArray(m?.content) ? m.content.filter(isToolCallBlock).map((b) => {
     let args = b.arguments ?? b.input ?? {};
     if (typeof args === "string") { try { args = JSON.parse(args); } catch { args = { raw: args }; } }
     const cmd = typeof args.command === "string" ? args.command : typeof args.cmd === "string" ? args.cmd : undefined;
+    const name = toolNameOf(b.name);
     return {
-      name: b.name, ...(cmd ? { command: redact(cmd).slice(0, 240) } : {}),
-      ...(/sessions_(send|history)|session_status/u.test(b.name ?? "") ? { sessionKey: args.sessionKey ?? args.label, timeoutSeconds: args.timeoutSeconds, message: redact(String(args.message ?? "")).slice(0, 400) } : {}),
+      name, ...(cmd ? { command: redact(cmd).slice(0, 240) } : {}),
+      ...(/sessions_(send|history)|session_status/u.test(name) ? { sessionKey: args.sessionKey ?? args.label, timeoutSeconds: args.timeoutSeconds, message: redact(String(args.message ?? "")).slice(0, 400) } : {}),
       ...(args.background !== undefined ? { background: args.background } : {}),
     };
   }) : [];
@@ -564,9 +584,10 @@ export function reduceMessage(m) {
   return {
     role: m?.role, at: m?.timestamp ? iso(Number(m.timestamp)) : undefined, atMs: m?.timestamp ? Number(m.timestamp) : undefined,
     ...(prov ? { provenance: { kind: prov.kind, originSessionId: prov.originSessionId, sourceSessionKey: prov.sourceSessionKey } } : {}),
-    ...(m?.toolName ? { toolName: m.toolName } : {}),
+    ...(m?.toolName ? { toolName: toolNameOf(m.toolName) } : {}),
     text: redact(textOfContent(m?.content)).slice(0, m?.role === "toolResult" ? 800 : 1500),
     ...(tools.length ? { tools } : {}),
+    ...(Array.isArray(m?.content) && m.content.some((b) => b?.type !== "text") ? { blocks: m.content.map((b) => String(b?.type)).slice(0, 12) } : {}),
   };
 }
 export const toolCalls = (hist) => (Array.isArray(hist) ? hist.flatMap((m) => (m.tools ?? []).map((t) => ({ ...t, at: m.at, atMs: m.atMs }))) : []);

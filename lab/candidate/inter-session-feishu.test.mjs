@@ -111,3 +111,19 @@ test("requester_tail_ms: batch sealed at the requester run's end minus the send'
   assert.match("while true; do sleep 5; done", SLEEP_RE);
   assert.doesNotMatch("date && echo done", SLEEP_RE);
 });
+
+test("claude-cli transcripts: toolcall blocks named mcp__openclaw__* and embedded tool_result blocks", async () => {
+  const S = await import("./inter-session-support.mjs");
+  const call = { role: "assistant", timestamp: 1000, content: [{ type: "toolcall", id: "tu1", name: "mcp__openclaw__sessions_send", arguments: { sessionKey: "agent:makaron:feishu:group:oc_x", timeoutSeconds: 120, message: "hi" } }] };
+  const result = { role: "user", timestamp: 2000, content: [{ type: "tool_result", tool_use_id: "tu1", name: "mcp__openclaw__sessions_send", content: [{ type: "text", text: "{\"status\":\"ok\",\"reply\":\"TAG-1\"}" }] }] };
+  const [c] = S.reduceMessages(call);
+  assert.equal(c.tools[0].name, "sessions_send");
+  assert.equal(c.tools[0].timeoutSeconds, 120);
+  const out = S.reduceMessages(result);
+  assert.equal(out.length, 2);
+  assert.equal(out[1].role, "toolResult");
+  assert.equal(out[1].toolName, "sessions_send");
+  assert.match(out[1].text, /TAG-1/u);
+  // a native toolResult message stays one entry
+  assert.equal(S.reduceMessages({ role: "toolResult", toolName: "sessions_send", content: [{ type: "text", text: "x" }] }).length, 1);
+});
