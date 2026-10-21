@@ -1,5 +1,7 @@
 # 飞书端到端验收（设计 §10.3）记录
 
+> 后续：Worker/VDS 的修复、零真实发送候选验收和最新结论见 [2026-10-21 验收包](acceptance-worker-vds-20261021.md)。以下真实飞书结果保留为历史证据。
+
 > 2026-10-21 起 · 分支 `isc/feishu-e2e`（worktree `.claude/worktrees/isc-feishu-e2e`，基于 `claude/cross-session-task-coordination-f7789a` @92c635ee）
 > 上一轮 e2e（`isc/e2e-feishu`）修过两个缺陷，但 receipt 已丢，本轮全部重跑。
 
@@ -59,5 +61,5 @@
 
 ## 剩余风险
 
-- 2026-10-21 用户要求停止持续的 VLab 飞书测试发送；接手保持暂停，不启动 run/watch/candidate，也不向聊天发消息。
+- 2026-10-21 用户要求停止持续的 VLab 飞书测试发送；真实飞书 run/watch 保持暂停，不向聊天发消息；后续按用户授权只运行隔离的假平台 candidate，见上方验收包。
 - 原始消息、transcript、watch 和 receipt 保存在被 git 忽略的私有证据目录；不要提交到仓库。接手记录见 [takeover-20261021.md](takeover-20261021.md)。
