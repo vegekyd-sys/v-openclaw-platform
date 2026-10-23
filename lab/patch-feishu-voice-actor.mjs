@@ -11,8 +11,9 @@ export function patchActorDispatcher(source) {
   try {
     opts = await vPrepareVoiceActor(opts);
     if (!opts) return;
-  } catch {
-    opts.respond(false, void 0, errorShape(ErrorCodes.INVALID_REQUEST, "Feishu voice identity or conversation was not authorized"));
+  } catch (error) {
+    opts.respond(false, void 0, errorShape(ErrorCodes.INVALID_REQUEST, "Feishu voice identity or conversation was not authorized",
+      error?.code === "FEISHU_CONVERSATION_MEMBERSHIP_REQUIRED" ? {details:{reason:"conversation_membership_required"}} : undefined));
     return;
   }`);
   return `import {prepareVoiceActor as vPrepareVoiceActor} from "./v-feishu-voice-runtime.mjs";\n${marker}\n`+source;

@@ -32,6 +32,7 @@ export async function authorizeVoiceActor({proof, method, params, client, cfg, r
   const actual = Buffer.from(signature,'base64url');
   if (actual.length !== expected.length || !timingSafeEqual(actual,expected)) fail();
   const policy = await resolvePolicy({cfg,account,actor:a});
+  if(policy?.admitted===false&&policy.reason==='conversation_membership_required')throw Object.assign(Error('feishu_voice_not_authorized'),{code:'FEISHU_CONVERSATION_MEMBERSHIP_REQUIRED'});
   if (!policy?.admitted || !policy.sessionKey || !policy.agentId || typeof policy.senderIsOwner !== 'boolean') fail();
   // Never accept a caller-selected alias, another account, or another agent.
   if (method !== 'voice.feishu.resolve' && (['sessions.resolve','sessions.describe'].includes(method) ? params?.key : params?.sessionKey) !== policy.sessionKey ||

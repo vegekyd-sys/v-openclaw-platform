@@ -17,9 +17,11 @@ test('conversation mode automatically creates distinct public entries for new DM
     const f=fixture({mode}),h=createPhoneTabHandler({account,getSettings:async()=>({...settings,conversations:true,allowedOpenIds:[]}),api:f.api,cacheMs:0});
     const entered={header:{event_type:mode==='group'?'im.chat.member.bot.added_v1':'im.chat.access_event.bot_p2p_chat_entered_v1'},event:{chat_id:chat,operator_id:{open_id:operator}}};
     assert.equal((await h.run(entered)).created,true);
-    const phone=new URL(f.tabs[1].tab_content.url).searchParams.get('phone');
+    const entry=mode==='group'?f.menus[0].chat_menu_item.redirect_link.common_url:f.tabs[1].tab_content.url;
+    assert.equal(f.tabs.length,mode==='group'?1:2);
+    const phone=new URL(entry).searchParams.get('phone');
     assert.deepEqual(JSON.parse(Buffer.from(phone.slice(7),'base64url').toString()),[account.accountId,chat]);
-    assert(!f.tabs[1].tab_content.url.includes(operator));
+    assert(!entry.includes(operator));
     const firstMessage={header:{event_type:'im.message.receive_v1'},event:{sender:{sender_id:{open_id:operator}},message:{chat_id:chat,chat_type:mode}}};
     assert.equal((await h.run(firstMessage)).created,false);assert.equal(f.writes,1);
   }
@@ -33,9 +35,16 @@ test('conversation patch hooks added-group and first-message paths without chang
   assert.match(patched,/vPhoneTab.schedule\(\{header:\{event_type:"im.chat.member.bot.added_v1"/u);
 });
 function fixture(options = {}) {
-  let tabs = [structuredClone(baseTab)], requests = [], writes = 0;
+  let tabs = [structuredClone(baseTab)], menus = [], requests = [], writes = 0;
   const api = async (method,payloadPath,body) => {
     requests.push({method,path:payloadPath});
+    if(payloadPath.endsWith('/menu_tree')) {
+      if(method==='GET')return {menu_tree:{chat_menu_top_levels:structuredClone(menus)}};
+      writes++;
+      if(!options.rejectWrite)menus.push(...body.menu_tree.chat_menu_top_levels.map((row,index)=>({chat_menu_top_level_id:'menu'+index,...row})));
+      if(options.ambiguous||options.rejectWrite)throw Error('private-secret');
+      return {};
+    }
     if (method === 'GET' && !payloadPath.endsWith('list_tabs')) return {chat_mode:options.mode ?? 'p2p'};
     if (method === 'GET') return {chat_tabs:structuredClone(tabs)};
     writes++;
@@ -43,7 +52,7 @@ function fixture(options = {}) {
     if (options.ambiguous || options.rejectWrite) throw Error('SDK accidentally contains Bearer private-secret');
     return {};
   };
-  return {api,requests,get tabs(){return tabs;},set tabs(value){tabs=value;},get writes(){return writes;}};
+  return {api,requests,get menus(){return menus;},set menus(value){menus=value;},get tabs(){return tabs;},set tabs(value){tabs=value;},get writes(){return writes;}};
 }
 
 test('first private-chat entry creates one top tab and repeated entry preserves existing tabs',async () => {
@@ -158,4 +167,18 @@ export const untouchedCache=new Map();`;
   assert.equal(client.options.appType,'self');
   for(const log of Object.values(client.options.logger))assert.equal(log({Authorization:'Bearer fixture'}),undefined);
   assert.notEqual(client,module.createFeishuPhoneTabClient(config));assert.equal(module.untouchedCache.size,0);
+});
+
+test('group menu preserves other menus, handles unknown writes and refuses conflicts or a full menu',async()=>{
+  const f=fixture({mode:'group',ambiguous:true});
+  const other={chat_menu_top_level_id:'existing',chat_menu_item:{name:'已有应用',action_type:'NONE'},children:[]};
+  f.menus.push(other);
+  const args={api:f.api,chat:'oc_groupA',url,allowGroup:true};
+  assert.equal((await ensurePhoneTab(args)).recoveredUnknownWrite,true);
+  assert.deepEqual(f.menus[0],other);assert.equal(f.tabs.length,1);
+  assert.equal((await ensurePhoneTab(args)).created,false);assert.equal(f.writes,1);
+  f.menus[1].chat_menu_item.redirect_link.common_url='https://other.example';
+  await assert.rejects(ensurePhoneTab(args),/menu_conflict/);
+  f.menus=[other,{...other,chat_menu_top_level_id:'b'},{...other,chat_menu_top_level_id:'c'}];
+  await assert.rejects(ensurePhoneTab(args),/menu_full/);assert.equal(f.writes,1);
 });

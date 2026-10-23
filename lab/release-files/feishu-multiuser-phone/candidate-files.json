@@ -10,7 +10,7 @@
       "source": "lab/release-files/feishu-multiuser-phone/server-methods-CLElG7qF.js",
       "target": "openclaw/dist/server-methods-CLElG7qF.js",
       "before": "b75a130d0b01bb733d07f99ebe514813dcb911a5621b8adff342f573514f78a4",
-      "sha256": "8309fa0d8b616296be443f0fa76a0fce31eb0e79ba280c88a530b47e48b084a3"
+      "sha256": "f3889a32fdaf2a54315378dd3c8bea08b25dedc4e293afd83c718ad54e9b9edc"
     },
     {
       "source": "lab/release-files/feishu-multiuser-phone/tools-invoke-ev4-EXmh.js",
@@ -46,19 +46,19 @@
       "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-actor.mjs",
       "target": "openclaw/dist/v-feishu-voice-actor.mjs",
       "before": null,
-      "sha256": "4edea053cad04fc815a02aa9cd05849cbe74a9fdc77a28a50c60d6e2f087d7ff"
+      "sha256": "17608d695ff0893a71f94574e2cbb8a1a765246f36b7b51d2932afdf002f6a42"
     },
     {
       "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-policy.mjs",
       "target": "openclaw/dist/v-feishu-voice-policy.mjs",
       "before": null,
-      "sha256": "6835f7fc501e3317cf109a6713b71082fe3aa922472fbdd7d2ec72a26d0a39b1"
+      "sha256": "88e361a38810e9a609e3073759a8daafc3a084462f871b7a281784bde7482bf6"
     },
     {
       "source": "lab/release-files/feishu-multiuser-phone/v-feishu-phone-tabs.mjs",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-phone-tabs.mjs",
       "before": "72c3ce04860b05f1c4f058c052957ba14c46ee6eebd05e7e134a75cf2c75b837",
-      "sha256": "bdeed7615c79e13e7b1add188348ffeb4c57548cf3d8cceb7bb9b4e3e2f5d9e1"
+      "sha256": "4c1037331c071ca402b9558b610b6a99db248a80439642ef99ad06430dde5d95"
     },
     {
       "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-runtime.mjs",
