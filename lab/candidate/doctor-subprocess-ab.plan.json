@@ -27,9 +27,9 @@
   "user": "lab-db91-parity",
   "timeoutSeconds": 0,
   "env": {
-    "ARMS": "base,patched,patched-full,lint",
+    "ARMS": "base,patched,patched-full,scans,lint",
     "INFLATE": "10",
-    "EVIDENCE_DIR": "/var/tmp/doctor-ab-20261024-r2",
+    "EVIDENCE_DIR": "/var/tmp/doctor-ab-20261024-r3",
     "DB_COPY_DIR": "/var/tmp/doctor-ab-db"
   }
 }

@@ -10,6 +10,7 @@
 //   patched       release chunk: doctor in a child, transcript scans skipped
 //   patched-full  release chunk with OPENCLAW_V_DOCTOR_TRANSCRIPT_SCANS=1: child, scans kept
 //   lint          `openclaw doctor --lint` in a child, for comparison only (upstream's hosted doctor)
+//   scans         the two skipped contributions alone, timed, in a child (what the skip saves)
 // The plan installs both release files, so the base arm's doctor loads the patched contribution
 // chunk too; without OPENCLAW_V_DOCTOR_SKIP_TRANSCRIPT_SCANS it runs V's contribution list.
 //
@@ -20,11 +21,14 @@
 // The report of each arm (base: everything doctor wrote to stdout/stderr plus the capture runtime;
 // child arms: the capture runtime) is saved under EVIDENCE_DIR and diffed against base.
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 const runtimeRoot = process.env.VLAB_CANDIDATE_RUNTIME;
 const stateDir = process.env.OPENCLAW_STATE_DIR;
@@ -139,18 +143,25 @@ async function measure(arm, run) {
     last = now;
   }, 20);
   const children = new Map();
-  const sampler = setInterval(() => {
+  // asynchronous, so sampling never blocks the thread it measures
+  let sampling = false;
+  const sampler = setInterval(async () => {
+    if (sampling) return;
+    sampling = true;
     try {
-      for (const line of execFileSync("ps", ["-o", "pid=,ni=,pcpu=,rss=,args=", "--ppid", String(process.pid)], { encoding: "utf8" }).trim().split("\n")) {
+      const { stdout } = await execFileAsync("ps", ["-o", "pid=,ni=,pcpu=,rss=,args=", "--ppid", String(process.pid)]);
+      for (const line of stdout.trim().split("\n")) {
         const [pid, ni, pcpu, rss, ...args] = line.trim().split(/\s+/);
         if (!/ doctor/.test(args.join(" "))) continue;
-        const ioClass = execFileSync("ionice", ["-p", pid], { encoding: "utf8" }).trim();
+        const ioClass = (await execFileAsync("ionice", ["-p", pid])).stdout.trim();
         const seen = children.get(pid) ?? { nice: Number(ni), ioClass, args: args.join(" ").slice(0, 160), maxCpuPercent: 0, maxRssMb: 0 };
         seen.maxCpuPercent = Math.max(seen.maxCpuPercent, Number(pcpu));
         seen.maxRssMb = Math.max(seen.maxRssMb, Math.round(Number(rss) / 1024));
         children.set(pid, seen);
       }
-    } catch {}
+    } catch {} finally {
+      sampling = false;
+    }
   }, 2000);
   const elu = performance.eventLoopUtilization();
   const before = snapshotState();
@@ -231,16 +242,39 @@ async function runArm(arm) {
     }
     report = runtime.lines;
   } else if (arm === "lint") {
+    let lintExitCode;
     out.arms[arm] = await measure(arm, () => new Promise((resolve, reject) => {
       const child = spawn(process.execPath, [path.join(DIST, "index.js"), "doctor", "--lint"], { env: process.env, stdio: ["ignore", "pipe", "pipe"] });
       child.stdout.on("data", (chunk) => runtime.lines.push(...chunk.toString("utf8").split("\n")));
       child.stderr.on("data", (chunk) => runtime.lines.push(...chunk.toString("utf8").split("\n")));
       child.once("error", reject);
       child.once("close", (code) => {
-        out.arms[arm] = { ...out.arms[arm], exitCode: code };
+        lintExitCode = code;
         resolve();
       });
     }));
+    out.arms[arm].exitCode = lintExitCode;
+    report = runtime.lines;
+  } else if (arm === "scans") {
+    const script = `const dist = ${JSON.stringify(DIST)};
+const { loadConfig } = await import(dist + "/config/config.js");
+const cfg = loadConfig();
+const timings = {};
+for (const [name, file, fn] of [["headers", "doctor-session-transcript-headers-QxFtPRSC.js", "noteSessionTranscriptHeaderHealth"], ["labels", "doctor-session-transcript-labels-DTxp6Q8J.js", "noteSessionTranscriptLabelHealth"]]) {
+  const started = performance.now();
+  await (await import(dist + "/" + file))[fn]({ cfg, env: process.env, shouldRepair: false });
+  timings[name] = Math.round(performance.now() - started);
+}
+console.log("SCAN_TIMINGS " + JSON.stringify(timings));`;
+    out.arms[arm] = await measure(arm, () => new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", "--input-type=module", "-e", script], { env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+      child.stdout.on("data", (chunk) => runtime.lines.push(...chunk.toString("utf8").split("\n")));
+      child.stderr.on("data", (chunk) => runtime.lines.push(...chunk.toString("utf8").split("\n")));
+      child.once("error", reject);
+      child.once("close", (code) => (code === 0 ? resolve() : reject(new Error(`scans exited ${code}`))));
+    }));
+    const line = runtime.lines.find((text) => text.startsWith("SCAN_TIMINGS "));
+    if (line) out.arms[arm].scanMs = JSON.parse(line.slice("SCAN_TIMINGS ".length));
     report = runtime.lines;
   } else throw new Error(`unknown arm ${arm}`);
   // eslint-disable-next-line no-control-regex
