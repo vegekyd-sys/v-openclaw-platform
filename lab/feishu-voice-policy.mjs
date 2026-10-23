@@ -19,7 +19,7 @@ export function createFeishuVoicePolicy(d) {
       if (!page.page_token || seen.has(page.page_token)) throw Error('feishu_members_unconfirmed');
       pageToken=page.page_token;seen.add(pageToken);
     } while (true);
-    if (!member) return {admitted:false};
+    if (!member) return {admitted:false,reason:'conversation_membership_required'};
     const f = account.config, group = isGroup ? d.groupConfig({cfg:f,groupId:actor.chatId}) : null;
     let ingress, peerId = actor.openId;
     if (isGroup) {

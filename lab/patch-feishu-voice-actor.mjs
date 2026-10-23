@@ -11,8 +11,9 @@ export function patchActorDispatcher(source) {
   try {
     opts = await vPrepareVoiceActor(opts);
     if (!opts) return;
-  } catch {
-    opts.respond(false, void 0, errorShape(ErrorCodes.INVALID_REQUEST, "Feishu voice identity or conversation was not authorized"));
+  } catch (error) {
+    opts.respond(false, void 0, errorShape(ErrorCodes.INVALID_REQUEST, "Feishu voice identity or conversation was not authorized",
+      error?.code === "FEISHU_CONVERSATION_MEMBERSHIP_REQUIRED" ? {details:{reason:"conversation_membership_required"}} : undefined));
     return;
   }`);
   return `import {prepareVoiceActor as vPrepareVoiceActor} from "./v-feishu-voice-runtime.mjs";\n${marker}\n`+source;
@@ -22,7 +23,7 @@ export function patchActorToolInvoke(source) {
   const marker='// v-feishu-voice-actor-tools-v1';
   if(source.includes(marker))return source;
   source=once(source,'\t\tsenderIsOwner: client?.connect?.scopes?.includes("operator.admin"),',
-    '\t\tsenderIsOwner: client?.internal?.voiceActor?.senderIsOwner ?? client?.connect?.scopes?.includes("operator.admin"),\n\t\t...(client?.internal?.voiceActor ? vActorToolContext(client.internal.voiceActor) : {}),');
+    '\t\tsenderIsOwner: client?.internal?.voiceActor?.senderIsOwner ?? client?.connect?.scopes?.includes("operator.admin"),\n\t\tvoiceActor: client?.internal?.voiceActor,\n\t\t...(client?.internal?.voiceActor ? vActorToolContext(client.internal.voiceActor) : {}),');
   source=once(source,'conversationReadOrigin: resolveGatewayConversationReadOrigin({',
     'conversationReadOrigin: client?.internal?.voiceActor ? "delegated" : resolveGatewayConversationReadOrigin({');
   return `import {actorToolContext as vActorToolContext} from "./v-feishu-voice-actor.mjs";\n${marker}\n`+source;
@@ -32,7 +33,24 @@ export function patchActorToolResolver(source) {
   const marker='// v-feishu-voice-actor-tool-policy-v1';
   if(source.includes(marker))return source;
   source=once(source,'\t\tmessageProvider: params.messageChannel,','\t\tmessageProvider: params.messageChannel,\n\t\tchannelContext: params.channelContext,\n\t\tgroupId: params.groupId,');
-  return marker+'\n'+source;
+  source=once(source,'const resolveTools = (disablePluginTools) => resolveGatewayScopedTools({',
+    'const resolveTools = (disablePluginTools) => params.voiceActor ? vResolveActorTools({cfg:params.cfg,actor:params.voiceActor,sessionId:sessionEntry?.sessionId,clientCaps:params.clientCaps,disablePluginTools}) : resolveGatewayScopedTools({');
+  return 'import {resolveActorTools as vResolveActorTools} from "./v-feishu-voice-tools.mjs";\n'+marker+'\n'+source;
+}
+
+export function patchActorCatalog(source) {
+  const marker='// v-feishu-voice-actor-catalog-v1';
+  if(source.includes(marker))return source;
+  source=once(source,'"tools.catalog": ({ params, respond, context }) => {','"tools.catalog": ({ params, respond, context, client }) => {');
+  source=once(source,'\tif (!resolved) return;',`\tif (!resolved) return;
+  if (client?.internal?.voiceActor) {
+    const {tools}=vResolveActorTools({cfg:resolved.cfg,actor:client.internal.voiceActor,
+      clientCaps:client.connect?.caps,disablePluginTools:params.includePlugins===false});
+    respond(true,{agentId:resolved.agentId,profiles:[],groups:[{id:"conversation",label:"Conversation",source:"core",
+      tools:tools.map(tool=>({id:tool.name,label:tool.label??tool.name,description:tool.description,source:"core"}))}]});
+    return;
+  }`);
+  return 'import {resolveActorTools as vResolveActorTools} from "./v-feishu-voice-tools.mjs";\n'+marker+'\n'+source;
 }
 
 export function patchActorTalk(source) {

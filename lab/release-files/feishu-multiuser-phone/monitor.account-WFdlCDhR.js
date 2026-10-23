@@ -1,3 +1,14 @@
+// v-feishu-authenticated-url-challenge-v1
+function authenticatedWebhookChallenge(payload, {decrypt, verificationToken, safeEqual}) {
+  if (!payload || typeof payload.encrypt !== 'string' || !verificationToken) return null;
+  try {
+    const value = JSON.parse(decrypt(payload.encrypt));
+    if (value?.type !== 'url_verification' || typeof value.challenge !== 'string' ||
+        !value.challenge.length || value.challenge.length > 4096 ||
+        typeof value.token !== 'string' || !safeEqual(value.token, verificationToken)) return null;
+    return {challenge:value.challenge};
+  } catch { return null; }
+}
 // v-feishu-conversation-phone-tabs-v2
 import {createFeishuPhoneTabClient as vCreatePhoneTabClient} from "./client-DMbIL3UH.js";
 import {createRuntimePhoneTabHandler as vCreatePhoneTabHandler} from "./v-feishu-phone-tabs.mjs";
@@ -7892,6 +7903,16 @@ async function monitorWebhook({ account, accountId, runtime, abortSignal, eventD
 					rawBody,
 					encryptKey
 				})) {
+					const handshake = authenticatedWebhookChallenge(parseFeishuWebhookPayload(rawBody), {
+						decrypt: value => new Lark.AESCipher(encryptKey).decrypt(value),
+						verificationToken: account.verificationToken?.trim(), safeEqual: safeEqualSecret
+					});
+					if (handshake) {
+						res.statusCode = 200;
+						res.setHeader("Content-Type", "application/json; charset=utf-8");
+						res.end(JSON.stringify(handshake));
+						return;
+					}
 					respondText(res, 401, "Invalid signature");
 					return;
 				}

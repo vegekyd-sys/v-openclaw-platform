@@ -61,11 +61,35 @@ function sameTab(a, b) {
   return JSON.stringify(normalize(a)) === JSON.stringify(normalize(b));
 }
 
+// Groups use Feishu's menu below the composer; private chats use a top tab.
+async function ensureGroupPhoneMenu({api,path,url}) {
+  const read=async()=>{
+    const data=await api('GET',path+'/menu_tree');
+    if(!Array.isArray(data?.menu_tree?.chat_menu_top_levels))throw Error('unconfirmed_read');
+    return data.menu_tree.chat_menu_top_levels;
+  };
+  const matches=row=>row.chat_menu_item?.name===NAME&&row.chat_menu_item?.action_type==='REDIRECT_LINK'
+    &&row.chat_menu_item?.redirect_link?.common_url===url
+    &&['ios_url','android_url','pc_url','web_url'].every(key=>!row.chat_menu_item.redirect_link[key]||row.chat_menu_item.redirect_link[key]===url);
+  const before=await read(),existing=before.filter(matches);
+  if(existing.length===1)return {status:'verified',created:false,menuId:existing[0].chat_menu_top_level_id};
+  if(existing.length||before.some(row=>row.chat_menu_item?.name===NAME))throw Error('menu_conflict');
+  if(before.length>=3)throw Error('menu_full');
+  let unknownWrite=false;
+  try {await api('POST',path+'/menu_tree',{menu_tree:{chat_menu_top_levels:[{chat_menu_item:{
+    name:NAME,action_type:'REDIRECT_LINK',redirect_link:{common_url:url}},children:[]}]}});
+  }catch{unknownWrite=true;}
+  const after=await read(),added=after.filter(matches);
+  if(added.length!==1||!before.every(old=>after.some(next=>sameTab(old,next))))throw Error('unconfirmed_write');
+  return {status:'verified',created:true,menuId:added[0].chat_menu_top_level_id,recoveredUnknownWrite:unknownWrite};
+}
+
 export async function ensurePhoneTab({api, chat, url, allowGroup=false}) {
   if (!chatId(chat)) throw Error('invalid_event');
   url = publicPhoneUrl(url);
   const path = `/open-apis/im/v1/chats/${chat}`;
   const info = await api('GET', path);
+  if(allowGroup&&info?.chat_mode==='group')return ensureGroupPhoneMenu({api,path,url});
   if (info?.chat_mode !== 'p2p' && !(allowGroup&&info?.chat_mode==='group')) return {status:'ignored_non_p2p'};
   const read = async () => {
     const result = await api('GET', path + '/chat_tabs/list_tabs');
@@ -127,7 +151,7 @@ export function createPhoneTabHandler({account, getSettings, api, log = () => {}
     while (!closed && active < concurrency && queue.length) {
       const item = queue.shift(); active++;
       Promise.resolve().then(() => execute(item)).catch(error => ({status:[
-        'invalid_configuration','tab_conflict','unconfirmed_read','unconfirmed_write',
+        'invalid_configuration','tab_conflict','menu_conflict','menu_full','unconfirmed_read','unconfirmed_write',
       ].includes(error?.message) ? error.message : 'api_failed'})).then(result => {
         active--; pending.delete(item.key); report(result); item.resolve(result); pump();
       });

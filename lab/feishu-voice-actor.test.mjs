@@ -75,3 +75,10 @@ test('one transport cannot read or control another caller or group resources',as
   const resolved=await prepare(actor,'voice.feishu.resolve');
   assert.equal(resolved.result,null);assert.equal(resolved.reply[0][1].sessionKey,session(actor));
 });
+
+test('membership denial exposes only a fixed recovery reason after verified actor admission',async()=>{
+  await assert.rejects(check(actor,undefined,undefined,{resolvePolicy:async()=>({admitted:false,reason:'conversation_membership_required'})}),
+    error=>error.code==='FEISHU_CONVERSATION_MEMBERSHIP_REQUIRED');
+  await assert.rejects(check(actor,undefined,undefined,{resolvePolicy:async()=>({admitted:false,reason:'private-identifier'})}),
+    error=>error.code===undefined&&!error.message.includes('private-identifier'));
+});

@@ -82,3 +82,35 @@ test('patched real Gateway dispatcher loads and rejects a forged actor before na
   assert.equal(replies.length,1);assert.equal(replies[0][0],false);
   assert.match(replies[0][2].message,/not authorized/);
 });
+
+
+test('ordinary Feishu caller retains native coding and delegation capabilities; catalog and invocation agree',async()=>{
+  const {resolveActorTools}=await load('openclaw/dist/v-feishu-voice-tools.mjs');
+  const {t:createTextTools}=await load('openclaw/dist/agent-tools-djVuP1H1.js');
+  const {m:workspace}=await load('openclaw/dist/agent-scope-config-CUiGBd59.js');
+  const {toolsCatalogHandlers}=await load('openclaw/dist/tools-catalog-DGR0f9wo.js');
+  const {toolsInvokeHandlers}=await load('openclaw/dist/tools-invoke-ev4-EXmh.js');
+  const config={...cfg,tools:{profile:'full'},agents:{list:[{id:'makaron',default:true,workspace:process.env.VLAB_CANDIDATE_DATA+'/workspace/makaron'}]}};
+  for(const subject of ['ou_alice','ou_bob'])for(const chat of ['oc_groupa','oc_groupb','oc_dmb']){
+    const a=actor(subject,chat),p=await policy({cfg:config,account,actor:a}),identity={...a,...p};
+    const ctx=actorToolContext(identity);
+    const phone=resolveActorTools({cfg:config,actor:identity,disablePluginTools:true}).tools.map(t=>t.name);
+    const text=createTextTools({config,agentId:p.agentId,sessionKey:p.sessionKey,workspaceDir:workspace(config,p.agentId),
+      messageProvider:'feishu',messageChannel:'feishu',agentAccountId:accountId,currentChannelId:ctx.agentTo,
+      groupId:ctx.groupId,senderId:subject,senderIsOwner:p.senderIsOwner,disablePluginTools:true}).map(t=>t.name);
+    for(const name of ['read','write','edit','exec','process','sessions_spawn','sessions_send','gateway'])
+      assert.equal(phone.includes(name),text.includes(name),subject+' '+chat+' '+name);
+    if(subject==='ou_bob'&&chat!=='oc_groupa')assert(phone.includes('exec'),'ordinary caller must retain native exec');
+    const client=actorClient({connId:'fixture-parity',connect:{scopes:['operator.admin'],caps:['voice-direct-tools']}},identity);
+    const replies=[];
+    await toolsCatalogHandlers['tools.catalog']({params:{agentId:p.agentId,includePlugins:false},context:{getRuntimeConfig:()=>config},client,respond:(...r)=>replies.push(r)});
+    assert.deepEqual(replies[0][1].groups.flatMap(g=>g.tools.map(t=>t.id)).sort(),phone.sort());
+    if(subject==='ou_bob'&&chat==='oc_dmb'){
+      const results=[];
+      await toolsInvokeHandlers['tools.invoke']({params:{name:'exec',agentId:p.agentId,sessionKey:p.sessionKey,args:{command:'printf voice_text_parity',timeoutSeconds:10}},
+        context:{getRuntimeConfig:()=>config},client,respond:(...r)=>results.push(r)});
+      assert.equal(results[0][1].ok,true,JSON.stringify(results));
+      assert.match(JSON.stringify(results[0][1].output),/voice_text_parity/);
+    }
+  }
+});
