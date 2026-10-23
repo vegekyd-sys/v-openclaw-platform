@@ -51,8 +51,28 @@ const log = (key, value) => {
   config.session = { ...config.session, maintenance: { ...config.session?.maintenance, mode: "warn" } };
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 }
-const agentDb = path.join(stateDir, "agents", "makaron", "agent", "openclaw-agent.sqlite");
-assert(fs.existsSync(agentDb), `makaron database copy missing at ${agentDb} (plan.databases)`);
+// DB_COPY_DIR: copy shared VLab's makaron database there (SQLite backup) instead of plan.databases, whose
+// copies land on VLab's nearly full data disk; the candidate's agent directory links to it.
+const agentDir = path.join(stateDir, "agents", "makaron", "agent");
+const agentDb = path.join(agentDir, "openclaw-agent.sqlite");
+if (process.env.DB_COPY_DIR) {
+  const copyDir = path.join(process.env.DB_COPY_DIR, path.basename(process.env.VLAB_CANDIDATE_DATA ?? String(process.pid)));
+  fs.mkdirSync(copyDir, { recursive: true, mode: 0o700 });
+  process.on("exit", () => fs.rmSync(copyDir, { recursive: true, force: true }));
+  if (fs.existsSync(agentDir)) {
+    for (const name of fs.readdirSync(agentDir)) fs.renameSync(path.join(agentDir, name), path.join(copyDir, name));
+    fs.rmdirSync(agentDir);
+  } else fs.mkdirSync(path.dirname(agentDir), { recursive: true });
+  fs.symlinkSync(copyDir, agentDir);
+  const started = performance.now();
+  execFileSync("python3", ["-c", String.raw`import sqlite3,sys
+src=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True)
+dst=sqlite3.connect(sys.argv[2])
+src.backup(dst,pages=65536)
+dst.close()`, path.join(process.env.VLAB_SHARED_STATE_DIR, "agents", "makaron", "agent", "openclaw-agent.sqlite"), agentDb], { stdio: "inherit" });
+  out.copyMs = Math.round(performance.now() - started);
+}
+assert(fs.existsSync(agentDb), `makaron database copy missing at ${agentDb} (plan.databases or DB_COPY_DIR)`);
 if (INFLATE > 0) {
   const started = performance.now();
   execFileSync("python3", ["-c", String.raw`import sqlite3,sys
@@ -97,7 +117,7 @@ function snapshotState() {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       if (full.startsWith(EVIDENCE_DIR) || entry.name === "logs") continue;
-      if (entry.isDirectory()) walk(full);
+      if (entry.isDirectory() || entry.isSymbolicLink() && fs.statSync(full).isDirectory()) walk(full);
       else if (entry.isFile()) {
         const stat = fs.statSync(full);
         files.set(path.relative(stateDir, full), `${stat.size}:${stat.mtimeMs}`);
