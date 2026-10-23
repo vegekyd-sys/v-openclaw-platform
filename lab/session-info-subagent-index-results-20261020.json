@@ -1,0 +1,175 @@
+{
+ "date": "2026-10-20",
+ "change": "lab/session-info-subagent-index.plan.json (session-utils-list-BUP03AzS.js 353e0f21 -> 2f30da37)",
+ "vProfile": {
+  "capturedAt": "2026-10-20 00:00:44 CST",
+  "tool": "lab/v-control-ui-open-profiler.mjs (inspector sampling, 2 ms)",
+  "longestBusyMs": 8909,
+  "path": "handleChatHistoryRequest > buildGatewaySessionInfo > buildGatewaySessionRow > countActiveDescendantRuns > getSubagentRunsSnapshot > loadPersistedSubagentRunsForRead > loadSubagentRegistryFromSqlite > readSubagentRegistryRows",
+  "registryReloads": "19 in 20 s, ~0.7 s each; GC 2.3 s of the 8.9 s stretch",
+  "trigger": "midnight burst of chat.history from short-lived connections, ordinary sessions (not agent:makaron:main)"
+ },
+ "vData": {
+  "subagentRuns": 4569,
+  "payloadJsonBytes": 50937189,
+  "requestedByMain": 4345,
+  "nightShiftWorkboardUnderMain": 4323,
+  "childSessionsPresent": "4027 of 4075",
+  "vlabSubagentRuns": 108
+ },
+ "abCandidate": {
+  "id": "candidate-0480bf24-0d13-4a27-b544-8dd67efac2da",
+  "data": "shared makaron DB backup (7.35 GB) + V agent:makaron:main + V subagent_runs (4569) + V child session entries (4027, skills snapshot/prompt report removed)",
+  "arms": {
+   "base": {
+    "chunkSha256": "353e0f211194c77e233f071c4080e107bda00b5f14fbb991c1ff102834628e79",
+    "gatewayReadyMs": 324648,
+    "registryAtMeasurement": {
+     "runs": 4519,
+     "main": 4345
+    },
+    "orphanRunsPrunedAtStart": 50,
+    "opens": [
+     {
+      "chatHistoryMs": 265082,
+      "longestMainThreadBusyMs": 266204,
+      "registryReloadMs": 118769,
+      "registryReloadStretches": 4820,
+      "livenessWarnings": [
+       "liveness heartbeat delayed: overdue=294944ms elapsed=324944ms; deferring recovery decision"
+      ],
+      "topTotal": [
+       "219260ms buildGatewaySessionRow session-utils-list-BUP03AzS.js:849",
+       "218701ms countActiveDescendantRuns subagent-registry-read-UaDFTyfW.js:671",
+       "218541ms resolveRuntimeChildSessionKeys session-utils-list-BUP03AzS.js:175",
+       "161718ms getSubagentRunsSnapshotForRead subagent-registry-read-UaDFTyfW.js:620",
+       "157209ms getSubagentRunsSnapshot subagent-registry-read-UaDFTyfW.js:604",
+       "140104ms (anon) service-CzmmKrEg.js:5239",
+       "140034ms onEvent server-cron-DOco4KZj.js:3403",
+       "140034ms emit list-snapshot-revision-B919xtbt.js:246"
+      ]
+     },
+     {
+      "chatHistoryMs": 88702,
+      "longestMainThreadBusyMs": 90122,
+      "registryReloadMs": 40007,
+      "registryReloadStretches": 1557,
+      "livenessWarnings": [
+       "liveness heartbeat delayed: overdue=78668ms elapsed=108668ms; deferring recovery decisions"
+      ],
+      "topTotal": [
+       "71689ms measureDiagnosticsTimelineSpanSync diagnostics-timeline-H3aAUCYk.js:252",
+       "71644ms buildGatewaySessionRow session-utils-list-BUP03AzS.js:849",
+       "71639ms handleChatHistoryRequest chat-D3QlhTHk.js:612",
+       "71561ms buildGatewaySessionInfo session-utils-list-BUP03AzS.js:1264",
+       "71561ms measureDiagnosticsTimelineSpanSync.config chat-D3QlhTHk.js:798",
+       "71340ms countActiveDescendantRuns subagent-registry-read-UaDFTyfW.js:671",
+       "70789ms resolveRuntimeChildSessionKeys session-utils-list-BUP03AzS.js:175",
+       "54289ms getSubagentRunsSnapshotForRead subagent-registry-read-UaDFTyfW.js:620"
+      ]
+     }
+    ],
+    "sessionsDescribe": {
+     "keys": 41,
+     "totalMs": 96950
+    }
+   },
+   "patched": {
+    "chunkSha256": "2f30da37be847e6b5df22fdb154f9aa471f355acc3dd67ace90c90abea3a8b6d",
+    "gatewayReadyMs": 74056,
+    "registryAtMeasurement": {
+     "runs": 4519,
+     "main": 4345
+    },
+    "orphanRunsPrunedAtStart": 0,
+    "opens": [
+     {
+      "chatHistoryMs": 1112,
+      "longestMainThreadBusyMs": 7472,
+      "registryReloadMs": 588,
+      "registryReloadStretches": 28,
+      "livenessWarnings": [],
+      "topTotal": [
+       "5544ms resolveWorkspacePath server-worker-placement-startup-BvPREvpr.js:7386",
+       "5534ms resolveWorkerPlacementSessionTarget server-worker-placement-startup-BvPREvpr.js:2554",
+       "4587ms withOpenClawAgentDatabaseReadOnly openclaw-agent-db-readonly-wb-jdztx.js:82",
+       "4487ms resolveGatewaySessionStoreTargetWithStore session-utils-store-Dlphca2N.js:311",
+       "4347ms resolveGatewaySessionStoreLookup session-utils-store-Dlphca2N.js:165",
+       "3724ms loadStore session-utils-store-Dlphca2N.js:176",
+       "3721ms loadGatewaySessionLookupStore session-utils-store-Dlphca2N.js:125",
+       "3693ms loadGatewaySessionLookupStoreUncached session-utils-store-Dlphca2N.js:137"
+      ]
+     },
+     {
+      "chatHistoryMs": 869,
+      "longestMainThreadBusyMs": 2331,
+      "registryReloadMs": 563,
+      "registryReloadStretches": 21,
+      "livenessWarnings": [],
+      "topTotal": [
+       "848ms getSubagentRunsSnapshot subagent-registry-read-UaDFTyfW.js:604",
+       "830ms loadPersistedSubagentRunsForRead subagent-registry-read-UaDFTyfW.js:559",
+       "742ms measureDiagnosticsTimelineSpanSync diagnostics-timeline-H3aAUCYk.js:252",
+       "678ms handleChatHistoryRequest chat-D3QlhTHk.js:612",
+       "648ms executeWithCachedStatement kysely-sync-DKYGT267.js:99",
+       "648ms executeCompiledSqliteQuerySync kysely-sync-DKYGT267.js:142",
+       "648ms executeSqliteQuerySync kysely-sync-DKYGT267.js:174",
+       "647ms (anon) kysely-sync-DKYGT267.js:145"
+      ]
+     }
+    ],
+    "sessionsDescribe": {
+     "keys": 41,
+     "totalMs": 2474
+    }
+   }
+  },
+  "equivalence": {
+   "rows": 41,
+   "rowDiffs": [],
+   "infoDiffs": [],
+   "mainChildSessions": 0
+  }
+ },
+ "equivalenceCandidates": [
+  {
+   "id": "candidate-1cb80e01-88ab-40bc-98f3-b5f09bacb750",
+   "seed": 20261020,
+   "persisted": 600,
+   "persistedMain": 510,
+   "rounds": 300,
+   "compared": 5574,
+   "mismatches": 0,
+   "rowsWithActiveSubagentRun": 478,
+   "rowsWithChildSessions": 494,
+   "baseMs": 214646,
+   "patchedMs": 27242
+  },
+  {
+   "id": "candidate-1ee31364-a0b0-4ff2-b95d-6378e69f7892",
+   "seed": 7,
+   "persisted": 600,
+   "persistedMain": 510,
+   "rounds": 300,
+   "compared": 5620,
+   "mismatches": 0,
+   "rowsWithActiveSubagentRun": 487,
+   "rowsWithChildSessions": 501,
+   "baseMs": 209621,
+   "patchedMs": 27023
+  },
+  {
+   "id": "candidate-7cd7f04e-4bb4-46c3-a010-aa6e4ea7e652",
+   "seed": 424242,
+   "persisted": 600,
+   "persistedMain": 510,
+   "rounds": 300,
+   "compared": 5616,
+   "mismatches": 0,
+   "rowsWithActiveSubagentRun": 489,
+   "rowsWithChildSessions": 507,
+   "baseMs": 214102,
+   "patchedMs": 26065
+  }
+ ]
+}

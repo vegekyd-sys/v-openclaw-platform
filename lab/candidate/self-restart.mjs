@@ -7,7 +7,16 @@
 //   B. a change that passes --dry-run but stops the Gateway from starting (TLS on,
 //      cert files missing): the tool
 //      must notice, put the old config back, start again and report "rolled-back";
-//   C. a change that fails --dry-run: refused before anything stops.
+//   C. a change that fails --dry-run: refused before anything stops;
+//   D. a cron turn is running (a command job sleeping ~75 s): the idle gate waits
+//      for it and only then stops the Gateway;
+//   E. --while-stopped edits both the Gateway and the Worker config: applied,
+//      validated, Gateway ready on them;
+//   F. --while-stopped edits both configs and then fails: both restored byte for
+//      byte, Gateway ready on the old ones;
+//   G. --if-busy abort with a cron turn running: gives up, Gateway untouched.
+// A stream cron (resident watcher, like V's GrokBot bridge) runs throughout: it
+// must not hold the idle gate, and every restart must report it running again.
 // Runs as the candidate's admin identity because the tool needs root (sudo).
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
@@ -25,6 +34,7 @@ const sharedState = process.env.VLAB_SHARED_STATE_DIR;
 assert(runtime && configPath && stateDir && dataDir && sharedState, 'candidate runtime environment is required');
 const tool = path.resolve('scripts/v-self-restart.py');
 assert(fs.existsSync(tool), 'scripts/v-self-restart.py missing from the candidate inputs');
+assert(fs.existsSync(path.resolve('scripts/v-self-restart-gateway.mjs')), 'Gateway helper missing from the candidate inputs');
 const cli = path.join(runtime, 'openclaw', 'dist', 'index.js');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const user = os.userInfo();
@@ -54,7 +64,8 @@ const config = readConfig();
 const port = Number(config.gateway?.port);
 assert(Number.isInteger(port) && port > 0, 'candidate Gateway port is missing');
 config.channels = {};
-config.cron = {...(config.cron ?? {}), enabled: false};
+// Cron on, with an empty private store: only the drill's own jobs exist.
+config.cron = {...(config.cron ?? {}), enabled: true};
 if (config.plugins?.entries?.codex) config.plugins.entries.codex.enabled = false;
 const workerPlugin = config.plugins?.entries?.['vlab-agent-worker-isolation']?.config;
 if (workerPlugin) {
@@ -80,10 +91,12 @@ const envFile = path.join(dataDir, 'gateway.env');
 const keep = Object.entries(process.env).filter(([k]) => !/^(SUDO_|SSH_|_$|PWD$|OLDPWD$|SHLVL$)/u.test(k));
 fs.writeFileSync(envFile, keep.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join('\n') + `\nOPENCLAW_GATEWAY_PORT=${port}\n`, {mode: 0o600});
 
+const workerConfigPath = workerPlugin?.workerConfigPath ?? path.join(dataDir, 'no-worker-config.json');
 const toolEnv = {
   ...process.env,
   V_SELF_RESTART_UNIT: unit,
   V_SELF_RESTART_CONFIG: configPath,
+  V_SELF_RESTART_WORKER_CONFIG: workerConfigPath,
   V_SELF_RESTART_STATE_DB: path.join(stateDir, 'state', 'openclaw.sqlite'),
   V_SELF_RESTART_RUN_AS: user.username,
   V_SELF_RESTART_RUN_AS_HOME: user.homedir,
@@ -94,6 +107,46 @@ const toolEnv = {
 };
 const toolArgv = (args) => ['sudo', '-n', '--preserve-env=' + Object.keys(toolEnv).filter((k) => k.startsWith('V_SELF_RESTART_')).join(','),
   '/usr/bin/python3', tool, ...args];
+
+const cliEnv = {...process.env, OPENCLAW_CONFIG_PATH: configPath, OPENCLAW_STATE_DIR: stateDir, OPENCLAW_GATEWAY_PORT: String(port)};
+const openclaw = (args, opts = {}) => run([wrapper, ...args], {env: cliEnv, timeout: 180000, ...opts});
+function cronJobs() {
+  const r = openclaw(['cron', 'list', '--all', '--json']);
+  const out = JSON.parse(r.stdout.slice(r.stdout.indexOf('{')));
+  return out.jobs ?? [];
+}
+function jobByName(name) {
+  const job = cronJobs().find((j) => j.name === name);
+  assert(job, `cron job ${name} not found`);
+  return job;
+}
+async function waitFor(what, fn, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const v = fn();
+    if (v) return v;
+    assert(Date.now() < deadline, `timed out waiting for ${what}`);
+    await sleep(2000);
+  }
+}
+const streamName = `drill-stream-${tag}`;
+const busyName = `drill-busy-${tag}`;
+const streamRunning = () => jobByName(streamName).state?.streamStatus === 'running';
+// The tool's record of the stream check after a restart.
+function assertStreamBack(name, record) {
+  assert(record.streams?.ok, `${name}: stream not reported running: ${JSON.stringify(record.streams)}`);
+  assert(record.streams.enabled >= 1 && record.streams.running === record.streams.enabled, `${name}: ${JSON.stringify(record.streams)}`);
+  assert((record.streamsBefore ?? []).includes(jobByName(streamName).id), `${name}: stream was not seen running before the stop`);
+  assert(streamRunning(), `${name}: stream not running now`);
+  assert(!(record.warnings ?? []).some((w) => w.includes('stream')), `${name}: stream warning ${JSON.stringify(record.warnings)}`);
+}
+async function startBusyTurn(seconds) {
+  const job = jobByName(busyName);
+  openclaw(['cron', 'run', job.id]);
+  await waitFor('busy cron turn to start', () => jobByName(busyName).state?.runningAtMs, 60000);
+  return Date.now();
+}
+const stepNames = (record) => record.steps.map((s) => s.step);
 
 async function waitReady(timeoutMs) {
   const deadline = Date.now() + timeoutMs;
@@ -164,6 +217,16 @@ try {
   await waitReady(1200000);
   receipt.firstPid = show('MainPID');
 
+  // A resident stream watcher, shaped like V's GrokBot bridge, and a command job
+  // that keeps a cron turn running for ~75 s when triggered.
+  openclaw(['cron', 'add', '--name', streamName, '--agent', 'makaron', '--session', 'isolated', '--no-deliver',
+    '--stream-command', JSON.stringify(['sh', '-c', 'while true; do sleep 20; done']), '--stream-mode', 'match',
+    '--stream-match', '^DRILL_EVENT ', '--message', 'drill stream event; reply with exactly: ok']);
+  openclaw(['cron', 'add', '--name', busyName, '--every', '24h', '--no-deliver', '--command', 'sleep 75',
+    '--timeout-seconds', '300']);
+  await waitFor('stream watcher running', streamRunning, 120000);
+  receipt.streamJob = jobByName(streamName).id;
+
   // ---- A: change + stale Codex registration + wake ----
   plantOrphan();
   const sessionKey = `agent:makaron:self-restart-drill-${tag}`;
@@ -181,6 +244,8 @@ try {
   // to an undelivered wake; on V the group session resolves its own route.
   assert.equal(a.record.wake?.rc, 0, `A: wake failed ${JSON.stringify(a.record.wake)}`);
   assert(receipt.scenarios.A.wakeTurns.sawWakeMessage, 'A: wake message never reached the session');
+  assert.equal(a.record.idleGate?.result, 'idle', `A: idle gate ${JSON.stringify(a.record.idleGate)}`);
+  assertStreamBack('A', a.record);
 
   // ---- B: passes --dry-run, Gateway cannot serve -> rollback ----
   const before = fs.readFileSync(configPath, 'utf8');
@@ -191,6 +256,7 @@ try {
   assert.equal(b.record.outcome, 'rolled-back', JSON.stringify(b.record).slice(-2000));
   assert(receipt.scenarios.B.configRestored, 'B: config not restored byte-for-byte');
   assert.equal(receipt.scenarios.B.activeAfter, 'active');
+  await waitFor('stream running after B', streamRunning, 180000);
 
   // ---- C: fails --dry-run -> refused, nothing stops ----
   const pidC = show('MainPID');
@@ -198,6 +264,82 @@ try {
     '--set', 'gateway.noSuchKeyForDrill=1'], {expectRc: 3});
   receipt.scenarios.C = {...c, pidUnchanged: show('MainPID') === pidC};
   assert(receipt.scenarios.C.pidUnchanged, 'C: Gateway restarted on a refused change');
+
+  // ---- D: a cron turn is running -> the gate waits for it ----
+  const busyStarted = await startBusyTurn();
+  const d = await selfRestart('D', ['--reason', 'candidate drill D', '--requested-by', 'candidate', '--delay', '1', '--force',
+    '--idle-timeout', '600']);
+  const dSteps = stepNames(d.record);
+  const busyStep = d.record.steps.find((x) => x.step === 'busy');
+  const busyRun = jobByName(busyName).state ?? {};
+  receipt.scenarios.D = {...d, busyStep, idleGate: d.record.idleGate, busyLastRunStatus: busyRun.lastRunStatus ?? busyRun.lastStatus,
+    busyLastDurationMs: busyRun.lastDurationMs, stopAfterBusyStartS: Math.round((Date.parse(d.record.steps.find((x) => x.step === 'stopped').at.replace(' CST', '+08:00').replace(' ', 'T')) - busyStarted) / 1000)};
+  assert.equal(d.record.outcome, 'ok', JSON.stringify(d.record).slice(-2000));
+  assert(busyStep && busyStep.reasons.some((r) => r.includes('cron 回合在跑')), `D: no cron busy step ${JSON.stringify(d.record.steps)}`);
+  assert(!busyStep.reasons.some((r) => r.includes(streamName)), 'D: the stream watcher counted as busy');
+  assert.equal(d.record.idleGate.result, 'idle');
+  assert(d.record.idleGate.waitedS >= 30, `D: waited only ${d.record.idleGate.waitedS}s`);
+  assert(dSteps.indexOf('busy') < dSteps.indexOf('idle') && dSteps.indexOf('idle') < dSteps.indexOf('stopped'), `D: order ${dSteps}`);
+  assert.equal(receipt.scenarios.D.busyLastRunStatus, 'ok', 'D: the busy cron turn did not finish normally (cut off by the stop?)');
+  assertStreamBack('D', d.record);
+
+  // ---- E: --while-stopped edits both configs -> applied and validated ----
+  const editScript = path.join(dataDir, 'edit-configs.mjs');
+  fs.writeFileSync(editScript, [
+    "import fs from 'node:fs';",
+    "const [mode, value] = process.argv.slice(2);",
+    "for (const f of [process.env.V_SELF_RESTART_CONFIG, process.env.V_SELF_RESTART_WORKER_CONFIG]) {",
+    "  if (!fs.existsSync(f)) continue;",
+    "  const c = JSON.parse(fs.readFileSync(f, 'utf8'));",
+    "  c.messages = {...(c.messages ?? {}), ackReaction: value};",
+    "  fs.writeFileSync(f + '.tmp', JSON.stringify(c, null, 2) + '\\n'); fs.renameSync(f + '.tmp', f);",  // rename: a new inode, as a real activation would
+    "}",
+    "if (mode === 'fail') { console.error('drill: activation step failed after editing'); process.exit(7); }",
+    ''].join('\n'));
+  const ePid = show('MainPID');
+  const e = await selfRestart('E', ['--reason', 'candidate drill E', '--requested-by', 'candidate', '--delay', '1', '--force',
+    '--while-stopped', `${process.execPath} ${editScript} ok "white_check_mark"`]);
+  const workerAck = () => (fs.existsSync(workerConfigPath) ? JSON.parse(fs.readFileSync(workerConfigPath, 'utf8')).messages?.ackReaction : null);
+  receipt.scenarios.E = {...e, pidAfter: show('MainPID'), ackReaction: readConfig().messages?.ackReaction, workerAckReaction: workerAck(),
+    whileStopped: e.record.whileStoppedResult, configValidation: e.record.configValidation, configOwnerSteps: e.record.steps.filter((x) => x.step === 'config-owner-restored')};
+  assert.equal(e.record.outcome, 'ok', JSON.stringify(e.record).slice(-2000));
+  assert.notEqual(receipt.scenarios.E.pidAfter, ePid);
+  assert.equal(e.record.whileStoppedResult.rc, 0);
+  assert.equal(receipt.scenarios.E.ackReaction, 'white_check_mark', 'E: Gateway config not changed');
+  if (fs.existsSync(workerConfigPath)) assert.equal(receipt.scenarios.E.workerAckReaction, 'white_check_mark', 'E: Worker config not changed');
+  assert(e.record.configValidation.length >= 1 && e.record.configValidation.every((v) => v.ok), `E: ${JSON.stringify(e.record.configValidation)}`);
+  assert(Object.keys(e.record.configBackups).includes(configPath));
+  const es = stepNames(e.record);
+  assert(es.indexOf('stopped') < es.indexOf('while-stopped') && es.indexOf('while-stopped') < es.indexOf('start'), `E: order ${es}`);
+  assertStreamBack('E', e.record);
+
+  // ---- F: --while-stopped edits both configs, then fails -> both restored ----
+  const beforeF = fs.readFileSync(configPath, 'utf8');
+  const beforeFWorker = fs.existsSync(workerConfigPath) ? fs.readFileSync(workerConfigPath, 'utf8') : null;
+  const f = await selfRestart('F', ['--reason', 'candidate drill F', '--requested-by', 'candidate', '--delay', '1', '--force',
+    '--while-stopped', `${process.execPath} ${editScript} fail "x"`]);
+  receipt.scenarios.F = {...f, whileStopped: f.record.whileStoppedResult, configRestored: fs.readFileSync(configPath, 'utf8') === beforeF,
+    workerConfigRestored: beforeFWorker === null || fs.readFileSync(workerConfigPath, 'utf8') === beforeFWorker,
+    activeAfter: sudo(['systemctl', 'is-active', unit], {check: false}).stdout.trim()};
+  assert.equal(f.record.outcome, 'rolled-back', JSON.stringify(f.record).slice(-2000));
+  assert.equal(f.record.whileStoppedResult.rc, 7);
+  assert(receipt.scenarios.F.configRestored, 'F: Gateway config not restored byte-for-byte');
+  assert(receipt.scenarios.F.workerConfigRestored, 'F: Worker config not restored byte-for-byte');
+  assert.equal(receipt.scenarios.F.activeAfter, 'active');
+  assert(!stepNames(f.record).includes('start'), 'F: started on the half-edited configs');
+  assertStreamBack('F', f.record);
+
+  // ---- G: --if-busy abort with a cron turn running -> untouched ----
+  await startBusyTurn();
+  const gPid = show('MainPID');
+  const beforeG = fs.readFileSync(configPath, 'utf8');
+  const g = await selfRestart('G', ['--reason', 'candidate drill G', '--requested-by', 'candidate', '--delay', '0', '--force',
+    '--if-busy', 'abort', '--idle-timeout', '20', '--set', 'messages.ackReaction="eyes"']);
+  receipt.scenarios.G = {...g, pidUnchanged: show('MainPID') === gPid, configUnchanged: fs.readFileSync(configPath, 'utf8') === beforeG};
+  assert.equal(g.record.outcome, 'busy-aborted', JSON.stringify(g.record).slice(-2000));
+  assert(receipt.scenarios.G.pidUnchanged && receipt.scenarios.G.configUnchanged, 'G: Gateway or config touched');
+  assert(!stepNames(g.record).includes('stopped'));
+  await waitFor('busy cron turn to finish', () => !jobByName(busyName).state?.runningAtMs, 180000);
   receipt.pass = true;
 } catch (error) {
   receipt.pass = false;

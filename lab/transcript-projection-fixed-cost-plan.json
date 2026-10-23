@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/transcript-projection-fixed-cost/session-transcript-reconcile-j5qhAafV.js",
+      "target": "openclaw/dist/session-transcript-reconcile-j5qhAafV.js",
+      "before": "9fac1d4af9f55f7e5ad430bf24512c2bd6d037a6916bed950dfcdf7829e3c7bd",
+      "after": "85455fa43c681eda0b831d6dc9b147925c149acc503fd936a018e765faca325b"
+    },
+    {
+      "source": "lab/release-files/transcript-projection-fixed-cost/session-transcript-reconcile.worker.js",
+      "target": "openclaw/dist/config/sessions/session-transcript-reconcile.worker.js",
+      "before": "2fa289ddec026dd55a6b88dc929c561db30e3b69638091b68ed64bf59b2f6388",
+      "after": "fdce59ff030f7b0b2798cb1cb43d9615cb5a39c0d014f1489c026303c80bf7f9"
+    }
+  ]
+}

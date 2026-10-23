@@ -1,0 +1,23 @@
+{
+  "support": [
+    "lab/candidate/gateway-fullread-ab.mjs",
+    "lab/gateway-fullread-hotpaths.plan.json",
+    "lab/release-files/gateway-fullread-hotpaths/session-D4AJhdUK.js",
+    "lab/release-files/gateway-fullread-hotpaths/service-CzmmKrEg.js",
+    "lab/release-files/gateway-fullread-hotpaths/task-registry.maintenance-C4nMaDY9.js",
+    "lab/release-files/gateway-fullread-hotpaths/sqlite-store-CH-caj1l.js",
+    "lab/release-files/gateway-fullread-hotpaths/runtime-api-1CCazqtv.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "--expose-gc",
+    "lab/candidate/gateway-fullread-ab.mjs"
+  ],
+  "timeoutSeconds": 5400,
+  "env": {
+    "FIXTURE_DIR": "/var/tmp/gwstall",
+    "SCENARIO": "tasks",
+    "REPEAT": "5",
+    "ARM": "base"
+  }
+}

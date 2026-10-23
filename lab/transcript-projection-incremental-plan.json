@@ -1,0 +1,22 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/transcript-projection-incremental/session-transcript-index-9itOio9h.js",
+      "target": "openclaw/dist/session-transcript-index-9itOio9h.js",
+      "before": "d0e05a562dde0b6076d464698de2dfc4f786d08d261745c85a5fa558b945d7c1",
+      "after": "7d14a3c07c3b78a216ce85d764444dce364990a342c77f1dd0230c9ea0025328"
+    },
+    {
+      "source": "lab/release-files/transcript-projection-incremental/session-transcript-reconcile-j5qhAafV.js",
+      "target": "openclaw/dist/session-transcript-reconcile-j5qhAafV.js",
+      "before": "b63bdf05e20f48fdb9b00c9759efc70fd4333c412adfca91a768d47443f057ae",
+      "after": "9fac1d4af9f55f7e5ad430bf24512c2bd6d037a6916bed950dfcdf7829e3c7bd"
+    },
+    {
+      "source": "lab/release-files/transcript-projection-incremental/session-transcript-reconcile.worker.js",
+      "target": "openclaw/dist/config/sessions/session-transcript-reconcile.worker.js",
+      "before": "95b9ddcd7d8bb9748e8263959e43af514d9ba70e2045aa3e668cc6a347bfcb5e",
+      "after": "2fa289ddec026dd55a6b88dc929c561db30e3b69638091b68ed64bf59b2f6388"
+    }
+  ]
+}

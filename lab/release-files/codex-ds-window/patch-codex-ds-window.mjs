@@ -19,10 +19,15 @@
 // removes the update_plan guidance, and a resumed thread would reuse the unstripped prompt
 // stored in its session_meta. It is passed as text, not model_instructions_file: Codex trims a
 // file's contents, and the prompt DeepSeek receives today ends in two newlines. GPT app-servers and bounded/private Codex turns are unchanged.
-// OPENCLAW_V_CODEX_DS_WINDOW=0 in the Gateway environment turns it off.
+// With compaction moved from 244,800 to 900,000 tokens, images stay in a DeepSeek thread far
+// longer, and DeepSeek refuses request bodies over 48 MiB (413). A DeepSeek thread whose rollout
+// reaches 40 MiB (OPENCLAW_V_CODEX_DS_MAX_TRANSCRIPT_BYTES) therefore starts a fresh thread before
+// the turn, through the existing native-transcript byte guard; compaction.maxActiveTranscriptBytes,
+// when configured, still wins. Text-only rollouts on V are about 3 MB at 45万 tokens.
+// OPENCLAW_V_CODEX_DS_WINDOW=0 in the Gateway environment turns both off.
 //
 // Idempotent: a replacement that is already present is left alone; otherwise its anchor must
-// match exactly once. Copies the two sidecar files from ./dist next to the patched module.
+// match exactly once. A v1 module (V since 2026-10-13) is upgraded in place to v2. Copies the two sidecar files from ./dist next to the patched module.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -35,7 +40,7 @@ const option = (name) => {
 const codexRoot = option("--codex");
 const checkOnly = args.includes("--check");
 assert(codexRoot, "usage: patch-codex-ds-window.mjs --codex <@openclaw/codex dir> [--check]");
-const MARK = "v-codex-ds-window-v1";
+const MARK = "v-codex-ds-window-v2";
 const here = path.dirname(new URL(import.meta.url).pathname);
 const SIDECARS = ["v-deepseek-model-catalog.json", "v-deepseek-base-instructions.md"];
 
@@ -51,8 +56,16 @@ function moduleIn(dir, re, marker) {
   return hits[0];
 }
 
+const BYTE_GUARD_ANCHOR = "let codexDeepSeekBaseInstructions;\n";
+const BYTE_GUARD = "function resolveCodexDeepSeekTranscriptByteLimit(binding) {\n"
+  + "\tif (process.env.OPENCLAW_V_CODEX_DS_WINDOW === \"0\") return;\n"
+  + "\tconst deepSeek = String(binding?.modelProvider ?? \"\").trim().toLowerCase() === \"deepseek\" || /deepseek/iu.test(String(binding?.model ?? \"\"));\n"
+  + "\treturn deepSeek ? parseCodexAppServerByteLimit(process.env.OPENCLAW_V_CODEX_DS_MAX_TRANSCRIPT_BYTES ?? \"40mb\") : void 0;\n"
+  + "}\n";
 const runAttempt = moduleIn(codexDist, /^run-attempt-.*\.js$/u, "const resolveFinalAppServer = (configured, selection) => {");
 const PATCHES = [
+  ["\tconst maxBytes = parseCodexAppServerByteLimit(readCompactionConfig(params.config)?.maxActiveTranscriptBytes);\n",
+    `\tconst maxBytes = parseCodexAppServerByteLimit(readCompactionConfig(params.config)?.maxActiveTranscriptBytes) ?? resolveCodexDeepSeekTranscriptByteLimit(binding); // ${MARK}\n`],
   ['import fs from "node:fs/promises";\n',
     'import fs from "node:fs/promises";\n'
     + `import { existsSync as existsSyncDeepSeekWindow, readFileSync as readFileSyncDeepSeekWindow } from "node:fs"; // ${MARK}\n`
@@ -63,7 +76,8 @@ const PATCHES = [
     `// ${MARK}: DeepSeek app-servers start with DeepSeek's context window (patch-codex-ds-window.mjs).\n`
     + "const CODEX_DEEPSEEK_WINDOW_FILES = [\"v-deepseek-model-catalog.json\", \"v-deepseek-base-instructions.md\"].map((name) => fileURLToPathDeepSeekWindow(new URL(`./${name}`, import.meta.url)));\n"
     + "let codexDeepSeekWindowLogged = false;\n"
-    + "let codexDeepSeekBaseInstructions;\n"
+    + BYTE_GUARD_ANCHOR
+    + BYTE_GUARD
     + "function withCodexDeepSeekModelWindow(appServer, selection) {\n"
     + "\tconst provider = String(selection?.modelProvider ?? \"\").trim().toLowerCase();\n"
     + "\tconst deepSeek = provider === \"deepseek\" || !provider && /^deepseek/iu.test(String(selection?.model ?? \"\"));\n"
@@ -96,12 +110,25 @@ const PATCHES = [
 
 let src = fs.readFileSync(runAttempt, "utf8");
 let changed = 0;
+// v1 (PR #361, on V since 2026-10-13 as 8ab51650) is v2 without the byte guard: rename its three
+// markers and add the guard function; the loop below then adds the guard's call site and finds
+// every other v2 replacement already present. Nothing else in the module is touched.
+const V1 = "v-codex-ds-window-v1";
+if (src.includes(V1)) {
+  assert.equal(src.split(V1).length - 1, 3, `expected the three v1 markers in ${path.basename(runAttempt)}`);
+  assert(!src.includes(MARK), `${path.basename(runAttempt)} mixes v1 and v2 markers`);
+  assert.equal(src.split(BYTE_GUARD_ANCHOR).length, 2, `v1 anchor must match once: ${JSON.stringify(BYTE_GUARD_ANCHOR)}`);
+  src = src.replaceAll(V1, MARK).replace(BYTE_GUARD_ANCHOR, BYTE_GUARD_ANCHOR + BYTE_GUARD);
+  changed += 1;
+}
 for (const [anchor, replacement] of PATCHES) {
   if (src.includes(replacement)) continue;
   assert.equal(src.split(anchor).length, 2, `anchor must match once in ${path.basename(runAttempt)}: ${JSON.stringify(anchor.slice(0, 80))}`);
   src = src.replace(anchor, replacement);
   changed += 1;
 }
+for (const [, replacement] of PATCHES) assert(src.includes(replacement), `replacement missing after patch: ${JSON.stringify(replacement.slice(0, 80))}`);
+assert(!src.includes(V1));
 const sidecarsCurrent = SIDECARS.every((name) => fs.existsSync(path.join(codexDist, name))
   && fs.readFileSync(path.join(codexDist, name)).equals(fs.readFileSync(path.join(here, "dist", name))));
 if (checkOnly) {

@@ -1,0 +1,24 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/session-sharing-bounded-reads/session-accessor.sqlite-transcript-state-Cz9g7S9v.js",
+      "target": "openclaw/dist/session-accessor.sqlite-transcript-state-Cz9g7S9v.js",
+      "before": "792b1c75740b3fcc17a1708f4b55e10f206b5718f02cd94a24bf4bbcef278788"
+    },
+    {
+      "source": "lab/release-files/session-sharing-bounded-reads/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "target": "openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "before": "a15b1426ec9a328df9b4b975e9956fe2e39df3984ac93e7b655a0ba42e1da7d7"
+    },
+    {
+      "source": "lab/release-files/session-sharing-bounded-reads/session-utils-store-Dlphca2N.js",
+      "target": "openclaw/dist/session-utils-store-Dlphca2N.js",
+      "before": "26adfebaf50c68339e8f09456a8b03ed1382ad0e5938e007a1caa116e1c7dc39"
+    },
+    {
+      "source": "lab/release-files/session-sharing-bounded-reads/sessions-read-C6mAMxyQ.js",
+      "target": "openclaw/dist/sessions-read-C6mAMxyQ.js",
+      "before": "36c5a27bea777b383727dc891648a288002a54864e594f6027d01d98ff0dfa22"
+    }
+  ]
+}

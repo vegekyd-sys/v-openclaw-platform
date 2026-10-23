@@ -334,7 +334,8 @@ test("actual Worker host SDK completion direct path binds scope + accepted child
 });
 
 test("actual patched harness releases turn admission after yield while keeping voice promise and caller cancellation alive", async () => {
-  for (const cancel of [false, true, "aborted", "error"]) {
+  // yielded=false: the requester ended its turn after sessions_spawn without sessions_yield.
+  for (const [yielded, cancel] of [[true, false], [true, true], [true, "aborted"], [true, "error"], [false, false], [false, true]]) {
     const caller = new AbortController(); const scope = {}; const context = { identity: { delegationItemId: "d", delegationGeneration: 1 },
       ownerConnId: "conn", voiceSessionId: "voice", ownerGeneration: "transport", isCurrent: () => true };
     const observations = { release: 0, cleanup: 0, canceled: 0 }; context.onCanceled = () => observations.canceled++;
@@ -365,8 +366,8 @@ test("actual patched harness releases turn admission after yield while keeping v
           if (cancel === "aborted") return { payloads: [], meta: { aborted: true } };
           if (cancel === "error") throw new Error("worker request was cancelled");
           registry.bindHarnessSpawns({ scope, requesterSessionKey: params.sessionKey, requesterSessionId: params.sessionId, requesterTurnRunId: params.runId,
-            requesterYielded: true, acceptedSessionSpawns: [{ runId: "child", childSessionKey: "agent:makaron:child" }], getChildSessionId: () => "child-session" });
-          return { payloads: [{ text: "已交办" }], meta: { yielded: true } };
+            requesterYielded: yielded, acceptedSessionSpawns: [{ runId: "child", childSessionKey: "agent:makaron:child" }], getChildSessionId: () => "child-session" });
+          return { payloads: [{ text: "已交办" }], meta: yielded ? { yielded: true } : {} };
         } },
     });
     pending.catch(() => {});
@@ -997,4 +998,100 @@ test("a nonyield parent cannot label ongoing accepted child work as a complete f
   assert.equal(child.execution.status, "running"); assert.equal(child.killIntent, undefined);
   assert.equal(f.cancellations.length, 0); assert.equal(f.owner.isCurrent(), false);
   assert.equal(f.listeners.size, 0);
+});
+
+// 2026-10-20 CST: delegate_to_v started voice-product-task, the parent called
+// sessions_spawn and ended its turn without sessions_yield ~16 s later. The
+// owner failed the task while the Worker child kept running and later wrote
+// the result through an ordinary announce that the phone no longer awaited.
+function setupNonyieldHarnessParent({ spawns = [{ runId: "worker-child-run", childSessionKey: "agent:makaron:worker-child" }] } = {}) {
+  let sessions;
+  const f = setup({ resolveSessionIdentity: (sessionKey) => ({ sessionId: sessions.get(sessionKey), agentId: "makaron" }) }); const scope = { requesterSessionKey: f.params.sessionKey };
+  sessions = new Map([[f.params.sessionKey, f.params.sessionId], ...spawns.map((spawn) => [spawn.childSessionKey, `${spawn.runId}-canonical`])]);
+  let finish; let directArgs; let ordinaryAnnouncements = 0; const accepted = [];
+  const call = execute(patches.patchGptLiveContinuationDelivery(deliverySource), "async function runAnnounceAgentCall", "async function sendSubagentAnnounceDirectly", {
+    shouldPreserveUserFacingSessionStateForInputProvenance: () => true, getGatewayAgentResult: (response) => response.result,
+    dispatchSubagentAnnounceAgent: async (_params, opts) => {
+      opts.onAccepted({ runId: "worker-parent-resumed" }); accepted.push("worker-parent-resumed"); opts.onExecutionStarted();
+      return await new Promise((resolve) => { finish = resolve; });
+    },
+  });
+  const deps = {
+    assertAgentHarnessTaskRuntimeScope: (value) => { assert.equal(value, scope, "only the host-issued scope is accepted"); return value; },
+    loadRequesterSessionEntry: (key) => ({ entry: sessions.has(key) ? { sessionId: sessions.get(key) } : undefined }),
+    bindGptLiveHarnessVoiceSpawns: f.registry.bindHarnessSpawns,
+    resolveGptLiveHarnessVoiceCompletion: f.registry.resolveHarnessCompletion, mapHarnessCompletionStatus: () => "ok",
+    AGENT_INTERNAL_EVENT_TYPE_TASK_COMPLETION: "task-completion", AGENT_HARNESS_COMPLETION_SOURCE_TOOL: "agent_harness_task",
+    isInternalAnnounceRequesterSession: () => false, resolveAnnounceOrigin: () => undefined, formatAgentInternalEventsForPrompt: () => "PRIVATE task context",
+    INTERNAL_MESSAGE_CHANNEL: "internal", buildAnnounceIdempotencyKey: (value) => value, getGatewayContextResolver: () => undefined,
+    deliverSubagentAnnouncement: async (args) => {
+      directArgs = args;
+      if (!args.voiceContinuation) { ordinaryAnnouncements++; return { delivered: true, path: "direct" }; }
+      await call({ voiceContinuation: args.voiceContinuation, getRequesterSessionId: () => sessions.get(f.params.sessionKey),
+        agentParams: { sessionKey: args.targetRequesterSessionKey }, expectFinal: true, timeoutMs: 60000, isExecutionAllowed: () => true });
+      return { delivered: true, path: "direct" };
+    },
+  };
+  const patched = patches.patchGptLiveContinuationTaskSdk(sdkSource);
+  const bind = execute(patched, "function bindGptLiveAgentHarnessVoiceSpawns", "export {", deps);
+  const deliver = execute(patched, "async function deliverAgentHarnessTaskCompletion", "function mapHarnessCompletionStatus", deps);
+  assert.equal(bind({ scope, requesterTurnRunId: f.params.runId, requesterYielded: false, acceptedSessionSpawns: spawns }), true);
+  const complete = (spawn = spawns[0], result = "plan.md 已写完") => deliver({ scope, requesterTurnRunId: f.params.runId, childRunId: spawn.runId,
+    childSessionKey: spawn.childSessionKey, childSessionId: sessions.get(spawn.childSessionKey), status: "succeeded", result,
+    announceId: `vlab-worker:${spawn.runId}:ok` });
+  let settled = false; f.owner.wait().then(() => { settled = true; }, () => { settled = true; });
+  return { ...f, complete, accepted, get settled() { return settled; }, get directArgs() { return directArgs; },
+    get ordinaryAnnouncements() { return ordinaryAnnouncements; }, finishResumed: (text) => finish({ status: "ok", result: { payloads: [{ text }], meta: {} } }) };
+}
+
+test("a nonyield harness parent after sessions_spawn waits for its accepted Worker child instead of failing the voice task", async () => {
+  const f = setupNonyieldHarnessParent();
+  f.owner.finishInitial({ meta: {}, payloads: [{ text: "已交给子会话去写，写完告诉你。" }] });
+  await tick();
+  assert.equal(f.settled, false, "the parent's delegation receipt is neither a failure nor the task result");
+  assert.equal(f.owner.isCurrent(), true);
+  assert.equal(f.cancellations.length, 0);
+  const pendingDelivery = f.complete(); await tick();
+  assert.equal(f.directArgs.requireDirectDelivery, true); assert.equal(f.directArgs.expectsCompletionMessage, false);
+  assert.equal(f.ordinaryAnnouncements, 0, "the child completion continues the voice task, not an unobserved ordinary announce");
+  assert.deepEqual(f.accepted, ["worker-parent-resumed"]); assert.equal(f.settled, false);
+  f.finishResumed("七天计划已写进 plan.md。");
+  assert.equal((await pendingDelivery).delivered, true);
+  assert.deepEqual(await f.owner.wait(), { text: "七天计划已写进 plan.md。", provenance: {
+    runId: "worker-parent-resumed", ownerRunId: "parent-a", source: "canonical_final", role: "parent" } });
+  assert.deepEqual(f.cleanups.sort(), ["initial", "worker-parent-resumed"]);
+  await assert.rejects(f.complete(), /already settled/);
+});
+
+test("a nonyield harness parent keeps child exec authority while the child runs", async () => {
+  const f = setupNonyieldHarnessParent();
+  f.owner.finishInitial({ meta: {}, payloads: [{ text: "已交办。" }] });
+  // Production showed `Voice exec run has already settled or been cancelled` in the child right after the false failure.
+  const child = f.registry.resolveOwnedExecSource({ runId: "worker-child-run", sessionKey: "agent:makaron:worker-child",
+    sessionId: "worker-child-run-canonical", agentId: "makaron" });
+  child.assertCurrent(); assert.equal(child.signal.aborted, false);
+  f.owner.abort(new Error("test done")); await assert.rejects(f.owner.wait(), /test done/);
+});
+
+test("a nonyield harness parent continues even when its Worker child completes before the parent final reaches the owner", async () => {
+  const f = setupNonyieldHarnessParent();
+  const pendingDelivery = f.complete(); await tick();
+  f.finishResumed("子会话已完成：plan.md 写好了。"); await pendingDelivery;
+  f.owner.finishInitial({ meta: {}, payloads: [{ text: "已交给子会话。" }] });
+  assert.equal((await f.owner.wait()).text, "子会话已完成：plan.md 写好了。");
+});
+
+test("a nonyield parent with a Gateway-owned child keeps the strict failure because no harness completion can continue it", async () => {
+  const f = setupNonyieldHarnessParent({ spawns: [{ runId: "gateway-child", childSessionKey: "agent:makaron:gateway-child", vlabGatewayOwned: true }] });
+  const failure = assert.rejects(f.owner.wait(), /accepted child tasks completed/);
+  f.owner.finishInitial({ meta: {}, payloads: [{ text: "已交办。" }] }); await failure;
+});
+
+test("a nonyield harness parent whose child completes keeps every existing completion identity check", async () => {
+  const f = setupNonyieldHarnessParent();
+  f.owner.finishInitial({ meta: {}, payloads: [{ text: "已交办。" }] });
+  await assert.rejects(f.complete({ runId: "different-child", childSessionKey: "agent:makaron:worker-child" }), /causal identity changed/);
+  assert.equal(f.ordinaryAnnouncements, 0); assert.equal(f.owner.isCurrent(), true);
+  const pendingDelivery = f.complete(); await tick(); f.finishResumed("真正的子会话结果。"); await pendingDelivery;
+  assert.equal((await f.owner.wait()).text, "真正的子会话结果。");
 });

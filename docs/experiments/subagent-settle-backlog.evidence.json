@@ -1,0 +1,84 @@
+{
+  "id": "candidate-33e5f3d1-cd58-4c69-a01e-57447fc8b8dc",
+  "sourceCommit": "7553f482f4b47cf5ac6a66eaa51b576975d305b0",
+  "branch": "codex/subagent-settle-backlog",
+  "inputSha256": "f0e8fe2230b2bc44409b3fba9375c1947aa17538dfd508a6d82488f4161f2e37",
+  "baseRelease": "noon-batch-20261016b",
+  "runtimeSha": "e5d54fa3475b5e3cc6f492a43b4609a2981485b6232916cb5c9bd61c5f06062d",
+  "files": [
+    {
+      "source": "lab/release-files/subagent-settle-backlog/subagent-announce.requester-settle-wake-B2NSziIo.js",
+      "target": "openclaw/dist/subagent-announce.requester-settle-wake-B2NSziIo.js",
+      "before": "be8a3f7f0834943f234d42c9fe14ddfb7cd67fe52791fae99908a4edfda35f5d",
+      "after": "ec4c192bb11900e170eb9257fde565461cae0dd3a8c0fb55b61c895ad9db8649"
+    },
+    {
+      "source": "lab/release-files/subagent-settle-backlog/subagent-registry-read-UaDFTyfW.js",
+      "target": "openclaw/dist/subagent-registry-read-UaDFTyfW.js",
+      "before": "dfcf09faf5ede448fe967bff7195b690d670ec36abfd559c32d66e5a24e9a9c8",
+      "after": "142bb5158e21a3b68c3cd80fd6cd52beeb8904f632ca39ba9b08e4d1fb2db5c0"
+    },
+    {
+      "source": "lab/release-files/subagent-settle-backlog/subagent-registry.store.sqlite-hzGu4QSk.js",
+      "target": "openclaw/dist/subagent-registry.store.sqlite-hzGu4QSk.js",
+      "before": "bc42d6c4712e7e38dffe1682b4f68bb00e67ac3d0b9b9f5015ecb1d9b6f04a96",
+      "after": "f37ed94d1c2bbf904bfb2614734bdd40d62fa239ff9dc0c26786035cf8fff1bb"
+    }
+  ],
+  "sharedBeforePid": 656845,
+  "sharedAfterPid": 656845,
+  "sharedUnchanged": true,
+  "timings": {
+    "inspectMs": 25,
+    "baselineMs": 0,
+    "snapshotMs": 25341,
+    "overlayMs": 13,
+    "testMs": 6018
+  },
+  "testCount": 24,
+  "passed": 24,
+  "failed": 0,
+  "normalNotificationComparisons": 96,
+  "continuousBackgroundCompletions": 1000,
+  "outcomeCode": 0,
+  "metrics": {
+    "rows": 2854,
+    "pendingBefore": 125,
+    "pendingAfterRestart": 0,
+    "payloadBytes": 45751232,
+    "projectedBytes": 1010137,
+    "baselinePendingAfterSweep": 125,
+    "baselineSweep125Ms": 2797.33,
+    "baselineSqlReads": {
+      "full": 6,
+      "projected": 0
+    },
+    "fullReadMs": 284.49,
+    "projectedReadMs": 156.16,
+    "checks125Ms": 865.59,
+    "requiredCheckSqlReads": {
+      "full": 0,
+      "projected": 2
+    },
+    "quietWakeSweep125Ms": 61.41,
+    "quietWakeSqlReads": {
+      "full": 0,
+      "projected": 0
+    },
+    "notificationDeliveries": 0
+  },
+  "inputFiles": {
+    "lab/candidate/subagent-settle-backlog.sqlite.test.mjs": "a31bbcf97a397559cefe2ccc1ac692764c4c50b73194b2528b1494674bbd097f",
+    "lab/fixtures/gpt-live-continuation/subagent-registry-C24yr_PF.js": "c2c0c840f014a67156d40949cdbfa148607c8cffed349feef7be629fd24a056b",
+    "lab/fixtures/subagent-settle-backlog/subagent-announce.requester-settle-wake-B2NSziIo.js": "be8a3f7f0834943f234d42c9fe14ddfb7cd67fe52791fae99908a4edfda35f5d",
+    "lab/fixtures/subagent-settle-backlog/subagent-registry-read-UaDFTyfW.js": "dfcf09faf5ede448fe967bff7195b690d670ec36abfd559c32d66e5a24e9a9c8",
+    "lab/fixtures/subagent-settle-backlog/subagent-registry.store.sqlite-hzGu4QSk.js": "bc42d6c4712e7e38dffe1682b4f68bb00e67ac3d0b9b9f5015ecb1d9b6f04a96",
+    "lab/fixtures/subagent-settle-backlog/subagent-run-liveness-CrhVXF5Y.js": "282768aa7a4c3590f0f55f87cd5ca3e2efb96286504474b2909668b0686a2b65",
+    "lab/patch-subagent-settle-backlog.mjs": "0abacebca722ecabb85a27f034ee8be57f71ac89cdd519c63d83a03d55ad8b6b",
+    "lab/release-files/subagent-settle-backlog/subagent-announce.requester-settle-wake-B2NSziIo.js": "ec4c192bb11900e170eb9257fde565461cae0dd3a8c0fb55b61c895ad9db8649",
+    "lab/release-files/subagent-settle-backlog/subagent-registry-read-UaDFTyfW.js": "142bb5158e21a3b68c3cd80fd6cd52beeb8904f632ca39ba9b08e4d1fb2db5c0",
+    "lab/release-files/subagent-settle-backlog/subagent-registry.store.sqlite-hzGu4QSk.js": "f37ed94d1c2bbf904bfb2614734bdd40d62fa239ff9dc0c26786035cf8fff1bb",
+    "lab/subagent-settle-backlog.helpers.mjs": "4775e24cddfb755405e56a57392610932f68e04820fffa403143d4d73f9e89ec",
+    "lab/subagent-settle-backlog.test.mjs": "e970b75bab0f0258d4034671bb6231aa2160b39008f957adccbeade3b151f8ce"
+  }
+}

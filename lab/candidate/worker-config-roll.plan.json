@@ -1,0 +1,29 @@
+{
+  "support": [
+    "lab/candidate/deepseek-budget-hot-reload.mjs",
+    "scripts/configure-v-deepseek-output-budget.mjs"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/worker-config-roll/index.mjs",
+      "target": "production-worker/index.mjs",
+      "before": "cfa0e68723c3393e819527dd0145b23413588c0a478b650069ad981d26631ba7"
+    },
+    {
+      "source": "lab/release-files/worker-config-roll/worker-config-watch.mjs",
+      "target": "production-worker/worker-config-watch.mjs",
+      "before": "88354155fc02b7729fdc6fe15feb85215e250d6687f9e51b35f77dc284993529"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/deepseek-budget-hot-reload.mjs"
+  ],
+  "env": {
+    "OVF_PAD_WORDS": "0",
+    "HOT_OPERATOR_ROLL": "0",
+    "HOT_DIRECTION": "forward"
+  },
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity"
+}

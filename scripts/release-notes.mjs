@@ -7,14 +7,14 @@
 //
 // A V release tag names the captures release/captured/<tag><suffix>, one per
 // captured component of scripts/lib/runtime-components.mjs (core, .worker,
-// .feishu, .dingtalk, .wecom). Each capture is turned into the full set of
+// .feishu, .codex, .dingtalk, .wecom). Each capture is turned into the full set of
 // files V runs (the published package from release/captured/base/ plus the
 // captured files, for core; the whole directory, for the plugins), and the
 // two sets are compared file by file. So the file list is exact, whoever
 // changed V and however.
 //
-// Components added to the table later (DingTalk and WeCom, 2026-10-05) are
-// missing from older captures. Missing in --from = first appearance (counted,
+// Components added to the table later (DingTalk and WeCom, 2026-10-05; Codex,
+// 2026-10-14) are missing from older captures. Missing in --from = first appearance (counted,
 // not listed file by file); missing in both = not part of either release.
 // core, worker and Feishu must be in every capture.
 //

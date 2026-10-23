@@ -1,0 +1,2365 @@
+{
+ "kind": "session-sharing-bounded-reads-rebase-ab",
+ "hashes": {
+  "session-accessor.sqlite-transcript-state-Cz9g7S9v.js": {
+   "before": "792b1c75740b3fcc17a1708f4b55e10f206b5718f02cd94a24bf4bbcef278788",
+   "after": "2583a789782d3f1282e2fe4670f79ec463356950d1240237437b7537778c7b75"
+  },
+  "session-accessor.sqlite-entry-BlklNPKQ.js": {
+   "before": "a15b1426ec9a328df9b4b975e9956fe2e39df3984ac93e7b655a0ba42e1da7d7",
+   "after": "789fca01601893b6437154543628936dc28eb93c19070ad95f5a4ff1607c8f61"
+  },
+  "session-utils-store-Dlphca2N.js": {
+   "before": "26adfebaf50c68339e8f09456a8b03ed1382ad0e5938e007a1caa116e1c7dc39",
+   "after": "b566c7e93e3cab8ecc2242ae241597d0ee9890cd8455b99c22a0262eb84dad6c"
+  },
+  "sessions-read-C6mAMxyQ.js": {
+   "before": "36c5a27bea777b383727dc891648a288002a54864e594f6027d01d98ff0dfa22",
+   "after": "2d2d0fb1da978015e168ba3d6c05965104b84bb1bf7a2acd08173582a421267a"
+  }
+ },
+ "snapshot": {
+  "agent": {
+   "tables": {
+    "schema_meta": 2,
+    "session_key_contract": 1,
+    "session_nodes": 4296,
+    "session_windows": 4303,
+    "session_participants": 3754,
+    "session_members": 0,
+    "session_conversations": 857,
+    "conversations": 894
+   },
+   "hashes": {
+    "schema_meta": "e547aa43a42a3cbeff6735bcb88b1d2ce4cbd225cbff96e883567844fbc56ae2",
+    "session_key_contract": "b408f83ddbe7c9a301303bc2bd556280802be1ba4d480de68bad4ac99ec3fa43",
+    "session_nodes": "7e0af055538300276470d0ed2ae54a7fb4c0e790c5eb94e0cd49735f231669bb",
+    "session_windows": "98c7fd700b5f08bbcbd1ef7bccfec2b6743dd612a039e11f81afe9510f22871e",
+    "session_participants": "1b389e786f2bfaf01ac656967a5b6dff7c3d8c5ceda96744e4ce30579ac59682",
+    "session_members": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "session_conversations": "431e332ae27cd1e4e66a16d11464191dd1da5ce49414bb24a1ba541d0d61600b",
+    "conversations": "89583fa1d9ecbc580699db8471adc6004146a5f457e3a7c0673ef53df3b072b4"
+   },
+   "bytes": 175652864,
+   "sourceBytes": 7358140416,
+   "entryJson": {
+    "rows": 4296,
+    "jsonBytes": 165542429,
+    "maxJsonBytes": 556230
+   },
+   "visibilityCounts": [
+    [
+     "shared",
+     4296
+    ]
+   ]
+  },
+  "profiles": {
+   "tables": {
+    "schema_meta": 3,
+    "user_profiles": 0,
+    "user_profile_identities": 0,
+    "user_profile_emails": 0
+   },
+   "hashes": {
+    "schema_meta": "b8149e0c9cb3137f06731b3a47b2d57df1cce4bbd6bcbefa8514d875692e9dee",
+    "user_profiles": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "user_profile_identities": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "user_profile_emails": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   "bytes": 1474560,
+   "sourceBytes": 166916096
+  },
+  "snapshotMs": 7895,
+  "sharedReadOnly": true,
+  "transcriptRowsCopied": 0,
+  "credentialRowsCopied": 0
+ },
+ "fixtures": {
+  "memberId": "sharing-rebase-member",
+  "foreignId": "sharing-rebase-foreign",
+  "sessions": {
+   "shared": "agent:makaron:explicit:sharing-rebase-shared-6de8bd14-08fa-45b2-a3ad-d5259142c140",
+   "draft": "agent:makaron:explicit:sharing-rebase-draft-1d39dfcf-36c4-479c-b8c2-36f1e7194b7d",
+   "read-only": "agent:makaron:explicit:sharing-rebase-read-only-5d360e22-eaf1-4543-9fbf-a33986f72170",
+   "suggest": "agent:makaron:explicit:sharing-rebase-suggest-3a048d4d-a5c7-42ff-8622-63821b16bed6"
+  },
+  "churnKey": "agent:makaron:explicit:sharing-rebase-churn-c0ce1769-6000-4e9f-9ee3-1d8b70e0af33",
+  "realOwners": [
+   {
+    "sessions": 28
+   },
+   {
+    "sessions": 4
+   }
+  ],
+  "sessionRows": 4301,
+  "visibilityCounts": {
+   "draft": 1,
+   "read-only": 1,
+   "shared": 4298,
+   "suggest": 1
+  }
+ },
+ "matrix": [
+  {
+   "name": "admin/limit-50",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 47
+   },
+   "sharingRole": {
+    "admin": 50
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "6483c277240cb75a3cb33ef50f2868e63860009aa7a1c9eb14eae1dd7e9adee5",
+   "abEqual": true
+  },
+  {
+   "name": "admin/all",
+   "ok": true,
+   "count": 834,
+   "rows": 834,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 831
+   },
+   "sharingRole": {
+    "admin": 834
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "6d7d0e6e0fdbfa7052b4f515de687c8f0f4a0bff4eae16673d0aea36da3619f9",
+   "abEqual": true
+  },
+  {
+   "name": "admin/lifecycle-only",
+   "ok": true,
+   "count": 834,
+   "rows": 834,
+   "visibility": {
+    "shared": 834
+   },
+   "sharingRole": {
+    "(none)": 834
+   },
+   "sharingSpans": 0,
+   "placementCalls": 0,
+   "midwayCommit": false,
+   "payloadSha256": "99605c297c2d06b9f63b6e2634aa9795f5769001ae12f6c501a06cda305a01ac",
+   "abEqual": true
+  },
+  {
+   "name": "admin/involving-me",
+   "ok": true,
+   "count": 200,
+   "rows": 200,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 197
+   },
+   "sharingRole": {
+    "admin": 200
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "1f75684f37cb702b2abb93aaa029de2ca3b79cd9feac56086e92674a158453bb",
+   "abEqual": true
+  },
+  {
+   "name": "admin/owner-first",
+   "ok": true,
+   "count": 200,
+   "rows": 200,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 197
+   },
+   "sharingRole": {
+    "admin": 200
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "1f75684f37cb702b2abb93aaa029de2ca3b79cd9feac56086e92674a158453bb",
+   "abEqual": true
+  },
+  {
+   "name": "admin/offset-100",
+   "ok": true,
+   "count": 100,
+   "rows": 100,
+   "visibility": {
+    "shared": 100
+   },
+   "sharingRole": {
+    "admin": 100
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "24d5a90d5c8e579ceee8d0b02a5b16619f180d1c13295a7d6aeedbf34b55d2ea",
+   "abEqual": true
+  },
+  {
+   "name": "admin/configured-agents",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 47
+   },
+   "sharingRole": {
+    "admin": 50
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "adb7536e0accd24304361e5c5ba4b50f2f3ef792515e5036f209ff20abbb44dc",
+   "abEqual": true
+  },
+  {
+   "name": "admin-with-profile/limit-50",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 47
+   },
+   "sharingRole": {
+    "admin": 50
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "6483c277240cb75a3cb33ef50f2868e63860009aa7a1c9eb14eae1dd7e9adee5",
+   "abEqual": true
+  },
+  {
+   "name": "admin-with-profile/all",
+   "ok": true,
+   "count": 834,
+   "rows": 834,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 831
+   },
+   "sharingRole": {
+    "admin": 834
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "6d7d0e6e0fdbfa7052b4f515de687c8f0f4a0bff4eae16673d0aea36da3619f9",
+   "abEqual": true
+  },
+  {
+   "name": "admin-with-profile/lifecycle-only",
+   "ok": true,
+   "count": 834,
+   "rows": 834,
+   "visibility": {
+    "shared": 834
+   },
+   "sharingRole": {
+    "(none)": 834
+   },
+   "sharingSpans": 0,
+   "placementCalls": 0,
+   "midwayCommit": false,
+   "payloadSha256": "99605c297c2d06b9f63b6e2634aa9795f5769001ae12f6c501a06cda305a01ac",
+   "abEqual": true
+  },
+  {
+   "name": "admin-with-profile/involving-me",
+   "ok": true,
+   "count": 4,
+   "rows": 4,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 1
+   },
+   "sharingRole": {
+    "admin": 4
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "6d62edd1a5c08621bdeda77a2b6193aa836e5a37aff1f329da1f6a82241c6e62",
+   "abEqual": true
+  },
+  {
+   "name": "admin-with-profile/owner-first",
+   "ok": true,
+   "count": 200,
+   "rows": 200,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 197
+   },
+   "sharingRole": {
+    "admin": 200
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "1f75684f37cb702b2abb93aaa029de2ca3b79cd9feac56086e92674a158453bb",
+   "abEqual": true
+  },
+  {
+   "name": "admin-with-profile/offset-100",
+   "ok": true,
+   "count": 100,
+   "rows": 100,
+   "visibility": {
+    "shared": 100
+   },
+   "sharingRole": {
+    "admin": 100
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "24d5a90d5c8e579ceee8d0b02a5b16619f180d1c13295a7d6aeedbf34b55d2ea",
+   "abEqual": true
+  },
+  {
+   "name": "admin-with-profile/configured-agents",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 47
+   },
+   "sharingRole": {
+    "admin": 50
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "adb7536e0accd24304361e5c5ba4b50f2f3ef792515e5036f209ff20abbb44dc",
+   "abEqual": true
+  },
+  {
+   "name": "real-owner/limit-50",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 48
+   },
+   "sharingRole": {
+    "viewer": 50
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "e17edfbdf1f11eaa187959ade3bda03520dacc6f13a0009b8d2c7826106b47f2",
+   "abEqual": true
+  },
+  {
+   "name": "real-owner/all",
+   "ok": true,
+   "count": 833,
+   "rows": 833,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 831
+   },
+   "sharingRole": {
+    "viewer": 833
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "ef32a319f3556874acd426fd750a36de592228e3327d8b2ab6a969a2fd9ba648",
+   "abEqual": true
+  },
+  {
+   "name": "real-owner/lifecycle-only",
+   "ok": true,
+   "count": 833,
+   "rows": 833,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 831
+   },
+   "sharingRole": {
+    "viewer": 833
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "ef32a319f3556874acd426fd750a36de592228e3327d8b2ab6a969a2fd9ba648",
+   "abEqual": true
+  },
+  {
+   "name": "real-owner/involving-me",
+   "ok": true,
+   "count": 0,
+   "rows": 0,
+   "visibility": {},
+   "sharingRole": {},
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "7e42df988597f4a56404f5a8400715ec3f1d0e3b22bb6f8d17e42982880c615e",
+   "abEqual": true
+  },
+  {
+   "name": "real-owner/owner-first",
+   "ok": true,
+   "count": 200,
+   "rows": 200,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 198
+   },
+   "sharingRole": {
+    "viewer": 200
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "3935b7317bbf34307223524b8b3e954af5f7c35d3a622be5306a17297c07100f",
+   "abEqual": true
+  },
+  {
+   "name": "real-owner/offset-100",
+   "ok": true,
+   "count": 100,
+   "rows": 100,
+   "visibility": {
+    "shared": 100
+   },
+   "sharingRole": {
+    "viewer": 100
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "2326cd377969188072f3001b0b2e810b77c286cb0b12af78f1cd039453d6e626",
+   "abEqual": true
+  },
+  {
+   "name": "real-owner/configured-agents",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 48
+   },
+   "sharingRole": {
+    "viewer": 50
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "560e2b14f5a3a22c707aa23fe731b686c23bc0a14040d091f83c3bdd7b34b7ae",
+   "abEqual": true
+  },
+  {
+   "name": "real-owner-2/limit-50",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 47
+   },
+   "sharingRole": {
+    "owner": 4,
+    "viewer": 46
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "aede0b596545f1a80f02ea4a854939ae4159578633e14fe28cee444c2e22cabc",
+   "abEqual": true
+  },
+  {
+   "name": "real-owner-2/all",
+   "ok": true,
+   "count": 834,
+   "rows": 834,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 831
+   },
+   "sharingRole": {
+    "owner": 4,
+    "viewer": 830
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "7295e234130516ecd20a87b9d5acb4d0cbc6694981fc9769f72284fc829dc39b",
+   "abEqual": true
+  },
+  {
+   "name": "real-owner-2/lifecycle-only",
+   "ok": true,
+   "count": 834,
+   "rows": 834,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 831
+   },
+   "sharingRole": {
+    "owner": 4,
+    "viewer": 830
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "7295e234130516ecd20a87b9d5acb4d0cbc6694981fc9769f72284fc829dc39b",
+   "abEqual": true
+  },
+  {
+   "name": "real-owner-2/involving-me",
+   "ok": true,
+   "count": 4,
+   "rows": 4,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 1
+   },
+   "sharingRole": {
+    "owner": 4
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "db5639f9c089131f9893f9ed6bb00075a6b8bd4375ac27683cdb49bede9fd0ea",
+   "abEqual": true
+  },
+  {
+   "name": "real-owner-2/owner-first",
+   "ok": true,
+   "count": 200,
+   "rows": 200,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 197
+   },
+   "sharingRole": {
+    "owner": 4,
+    "viewer": 196
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "0ccc2619ec466a468012e9664caa6de640f4284ab8cafda359bf1f278f4d7373",
+   "abEqual": true
+  },
+  {
+   "name": "real-owner-2/offset-100",
+   "ok": true,
+   "count": 100,
+   "rows": 100,
+   "visibility": {
+    "shared": 100
+   },
+   "sharingRole": {
+    "viewer": 100
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "d99ca89a24a87ebe46349328625acd2d8141fda6ca5f060cc62f41fd84222e47",
+   "abEqual": true
+  },
+  {
+   "name": "real-owner-2/configured-agents",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 47
+   },
+   "sharingRole": {
+    "owner": 4,
+    "viewer": 46
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "1b605f74dc7fcb2a69118414cc8be0de9cb7d3531b6aa172bae9f110e24570b2",
+   "abEqual": true
+  },
+  {
+   "name": "fixture-owner/limit-50",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 47
+   },
+   "sharingRole": {
+    "owner": 4,
+    "viewer": 46
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "aede0b596545f1a80f02ea4a854939ae4159578633e14fe28cee444c2e22cabc",
+   "abEqual": true
+  },
+  {
+   "name": "fixture-owner/all",
+   "ok": true,
+   "count": 834,
+   "rows": 834,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 831
+   },
+   "sharingRole": {
+    "owner": 4,
+    "viewer": 830
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "7295e234130516ecd20a87b9d5acb4d0cbc6694981fc9769f72284fc829dc39b",
+   "abEqual": true
+  },
+  {
+   "name": "fixture-owner/lifecycle-only",
+   "ok": true,
+   "count": 834,
+   "rows": 834,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 831
+   },
+   "sharingRole": {
+    "owner": 4,
+    "viewer": 830
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "7295e234130516ecd20a87b9d5acb4d0cbc6694981fc9769f72284fc829dc39b",
+   "abEqual": true
+  },
+  {
+   "name": "fixture-owner/involving-me",
+   "ok": true,
+   "count": 4,
+   "rows": 4,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 1
+   },
+   "sharingRole": {
+    "owner": 4
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "db5639f9c089131f9893f9ed6bb00075a6b8bd4375ac27683cdb49bede9fd0ea",
+   "abEqual": true
+  },
+  {
+   "name": "fixture-owner/owner-first",
+   "ok": true,
+   "count": 200,
+   "rows": 200,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 197
+   },
+   "sharingRole": {
+    "owner": 4,
+    "viewer": 196
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "0ccc2619ec466a468012e9664caa6de640f4284ab8cafda359bf1f278f4d7373",
+   "abEqual": true
+  },
+  {
+   "name": "fixture-owner/offset-100",
+   "ok": true,
+   "count": 100,
+   "rows": 100,
+   "visibility": {
+    "shared": 100
+   },
+   "sharingRole": {
+    "viewer": 100
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "d99ca89a24a87ebe46349328625acd2d8141fda6ca5f060cc62f41fd84222e47",
+   "abEqual": true
+  },
+  {
+   "name": "fixture-owner/configured-agents",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 47
+   },
+   "sharingRole": {
+    "owner": 4,
+    "viewer": 46
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "1b605f74dc7fcb2a69118414cc8be0de9cb7d3531b6aa172bae9f110e24570b2",
+   "abEqual": true
+  },
+  {
+   "name": "alias/limit-50",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 47
+   },
+   "sharingRole": {
+    "owner": 4,
+    "viewer": 46
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "aede0b596545f1a80f02ea4a854939ae4159578633e14fe28cee444c2e22cabc",
+   "abEqual": true
+  },
+  {
+   "name": "alias/all",
+   "ok": true,
+   "count": 834,
+   "rows": 834,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 831
+   },
+   "sharingRole": {
+    "owner": 4,
+    "viewer": 830
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "7295e234130516ecd20a87b9d5acb4d0cbc6694981fc9769f72284fc829dc39b",
+   "abEqual": true
+  },
+  {
+   "name": "alias/lifecycle-only",
+   "ok": true,
+   "count": 834,
+   "rows": 834,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 831
+   },
+   "sharingRole": {
+    "owner": 4,
+    "viewer": 830
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "7295e234130516ecd20a87b9d5acb4d0cbc6694981fc9769f72284fc829dc39b",
+   "abEqual": true
+  },
+  {
+   "name": "alias/involving-me",
+   "ok": true,
+   "count": 0,
+   "rows": 0,
+   "visibility": {},
+   "sharingRole": {},
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "7e42df988597f4a56404f5a8400715ec3f1d0e3b22bb6f8d17e42982880c615e",
+   "abEqual": true
+  },
+  {
+   "name": "alias/owner-first",
+   "ok": true,
+   "count": 200,
+   "rows": 200,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 197
+   },
+   "sharingRole": {
+    "owner": 4,
+    "viewer": 196
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "0ccc2619ec466a468012e9664caa6de640f4284ab8cafda359bf1f278f4d7373",
+   "abEqual": true
+  },
+  {
+   "name": "alias/offset-100",
+   "ok": true,
+   "count": 100,
+   "rows": 100,
+   "visibility": {
+    "shared": 100
+   },
+   "sharingRole": {
+    "viewer": 100
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "d99ca89a24a87ebe46349328625acd2d8141fda6ca5f060cc62f41fd84222e47",
+   "abEqual": true
+  },
+  {
+   "name": "alias/configured-agents",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 47
+   },
+   "sharingRole": {
+    "owner": 4,
+    "viewer": 46
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "1b605f74dc7fcb2a69118414cc8be0de9cb7d3531b6aa172bae9f110e24570b2",
+   "abEqual": true
+  },
+  {
+   "name": "member/limit-50",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 48
+   },
+   "sharingRole": {
+    "viewer": 49,
+    "member": 1
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "fa379624a997621b83d359380e2a022c6c7a93b1db6264aea7b4ea028073c8f9",
+   "abEqual": true
+  },
+  {
+   "name": "member/all",
+   "ok": true,
+   "count": 833,
+   "rows": 833,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 831
+   },
+   "sharingRole": {
+    "viewer": 832,
+    "member": 1
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "a87fac6ad61c5cfb7531e66573177d587550ff835a68f794d813ca4ec26c3187",
+   "abEqual": true
+  },
+  {
+   "name": "member/lifecycle-only",
+   "ok": true,
+   "count": 833,
+   "rows": 833,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 831
+   },
+   "sharingRole": {
+    "viewer": 832,
+    "member": 1
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "a87fac6ad61c5cfb7531e66573177d587550ff835a68f794d813ca4ec26c3187",
+   "abEqual": true
+  },
+  {
+   "name": "member/involving-me",
+   "ok": true,
+   "count": 0,
+   "rows": 0,
+   "visibility": {},
+   "sharingRole": {},
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "7e42df988597f4a56404f5a8400715ec3f1d0e3b22bb6f8d17e42982880c615e",
+   "abEqual": true
+  },
+  {
+   "name": "member/owner-first",
+   "ok": true,
+   "count": 200,
+   "rows": 200,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 198
+   },
+   "sharingRole": {
+    "viewer": 199,
+    "member": 1
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "ec838306d36bc37b3a5c5abbfded31bc10368ba782703e9642af51409d00c1a7",
+   "abEqual": true
+  },
+  {
+   "name": "member/offset-100",
+   "ok": true,
+   "count": 100,
+   "rows": 100,
+   "visibility": {
+    "shared": 100
+   },
+   "sharingRole": {
+    "viewer": 100
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "2326cd377969188072f3001b0b2e810b77c286cb0b12af78f1cd039453d6e626",
+   "abEqual": true
+  },
+  {
+   "name": "member/configured-agents",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 48
+   },
+   "sharingRole": {
+    "viewer": 49,
+    "member": 1
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "e431dcb8659226f6a168fc7f8322c83bf68574932e9d35988d05546caf928a57",
+   "abEqual": true
+  },
+  {
+   "name": "foreign/limit-50",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 48
+   },
+   "sharingRole": {
+    "viewer": 50
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "e17edfbdf1f11eaa187959ade3bda03520dacc6f13a0009b8d2c7826106b47f2",
+   "abEqual": true
+  },
+  {
+   "name": "foreign/all",
+   "ok": true,
+   "count": 833,
+   "rows": 833,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 831
+   },
+   "sharingRole": {
+    "viewer": 833
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "ef32a319f3556874acd426fd750a36de592228e3327d8b2ab6a969a2fd9ba648",
+   "abEqual": true
+  },
+  {
+   "name": "foreign/lifecycle-only",
+   "ok": true,
+   "count": 833,
+   "rows": 833,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 831
+   },
+   "sharingRole": {
+    "viewer": 833
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "ef32a319f3556874acd426fd750a36de592228e3327d8b2ab6a969a2fd9ba648",
+   "abEqual": true
+  },
+  {
+   "name": "foreign/involving-me",
+   "ok": true,
+   "count": 0,
+   "rows": 0,
+   "visibility": {},
+   "sharingRole": {},
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "7e42df988597f4a56404f5a8400715ec3f1d0e3b22bb6f8d17e42982880c615e",
+   "abEqual": true
+  },
+  {
+   "name": "foreign/owner-first",
+   "ok": true,
+   "count": 200,
+   "rows": 200,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 198
+   },
+   "sharingRole": {
+    "viewer": 200
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "3935b7317bbf34307223524b8b3e954af5f7c35d3a622be5306a17297c07100f",
+   "abEqual": true
+  },
+  {
+   "name": "foreign/offset-100",
+   "ok": true,
+   "count": 100,
+   "rows": 100,
+   "visibility": {
+    "shared": 100
+   },
+   "sharingRole": {
+    "viewer": 100
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "2326cd377969188072f3001b0b2e810b77c286cb0b12af78f1cd039453d6e626",
+   "abEqual": true
+  },
+  {
+   "name": "foreign/configured-agents",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 48
+   },
+   "sharingRole": {
+    "viewer": 50
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "560e2b14f5a3a22c707aa23fe731b686c23bc0a14040d091f83c3bdd7b34b7ae",
+   "abEqual": true
+  },
+  {
+   "name": "read-no-profile/limit-50",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 47
+   },
+   "sharingRole": {
+    "owner": 50
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "a2eb7f5ac897f7fe4c35ea5f4ef29b0bc95d24eb5c71acfafc30ec0fac1f7799",
+   "abEqual": true
+  },
+  {
+   "name": "read-no-profile/all",
+   "ok": true,
+   "count": 834,
+   "rows": 834,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 831
+   },
+   "sharingRole": {
+    "owner": 834
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "e57dd5bfeeb6c81030975c7f4a466781266ed290624609fb44526c1dfb1b0d6e",
+   "abEqual": true
+  },
+  {
+   "name": "read-no-profile/lifecycle-only",
+   "ok": true,
+   "count": 834,
+   "rows": 834,
+   "visibility": {
+    "shared": 834
+   },
+   "sharingRole": {
+    "(none)": 834
+   },
+   "sharingSpans": 0,
+   "placementCalls": 0,
+   "midwayCommit": false,
+   "payloadSha256": "99605c297c2d06b9f63b6e2634aa9795f5769001ae12f6c501a06cda305a01ac",
+   "abEqual": true
+  },
+  {
+   "name": "read-no-profile/involving-me",
+   "ok": true,
+   "count": 200,
+   "rows": 200,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 197
+   },
+   "sharingRole": {
+    "owner": 200
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "fc4d6f71d7fcf5096d7bb1541564e0130d5fd361b15acfbfa7de22d8fdfd5300",
+   "abEqual": true
+  },
+  {
+   "name": "read-no-profile/owner-first",
+   "ok": true,
+   "count": 200,
+   "rows": 200,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 197
+   },
+   "sharingRole": {
+    "owner": 200
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "fc4d6f71d7fcf5096d7bb1541564e0130d5fd361b15acfbfa7de22d8fdfd5300",
+   "abEqual": true
+  },
+  {
+   "name": "read-no-profile/offset-100",
+   "ok": true,
+   "count": 100,
+   "rows": 100,
+   "visibility": {
+    "shared": 100
+   },
+   "sharingRole": {
+    "owner": 100
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "0a08837e1cb7c896a0c10c8ea6dab365302ba8d0619afeca1346f68fbce7ff88",
+   "abEqual": true
+  },
+  {
+   "name": "read-no-profile/configured-agents",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 47
+   },
+   "sharingRole": {
+    "owner": 50
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": false,
+   "payloadSha256": "04eff9d9dfa04f2018c03d620105a383d97b4e88a58269e6dbe65de2c951c9bc",
+   "abEqual": true
+  },
+  {
+   "name": "admin/midway-visibility-draft",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 2,
+    "shared": 46
+   },
+   "sharingRole": {
+    "admin": 50
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": true,
+   "payloadSha256": "a58b52c9763b492f9f507162a36ffc63bda195f2bb7ac5c65c296df7cef90c18",
+   "abEqual": true
+  },
+  {
+   "name": "foreign/midway-visibility-draft",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 48
+   },
+   "sharingRole": {
+    "viewer": 50
+   },
+   "sharingSpans": 2,
+   "placementCalls": 2,
+   "midwayCommit": true,
+   "payloadSha256": "d9a06f85fd3b4281d05573a7deb43c1c23132f475382858b0210241d3e06b1a6",
+   "abEqual": true
+  },
+  {
+   "name": "fixture-owner/midway-visibility-draft",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 2,
+    "shared": 46
+   },
+   "sharingRole": {
+    "owner": 4,
+    "viewer": 46
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": true,
+   "payloadSha256": "1cdea530097b5564ec9e8abe016f1c22a7ff0ae3622b5b6ca5237ffe926d0ee0",
+   "abEqual": true
+  },
+  {
+   "name": "member/midway-member-revoked",
+   "ok": true,
+   "count": 50,
+   "rows": 50,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 48
+   },
+   "sharingRole": {
+    "viewer": 50
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": true,
+   "payloadSha256": "e17edfbdf1f11eaa187959ade3bda03520dacc6f13a0009b8d2c7826106b47f2",
+   "abEqual": true
+  },
+  {
+   "name": "admin/midway-unrelated-commit",
+   "ok": true,
+   "count": 500,
+   "rows": 500,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "draft": 1,
+    "shared": 497
+   },
+   "sharingRole": {
+    "admin": 500
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": true,
+   "payloadSha256": "501ff035c50a1d2567c0d2d105fab6212663562811268dca3c323780037edff5",
+   "abEqual": true
+  },
+  {
+   "name": "real-owner/midway-unrelated-commit",
+   "ok": true,
+   "count": 500,
+   "rows": 500,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 498
+   },
+   "sharingRole": {
+    "viewer": 500
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": true,
+   "payloadSha256": "3810ddcbcdc244fc7f59065227209f4a8e9b527e585ca25743b69cc1f4d90087",
+   "abEqual": true
+  },
+  {
+   "name": "foreign/midway-unrelated-commit",
+   "ok": true,
+   "count": 500,
+   "rows": 500,
+   "visibility": {
+    "suggest": 1,
+    "read-only": 1,
+    "shared": 498
+   },
+   "sharingRole": {
+    "viewer": 500
+   },
+   "sharingSpans": 1,
+   "placementCalls": 1,
+   "midwayCommit": true,
+   "payloadSha256": "3810ddcbcdc244fc7f59065227209f4a8e9b527e585ca25743b69cc1f4d90087",
+   "abEqual": true
+  }
+ ],
+ "perf": [
+  {
+   "regime": "quiet",
+   "name": "admin/limit-25",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 603.6,
+    "sharingMsMax": 671.46,
+    "totalMsMedian": 1277.54,
+    "sqlReadsMedian": 12,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     25
+    ],
+    "writerCommitsMedian": 0
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 8.36,
+    "sharingMsMax": 27.35,
+    "totalMsMedian": 634.59,
+    "sqlReadsMedian": 9,
+    "nodeRowsMedian": 25,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     25
+    ],
+    "writerCommitsMedian": 0
+   }
+  },
+  {
+   "regime": "quiet",
+   "name": "admin/limit-500",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 618.84,
+    "sharingMsMax": 712.46,
+    "totalMsMedian": 1364.56,
+    "sqlReadsMedian": 12,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     500
+    ],
+    "writerCommitsMedian": 0
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 127.02,
+    "sharingMsMax": 148.59,
+    "totalMsMedian": 863.28,
+    "sqlReadsMedian": 13,
+    "nodeRowsMedian": 500,
+    "participantsQueriesMedian": 2,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     500
+    ],
+    "writerCommitsMedian": 0
+   }
+  },
+  {
+   "regime": "quiet",
+   "name": "admin/all",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 655.76,
+    "sharingMsMax": 733.09,
+    "totalMsMedian": 1493.97,
+    "sqlReadsMedian": 12,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     834
+    ],
+    "writerCommitsMedian": 0
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 205.35,
+    "sharingMsMax": 229.04,
+    "totalMsMedian": 965.26,
+    "sqlReadsMedian": 17,
+    "nodeRowsMedian": 834,
+    "participantsQueriesMedian": 3,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     834
+    ],
+    "writerCommitsMedian": 0
+   }
+  },
+  {
+   "regime": "quiet",
+   "name": "real-owner/all",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 663.4,
+    "sharingMsMax": 756.74,
+    "totalMsMedian": 1448.29,
+    "sqlReadsMedian": 18,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 0
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 206.53,
+    "sharingMsMax": 228.07,
+    "totalMsMedian": 968.29,
+    "sqlReadsMedian": 23,
+    "nodeRowsMedian": 833,
+    "participantsQueriesMedian": 3,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 0
+   }
+  },
+  {
+   "regime": "quiet",
+   "name": "foreign/all",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 640.56,
+    "sharingMsMax": 726.91,
+    "totalMsMedian": 1450.43,
+    "sqlReadsMedian": 18,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 0
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 223.39,
+    "sharingMsMax": 259.4,
+    "totalMsMedian": 977.79,
+    "sqlReadsMedian": 23,
+    "nodeRowsMedian": 833,
+    "participantsQueriesMedian": 3,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 0
+   }
+  },
+  {
+   "regime": "quiet",
+   "name": "admin/all-lifecycle-only",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 0,
+    "sharingMsMax": 0,
+    "totalMsMedian": 785.64,
+    "sqlReadsMedian": 0,
+    "nodeRowsMedian": 0,
+    "participantsQueriesMedian": 0,
+    "sharingSpans": [
+     0
+    ],
+    "placementCalls": [
+     0
+    ],
+    "rows": [
+     834
+    ],
+    "writerCommitsMedian": 0
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 0,
+    "sharingMsMax": 0,
+    "totalMsMedian": 759.76,
+    "sqlReadsMedian": 0,
+    "nodeRowsMedian": 0,
+    "participantsQueriesMedian": 0,
+    "sharingSpans": [
+     0
+    ],
+    "placementCalls": [
+     0
+    ],
+    "rows": [
+     834
+    ],
+    "writerCommitsMedian": 0
+   }
+  },
+  {
+   "regime": "quiet",
+   "name": "real-owner/all-lifecycle-only",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 659.94,
+    "sharingMsMax": 733.59,
+    "totalMsMedian": 1455.45,
+    "sqlReadsMedian": 18,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 0
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 220.31,
+    "sharingMsMax": 246.7,
+    "totalMsMedian": 970.52,
+    "sqlReadsMedian": 23,
+    "nodeRowsMedian": 833,
+    "participantsQueriesMedian": 3,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 0
+   }
+  },
+  {
+   "regime": "midway-commit",
+   "name": "admin/limit-25",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 638.87,
+    "sharingMsMax": 979.86,
+    "totalMsMedian": 1346.94,
+    "sqlReadsMedian": 12,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     25
+    ],
+    "writerCommitsMedian": 0
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 11.06,
+    "sharingMsMax": 14.32,
+    "totalMsMedian": 647.09,
+    "sqlReadsMedian": 9,
+    "nodeRowsMedian": 25,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     25
+    ],
+    "writerCommitsMedian": 0
+   }
+  },
+  {
+   "regime": "midway-commit",
+   "name": "admin/limit-500",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 669.82,
+    "sharingMsMax": 738.1,
+    "totalMsMedian": 1454.91,
+    "sqlReadsMedian": 12,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     500
+    ],
+    "writerCommitsMedian": 0
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 127.09,
+    "sharingMsMax": 140.77,
+    "totalMsMedian": 827.55,
+    "sqlReadsMedian": 13,
+    "nodeRowsMedian": 500,
+    "participantsQueriesMedian": 2,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     500
+    ],
+    "writerCommitsMedian": 0
+   }
+  },
+  {
+   "regime": "midway-commit",
+   "name": "admin/all",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 690.35,
+    "sharingMsMax": 757.39,
+    "totalMsMedian": 1514.93,
+    "sqlReadsMedian": 12,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     834
+    ],
+    "writerCommitsMedian": 0
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 220.05,
+    "sharingMsMax": 238.49,
+    "totalMsMedian": 995.18,
+    "sqlReadsMedian": 17,
+    "nodeRowsMedian": 834,
+    "participantsQueriesMedian": 3,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     834
+    ],
+    "writerCommitsMedian": 0
+   }
+  },
+  {
+   "regime": "midway-commit",
+   "name": "real-owner/all",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 682.69,
+    "sharingMsMax": 748,
+    "totalMsMedian": 1496.27,
+    "sqlReadsMedian": 18,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 0
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 224.33,
+    "sharingMsMax": 256.1,
+    "totalMsMedian": 978.39,
+    "sqlReadsMedian": 23,
+    "nodeRowsMedian": 833,
+    "participantsQueriesMedian": 3,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 0
+   }
+  },
+  {
+   "regime": "midway-commit",
+   "name": "foreign/all",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 679.43,
+    "sharingMsMax": 733.25,
+    "totalMsMedian": 1477.09,
+    "sqlReadsMedian": 18,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 0
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 227.15,
+    "sharingMsMax": 259.15,
+    "totalMsMedian": 1031.35,
+    "sqlReadsMedian": 23,
+    "nodeRowsMedian": 833,
+    "participantsQueriesMedian": 3,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 0
+   }
+  },
+  {
+   "regime": "midway-commit",
+   "name": "admin/all-lifecycle-only",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 0,
+    "sharingMsMax": 0,
+    "totalMsMedian": 800.73,
+    "sqlReadsMedian": 0,
+    "nodeRowsMedian": 0,
+    "participantsQueriesMedian": 0,
+    "sharingSpans": [
+     0
+    ],
+    "placementCalls": [
+     0
+    ],
+    "rows": [
+     834
+    ],
+    "writerCommitsMedian": 0
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 0,
+    "sharingMsMax": 0,
+    "totalMsMedian": 762.62,
+    "sqlReadsMedian": 0,
+    "nodeRowsMedian": 0,
+    "participantsQueriesMedian": 0,
+    "sharingSpans": [
+     0
+    ],
+    "placementCalls": [
+     0
+    ],
+    "rows": [
+     834
+    ],
+    "writerCommitsMedian": 0
+   }
+  },
+  {
+   "regime": "midway-commit",
+   "name": "real-owner/all-lifecycle-only",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 700.47,
+    "sharingMsMax": 714.79,
+    "totalMsMedian": 1490.53,
+    "sqlReadsMedian": 18,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 0
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 236.64,
+    "sharingMsMax": 248.14,
+    "totalMsMedian": 1022.33,
+    "sqlReadsMedian": 23,
+    "nodeRowsMedian": 833,
+    "participantsQueriesMedian": 3,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 0
+   }
+  },
+  {
+   "regime": "continuous-writer",
+   "name": "admin/limit-25",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 653.32,
+    "sharingMsMax": 1039.42,
+    "totalMsMedian": 1386.24,
+    "sqlReadsMedian": 12,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     25
+    ],
+    "writerCommitsMedian": 152.5
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 7.76,
+    "sharingMsMax": 9.51,
+    "totalMsMedian": 672.08,
+    "sqlReadsMedian": 9,
+    "nodeRowsMedian": 25,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     25
+    ],
+    "writerCommitsMedian": 72
+   }
+  },
+  {
+   "regime": "continuous-writer",
+   "name": "admin/limit-500",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 652.91,
+    "sharingMsMax": 681.25,
+    "totalMsMedian": 1411.6,
+    "sqlReadsMedian": 12,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     500
+    ],
+    "writerCommitsMedian": 164
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 128.2,
+    "sharingMsMax": 145.43,
+    "totalMsMedian": 859.22,
+    "sqlReadsMedian": 13,
+    "nodeRowsMedian": 500,
+    "participantsQueriesMedian": 2,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     500
+    ],
+    "writerCommitsMedian": 96
+   }
+  },
+  {
+   "regime": "continuous-writer",
+   "name": "admin/all",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 683.6,
+    "sharingMsMax": 714.72,
+    "totalMsMedian": 1489.77,
+    "sqlReadsMedian": 12,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     834
+    ],
+    "writerCommitsMedian": 170.5
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 225.75,
+    "sharingMsMax": 240.9,
+    "totalMsMedian": 1006.01,
+    "sqlReadsMedian": 17,
+    "nodeRowsMedian": 834,
+    "participantsQueriesMedian": 3,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     834
+    ],
+    "writerCommitsMedian": 112
+   }
+  },
+  {
+   "regime": "continuous-writer",
+   "name": "real-owner/all",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 684.26,
+    "sharingMsMax": 742.56,
+    "totalMsMedian": 1515,
+    "sqlReadsMedian": 18,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 160
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 217.6,
+    "sharingMsMax": 250.52,
+    "totalMsMedian": 999.26,
+    "sqlReadsMedian": 23,
+    "nodeRowsMedian": 833,
+    "participantsQueriesMedian": 3,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 108.5
+   }
+  },
+  {
+   "regime": "continuous-writer",
+   "name": "foreign/all",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 708.92,
+    "sharingMsMax": 751.44,
+    "totalMsMedian": 1524.23,
+    "sqlReadsMedian": 18,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 173
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 218.97,
+    "sharingMsMax": 250.15,
+    "totalMsMedian": 1005.93,
+    "sqlReadsMedian": 23,
+    "nodeRowsMedian": 833,
+    "participantsQueriesMedian": 3,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 110
+   }
+  },
+  {
+   "regime": "continuous-writer",
+   "name": "admin/all-lifecycle-only",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 0,
+    "sharingMsMax": 0,
+    "totalMsMedian": 829.66,
+    "sqlReadsMedian": 0,
+    "nodeRowsMedian": 0,
+    "participantsQueriesMedian": 0,
+    "sharingSpans": [
+     0
+    ],
+    "placementCalls": [
+     0
+    ],
+    "rows": [
+     834
+    ],
+    "writerCommitsMedian": 93.5
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 0,
+    "sharingMsMax": 0,
+    "totalMsMedian": 780.73,
+    "sqlReadsMedian": 0,
+    "nodeRowsMedian": 0,
+    "participantsQueriesMedian": 0,
+    "sharingSpans": [
+     0
+    ],
+    "placementCalls": [
+     0
+    ],
+    "rows": [
+     834
+    ],
+    "writerCommitsMedian": 89
+   }
+  },
+  {
+   "regime": "continuous-writer",
+   "name": "real-owner/all-lifecycle-only",
+   "payloadsEqual": true,
+   "v": {
+    "samples": 10,
+    "sharingMsMedian": 670.3,
+    "sharingMsMax": 711.64,
+    "totalMsMedian": 1487.36,
+    "sqlReadsMedian": 18,
+    "nodeRowsMedian": 4301,
+    "participantsQueriesMedian": 1,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 165.5
+   },
+   "rebuilt": {
+    "samples": 10,
+    "sharingMsMedian": 232.34,
+    "sharingMsMax": 254.86,
+    "totalMsMedian": 1045.69,
+    "sqlReadsMedian": 23,
+    "nodeRowsMedian": 833,
+    "participantsQueriesMedian": 3,
+    "sharingSpans": [
+     1
+    ],
+    "placementCalls": [
+     1
+    ],
+    "rows": [
+     833
+    ],
+    "writerCommitsMedian": 117.5
+   }
+  }
+ ],
+ "timings": {
+  "snapshotMs": 7938,
+  "setupMs": 6108,
+  "matrixMs": 306985,
+  "perfMs": 596468
+ },
+ "modelCalls": 0,
+ "sharedWrites": 0,
+ "scope": "real sessions.list handler (store_load, rows, sharing, active-run flags) on a private metadata snapshot; no Gateway, channel or model",
+ "candidate": {
+  "id": "candidate-a4ab58da-00c2-41a1-b726-a5e77f7119f6",
+  "inputSha256": "f5bf23ff0272e16846c3de1c03785d2711ec7f63453f0101cc283a9dad4db525",
+  "runtimeSha": "7a796c8cd37f4f91b9f4b31a28d3171171a0ca5a66ee91caae326de92399645d",
+  "baseRelease": "disk-budget-stall-20261017",
+  "sharedUnchanged": true
+ }
+}

@@ -1,0 +1,21 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/codex-process-inspection/transport-stdio-CyPldczm.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/transport-stdio-CyPldczm.js",
+      "before": "513e62ddeba5545431e34fc8a189ae53ee3425752c859cc1454d3eb1ce554d2d"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/codex-process-inspection.mjs"
+  ],
+  "support": [
+    "lab/candidate/codex-process-inspection.mjs"
+  ],
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 900,
+  "databases": [
+    "state/openclaw.sqlite"
+  ]
+}

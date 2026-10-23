@@ -1,0 +1,26 @@
+{
+  "support": [
+    "lab/candidate/subagent-scoped-row-ab.mjs",
+    "lab/subagent-scoped-row-index.plan.json",
+    "lab/release-files/subagent-scoped-row-index/session-utils-list-BUP03AzS.js"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/subagent-scoped-row-index/subagent-registry.store.sqlite-hzGu4QSk.js",
+      "target": "openclaw/dist/subagent-registry.store.sqlite-hzGu4QSk.js",
+      "before": "f37ed94d1c2bbf904bfb2614734bdd40d62fa239ff9dc0c26786035cf8fff1bb"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "--expose-gc",
+    "lab/candidate/subagent-scoped-row-ab.mjs"
+  ],
+  "timeoutSeconds": 7200,
+  "env": {
+    "FIXTURE_DIR": "/var/tmp/gwreg",
+    "CHILD_KEYS": "200",
+    "ROUNDS": "40",
+    "REPEAT": "5"
+  }
+}

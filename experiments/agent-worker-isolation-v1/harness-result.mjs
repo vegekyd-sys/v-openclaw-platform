@@ -575,6 +575,9 @@ export async function buildHarnessAttemptResult(agentResult, options = {}) {
     // AgentHarness attempt across the worker IPC boundary; otherwise the
     // Gateway sees an empty tool-use turn and surfaces it as an error.
     yieldDetected: agentResult?.meta?.yielded === true || undefined,
+    // Only the native pending-child claim can supply this IPC receipt.
+    nativeYieldClaimed: agentResult?.meta?.yielded === true &&
+      agentResult?.meta?.nativeYieldClaimed === true || undefined,
     clientToolCalls: readClientToolCalls(agentResult?.meta),
     attemptUsage: agentMeta.usage,
     compactionCount: agentMeta.compactionCount,

@@ -1295,6 +1295,47 @@ export async function handleDingtalkCardCallback(message) {
   return update(dingtalkQuestionCardData(record, { checked: entry.checked, text: entry.text, state: entry.state, answers }));
 }
 
+// ------------------------------------------------- sends outside the reply
+
+// What the agent sent to a chat through the channel's outbound (the message
+// tool, a file, the 「电脑」 card) instead of in its reply. A channel that
+// pre-creates a reply card asks this before filling an empty card with a
+// placeholder: when the turn already showed its content, the card only says so.
+const CHANNEL_SENDS = Symbol.for("openclaw.v.channelSends");
+const SEND_MEMORY_MS = 6 * 60 * 60 * 1000;
+
+/** The bare chat id: `group:cid…`, `user:abc`, `dingtalk-connector:group:cid…` → `cid…` / `abc`. */
+export function channelTargetId(to) {
+  let id = String(to ?? "").trim();
+  for (;;) {
+    const next = id.replace(/^(?:dingtalk-connector|dingtalk|wecom|group|user|chat|channel|conversation|direct|dm):/iu, "");
+    if (next === id) return id;
+    id = next;
+  }
+}
+
+/** Records that `channel` delivered something to the chat `to` (any target spelling). */
+export function noteChannelSend(channel, to, at = Date.now()) {
+  const id = channelTargetId(to);
+  if (!channel || !id) return;
+  const sends = (globalThis[CHANNEL_SENDS] ??= new Map());
+  sends.set(`${channel}\u0000${id}`, at);
+  if (sends.size > 500) for (const [key, when] of sends) if (at - when > SEND_MEMORY_MS) sends.delete(key);
+}
+
+/** Whether `channel` delivered something to any of `ids` (chat or user ids) at or after `since`. */
+export function channelSentSince(channel, ids, since) {
+  const sends = globalThis[CHANNEL_SENDS];
+  if (!sends) return false;
+  return ids.some((to) => {
+    const id = channelTargetId(to);
+    return Boolean(id) && (sends.get(`${channel}\u0000${id}`) ?? -Infinity) >= since;
+  });
+}
+
+/** An empty reply card closes with this when the turn's content went out on its own. */
+export const SENT_SEPARATELY_TEXT = "✅ 已发送";
+
 // ---------------------------------------------------------------- telegram
 
 /** Callback data prefix owned by v-experience; Telegram allows 64 bytes. */

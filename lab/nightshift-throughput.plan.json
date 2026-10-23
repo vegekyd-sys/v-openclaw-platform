@@ -1,0 +1,23 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/nightshift-throughput/runtime-api-1CCazqtv.js",
+      "target": "openclaw/dist/runtime-api-1CCazqtv.js",
+      "before": "3300629f0920483989b4f214fc9e02fe849a48b3fc26335d4d03b93fc16b9e23",
+      "after": "3bc03ce67684e78c753e73acecc21aefba43d8eb5e614f89f9295a7c82f96985"
+    },
+    {
+      "source": "lab/release-files/nightshift-throughput/agent-runner-memory-7VF-zwNt.js",
+      "target": "openclaw/dist/agent-runner-memory-7VF-zwNt.js",
+      "before": "7d5eaa388e1c0399983236a22df0c7906e0cbb7a4fd8b74b755906176bd0142f",
+      "after": "befc094d3c6183b8275c1550cc91ccd333dfdd8a989ad9121be95d6c914746f2"
+    },
+    {
+      "source": "lab/release-files/nightshift-throughput/openclaw.plugin.json",
+      "target": "production-worker/openclaw.plugin.json",
+      "before": "1ec103e333e8f7562f14f81822ef853ccfd581e2c21f172da89243c3952644f6",
+      "after": "2223bae71980fdca01b7368d852fea3bf1d8a3ab0a0342186b3cc4d69fafa37b"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/gateway-fullread-hotpaths/session-D4AJhdUK.js",
+      "target": "openclaw/dist/session-D4AJhdUK.js",
+      "before": "aa29d9709e92f6e8f7fa1c624b84f94e03e74492d8bd8dfed61df35a10b9cdb1",
+      "after": "83cf19c8e3b3f95e27a5f37068d6e56ce71be86274890fd6baa0af6fa564c7c7"
+    },
+    {
+      "source": "lab/release-files/gateway-fullread-hotpaths/service-CzmmKrEg.js",
+      "target": "openclaw/dist/service-CzmmKrEg.js",
+      "before": "e4fa375a7d41594328e70c383339e56e538f64daa7f49365074434cc1d894cda",
+      "after": "b9b76fc08f123317d43aba5071e2545408bfd937eb636d8b12aded07c55ebe90"
+    },
+    {
+      "source": "lab/release-files/gateway-fullread-hotpaths/task-registry.maintenance-C4nMaDY9.js",
+      "target": "openclaw/dist/task-registry.maintenance-C4nMaDY9.js",
+      "before": "00e9bdb46e0874179c52f34e4754e257ee5331a4890dd52b7123ea5d303293d9",
+      "after": "b6fe747f864dd451d2740c336d287794c2e77ded31c78a6beed5b5cc5f2ad9bc"
+    },
+    {
+      "source": "lab/release-files/gateway-fullread-hotpaths/sqlite-store-CH-caj1l.js",
+      "target": "openclaw/dist/sqlite-store-CH-caj1l.js",
+      "before": "9043747801b1f3e590f8194da6bb33e41322abc36f32ace8abad07f87a5149a0",
+      "after": "12c1f54644fb13a2babe6d043af32b7d097b71eca9c5cf8ef77d259a935d9b28"
+    },
+    {
+      "source": "lab/release-files/gateway-fullread-hotpaths/runtime-api-1CCazqtv.js",
+      "target": "openclaw/dist/runtime-api-1CCazqtv.js",
+      "before": "64c75937b86979ed594fcbd8b904d323bff5dd2c864bdca3e8a1fd6c94f916c5",
+      "after": "3300629f0920483989b4f214fc9e02fe849a48b3fc26335d4d03b93fc16b9e23"
+    }
+  ]
+}

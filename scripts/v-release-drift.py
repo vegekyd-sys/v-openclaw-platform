@@ -28,9 +28,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 EXPECTED_PATH = "/opt/v-sentinel/expected-release.json"
-# Components captured whole (--base none): the worker plugin and the Feishu
-# plugin. On 2026-09-23 the Feishu plugin was patched in place while this check
-# only looked at core dist, so it saw nothing.
+# Components captured whole (--base none): the worker plugin and the Feishu,
+# Codex, DingTalk and WeCom plugins (codex.json since 2026-10-14). On
+# 2026-09-23 the Feishu plugin was patched in place while this check only
+# looked at core dist, so it saw nothing.
 COMPONENTS_DIR = "/opt/v-sentinel/expected-release.d"
 STATE_PATH = "/var/lib/v-sentinel/release-drift.json"
 UNIT = "openclaw-gateway.service"

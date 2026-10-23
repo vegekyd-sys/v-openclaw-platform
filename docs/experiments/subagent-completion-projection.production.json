@@ -1,0 +1,254 @@
+{
+  "schemaVersion": 1,
+  "scope": "PR399 production deployment and real-channel verification; not a Night Shift peak-load performance verdict",
+  "release": "v2026.9.1-db91.6-subagent-settle-20261016",
+  "acceptedVlabRelease": "subagent-settle-completion-20261016e",
+  "sourceCommit": "24ad9998da030cfafb51089b6c1a62d43ea73793",
+  "githubMergeCommit": "873a5a2ae77ea62123cc7a896127855d6320084f",
+  "artifactSha256": "a465dd0a42bea1e8b040373de17cc51399179e7c335bf05bca92130c8054149e",
+  "runtimeSha256": "1496f7d693b00056d3777c777aa6fe23d13f2e6308885593f515bcdac9c93d7e",
+  "files": [
+    {
+      "target": "openclaw/dist/subagent-announce.requester-settle-wake-B2NSziIo.js",
+      "before": "be8a3f7f0834943f234d42c9fe14ddfb7cd67fe52791fae99908a4edfda35f5d",
+      "after": "ec4c192bb11900e170eb9257fde565461cae0dd3a8c0fb55b61c895ad9db8649",
+      "productionMatched": true
+    },
+    {
+      "target": "openclaw/dist/subagent-registry-read-UaDFTyfW.js",
+      "before": "dfcf09faf5ede448fe967bff7195b690d670ec36abfd559c32d66e5a24e9a9c8",
+      "after": "142bb5158e21a3b68c3cd80fd6cd52beeb8904f632ca39ba9b08e4d1fb2db5c0",
+      "productionMatched": true
+    },
+    {
+      "target": "openclaw/dist/subagent-registry.store.sqlite-hzGu4QSk.js",
+      "before": "bc42d6c4712e7e38dffe1682b4f68bb00e67ac3d0b9b9f5015ecb1d9b6f04a96",
+      "after": "f37ed94d1c2bbf904bfb2614734bdd40d62fa239ff9dc0c26786035cf8fff1bb",
+      "productionMatched": true
+    },
+    {
+      "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
+      "before": "5638a3b7071bbbfa20da7b7c2098facdbd3c15bedf723e922c2f68a3f550f5e9",
+      "after": "71c2310a73dbfa66d70fe560ff13132c620f0033439e604417842412758a67bc",
+      "productionMatched": true
+    },
+    {
+      "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
+      "before": "a53fe92d1c6d1a1690587ade48271f7d1c960922716bc84935e6511242215e54",
+      "after": "bcb20f5dc47a3bd6f543c5140d51a85e80157d50ec945ca708bd78fb718bf50b",
+      "productionMatched": true
+    },
+    {
+      "target": "production-worker/harness-result.mjs",
+      "before": "76840da2ca08f0227dfceaa4c034dc1e1c5ead0dc3c6af290c95d5a544ceb65c",
+      "after": "0c52961add782e11e30feabc6f7ba852874c4ead671da15cffc1de160a8bcf7b",
+      "productionMatched": true
+    }
+  ],
+  "restart": {
+    "id": "20261016-233206-0495",
+    "requestedAt": "2026-10-16 23:32:06 CST",
+    "finishedAt": "2026-10-16 23:33:14 CST",
+    "outcome": "ok",
+    "readySeconds": 56,
+    "postChecks": {
+      "cannotReap": 0,
+      "restartRecoveryClaimChanged": 0,
+      "workersReady": 5
+    },
+    "oldMainPid": "2213143"
+  },
+  "productionPid": "2973288",
+  "nightshiftPidUnchanged": "1465181",
+  "configSha256Unchanged": "63443df203df9dac8fb4831dfe32ad23bba0347908f36ddd455a801300eaf4da",
+  "rollbackDirectory": "/opt/v-release-backups/v2026.9.1-db91.6-subagent-settle-20261016-20261016T153005",
+  "registry": {
+    "beforeAt": "2026-10-16T15:29:07.220628+00:00",
+    "beforeRows": 3118,
+    "beforeQuietEndedPending": 194,
+    "firstAfterAt": "2026-10-16T15:34:44.110778+00:00",
+    "firstAfterPending": 0,
+    "finalAt": "2026-10-16T15:39:49.347055+00:00",
+    "finalRows": 3128,
+    "finalPending": 0,
+    "retainedBeforeQuietRuns": 194,
+    "beforeQuietRunsWithClearedWake": 194,
+    "rowsDeletedByDeployment": false,
+    "steadyStateConfirmation": {
+      "at": "2026-10-16T15:57:52.406411+00:00",
+      "queryMs": 55,
+      "totalRows": 3146,
+      "terminalRows": 3137,
+      "runningRows": 9,
+      "pendingSettleWakes": 0,
+      "requiredPending": 0
+    }
+  },
+  "realFeishu": {
+    "finals": [
+      {
+        "case": "NORMAL",
+        "marker": "PROD399_1016_NORMAL_OK",
+        "messageId": "om_x100b62100f8ef8a0cf958234ed2cdb3",
+        "visibleFinalCount": 1
+      },
+      {
+        "case": "DOUBLE",
+        "marker": "PROD399_1016_DOUBLE_OK",
+        "messageId": "om_x100b6210094800a0cf4ee874a29bea2",
+        "visibleFinalCount": 1
+      },
+      {
+        "case": "SINGLE",
+        "marker": "PROD399_1016_SINGLE_OK",
+        "messageId": "om_x100b6210000024accfb9c69767deb7b",
+        "visibleFinalCount": 1
+      }
+    ],
+    "children": [
+      {
+        "sessionKey": "agent:makaron:subagent:3e028420-aa67-4da4-bfb6-cfc5598d5030",
+        "commands": [
+          "printf PROD399_1016_DOUBLE_A"
+        ],
+        "outputs": [
+          "PROD399_1016_DOUBLE_A"
+        ],
+        "actualExecVerified": true
+      },
+      {
+        "sessionKey": "agent:makaron:subagent:cd82585c-a245-49e2-b881-a78ffaa675e2",
+        "commands": [
+          "sleep 8; printf PROD399_1016_DOUBLE_B"
+        ],
+        "outputs": [
+          "PROD399_1016_DOUBLE_B"
+        ],
+        "actualExecVerified": true
+      },
+      {
+        "sessionKey": "agent:makaron:subagent:bab67fa3-662f-4473-9728-c5536d3993dc",
+        "commands": [
+          "printf PROD399_1016_SINGLE_CHILD"
+        ],
+        "outputs": [
+          "PROD399_1016_SINGLE_CHILD"
+        ],
+        "actualExecVerified": true
+      }
+    ],
+    "parentYieldResults": [
+      {
+        "at": 1792164946431,
+        "text": "{\n  \"status\": \"yielded\",\n  \"message\": \"已创建 A（prod399-a，printf PROD399_1016_DOUBLE_A）与 B（prod399-b，sleep 8; printf PROD399_1016_DOUBLE_B）。等待两条完成事件；收到一条后再 yield 等另一条，全部到齐后只回一条 PROD399_1016_DOUBLE_OK A+B。不要轮询。\"\n}"
+      },
+      {
+        "at": 1792164973733,
+        "text": "Skipped due to queued user message."
+      },
+      {
+        "at": 1792165078273,
+        "text": "{\n  \"status\": \"yielded\",\n  \"message\": \"已创建单个子任务 prod399-single（runtime=subagent、cleanup=keep，默认完成通知），任务：只用 exec 执行 printf PROD399_1016_SINGLE_CHILD 并原样返回输出。等待其真实完成事件；拿到结果后只回 PROD399_1016_SINGLE_OK。不轮询、不代做。\"\n}"
+      }
+    ],
+    "doubleSecondYield": "The second yield call met an already queued completion and returned Skipped due to queued user message; both real results arrived and the sole final was visible. Two successful sequential yields were separately covered in shared VLab."
+  },
+  "nightshift": {
+    "restartStatus": "up",
+    "fromBootId": "4cc4db7f-fcdc-4453-85c6-df645369ec8a",
+    "bootId": "eadf93fd-e9b0-4ab3-843f-8979fd7e1020",
+    "resumedAt": "2026-10-16T15:35:23.144Z",
+    "resumedCards": 10,
+    "handedOverCards": 0,
+    "cardsWithNewAttempts": 6,
+    "newAttemptStatusCounts": {
+      "blocked": 3,
+      "succeeded": 1,
+      "running": 3
+    },
+    "schedulerError": null,
+    "note": "Some cards remain blocked, with error=null in the inspected attempts. Their cause is not established by this release verification. Additional pressure holds and performance work remain separate.",
+    "beforeRunningAudit": {
+      "at": "2026-10-16T15:57:06.350267+00:00",
+      "expected": 10,
+      "retained": 10,
+      "allOldAttemptsTerminal": true,
+      "oldAttemptsPendingWake": 0,
+      "oldCardsInResumeList": 9,
+      "otherOldRunEndedBeforeRestart": true
+    }
+  },
+  "bookkeeping": {
+    "status": "complete",
+    "captureManifests": [
+      {
+        "path": "release/captured/v2026.9.1-db91.6-subagent-settle-20261016/manifest.json",
+        "sha256": "96336949001153996936019ca453c0373fd89b633eaab2f845c367e078158b16"
+      },
+      {
+        "path": "release/captured/v2026.9.1-db91.6-subagent-settle-20261016.codex/manifest.json",
+        "sha256": "dba0f70a6fe4024cdebfba945efe138240c0f2cc0a590922d02cc825b3005cce"
+      },
+      {
+        "path": "release/captured/v2026.9.1-db91.6-subagent-settle-20261016.dingtalk/manifest.json",
+        "sha256": "782650ab51881d67b9721a29126b72b5964ceec6e7b1237aa0058ce877ea7f05"
+      },
+      {
+        "path": "release/captured/v2026.9.1-db91.6-subagent-settle-20261016.feishu/manifest.json",
+        "sha256": "641a40bf19b99bb7161097374314fce9edfd7b0254d5182b2c35c8f4c4cb3882"
+      },
+      {
+        "path": "release/captured/v2026.9.1-db91.6-subagent-settle-20261016.wecom/manifest.json",
+        "sha256": "98776779abff66a23ef33898d9dbba8647eb3638df11eec4553ab65ba7e305e5"
+      },
+      {
+        "path": "release/captured/v2026.9.1-db91.6-subagent-settle-20261016.worker/manifest.json",
+        "sha256": "04779296d09af4627cfff0f4cb98c7fc2d571b477dabd9cf9391920098fd5eca"
+      }
+    ],
+    "sentinel": {
+      "roots": 6,
+      "files": 9214,
+      "findings": 0
+    },
+    "alignment": {
+      "state": "ALIGNED",
+      "compared": 18812,
+      "blockingDifferences": 0,
+      "advisories": 32,
+      "receipt": {
+        "aligned": true,
+        "at": "2026-10-16T16:24:21.353Z",
+        "vCore": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core",
+        "compared": 18812,
+        "by": "codex-subagent-settle-20261016"
+      }
+    },
+    "handoff": {
+      "lease": null,
+      "pending": null,
+      "currentRelease": "subagent-settle-completion-20261016e",
+      "aligned": true,
+      "verifiedAt": "2026-10-16T16:27:21.506628+00:00",
+      "leaseReleasedBy": "coordinating chat; independently read back by deployment owner"
+    }
+  },
+  "privateEvidenceSha256": {
+    "registry-before-retry.json": "506c455f085b8fa1dea2dda0f059734cf601b25a0681aea6b9b117ed0adb5a8d",
+    "registry-after.json": "020eae1aedc515ff55795db0999350822f65eba4f85ca7ebfb64e6d48592c60d",
+    "final-audit.json": "5df837b5f834ea69ac592b738e71e025871874f33d4641a643a0bf66dc2bfff9",
+    "restart-status-via-ts.json": "7cda1cf4f42b2707713f2b62c585e4b9d3cb991b9e3f8a60b766fd584bf0cc64",
+    "chat-readback.json": "45b606bc3caa983966a39627026da0ed571254dc19209e8a06dfebf3e0803d34",
+    "child-a-history.json": "97f2f7a22fda0c54f211ccb710f0b8a2b919f47f8c5b511f5d1d8c22d9184567",
+    "child-b-history.json": "b61b852e96c76d718b337d99c7213481d447ecdef7ad492534daea1d764e442f",
+    "child-single-history.json": "c8f5c1e39862742cbd32ffb84ec6aedffec308a872144d3572c7e9e41ce644a4",
+    "parent-history-final.json": "536be49a1bdc06e31283f00567f19abec4efa172c26175c6167e78d0fa48bd5b",
+    "before-running-audit.json": "84de65dd2aaffcd235d1afa1fcbf93c5bec545966e8d57e2662e95e1d2e8227b",
+    "final-registry-confirmation.json": "62a6bd2ab182f782ec5bb0b4aa6d47748eeff2df6087d341e922605f8b0e428b",
+    "final-shared-status.json": "e35447ed1bb37634a0db4c99471d52265e2c38131dc5fd1ea6f8929d9098384e",
+    "final-align-chunked.json": "2471dc9b9c678f20b824d24fe901de6b06237bbdd0fceaf9106244d1f9c54554",
+    "parity-transfer/official-parity-report.json": "117bf9d08cfc2051e1f698fcce20c062e2b8df5c87fefa879a2e5c6f02f6454b",
+    "sentinel-install.log": "fc16e1c50cf39984b1475ce4a21f631d4d1277807f987d15ac31fb947b95c81a",
+    "release-diff.json": "28bd48570ac7ac18faf412559b101f9955b977971a4184a64b9bf3a28e8190d9"
+  }
+}

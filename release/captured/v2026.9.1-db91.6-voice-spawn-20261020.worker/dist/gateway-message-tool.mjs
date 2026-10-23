@@ -1,0 +1,100 @@
+// gpt-live-voice-exec-lifetime-v1: gateway-relay
+// The opaque turn capability remains in the admitting Gateway. Build the
+// message tool with native host binding, policy, caller identity and revocation.
+// Worker RPC may supply tool arguments, but never construction/identity options.
+export function createGatewayMessageToolRelay(params) {
+  let active = true;
+  let tools;
+  const pending = new Set();
+  const execCalls = new Map();
+  const usedExecCallIds = new Set();
+  const invalidate = () => {
+    for (const controller of pending) controller.abort(new Error("Gateway tool generation retired"));
+    tools = undefined;
+  };
+  const assertActive = () => {
+    if (!active || params.abortSignal?.aborted) throw new Error("Gateway message owner is no longer active");
+    params.hostCapabilities.assertActive();
+  };
+  return {
+    close() { active = false; invalidate(); },
+    invalidate,
+    async execute(request) {
+      if (request.kind === "native-voice-exec-cancel") {
+        // Revocation remains available after source cancellation; it cannot
+        // execute a tool or cancel another relay's guessed/reused call id.
+        const owned = execCalls.get(request.toolCallId);
+        if (!owned) throw new Error("No pending exec belongs to this Gateway relay call id");
+        owned.controller.abort(Object.assign(new Error("Worker exec tool was cancelled"), { name: "AbortError" }));
+        await owned.settled;
+        return { cancelled: true, settled: true };
+      }
+      assertActive();
+      if (request.kind === "native-gateway-identity") {
+        if (typeof params.hostCapabilities.vlabResolveGatewayIdentity !== "function") {
+          throw new Error("Native Gateway identity adapter is unavailable");
+        }
+        // Return only core's signed token; never expose config keys, credentials,
+        // or mutable admission claims. Core rechecks this authority on every RPC.
+        const token = await params.hostCapabilities.vlabResolveGatewayIdentity({
+          method: request.method, required: request.required === true, signal: params.abortSignal,
+        });
+        assertActive();
+        return { token };
+      }
+      const voiceExec = request.kind === "native-voice-exec";
+      if (voiceExec) {
+        if (typeof params.hostCapabilities.vlabHasVoiceExecLifetime !== "function") throw new Error("Native voice exec host adapter is unavailable");
+        if (!params.hostCapabilities.vlabHasVoiceExecLifetime()) return { handled: false };
+        if (typeof (params.cwd ?? params.workspaceDir) !== "string" || !(params.cwd ?? params.workspaceDir).startsWith("/")) {
+          throw new Error("Voice exec requires its admitted absolute workspace");
+        }
+      }
+      if ((!voiceExec && request.kind !== "native-message") || typeof request.toolCallId !== "string" || !request.toolCallId) {
+        throw new Error("Invalid native message request");
+      }
+      tools ??= params.hostCapabilities.createToolSurface({
+        ...params,
+        sessionKey: params.sessionKey,
+        runSessionKey: params.sessionKey,
+        messageChannel: params.messageChannel ?? params.messageProvider,
+        messageProvider: params.messageChannel ?? params.messageProvider,
+        modelProvider: params.provider,
+        modelId: params.modelId,
+        cwd: params.cwd ?? params.workspaceDir,
+        runtimeToolAllowlist: params.toolsAllow,
+      }, { cwd: params.cwd ?? params.workspaceDir });
+      const tool = tools.find(t => t.name === (voiceExec ? "exec" : "message"));
+      if (!tool?.execute) throw new Error("Native Gateway policy does not allow the requested tool");
+      if (voiceExec && (usedExecCallIds.has(request.toolCallId) || usedExecCallIds.size >= 1024)) throw new Error("Gateway voice exec call id was already used or capacity reached");
+      const controller = new AbortController();
+      pending.add(controller);
+      let finish; let deadline;
+      if (voiceExec) {
+        usedExecCallIds.add(request.toolCallId);
+        const settled = new Promise(resolve => { finish = resolve; });
+        execCalls.set(request.toolCallId, { controller, settled });
+        // Same bound as the original Worker tool RPC; do not leave an orphan
+        // if that IPC connection disappears before its cancellation arrives.
+        const configured = Number(process.env.VLAB_GATEWAY_OWNED_TOOL_TIMEOUT_MS ?? 310000);
+        const timeoutMs = Number.isFinite(configured) ? Math.max(1000, configured) : 310000;
+        deadline = setTimeout(() => controller.abort(Object.assign(new Error("Gateway voice exec RPC deadline exceeded"),
+          { name: "AbortError", code: "VLAB_GATEWAY_TOOL_TIMEOUT" })), timeoutMs);
+        deadline.unref?.();
+      }
+      const abort = () => controller.abort(params.abortSignal.reason);
+      params.abortSignal?.addEventListener("abort", abort, {once:true});
+      try {
+        const result = await tool.execute(request.toolCallId, request.args, controller.signal);
+        assertActive();
+        if (controller.signal.aborted) throw controller.signal.reason;
+        return voiceExec ? { handled: true, result } : result;
+      } finally {
+        clearTimeout(deadline);
+        if (voiceExec) { execCalls.delete(request.toolCallId); finish(); }
+        pending.delete(controller);
+        params.abortSignal?.removeEventListener("abort", abort);
+      }
+    },
+  };
+}

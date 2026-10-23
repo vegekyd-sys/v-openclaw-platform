@@ -135,4 +135,10 @@ test('align refusal after install: own files -> undo, sidecar -> install on V, l
   assert.deepEqual([lag.kind, lag.lagging.length], ['lagging', 1]);
   // Something only on VLab outside the sidecars is not "V ahead": undo path.
   assert.equal(classifyAlignFailure(p({ target: 'openclaw/dist/new.js', kind: 'only-on-vlab' }), mine).kind, 'unknown');
+  // This release's Codex file reached V and VLab's runtime/ copy, not the copy VLab's Gateway loads.
+  const codex = 'npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/a.js';
+  const copy = classifyAlignFailure(p({ target: codex, component: 'codex', copy: 'vlab-gateway', kind: 'differs' }), new Set([...mine, codex]));
+  assert.deepEqual([copy.kind, copy.handCopy.length], ['hand-copy', 1]);
+  // Anything else wrong besides it is still classified on its own.
+  assert.equal(classifyAlignFailure(p({ target: codex, copy: 'vlab-gateway', kind: 'differs' }, { target: 'openclaw/dist/a.js', kind: 'differs' }), mine).kind, 'undo');
 });
