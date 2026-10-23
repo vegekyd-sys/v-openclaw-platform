@@ -1,0 +1,59 @@
+{
+  "tests": [
+    "lab/candidate/feishu-multiuser-phone.mjs",
+    "lab/feishu-voice-actor.test.mjs",
+    "lab/feishu-phone-tabs.test.mjs"
+  ],
+  "support": [
+    "lab/feishu-voice-actor.mjs",
+    "lab/feishu-voice-policy.mjs",
+    "lab/feishu-phone-tabs.mjs",
+    "lab/patch-feishu-phone-tabs.mjs",
+    "lab/release-files/feishu-auto-phone-tab/monitor.account-WFdlCDhR.js",
+    "lab/release-files/feishu-ingress-catchup/monitor.account-WFdlCDhR.js"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/feishu-multiuser-phone/server-methods-CLElG7qF.js",
+      "target": "openclaw/dist/server-methods-CLElG7qF.js"
+    },
+    {
+      "source": "lab/release-files/feishu-multiuser-phone/tools-invoke-ev4-EXmh.js",
+      "target": "openclaw/dist/tools-invoke-ev4-EXmh.js"
+    },
+    {
+      "source": "lab/release-files/feishu-multiuser-phone/tools-invoke-shared-CjpflNGO.js",
+      "target": "openclaw/dist/tools-invoke-shared-CjpflNGO.js"
+    },
+    {
+      "source": "lab/release-files/feishu-multiuser-phone/talk-DkFuKRod.js",
+      "target": "openclaw/dist/talk-DkFuKRod.js"
+    },
+    {
+      "source": "lab/release-files/feishu-multiuser-phone/realtime-session-harness-CEO5kVAJ.js",
+      "target": "openclaw/dist/realtime-session-harness-CEO5kVAJ.js"
+    },
+    {
+      "source": "lab/release-files/feishu-multiuser-phone/monitor.account-WFdlCDhR.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js"
+    },
+    {
+      "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-actor.mjs",
+      "target": "openclaw/dist/v-feishu-voice-actor.mjs"
+    },
+    {
+      "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-policy.mjs",
+      "target": "openclaw/dist/v-feishu-voice-policy.mjs"
+    },
+    {
+      "source": "lab/release-files/feishu-multiuser-phone/v-feishu-phone-tabs.mjs",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-phone-tabs.mjs"
+    },
+    {
+      "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-runtime.mjs",
+      "target": "openclaw/dist/v-feishu-voice-runtime.mjs"
+    }
+  ],
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 120
+}
