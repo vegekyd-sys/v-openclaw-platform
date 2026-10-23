@@ -1,0 +1,11 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/sessions-resolve-exact-read/sessions-resolve-_D6BmQTT.js",
+      "target": "openclaw/dist/sessions-resolve-_D6BmQTT.js",
+      "before": "c3d8c8017ee3d0122493d762cd6790165810dca5adf6e107b5e1b836b7acd3a7",
+      "after": "59eebaff23f7d3ead4cde8199fb9debd16364abcf87a0a38661e18bed40a262b"
+    }
+  ]
+}
