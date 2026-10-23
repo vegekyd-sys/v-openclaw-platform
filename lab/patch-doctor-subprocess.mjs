@@ -14,7 +14,8 @@ import { createHash } from 'node:crypto';
 // the tool result: note() writes to process.stdout and the tool only captures runtime.log/error.
 //
 // operations-CTofDiKh.js: the doctor action now runs `openclaw doctor --non-interactive` in a child
-// process: the Gateway's node (its execArgv without --inspect), this dist's index.js, the Gateway's
+// process: the Gateway's node (its execArgv without --inspect, plus --disable-warning=ExperimentalWarning
+// so node:sqlite's warning stays out of the report), this dist's index.js, the Gateway's
 // environment and cwd, under `ionice -c3` (Linux, when present) and `nice -n 10`. Its stdout and stderr
 // go line by line to the operation's runtime.log / runtime.error, up to 1 MiB; a non-zero exit is
 // passed to runtime.exit as the in-process doctor would. Upstream made the same move (openclaw #157228,
@@ -62,6 +63,7 @@ async function runDoctorSubprocess(runtime) {
 	const argv = [
 		process.execPath,
 		...process.execArgv.filter((arg) => !/^--(inspect|debug)/.test(arg)),
+		"--disable-warning=ExperimentalWarning",
 		fileURLToPath(new URL("./index.js", import.meta.url)),
 		"doctor",
 		"--non-interactive"

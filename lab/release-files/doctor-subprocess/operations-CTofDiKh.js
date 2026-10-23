@@ -523,6 +523,7 @@ async function runDoctorSubprocess(runtime) {
 	const argv = [
 		process.execPath,
 		...process.execArgv.filter((arg) => !/^--(inspect|debug)/.test(arg)),
+		"--disable-warning=ExperimentalWarning",
 		fileURLToPath(new URL("./index.js", import.meta.url)),
 		"doctor",
 		"--non-interactive"

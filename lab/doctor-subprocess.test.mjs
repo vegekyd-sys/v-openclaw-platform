@@ -78,7 +78,7 @@ console.log(JSON.stringify({ argv: process.argv.slice(2), execArgv: process.exec
   assert.equal(logs.length, 1);
   const seen = JSON.parse(logs[0][1]);
   assert.deepEqual(seen.argv, ['doctor', '--non-interactive']);
-  assert.deepEqual(seen.execArgv, ['--max-old-space-size=256']);
+  assert.deepEqual(seen.execArgv, ['--max-old-space-size=256', '--disable-warning=ExperimentalWarning']);
   assert.equal(seen.nice, 10);
   assert.equal(seen.skip, '1');
   assert.equal(seen.marker, 'parent-env');
