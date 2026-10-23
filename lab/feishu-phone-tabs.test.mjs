@@ -1,10 +1,11 @@
 import test from 'node:test';
+import {createPhoneLoginChallenges} from './feishu-phone-login-challenges.mjs';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,chmod,symlink,rm,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createPhoneTabHandler,ensurePhoneTab,publicPhoneUrl,readPhoneTabSettings,createRuntimePhoneTabHandler} from './feishu-phone-tabs.mjs';
-import {patchFeishuPhoneTabs,patchFeishuPhoneTabClient,patchConversationPhoneTabs} from './patch-feishu-phone-tabs.mjs';
+import {patchFeishuPhoneTabs,patchFeishuPhoneTabClient,patchConversationPhoneTabs,patchConversationPhoneLogin} from './patch-feishu-phone-tabs.mjs';
 
 const account = {accountId:'trial',appId:'cli_test'};
 const url = 'https://voice.example/voice/feishu';
@@ -181,4 +182,24 @@ test('group menu preserves other menus, handles unknown writes and refuses confl
   await assert.rejects(ensurePhoneTab(args),/menu_conflict/);
   f.menus=[other,{...other,chat_menu_top_level_id:'b'},{...other,chat_menu_top_level_id:'c'}];
   await assert.rejects(ensurePhoneTab(args),/menu_full/);assert.equal(f.writes,1);
+});
+
+test('private login command interceptor precedes model dispatch without changing ordinary messages',async()=>{
+  const source=await readFile(new URL('./release-files/feishu-auto-phone-tab/monitor.account-WFdlCDhR.js',import.meta.url),'utf8');
+  const conversation=patchConversationPhoneTabs(source),patched=patchConversationPhoneLogin(conversation);
+  assert.equal(patchConversationPhoneLogin(patched),patched);
+  assert(patched.indexOf('if(vPhoneLoginChallenges.observe')<patched.indexOf('return handleFeishuMessage(params)'));
+  assert.match(patched,/if\(vPhoneLoginChallenges.observe\(\{accountId,appId:resolveFeishuAccount\(\{cfg,accountId\}\).appId,event:params.event\}\)\)return Promise.resolve\(\);/u);
+});
+
+test('generated ingress wrapper consumes login commands and forwards ordinary text unchanged',async()=>{
+  const source=await readFile(new URL('./release-files/feishu-auto-phone-tab/monitor.account-WFdlCDhR.js',import.meta.url),'utf8');
+  const patched=patchConversationPhoneLogin(patchConversationPhoneTabs(source));
+  const body=patched.match(/handleMessage: params => \{([\s\S]*?)\n      \},/u)?.[1];assert(body);
+  const c=createPhoneLoginChallenges(),p=c.begin({accountId:'trial',appId:'cli_test',chatId:'oc_dm',clientId:'browser'});let modelCalls=0,tabs=0;
+  const handle=new Function('vPhoneLoginChallenges','accountId','cfg','resolveFeishuAccount','vPhoneTab','handleFeishuMessage','return params=>{'+body+'}')(c,'trial',{},()=>account,{schedule:()=>tabs++},()=>{modelCalls++;return 'ordinary';});
+  const event={sender:{sender_type:'user',tenant_key:'external',sender_id:{open_id:'ou_external'}},message:{chat_id:'oc_dm',chat_type:'p2p',message_type:'text',create_time:String(Date.now()),content:JSON.stringify({text:'电话登录 '+p.code})}};
+  await handle({event});assert.equal(modelCalls,0);assert.equal(tabs,0);
+  assert.equal(c.take({ticket:p.ticket,clientId:'browser'}).identity.openId,'ou_external');
+  event.message.content=JSON.stringify({text:'你好'});assert.equal(await handle({event}),'ordinary');assert.equal(modelCalls,1);assert.equal(tabs,1);
 });

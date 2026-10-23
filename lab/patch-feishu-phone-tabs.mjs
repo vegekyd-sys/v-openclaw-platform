@@ -51,3 +51,12 @@ export function patchConversationPhoneTabs(source) {
       },`);
   return marker+'\n'+source;
 }
+
+export function patchConversationPhoneLogin(source) {
+  const marker='// v-feishu-conversation-phone-login-v1';
+  if(source.includes(marker))return source;
+  const anchor='        vPhoneTab.schedule({header:{event_type:"im.message.receive_v1"},event:params.event});';
+  assert.equal(source.split(anchor).length,2,'Expected conversation message wrapper');
+  return 'import {phoneLoginChallenges as vPhoneLoginChallenges} from "./v-feishu-phone-login-challenges.mjs";\n'+marker+'\n'+source.replace(anchor,
+    '        if(vPhoneLoginChallenges.observe({accountId,appId:resolveFeishuAccount({cfg,accountId}).appId,event:params.event}))return Promise.resolve();\n'+anchor);
+}

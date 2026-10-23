@@ -40,7 +40,7 @@
       "source": "lab/release-files/feishu-multiuser-phone/monitor.account-WFdlCDhR.js",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
       "before": "85d6d08867fd21ecd393f0f8904a101d6b152cea279f0c2a969c6fc1a34c4e11",
-      "sha256": "9e804fc3bf04acad4340699254a03ee6c90ecb85c5c2df55a6cb0cb9992c5eca"
+      "sha256": "44091170584b90185f53b20c8e0ee5547add226dfee89c2a4b213702230aa38e"
     },
     {
       "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-actor.mjs",
@@ -55,6 +55,18 @@
       "sha256": "88e361a38810e9a609e3073759a8daafc3a084462f871b7a281784bde7482bf6"
     },
     {
+      "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-login.mjs",
+      "target": "openclaw/dist/v-feishu-voice-login.mjs",
+      "before": null,
+      "sha256": "3f9cf8169d1b8a8820cc836f483bf964f406beec9e3b0839c370ce92872fdb70"
+    },
+    {
+      "source": "lab/release-files/feishu-multiuser-phone/v-feishu-phone-login-challenges.mjs",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-phone-login-challenges.mjs",
+      "before": null,
+      "sha256": "0bb0a812a698505d8aca1e3c025c395f801489390acf221731c995803e5fe018"
+    },
+    {
       "source": "lab/release-files/feishu-multiuser-phone/v-feishu-phone-tabs.mjs",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-phone-tabs.mjs",
       "before": "72c3ce04860b05f1c4f058c052957ba14c46ee6eebd05e7e134a75cf2c75b837",
@@ -64,7 +76,7 @@
       "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-runtime.mjs",
       "target": "openclaw/dist/v-feishu-voice-runtime.mjs",
       "before": null,
-      "sha256": "4be65ba00e2cacf356cff59fefc616ed018c74902491861fc9f54dcf808594ff"
+      "sha256": "4beee638cf30d55a7679d18181367fd4e579323ce5b36347da1cf0cdd4627784"
     },
     {
       "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-tools.mjs",

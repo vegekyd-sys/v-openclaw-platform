@@ -9,6 +9,8 @@ function authenticatedWebhookChallenge(payload, {decrypt, verificationToken, saf
     return {challenge:value.challenge};
   } catch { return null; }
 }
+import {phoneLoginChallenges as vPhoneLoginChallenges} from "./v-feishu-phone-login-challenges.mjs";
+// v-feishu-conversation-phone-login-v1
 // v-feishu-conversation-phone-tabs-v2
 import {createFeishuPhoneTabClient as vCreatePhoneTabClient} from "./client-DMbIL3UH.js";
 import {createRuntimePhoneTabHandler as vCreatePhoneTabHandler} from "./v-feishu-phone-tabs.mjs";
@@ -8257,6 +8259,7 @@ function registerEventHandlers(eventDispatcher, context) {
 			chatHistories,
 			fireAndForget,
 			handleMessage: params => {
+        if(vPhoneLoginChallenges.observe({accountId,appId:resolveFeishuAccount({cfg,accountId}).appId,event:params.event}))return Promise.resolve();
         vPhoneTab.schedule({header:{event_type:"im.message.receive_v1"},event:params.event});
         return handleFeishuMessage(params);
       },
