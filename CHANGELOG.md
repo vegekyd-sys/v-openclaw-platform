@@ -11,6 +11,36 @@
 
 ---
 
+## feishu-conversations-20261024
+
+上线：2026-10-24 03:07 CST  ·  tag `feishu-conversations-20261024`
+
+**摘要**：新群自动提供输入框下方的电话入口，私聊保留顶部标签；已连接飞书身份的电话沿用原生会话工具权限，未识别身份可直接语音聊天。聊天验证码登录机制已移除，旧浏览器登录失效后可重新连接飞书账号。
+
+生产新群真实入群事件自动创建底部菜单，浏览器确认无验证码入口及首页更新日志；105 项有效工具、原生 read、身份伪造拒绝及旧登录 RPC 移除通过。生产直接 exec 与原生 Gateway 均要求 admitted agent run，未绕过 Secret 代理。网页与设备同为 Voice `b071724`。
+
+本次激活发生约 9 分钟服务中断：退出清理较慢，且首次启动暴露 VLab/生产 Feishu 目录差异。补齐到已验收插件的目录映射后恢复；发布脚本增加安装前映射检查和生产布局导入测试。详见 `docs/feishu-conversations-20261024-release.md`。
+
+相对上一版 `v2026.9.1-db91.6-session-phone-20261023`：12 个文件变化。
+
+**经 VLab 发版 `feishu-multiuser-phone-v1`**（01a168a1-6a0f-7fa2-87fd-6978882b531d，dev `e4b72047`）
+- `core` realtime-session-harness-CEO5kVAJ.js  02f37cb2 → 74bc94f5
+- `core` talk-DkFuKRod.js  80d9cec1 → f01a6e7b
+- `core` v-feishu-voice-runtime.mjs  — → 4be65ba0
+
+**经 VLab 发版 `feishu-conversations-no-code-20261024`**（01a168a1-6a0f-7fa2-87fd-6978882b531d，dev `888024d1`）
+> 验收：2026-10-23T18:54:17Z real RPC PID2013260: group membership and native route resolved; 127 effective tools; native exec printf voice_parity_release_ok succeeded; forged identity rejected; removed login begin/status unavailable; new Voice module has no challenge. /tmp/feishu-release-live-check.mjs shared. No paid voice call.
+- `core` server-methods-CLElG7qF.js  b75a130d → f3889a32
+- `core` tools-catalog-DGR0f9wo.js  93eae85c → bbc820d3
+- `core` tools-invoke-ev4-EXmh.js  20da277d → a5f191fc
+- `core` tools-invoke-shared-CjpflNGO.js  ac465c5b → f327eda6
+- `core` v-feishu-voice-actor.mjs  — → 17608d69
+- `core` v-feishu-voice-policy.mjs  — → 88e361a3
+- `core` v-feishu-voice-tools.mjs  — → c4bd3f23
+- `feishu` dist/monitor.account-WFdlCDhR.js  85d6d088 → 9e804fc3
+- `feishu` dist/v-feishu-phone-tabs.mjs  72c3ce04 → 4c103733
+
+
 ## v2026.9.1-db91.6-session-phone-20261023
 
 上线：2026-10-23 18:23 CST  ·  tag `v2026.9.1-db91.6-session-phone-20261023`
