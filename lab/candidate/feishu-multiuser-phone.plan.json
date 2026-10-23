@@ -3,8 +3,7 @@
     "lab/candidate/feishu-multiuser-phone.mjs",
     "lab/feishu-voice-actor.test.mjs",
     "lab/feishu-phone-tabs.test.mjs",
-    "lab/feishu-webhook-challenge.test.mjs",
-    "lab/feishu-phone-login-challenges.test.mjs"
+    "lab/feishu-webhook-challenge.test.mjs"
   ],
   "support": [
     "lab/feishu-voice-actor.mjs",
@@ -13,9 +12,7 @@
     "lab/patch-feishu-phone-tabs.mjs",
     "lab/release-files/feishu-auto-phone-tab/monitor.account-WFdlCDhR.js",
     "lab/release-files/feishu-ingress-catchup/monitor.account-WFdlCDhR.js",
-    "lab/patch-feishu-webhook-challenge.mjs",
-    "lab/feishu-phone-login-challenges.mjs",
-    "lab/feishu-voice-login.mjs"
+    "lab/patch-feishu-webhook-challenge.mjs"
   ],
   "files": [
     {
@@ -53,14 +50,6 @@
     {
       "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-policy.mjs",
       "target": "openclaw/dist/v-feishu-voice-policy.mjs"
-    },
-    {
-      "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-login.mjs",
-      "target": "openclaw/dist/v-feishu-voice-login.mjs"
-    },
-    {
-      "source": "lab/release-files/feishu-multiuser-phone/v-feishu-phone-login-challenges.mjs",
-      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-phone-login-challenges.mjs"
     },
     {
       "source": "lab/release-files/feishu-multiuser-phone/v-feishu-phone-tabs.mjs",

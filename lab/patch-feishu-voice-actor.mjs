@@ -96,21 +96,17 @@ export function voiceFeishuPolicyDependencies({api,commandAuthorization}) {
 }\n`;
 }
 
-export function actorRuntimeModule({feishuMonitor,feishuClient,commandAuth,phoneLogin}) {
-  return `import {createVoiceLoginGateway} from "./v-feishu-voice-login.mjs";
-import {createVoiceActorMiddleware} from "./v-feishu-voice-actor.mjs";
+export function actorRuntimeModule({feishuMonitor,feishuClient,commandAuth}) {
+  return `import {createVoiceActorMiddleware} from "./v-feishu-voice-actor.mjs";
 import {createFeishuVoicePolicy} from "./v-feishu-voice-policy.mjs";
-import {phoneLoginChallenges} from ${JSON.stringify(phoneLogin)};
 import {resolveVoiceFeishuAccount,voiceFeishuPolicyDependencies} from ${JSON.stringify(feishuMonitor)};
 import {createFeishuPhoneTabClient} from ${JSON.stringify(feishuClient)};
 import {n as commandAuthorization} from ${JSON.stringify(commandAuth)};
-const api=account=>{const client=createFeishuPhoneTabClient(account);return async(method,url)=>{
-  const result=await client.request({method,url,timeout:8000});
-  if(result?.code!==0)throw Error("feishu_members_unconfirmed");
-  return result.data;
-}};
-const resolvePolicy=createFeishuVoicePolicy(voiceFeishuPolicyDependencies({api,commandAuthorization}));
-const prepareActor=createVoiceActorMiddleware({resolveAccount:resolveVoiceFeishuAccount,resolvePolicy});
-export const prepareVoiceActor=createVoiceLoginGateway({phoneLoginChallenges,resolveAccount:resolveVoiceFeishuAccount,resolvePolicy,api,prepareActor});
-`;
+export const prepareVoiceActor=createVoiceActorMiddleware({resolveAccount:resolveVoiceFeishuAccount,
+  resolvePolicy:createFeishuVoicePolicy(voiceFeishuPolicyDependencies({commandAuthorization,
+    api:account=>{const client=createFeishuPhoneTabClient(account);return async(method,url)=>{
+      const result=await client.request({method,url,timeout:8000});
+      if(result?.code!==0)throw Error("feishu_members_unconfirmed");
+      return result.data;
+    }}}))});\n`;
 }
