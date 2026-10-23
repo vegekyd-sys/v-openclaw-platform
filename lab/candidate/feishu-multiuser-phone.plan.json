@@ -14,6 +14,10 @@
   ],
   "files": [
     {
+      "source": "lab/release-files/feishu-multiuser-phone/tools-catalog-DGR0f9wo.js",
+      "target": "openclaw/dist/tools-catalog-DGR0f9wo.js"
+    },
+    {
       "source": "lab/release-files/feishu-multiuser-phone/server-methods-CLElG7qF.js",
       "target": "openclaw/dist/server-methods-CLElG7qF.js"
     },
@@ -52,6 +56,10 @@
     {
       "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-runtime.mjs",
       "target": "openclaw/dist/v-feishu-voice-runtime.mjs"
+    },
+    {
+      "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-tools.mjs",
+      "target": "openclaw/dist/v-feishu-voice-tools.mjs"
     }
   ],
   "user": "lab-db91-parity",

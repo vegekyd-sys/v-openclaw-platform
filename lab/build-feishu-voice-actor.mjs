@@ -1,7 +1,7 @@
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {resolve,relative} from 'node:path';
 import {createHash} from 'node:crypto';
-import {patchActorDispatcher,patchActorToolInvoke,patchActorToolResolver,patchActorTalk,patchActorConsult,patchActorFeishuPolicy,actorRuntimeModule} from './patch-feishu-voice-actor.mjs';
+import {patchActorCatalog,patchActorDispatcher,patchActorToolInvoke,patchActorToolResolver,patchActorTalk,patchActorConsult,patchActorFeishuPolicy,actorRuntimeModule} from './patch-feishu-voice-actor.mjs';
 import {patchConversationPhoneTabs} from './patch-feishu-phone-tabs.mjs';
 
 const [baselinePath,outputPath]=process.argv.slice(2);
@@ -13,7 +13,7 @@ const files=[],hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 async function add(name,target,bytes,before=null){
   await writeFile(output+'/'+name,bytes);files.push({source:relative(process.cwd(),output+'/'+name),target,before,sha256:hash(bytes)});
 }
-for(const [name,patch] of [['server-methods-CLElG7qF.js',patchActorDispatcher],['tools-invoke-ev4-EXmh.js',patchActorToolInvoke],
+for(const [name,patch] of [['tools-catalog-DGR0f9wo.js',patchActorCatalog],['server-methods-CLElG7qF.js',patchActorDispatcher],['tools-invoke-ev4-EXmh.js',patchActorToolInvoke],
   ['tools-invoke-shared-CjpflNGO.js',patchActorToolResolver],['talk-DkFuKRod.js',patchActorTalk],['realtime-session-harness-CEO5kVAJ.js',patchActorConsult]]){
   const source=await readFile(baseline+'/'+name,'utf8');await add(name,'openclaw/dist/'+name,patch(source),hash(source));
 }
@@ -25,5 +25,6 @@ await add('v-feishu-phone-tabs.mjs',feishu+'v-feishu-phone-tabs.mjs',await readF
   hash(await readFile(baseline+'/v-feishu-phone-tabs.mjs')));
 await add('v-feishu-voice-runtime.mjs','openclaw/dist/v-feishu-voice-runtime.mjs',actorRuntimeModule({feishuMonitor:'../../'+feishu+monitor,
   feishuClient:'../../'+feishu+'client-DMbIL3UH.js',commandAuth:'./command-auth-DmNN2m2f.js'}));
+await add('v-feishu-voice-tools.mjs','openclaw/dist/v-feishu-voice-tools.mjs',await readFile(new URL('./feishu-voice-tools.mjs',import.meta.url)));
 await writeFile(output+'/candidate-files.json',JSON.stringify({files},null,2)+'\n');
 console.log(JSON.stringify({files:files.length,output}));

@@ -1,6 +1,12 @@
 {
   "files": [
     {
+      "source": "lab/release-files/feishu-multiuser-phone/tools-catalog-DGR0f9wo.js",
+      "target": "openclaw/dist/tools-catalog-DGR0f9wo.js",
+      "before": "93eae85c06d28768acae702e85ec798ae1aa52a041d02dd9b4f72c09546d7a70",
+      "sha256": "bbc820d386c29a59abcf50376fa8cf190cdbd61729240a2fcd59dd4442fb1722"
+    },
+    {
       "source": "lab/release-files/feishu-multiuser-phone/server-methods-CLElG7qF.js",
       "target": "openclaw/dist/server-methods-CLElG7qF.js",
       "before": "b75a130d0b01bb733d07f99ebe514813dcb911a5621b8adff342f573514f78a4",
@@ -10,13 +16,13 @@
       "source": "lab/release-files/feishu-multiuser-phone/tools-invoke-ev4-EXmh.js",
       "target": "openclaw/dist/tools-invoke-ev4-EXmh.js",
       "before": "20da277dad0bf0521951406f62cd2bc060d1467704f709285c13d59a0fb8be0a",
-      "sha256": "298914117f4ed8469e59997ff7ac145f8eb2a324f5efe8467343a40bc8c6a074"
+      "sha256": "a5f191fc50f4fed5d0e7e4a2f9451059aa6c1cbac321c728a1907e23704ad0a7"
     },
     {
       "source": "lab/release-files/feishu-multiuser-phone/tools-invoke-shared-CjpflNGO.js",
       "target": "openclaw/dist/tools-invoke-shared-CjpflNGO.js",
       "before": "ac465c5bb6ed92f49be384f499971a44d25f0619ed107e8825095e4752ada253",
-      "sha256": "8cb65633b35f93f97928e091e00092ccbe826e9ecb6c5a1fe2f901af5d3532bf"
+      "sha256": "f327eda68270be7b98bca2217fba2767a2a105c850de0625071ab2e2faf8c949"
     },
     {
       "source": "lab/release-files/feishu-multiuser-phone/talk-DkFuKRod.js",
@@ -59,6 +65,12 @@
       "target": "openclaw/dist/v-feishu-voice-runtime.mjs",
       "before": null,
       "sha256": "4be65ba00e2cacf356cff59fefc616ed018c74902491861fc9f54dcf808594ff"
+    },
+    {
+      "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-tools.mjs",
+      "target": "openclaw/dist/v-feishu-voice-tools.mjs",
+      "before": null,
+      "sha256": "c4bd3f23ef142e3e2773a6b64b2347f06306cb8e20566d8ab31a2b25a081e64d"
     }
   ]
 }

@@ -36,6 +36,7 @@ const toolsInvokeHandlers = { "tools.invoke": async ({ params, respond, context,
 		operatorRoleActor: client?.internal?.operatorRoleActor,
 		operatorScopes: client?.connect.scopes,
 		senderIsOwner: client?.internal?.voiceActor?.senderIsOwner ?? client?.connect?.scopes?.includes("operator.admin"),
+		voiceActor: client?.internal?.voiceActor,
 		...(client?.internal?.voiceActor ? vActorToolContext(client.internal.voiceActor) : {}),
 		clientCaps: client?.connect?.caps,
 		conversationReadOrigin: client?.internal?.voiceActor ? "delegated" : resolveGatewayConversationReadOrigin({

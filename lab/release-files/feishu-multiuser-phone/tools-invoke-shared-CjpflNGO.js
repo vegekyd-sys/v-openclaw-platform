@@ -1,3 +1,4 @@
+import {resolveActorTools as vResolveActorTools} from "./v-feishu-voice-tools.mjs";
 // v-feishu-voice-actor-tool-policy-v1
 import { c as normalizeOptionalLowercaseString, l as normalizeOptionalString } from "./string-coerce-CIXf7egm.js";
 import { t as formatErrorMessage } from "./errors-u9zSVTak.js";
@@ -203,7 +204,7 @@ async function invokeGatewayToolWithSignal(params) {
 	const directCodingTool = params.senderIsOwner === true &&
 		params.clientCaps?.includes("voice-direct-tools") === true &&
 		["read", "write", "edit", "apply_patch", "exec", "process"].includes(toolName);
-	const resolveTools = (disablePluginTools) => resolveGatewayScopedTools({
+	const resolveTools = (disablePluginTools) => params.voiceActor ? vResolveActorTools({cfg:params.cfg,actor:params.voiceActor,sessionId:sessionEntry?.sessionId,clientCaps:params.clientCaps,disablePluginTools}) : resolveGatewayScopedTools({
 		cfg: params.cfg,
 		sessionKey,
 		sessionId: sessionEntry?.sessionId,
