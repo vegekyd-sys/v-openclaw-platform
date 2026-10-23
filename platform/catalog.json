@@ -511,6 +511,10 @@
       "reason": "需要 VLab 候选运行时和共享 makaron 记忆文件副本，并要带入 V 上旧版 indexer（support），只能在 vlab.mjs candidate 里跑。"
     },
     {
+      "file": "lab/candidate/memory-vec-rebuild.test.mjs",
+      "reason": "需要 VLab 候选运行时和共享 makaron 库的副本（databases），在副本上演练向量表重建、回滚、缓存清理和 VACUUM INTO，只能在 vlab.mjs candidate 里跑。"
+    },
+    {
       "file": "lab/candidate/memory-indexer-diff-writes.test.mjs",
       "reason": "需要 VLab 候选运行时、共享 makaron 记忆文件副本和 V 上旧版 indexer（support），在进程内起假 embedding 服务，只能在 vlab.mjs candidate 里跑。"
     },
