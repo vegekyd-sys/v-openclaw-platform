@@ -1,4 +1,5 @@
 import { r as truncateUtf16Safe } from "./utf16-slice-D_ngcYKd.js";
+import fs from "node:fs";
 import { c as resolveUserPath } from "./home-dir-BPhrG-aM.js";
 import { m as shortenHomePath } from "./utils-D3A1hGii.js";
 import { t as formatErrorMessage } from "./errors-u9zSVTak.js";
@@ -500,6 +501,88 @@ async function executePluginInstall(operation, runtime, opts) {
 	return result;
 }
 //#endregion
+//#region doctor-subprocess
+const DOCTOR_SUBPROCESS_OUTPUT_MAX_BYTES = 1024 * 1024;
+function findExecutableOnPath(name) {
+	for (const dir of (process.env.PATH ?? "").split(":")) {
+		if (!dir) continue;
+		const candidate = `${dir}/${name}`;
+		try {
+			fs.accessSync(candidate, fs.constants.X_OK);
+			return candidate;
+		} catch {}
+	}
+}
+/** Runs `openclaw doctor --non-interactive` from this dist in a child process, output to the runtime. */
+async function runDoctorSubprocess(runtime) {
+	const [{ spawn }, { StringDecoder }, { fileURLToPath }] = await Promise.all([
+		import("node:child_process"),
+		import("node:string_decoder"),
+		import("node:url")
+	]);
+	const argv = [
+		process.execPath,
+		...process.execArgv.filter((arg) => !/^--(inspect|debug)/.test(arg)),
+		fileURLToPath(new URL("./index.js", import.meta.url)),
+		"doctor",
+		"--non-interactive"
+	];
+	const nice = findExecutableOnPath("nice");
+	if (nice) argv.unshift(nice, "-n", "10");
+	const ionice = process.platform === "linux" ? findExecutableOnPath("ionice") : void 0;
+	if (ionice) argv.unshift(ionice, "-c3");
+	const env = { ...process.env };
+	if (env.OPENCLAW_V_DOCTOR_TRANSCRIPT_SCANS === "1") delete env.OPENCLAW_V_DOCTOR_SKIP_TRANSCRIPT_SCANS;
+	else env.OPENCLAW_V_DOCTOR_SKIP_TRANSCRIPT_SCANS = "1";
+	const child = spawn(argv[0], argv.slice(1), {
+		cwd: process.cwd(),
+		env,
+		stdio: [
+			"ignore",
+			"pipe",
+			"pipe"
+		]
+	});
+	let remaining = DOCTOR_SUBPROCESS_OUTPUT_MAX_BYTES;
+	let truncated = false;
+	const forward = (stream, write) => {
+		const decoder = new StringDecoder("utf8");
+		let pending = "";
+		const push = (text) => {
+			pending += text;
+			let newline;
+			while ((newline = pending.indexOf("\n")) >= 0) {
+				write(pending.slice(0, newline));
+				pending = pending.slice(newline + 1);
+			}
+		};
+		stream.on("data", (chunk) => {
+			const accepted = chunk.subarray(0, Math.max(remaining, 0));
+			remaining -= accepted.byteLength;
+			truncated ||= accepted.byteLength < chunk.byteLength;
+			push(decoder.write(accepted));
+		});
+		return () => {
+			if (!truncated) push(decoder.end());
+			if (pending) write(pending);
+		};
+	};
+	const endStdout = forward(child.stdout, (line) => runtime.log(line));
+	const endStderr = forward(child.stderr, (line) => runtime.error(line));
+	const result = await new Promise((resolve, reject) => {
+		child.once("error", reject);
+		child.once("close", (code, signal) => resolve({
+			code,
+			signal
+		}));
+	});
+	endStdout();
+	endStderr();
+	if (truncated) runtime.error("Doctor output was truncated after 1 MiB. Run `openclaw doctor --non-interactive` on this host for the complete report.");
+	if (result.signal) throw new Error(`Doctor process stopped unexpectedly (${result.signal}).`);
+	if (result.code !== 0) runtime.exit(result.code ?? 1);
+}
+//#endregion
 //#region src/system-agent/operations-execute.ts
 const loadOverviewModule = async () => await import("./overview-4egA0VsE.js");
 /** Execute a parsed OpenClaw operation after applying approval gates and audit logging. */
@@ -794,6 +877,11 @@ async function executeSystemAgentOperation(operation, runtime, opts = {}) {
 				}
 			});
 		case "doctor":
+			// doctor-subprocess: keep doctor's synchronous work and transcript scans off the Gateway's main thread.
+			if (!opts.deps?.runDoctor && process.env.OPENCLAW_V_DOCTOR_SUBPROCESS !== "0") {
+				await runDoctorSubprocess(runtime);
+				return { applied: false };
+			}
 			await (opts.deps?.runDoctor ?? (await import("./doctor-C3VXV-em.js")).doctorCommand)(runtime, { nonInteractive: true });
 			return { applied: false };
 		case "doctor-fix":
