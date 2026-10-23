@@ -1,7 +1,8 @@
 # V egress shaping
 
-Shapes the production host's public egress with CAKE at 45 Mbps, just under the
-50 Mbps cap of its Lighthouse plan.
+Shapes the production host's public egress with CAKE at 55 Mbps, just under the
+60 Mbps cap of its Lighthouse plan (45 under the 50 Mbps cap until the
+2026-10-21 upgrade to 16C/64G; raised to 55 on 2026-10-23).
 
     sudo install -m 0644 v-egress-shape.service /etc/systemd/system/
     sudo systemctl daemon-reload && sudo systemctl enable --now v-egress-shape.service
@@ -37,4 +38,6 @@ The bulk upload itself still reached 40.6 Mbps. Retransmissions during the test
 were 0.06%, against a lifetime 3.5% on this host. There is no same-load run with
 shaping disabled: that would mean deliberately saturating production.
 
-If the bandwidth plan changes, change the 45mbit figure with it.
+If the bandwidth plan changes, change the bandwidth figure with it. A live change needs no
+restart: `sudo tc qdisc change dev eth0 root cake bandwidth <N>mbit`, then edit the unit
+and `systemctl daemon-reload` so a reboot keeps it.
