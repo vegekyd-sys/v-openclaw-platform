@@ -19,6 +19,7 @@ import { n as SHORT_SESSION_ID_RE, t as SESSION_UUID_SUFFIX_RE } from "./src-C-Q
 import { n as resolveSessionIdMatchSelection } from "./session-id-resolution-tHy0h84G.js";
 import { t as parseSessionLabel } from "./session-label-DSD-L6TD.js";
 import { n as createSessionListEntryFilter } from "./session-sharing-BlMqwMBH.js";
+import { O as isInternalSessionEffectsKey } from "./session-accessor.sqlite-entry-BlklNPKQ.js";
 //#region src/gateway/sessions-resolve.ts
 function resolveSessionVisibilityFilterOptions(p) {
 	return {
@@ -131,14 +132,20 @@ async function resolveSessionKeyFromResolveParams(params) {
 	if (hasKey) {
 		const requestedAgent = resolveRequestedSessionAgentId(cfg, key, p.agentId);
 		if (!requestedAgent.ok) return requestedAgent;
+		// sessions-resolve-exact-read: read only this key's store rows, as sessions.get does.
+		const exactRead = process.env.OPENCLAW_V_SESSIONS_RESOLVE_EXACT !== "0";
 		const target = resolveGatewaySessionStoreTargetWithStore({
 			cfg,
 			key,
 			clone: false,
+			...exactRead ? {
+				exactRead: true,
+				readOnly: true
+			} : {},
 			...requestedAgent.agentId ? { agentId: requestedAgent.agentId } : {}
 		});
 		const store = target.store;
-		const entry = store[target.canonicalKey];
+		const entry = exactRead && isInternalSessionEffectsKey(target.canonicalKey) ? void 0 : store[target.canonicalKey];
 		if (entry) {
 			if (hasOperatorBoundary(client, cfg) && entryFilter?.(target.canonicalKey, entry) === false || !isResolvedSessionKeyVisible({
 				cfg,
