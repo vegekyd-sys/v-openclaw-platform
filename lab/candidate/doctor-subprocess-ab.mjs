@@ -13,6 +13,10 @@
 // The plan installs both release files, so the base arm's doctor loads the patched contribution
 // chunk too; without OPENCLAW_V_DOCTOR_SKIP_TRANSCRIPT_SCANS it runs V's contribution list.
 //
+// INFLATE=k adds k copies of every transcript session (transcript_events rows only, under new session
+// ids) to reach V's transcript volume; shared VLab's makaron database has ~0.5 GB of transcripts, V ~15 GB.
+// The managed npm plugins (codex etc.) are copied from shared VLab, as V has them installed.
+//
 // The report of each arm (base: everything doctor wrote to stdout/stderr plus the capture runtime;
 // child arms: the capture runtime) is saved under EVIDENCE_DIR and diffed against base.
 import assert from "node:assert/strict";
@@ -29,6 +33,7 @@ assert(runtimeRoot && stateDir && configPath, "candidate runtime environment is 
 const DIST = path.join(runtimeRoot, "openclaw", "dist");
 const ARMS = (process.env.ARMS ?? "base,patched,patched-full,lint").split(",").filter(Boolean);
 const EVIDENCE_DIR = process.env.EVIDENCE_DIR ?? path.join(process.env.VLAB_CANDIDATE_DATA ?? stateDir, "doctor-ab");
+const INFLATE = Number(process.env.INFLATE ?? 0);
 const OPERATIONS = "operations-CTofDiKh.js";
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
@@ -48,7 +53,24 @@ const log = (key, value) => {
 }
 const agentDb = path.join(stateDir, "agents", "makaron", "agent", "openclaw-agent.sqlite");
 assert(fs.existsSync(agentDb), `makaron database copy missing at ${agentDb} (plan.databases)`);
-out.database = { path: agentDb, bytes: fs.statSync(agentDb).size };
+if (INFLATE > 0) {
+  const started = performance.now();
+  execFileSync("python3", ["-c", String.raw`import sqlite3,sys
+db=sqlite3.connect(sys.argv[1],isolation_level=None)
+db.execute('pragma foreign_keys=off')
+for k in range(1,int(sys.argv[2])+1):
+    db.execute('begin')
+    db.execute("insert into transcript_events(session_id,seq,event_json,created_at) select session_id||'~x'||?,seq,event_json,created_at from transcript_events where instr(session_id,'~x')=0",(k,))
+    db.execute('commit')
+db.execute('pragma wal_checkpoint(truncate)')`, agentDb, String(INFLATE)], { stdio: "inherit" });
+  out.inflateMs = Math.round(performance.now() - started);
+}
+const sharedState = process.env.VLAB_SHARED_STATE_DIR;
+if (sharedState && !fs.existsSync(path.join(stateDir, "npm"))) {
+  execFileSync("cp", ["-a", "--reflink=auto", path.join(sharedState, "npm"), path.join(stateDir, "npm")]);
+  out.npmPluginsCopied = true;
+}
+out.database = { path: agentDb, bytes: fs.statSync(agentDb).size, inflate: INFLATE };
 out.transcripts = JSON.parse(execFileSync("python3", ["-c", String.raw`import json,sqlite3,sys
 db=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True)
 print(json.dumps(dict(zip(['sessions','rows','eventJsonBytes'],db.execute('select count(distinct session_id),count(*),sum(length(event_json)) from transcript_events').fetchone()))))`, agentDb], { encoding: "utf8" }));
