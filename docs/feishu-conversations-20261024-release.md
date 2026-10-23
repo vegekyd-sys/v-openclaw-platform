@@ -22,7 +22,7 @@ Production was repaired by mapping the exact expected package path to the existi
 
 `scripts/lib/feishu-voice-layout.mjs` now validates the two reviewed imports, rejects an existing conflicting package, and creates only the missing directory alias. `promote-to-v.mjs` validates before installing bytes and applies the mapping before capture/restart. Five regression tests exercise actual generated-runtime imports under both VLab and production layouts, idempotence, conflict refusal, and missing dependencies. The alias is deployment layout outside the captured component roots; future promotions revalidate it.
 
-Native main-session recovery reported settled=1, failed=0; the Worker pool restarted and was accepting work. This receipt does not assert that every previously running background job has finished successfully.
+Native main-session recovery reported settled=1, failed=0. The native Night Shift health read at 03:13 shows Gateway restart state `up`, no remaining hold, automatic recovery of eight interrupted cards at 03:08:31, no scheduler error, and five running cards. No manual redispatch or production database edit was needed. This does not assert that all background jobs have finished successfully.
 
 ## Rollback evidence
 

@@ -202,6 +202,7 @@
         "scripts/lib/runtime-residue.test.mjs",
         "lab/release-files/db91-preflight-timeout-env/bootstrap-timeout.test.mjs",
         "scripts/promote-to-v.test.mjs",
+        "tests/feishu-voice-layout.test.mjs",
         "scripts/vlab-channel-plugins-prep.test.mjs",
         "scripts/lib/runtime-components.test.mjs",
         "tests/install-secret-entry-host.test.mjs",
