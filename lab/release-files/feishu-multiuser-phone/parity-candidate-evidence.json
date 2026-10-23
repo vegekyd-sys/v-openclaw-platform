@@ -71,5 +71,12 @@
   ],
   "tests": 26,
   "scope": "Native actor tool parity fixtures and authenticated URL-registration challenge. Live new-group event and OAuth acceptance recorded separately; first private conversation pending a real new account.",
-  "productionChanged": false
+  "productionChanged": false,
+  "verificationRemoval": {
+    "tests": 28,
+    "passed": 28,
+    "receiptId": "candidate-3bcbfd55-6fae-44ec-9698-457e317c3837",
+    "chatCodeFlow": "removed",
+    "paidModelCalls": false
+  }
 }

@@ -1,3 +1,15 @@
+# 飞书会话电话发布：移除验证码
+
+2026-10-24：用户已明确授权移除验证码机制并合入部署。`feishu-phone-login-challenges`、`feishu-voice-login`、登录 RPC 注册与消息消费 hook 已移除；不能通过私聊验证码取得新身份。配套 Voice 同时失效旧的无来源标记浏览器身份，只保留 OAuth 认证与无账号工具的临时访客通话。
+
+群聊使用输入框下方 menu_tree，私聊使用顶部 tab。保留原有 sender/group/account 原生工具策略；浏览器不能选身份或读取其他会话能力。匿名调用不进入此平台账号工具路径。真实内部非 owner 用户的账号工具仍取决于既有平台配置；不能将目录一致性测试当作凭据隔离验收。
+
+移除后的原生 Candidate 28 项通过（candidate-3bcbfd55-6fae-44ec-9698-457e317c3837）；共享 VLab 最后集成与生产发布状态由对应 release receipts 记录。
+
+以下是历史 Candidate 过程记录，范围和旧的待验证状态已由上文取代。
+
+---
+
 # Feishu 电话与文字能力一致：独立 Candidate
 
 2026-10-24。配套 Voice 分支：`codex/feishu-phone-text-parity-20261024`，Voice commit `7a83022698b62d046b946172a812bac180e6ae71`。本目录仅用于独立 Candidate；没有合入 dev、部署共享 VLab 或生产。
