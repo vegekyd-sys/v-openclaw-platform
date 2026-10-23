@@ -7,6 +7,7 @@ import { w as resolveSessionStorePathForScope } from "./session-accessor.sqlite-
 import { i as sqliteSessionFileMarkerMatchesTarget, n as parseSqliteSessionFileMarker } from "./legacy-sqlite-marker-COPKCuIN.js";
 import { a as resolveSessionEntryAccessTarget } from "./session-accessor.entry-B8arwR7t.js";
 import { a as isAgentHarnessSessionKey, o as isAgentHarnessSessionKeyOwnedBy } from "./agent-harness-session-key-CLRQddqz.js";
+import { listSessionEntriesMatchingReadOnly } from "./v-session-entries-matching.mjs";
 //#region src/plugins/registry-runtime-session-ownership.ts
 const PLUGIN_GATEWAY_SESSION_MUTATION_METHODS = /* @__PURE__ */ new Set([
 	"agent",
@@ -166,10 +167,19 @@ function createPluginSessionOwnership(state, pluginId) {
 			if (sessionFile) sessionFiles.add(sessionFile);
 		}
 		if (sessionIds.size === 0 && sessionFiles.size === 0) return;
-		const entries = registryParams.runtime.agent.session.listSessionEntries({
-			...agentId ? { agentId } : {},
-			...storePath ? { storePath } : {},
+		// sessions-search-exact-read: read only the rows the checks below look at (sessionId or key match).
+		const exactRead = process.env.OPENCLAW_V_SESSION_OWNERSHIP_EXACT !== "0";
+		const listOwnedEntries = (scope, match) => exactRead ? listSessionEntriesMatchingReadOnly(scope, match) : registryParams.runtime.agent.session.listSessionEntries({
+			...scope,
 			readOnly: true
+		});
+		const ownershipScope = {
+			...agentId ? { agentId } : {},
+			...storePath ? { storePath } : {}
+		};
+		const entries = listOwnedEntries(ownershipScope, {
+			sessionIds: [...sessionIds],
+			sessionKeys: [...sessionFiles]
 		});
 		for (const { sessionKey, entry } of entries) if (sessionIds.has(entry.sessionId)) assertSessionEntryOwned({
 			action: params.action,
@@ -185,7 +195,7 @@ function createPluginSessionOwnership(state, pluginId) {
 					sessionKey: match.sessionKey
 				});
 				const matchedSessionIds = new Set(sessionKeyMatches.map(({ entry }) => normalizeOptionalString(entry.sessionId)).filter((sessionId) => Boolean(sessionId)));
-				for (const match of entries) {
+				for (const match of exactRead ? listOwnedEntries(ownershipScope, { sessionIds: [...matchedSessionIds] }) : entries) {
 					const matchSessionId = normalizeOptionalString(match.entry.sessionId);
 					if (matchSessionId && matchedSessionIds.has(matchSessionId)) assertSessionEntryOwned({
 						action: params.action,
@@ -197,11 +207,10 @@ function createPluginSessionOwnership(state, pluginId) {
 			}
 			const marker = parseSqliteSessionFileMarker(sessionFile);
 			if (!marker) throw new Error("Plugin session ownership checks require a SQLite transcript marker.");
-			const matches = registryParams.runtime.agent.session.listSessionEntries({
+			const matches = listOwnedEntries({
 				agentId: marker.agentId,
-				storePath: marker.storePath,
-				readOnly: true
-			}).filter(({ entry }) => entry.sessionId === marker.sessionId);
+				storePath: marker.storePath
+			}, { sessionIds: [marker.sessionId] }).filter(({ entry }) => entry.sessionId === marker.sessionId);
 			if (matches.length === 0) throw new Error(`Plugin session ownership target not found: ${marker.sessionId}`);
 			for (const match of matches) assertSessionEntryOwned({
 				action: params.action,

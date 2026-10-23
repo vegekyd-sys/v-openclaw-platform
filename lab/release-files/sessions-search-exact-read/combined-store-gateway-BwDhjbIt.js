@@ -16,6 +16,7 @@ import { m as canonicalSessionKeyMigrationRequiredError } from "./session-access
 import "./session-accessor-K0XuW6ln.js";
 import { i as resolveStoredSessionKeyForAgentStore, n as resolveSessionStoreAgentId, r as resolveSessionStoreKey } from "./session-store-key-DVtVp9hU.js";
 import { t as listSessionEntriesCore } from "./session-accessor.entry-B8arwR7t.js";
+import { listSessionEntriesMatchingReadOnly } from "./v-session-entries-matching.mjs";
 import { d as dedupeSessionStoreTargetsBySqliteTarget, i as resolveAgentSessionStoreTargetsSync, n as listConfiguredSessionStoreAgentIds, o as resolveAllAgentSessionStoreTargetsSync, r as listKnownSessionStoreAgentIds } from "./targets-M9xRkscp.js";
 //#region src/config/sessions/combined-store-gateway.ts
 let preparedConfiguredSessionStoreTargets;
@@ -34,6 +35,13 @@ function resolveCombinedDatabasePath(targets, defaultAgentId, physicallyDeduped 
 	return paths.length === 1 ? expectDefined(paths[0], "database path at 0") : "(multiple)";
 }
 function loadGatewayStoreEntries(params) {
+	// sessions-search-exact-read: a search reads only the rows it can match (durable stores).
+	if (params.match && !params.includeOpenDatabases) return listSessionEntriesMatchingReadOnly({
+		agentId: params.agentId,
+		clone: false,
+		projection: params.projection,
+		storePath: params.storePath
+	}, params.match);
 	return (params.includeOpenDatabases ? listSessionEntriesCore : listSessionEntriesReadOnly)({
 		agentId: params.agentId,
 		clone: false,
@@ -210,7 +218,8 @@ function loadCombinedSessionStoreForGatewayCore(cfg, opts = {}) {
 		const store = loadGatewayStoreEntries({
 			agentId,
 			projection,
-			storePath
+			storePath,
+			...opts.match ? { match: opts.match } : {}
 		});
 		for (const { sessionKey: key, entry } of store) {
 			const canonicalKey = resolveStoredSessionKeyForAgentStore({
