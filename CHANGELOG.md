@@ -11,6 +11,47 @@
 
 ---
 
+## v2026.9.1-db91.6-session-phone-20261023
+
+上线：2026-10-23 18:23 CST  ·  tag `v2026.9.1-db91.6-session-phone-20261023`
+
+**摘要**：正式飞书机器人接收进入私聊事件后，为已配置用户自动补齐顶部「📞 打给 V」标签。群内入口使用各自群电话映射，Voice 同步发布会话上下文、通话状态、结束纪要和 iOS 绑定能力。
+
+本次新增部署仅为 Feishu 插件 3 个文件；下列其他 8 个文件是此前已在生产运行的发布，本次完整捕获归档。共享 VLab 的真实进入私聊事件验证通过，promotion 后 parity ALIGNED，漂移检查 0 findings，integration lease 已释放。Gateway 自动标签需受控重启激活，当前等待空闲窗口；Voice 双节点和飞书应用 1.0.24 已上线。
+
+相对上一版 `v2026.9.1-db91.6-vector-budget-20261020`：11 个文件变化。
+
+**经 VLab 发版 `nightshift-throughput-v1`**（nightshift-throughput，dev `e822d251`）
+> 验收：shared VLab 2026-10-22 02:0x CST: deploy hashes match plan (3 files); Gateway pid 1685292->1699695 ready; vlab.workers.status started=true min5/max15 with patched worker manifest (plugin loaded); chat.send in agent:makaron:explicit:vlab-dev-nightshift-throughput-1792606007094 replied '收到 nightshift-throughput' (reply path through runMemoryFlushIfNeeded works); lab/nightshift-throughput.test.mjs 4/…
+- `core` agent-runner-memory-7VF-zwNt.js  7d5eaa38 → befc094d
+- `core` runtime-api-1CCazqtv.js  3300629f → 3bc03ce6
+- `worker` openclaw.plugin.json  1ec103e3 → 2223bae7
+
+**经 VLab 发版 `gateway-451-452-20261021-v1`**（gateway-451-452-64g-20261021，dev `53ed7f93`）
+> 验收：/var/tmp/gateway-451-452-vlab-20261021/acceptance.json: 21 static tests; combined candidate 537 session + 8 health comparisons zero diff; 12 concurrent actual exec + persisted final replies verified; child spawn/yield/completion and continuity pass. First cold coordinator timeout and final-receipt race retained as limitations.
+- `core` collector-DyqVHdcZ.js  8056582c → 376387c5
+- `core` session-utils-list-BUP03AzS.js  2f30da37 → 779063a6
+- `core` subagent-registry.store.sqlite-hzGu4QSk.js  f37ed94d → 4bc27059
+- `core` v-health-session-summary-worker.mjs  — → b5cf6c19
+
+**经 VLab 发版 `memsearch-overlap-20261021`**（monitor-v-production，dev `3def4ebc`）
+> 验收：共享 VLab 01:02 部署 #447（dev 3def4ebc）：manager-runtime.js 272177d5→97812535，before 等于 V 线上字节。部署后哈希为 97812535，TypeError/ReferenceError/SyntaxError/InvalidConfig 均为 0。第一次验收回合失败，原因是 Agent DB process coordinator wait exceeded 5000ms：VLab 刚启动、事件循环卡了 23 s，同时副本演练也在占 IO，和本补丁无关。第二次回合 memory_search 成功，命中 6 条，degraded=vector-timeout（VLab 没有 Gemini 密钥，向量路径本来就走不通，降级到关键词是预期结果），说明 #444 外壳加 #447 并行路径能跑通。热态提速和结果等价性靠 …
+- `core` extensions/memory-core/manager-runtime.js  272177d5 → 97812535
+
+**经 VLab 发版 `feishu-auto-phone-tab-v1`**（01a162db-1bb2-7873-9c89-73f5fef546e2，dev `3cbb48e9`）
+> 验收：2026-10-23 18:13:24 CST native Feishu entered V-Lab DM; live shared Gateway logged voice.phone-tab status=verified created=false, matching existing top tab. Real websocket ingress verified. Shared deploy byte hashes 3/3, ready PID1958174. Task suite 11/11, merged catalog tests passed; GitHub static CI39935751933 passed. Prior candidate exercised real Feishu APIs including 10 repeated entries, unkn…
+- `feishu` dist/client-DMbIL3UH.js  9316572c → 8402132e
+- `feishu` dist/monitor.account-WFdlCDhR.js  ffdf7072 → 85d6d088
+- `feishu` dist/v-feishu-phone-tabs.mjs  — → 72c3ce04
+
+**这期间合入 dev 的 PR**（5 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #454 feat(gateway): Night Shift card sessions skip memory flush, keep whole notes, Worker pool above 16
+- #450 fix(memory-indexer): reuse the running Gateway's DB91 integrity proof at start
+- #447 perf(memory): 关键词检索改在 KNN 子进程扫描期间跑（热态 −0.2 s，结果等价）
+- #448 perf(memory-indexer): 没变的 chunk 不再重写（向量表不再长空槽，log.md 占锁降到 12–20 ms）
+- #446 release: 捕获 V（10/20 三次发版：#442 #441 #444）+ CHANGELOG
+
+
 ## v2026.9.1-db91.6-vector-budget-20261020
 
 上线：2026-10-20 23:13 CST v-self-restart 生效（PID 374689 → 2124560）  ·  tag `v2026.9.1-db91.6-vector-budget-20261020`
