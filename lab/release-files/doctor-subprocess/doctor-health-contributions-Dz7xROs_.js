@@ -1536,8 +1536,26 @@ async function runDoctorHealthContributionList(ctx, contributions) {
 		note(`${contribution.id} run failed: ${scrubDoctorErrorMessage(error)}`, "Doctor warnings");
 	}
 }
+const TRANSCRIPT_SCAN_CONTRIBUTION_IDS = new Set(["doctor:session-transcript-headers", "doctor:session-transcript-labels"]);
+/** doctor-subprocess: the assistant's doctor child replaces the transcript-wide scans with a note. */
+function skipTranscriptScanContributions(contributions) {
+	const at = contributions.findIndex((contribution) => TRANSCRIPT_SCAN_CONTRIBUTION_IDS.has(contribution.id));
+	if (at < 0) return contributions;
+	const kept = contributions.filter((contribution) => !TRANSCRIPT_SCAN_CONTRIBUTION_IDS.has(contribution.id));
+	kept.splice(at, 0, {
+		...contributions[at],
+		id: "doctor:session-transcript-scans-skipped",
+		label: "Session transcript scans",
+		run: async () => {
+			const { note } = await loadNoteModule();
+			note("Skipped the transcript header and label checks: they read every stored transcript event. Run `openclaw doctor` in a shell on this host to include them.", "Session transcripts");
+		}
+	});
+	return kept;
+}
 async function runDoctorHealthContributions(ctx) {
-	await runDoctorHealthContributionList(ctx, resolveDoctorHealthContributions());
+	const contributions = resolveDoctorHealthContributions();
+	await runDoctorHealthContributionList(ctx, process.env.OPENCLAW_V_DOCTOR_SKIP_TRANSCRIPT_SCANS === "1" ? skipTranscriptScanContributions(contributions) : contributions);
 }
 if (process.env.VITEST || false) globalThis[Symbol.for("openclaw.doctorHealthContributionsTestApi")] = {
 	resolveDoctorHealthContributions,

@@ -1,0 +1,17 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/doctor-subprocess/operations-CTofDiKh.js",
+      "target": "openclaw/dist/operations-CTofDiKh.js",
+      "before": "eb6286b448bce628be922e8dba7c969d3ea1f84644e3cf14ea5e1daa994cacb6",
+      "after": "19440b2272f73037875c312aa36dc6a2b925d9d17290294a9262b9c1c2e56a09"
+    },
+    {
+      "source": "lab/release-files/doctor-subprocess/doctor-health-contributions-Dz7xROs_.js",
+      "target": "openclaw/dist/doctor-health-contributions-Dz7xROs_.js",
+      "before": "a9b70992118e040866d5144e98b7d293b460d57a56918c4bfa23fd29ad50b10e",
+      "after": "3d9cdefb8995efea0e6c8a853b81b9cad92ab20bd8ddd200134e556bb3fa7749"
+    }
+  ]
+}
