@@ -110,3 +110,14 @@ export const prepareVoiceActor=createVoiceActorMiddleware({resolveAccount:resolv
       return result.data;
     }}}))});\n`;
 }
+
+
+// A display-only field comes from the authenticated server assertion. It must
+// never be read from talk.client.create parameters or influence tool policy.
+export function patchActorCallerIdentity(source) {
+  const marker='// v-feishu-caller-display-context-v1';
+  if(source.includes(marker))return source;
+  source=once(source,'\t\t\tconst browserSessionRequest = {',`\t\t\tconst browserSessionRequest = {
+        ...(client?.internal?.voiceActor ? {voiceCallerIdentity:{source:"feishu",displayName:client.internal.voiceActor.callerDisplayName}} : {}),`);
+  return marker+'\n'+source;
+}

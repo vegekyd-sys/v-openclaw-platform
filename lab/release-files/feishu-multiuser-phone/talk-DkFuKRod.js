@@ -1,3 +1,4 @@
+// v-feishu-caller-display-context-v1
 // v-feishu-voice-actor-talk-v1
 // voice-independent-task-lifetime-v1
 import {createVoiceTaskLifetime} from "./voice-task-lifetime.js";
@@ -3058,6 +3059,7 @@ const createTalkClient = async ({ params, respond, context, client, sessionMutat
 				}
 			}) : void 0;
 			const browserSessionRequest = {
+        ...(client?.internal?.voiceActor ? {voiceCallerIdentity:{source:"feishu",displayName:client.internal.voiceActor.callerDisplayName}} : {}),
 				cfg: runtimeConfig,
 				agentId,
 				...ownerConnId ? { ownerConnId } : {},

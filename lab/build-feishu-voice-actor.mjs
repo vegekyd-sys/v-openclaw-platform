@@ -1,7 +1,7 @@
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {resolve,relative} from 'node:path';
 import {createHash} from 'node:crypto';
-import {patchActorCatalog,patchActorDispatcher,patchActorToolInvoke,patchActorToolResolver,patchActorTalk,patchActorConsult,patchActorFeishuPolicy,actorRuntimeModule} from './patch-feishu-voice-actor.mjs';
+import {patchActorCallerIdentity,patchActorCatalog,patchActorDispatcher,patchActorToolInvoke,patchActorToolResolver,patchActorTalk,patchActorConsult,patchActorFeishuPolicy,actorRuntimeModule} from './patch-feishu-voice-actor.mjs';
 import {patchConversationPhoneTabs} from './patch-feishu-phone-tabs.mjs';
 import {patchWebhookChallenge} from './patch-feishu-webhook-challenge.mjs';
 
@@ -15,7 +15,7 @@ async function add(name,target,bytes,before=null){
   await writeFile(output+'/'+name,bytes);files.push({source:relative(process.cwd(),output+'/'+name),target,before,sha256:hash(bytes)});
 }
 for(const [name,patch] of [['tools-catalog-DGR0f9wo.js',patchActorCatalog],['server-methods-CLElG7qF.js',patchActorDispatcher],['tools-invoke-ev4-EXmh.js',patchActorToolInvoke],
-  ['tools-invoke-shared-CjpflNGO.js',patchActorToolResolver],['talk-DkFuKRod.js',patchActorTalk],['realtime-session-harness-CEO5kVAJ.js',patchActorConsult]]){
+  ['tools-invoke-shared-CjpflNGO.js',patchActorToolResolver],['talk-DkFuKRod.js',source=>patchActorCallerIdentity(patchActorTalk(source))],['realtime-session-harness-CEO5kVAJ.js',patchActorConsult]]){
   const source=await readFile(baseline+'/'+name,'utf8');await add(name,'openclaw/dist/'+name,patch(source),hash(source));
 }
 const monitor='monitor.account-WFdlCDhR.js';

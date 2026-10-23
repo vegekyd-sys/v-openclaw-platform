@@ -27,8 +27,8 @@
     {
       "source": "lab/release-files/feishu-multiuser-phone/talk-DkFuKRod.js",
       "target": "openclaw/dist/talk-DkFuKRod.js",
-      "before": "80d9cec11d251b151cc704766c87becd66bd85d9948eccb023389221ad6ffce7",
-      "sha256": "f01a6e7b16cea92da439d1bacda8b6f0159acbc55e9157d130893a3e204fff3c"
+      "before": "f01a6e7b16cea92da439d1bacda8b6f0159acbc55e9157d130893a3e204fff3c",
+      "sha256": "f105904716fbb10934dfc0b3f8c985073d28fe497fcb8c81a07b0c0b760d53c3"
     },
     {
       "source": "lab/release-files/feishu-multiuser-phone/realtime-session-harness-CEO5kVAJ.js",
@@ -45,8 +45,8 @@
     {
       "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-actor.mjs",
       "target": "openclaw/dist/v-feishu-voice-actor.mjs",
-      "before": null,
-      "sha256": "17608d695ff0893a71f94574e2cbb8a1a765246f36b7b51d2932afdf002f6a42"
+      "before": "17608d695ff0893a71f94574e2cbb8a1a765246f36b7b51d2932afdf002f6a42",
+      "sha256": "a853efdbadf77a268ef386193747ac4aa30cd30afa7f4eb6b556c79c144d92c5"
     },
     {
       "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-policy.mjs",

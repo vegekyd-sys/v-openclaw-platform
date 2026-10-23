@@ -82,3 +82,14 @@ test('membership denial exposes only a fixed recovery reason after verified acto
   await assert.rejects(check(actor,undefined,undefined,{resolvePolicy:async()=>({admitted:false,reason:'private-identifier'})}),
     error=>error.code===undefined&&!error.message.includes('private-identifier'));
 });
+
+
+test('authenticated display names never select owner authority and tampered names fail signature validation',async()=>{
+ const bob={...actor,openId:'ou_bob',callerDisplayName:'Tianyi (display name only)'};
+ const result=await check(bob);assert.equal(result.callerDisplayName,bob.callerDisplayName);assert.equal(result.senderIsOwner,false);
+ assert.deepEqual(actorToolContext(result),actorToolContext(await check({...actor,openId:'ou_bob'})));
+ const method='tools.invoke',params={sessionKey:session(bob),name:'read',args:{path:'fixture'}};
+ const proof=signed(bob,method,params);
+ await assert.rejects(authorizeVoiceActor({...deps,method,params,proof:{...proof,actor:{...bob,callerDisplayName:'Another name'}}}),/not_authorized/);
+ for(const callerDisplayName of ['x'.repeat(129),'bad\nname',{},''])await assert.rejects(check({...bob,callerDisplayName}),/not_authorized/);
+});

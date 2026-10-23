@@ -22,6 +22,7 @@ export async function authorizeVoiceActor({proof, method, params, client, cfg, r
   const a = proof?.actor;
   if (proof?.version !== 1 || !a || !['accountId','appId','tenantKey','openId','chatId'].every(k => ID.test(a[k] ?? '')) ||
       !/^ou_[A-Za-z0-9]+$/u.test(a.openId) || !/^oc_[A-Za-z0-9]+$/u.test(a.chatId) ||
+      a.callerDisplayName !== undefined && (typeof a.callerDisplayName !== 'string' || !a.callerDisplayName.trim() || a.callerDisplayName.length>128 || /[\u0000-\u001f\u007f]/u.test(a.callerDisplayName)) ||
       a.userId !== undefined && !ID.test(a.userId) || proof.method !== method || proof.params !== canonical(params) ||
       !Number.isSafeInteger(proof.issuedAt) || proof.issuedAt > now+5000 || proof.issuedAt < now-30000) fail();
   const account = await resolveAccount(cfg,a.accountId);
@@ -38,7 +39,7 @@ export async function authorizeVoiceActor({proof, method, params, client, cfg, r
   if (method !== 'voice.feishu.resolve' && (['sessions.resolve','sessions.describe'].includes(method) ? params?.key : params?.sessionKey) !== policy.sessionKey ||
       params?.agentId !== undefined && params.agentId !== policy.agentId ||
       params?.accountId !== undefined && params.accountId !== a.accountId) fail();
-  return Object.freeze({...policy,accountId:a.accountId,openId:a.openId,chatId:a.chatId});
+  return Object.freeze({...policy,accountId:a.accountId,openId:a.openId,chatId:a.chatId,...(a.callerDisplayName?{callerDisplayName:a.callerDisplayName}:{})});
 }
 
 export function actorClient(client,actor) {
