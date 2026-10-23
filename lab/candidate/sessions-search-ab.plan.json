@@ -1,0 +1,21 @@
+{
+  "support": [
+    "lab/candidate/sessions-search-ab.mjs",
+    "lab/sessions-search-exact-read.plan.json",
+    "lab/release-files/sessions-search-exact-read/sessions-resolve-_D6BmQTT.js",
+    "lab/release-files/sessions-search-exact-read/combined-store-gateway-BwDhjbIt.js",
+    "lab/release-files/sessions-search-exact-read/registry-runtime-session-ownership-B1XvaNE7.js",
+    "lab/release-files/sessions-search-exact-read/v-session-entries-matching.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "--expose-gc",
+    "lab/candidate/sessions-search-ab.mjs"
+  ],
+  "timeoutSeconds": 0,
+  "env": {
+    "FIXTURE_DIR": "/var/tmp/rsx2-20261024",
+    "REPEAT": "3",
+    "SAMPLE": "40"
+  }
+}

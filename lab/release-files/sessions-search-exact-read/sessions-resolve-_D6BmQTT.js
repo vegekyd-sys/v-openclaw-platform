@@ -19,6 +19,7 @@ import { n as SHORT_SESSION_ID_RE, t as SESSION_UUID_SUFFIX_RE } from "./src-C-Q
 import { n as resolveSessionIdMatchSelection } from "./session-id-resolution-tHy0h84G.js";
 import { t as parseSessionLabel } from "./session-label-DSD-L6TD.js";
 import { n as createSessionListEntryFilter } from "./session-sharing-BlMqwMBH.js";
+import { O as isInternalSessionEffectsKey } from "./session-accessor.sqlite-entry-BlklNPKQ.js";
 //#region src/gateway/sessions-resolve.ts
 function resolveSessionVisibilityFilterOptions(p) {
 	return {
@@ -128,17 +129,34 @@ async function resolveSessionKeyFromResolveParams(params) {
 		ok: false,
 		error: errorShape(ErrorCodes.INVALID_REQUEST, "Either key, sessionId, label, or shortId is required")
 	};
+	// sessions-search-exact-read: the sessionId, shortId and label searches read only the rows they can match.
+	const searchExact = process.env.OPENCLAW_V_SESSIONS_RESOLVE_SEARCH_EXACT !== "0";
+	const loadSearchStore = (opts, match) => loadCombinedSessionStoreForGatewayCore(cfg, searchExact ? {
+		...opts,
+		match
+	} : opts);
+	// findVisibleSessionIdMatches keeps entry.sessionId === sessionId or key === sessionId.
+	const sessionIdMatch = {
+		sessionIds: [sessionId],
+		sessionKeys: [sessionId]
+	};
 	if (hasKey) {
 		const requestedAgent = resolveRequestedSessionAgentId(cfg, key, p.agentId);
 		if (!requestedAgent.ok) return requestedAgent;
+		// sessions-resolve-exact-read: read only this key's store rows, as sessions.get does.
+		const exactRead = process.env.OPENCLAW_V_SESSIONS_RESOLVE_EXACT !== "0";
 		const target = resolveGatewaySessionStoreTargetWithStore({
 			cfg,
 			key,
 			clone: false,
+			...exactRead ? {
+				exactRead: true,
+				readOnly: true
+			} : {},
 			...requestedAgent.agentId ? { agentId: requestedAgent.agentId } : {}
 		});
 		const store = target.store;
-		const entry = store[target.canonicalKey];
+		const entry = exactRead && isInternalSessionEffectsKey(target.canonicalKey) ? void 0 : store[target.canonicalKey];
 		if (entry) {
 			if (hasOperatorBoundary(client, cfg) && entryFilter?.(target.canonicalKey, entry) === false || !isResolvedSessionKeyVisible({
 				cfg,
@@ -168,7 +186,7 @@ async function resolveSessionKeyFromResolveParams(params) {
 			for (const agentId of listAgentIds(cfg)) {
 				const agentMatches = findVisibleSessionIdMatches({
 					cfg,
-					store: loadCombinedSessionStoreForGatewayCore(cfg, { agentId }).store,
+					store: loadSearchStore({ agentId }, sessionIdMatch).store,
 					p: {
 						...p,
 						agentId
@@ -202,7 +220,7 @@ async function resolveSessionKeyFromResolveParams(params) {
 				agentId: ownerTaggedMatch.agentId
 			};
 		}
-		const { store } = loadCombinedSessionStoreForGatewayCore(cfg, { agentId: p.agentId });
+		const { store } = loadSearchStore({ agentId: p.agentId }, sessionIdMatch);
 		const matches = findVisibleSessionIdMatches({
 			cfg,
 			store,
@@ -240,7 +258,8 @@ async function resolveSessionKeyFromResolveParams(params) {
 			ok: false,
 			error: errorShape(ErrorCodes.INVALID_REQUEST, "shortId must be 8-32 hexadecimal characters")
 		};
-		const { storePath, store } = loadCombinedSessionStoreForGatewayCore(cfg, { agentId: p.agentId });
+		// findVisibleShortIdMatches keeps keys whose UUID suffix starts with the short id.
+		const { storePath, store } = loadSearchStore({ agentId: p.agentId }, { keyFilter: (storedKey) => (parseAgentSessionKey(storedKey)?.rest.match(SESSION_UUID_SUFFIX_RE)?.[1])?.toLowerCase().replaceAll("-", "").startsWith(shortId) === true });
 		const matches = findVisibleShortIdMatches({
 			cfg,
 			storePath,
@@ -271,7 +290,8 @@ async function resolveSessionKeyFromResolveParams(params) {
 		ok: false,
 		error: errorShape(ErrorCodes.INVALID_REQUEST, parsedLabel.error)
 	};
-	const { store } = loadCombinedSessionStoreForGatewayCore(cfg, { agentId: p.agentId });
+	// filterSessionEntries keeps entry.label === the trimmed label; the label column is the trimmed entry.label.
+	const { store } = loadSearchStore({ agentId: p.agentId }, { labels: [parsedLabel.label] });
 	const now = Date.now();
 	let rowContext;
 	const matches = filterAndSortSessionEntries({
