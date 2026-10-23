@@ -348,6 +348,7 @@
         "lab/context-overflow-recovery.test.mjs",
         "lab/feishu-empty-card-discard.test.mjs",
         "lab/feishu-ingress-catchup.test.mjs",
+        "lab/feishu-phone-tabs.test.mjs",
         "scripts/node-async-context-frame.test.mjs",
         "lab/workboard-incremental-sweep.test.mjs",
         "lab/workboard-sweep-links.test.mjs",
