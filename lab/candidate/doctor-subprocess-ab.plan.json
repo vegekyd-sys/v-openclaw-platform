@@ -29,7 +29,7 @@
   "env": {
     "ARMS": "base,patched,patched-full,scans,lint",
     "INFLATE": "10",
-    "EVIDENCE_DIR": "/var/tmp/doctor-ab-20261024-r3",
+    "EVIDENCE_DIR": "/var/tmp/doctor-ab-20261024-r4",
     "DB_COPY_DIR": "/var/tmp/doctor-ab-db"
   }
 }

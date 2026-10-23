@@ -31,8 +31,8 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 const runtimeRoot = process.env.VLAB_CANDIDATE_RUNTIME;
-const stateDir = process.env.OPENCLAW_STATE_DIR;
-const configPath = process.env.OPENCLAW_CONFIG_PATH;
+let stateDir = process.env.OPENCLAW_STATE_DIR;
+let configPath = process.env.OPENCLAW_CONFIG_PATH;
 assert(runtimeRoot && stateDir && configPath, "candidate runtime environment is required");
 const DIST = path.join(runtimeRoot, "openclaw", "dist");
 const ARMS = (process.env.ARMS ?? "base,patched,patched-full,lint").split(",").filter(Boolean);
@@ -49,25 +49,35 @@ const log = (key, value) => {
   process.stderr.write(`${line}\n`);
 };
 
+// DB_COPY_DIR: run on a copy of the candidate state under this directory, with shared VLab's makaron
+// database copied in (SQLite backup), instead of plan.databases: those copies land on VLab's nearly full
+// data disk. Doctor finds transcript stores through agents/<id>/sessions/ and only accepts a database whose
+// real path is inside the agents directory, so the copy is a plain file next to a sessions directory.
+if (process.env.DB_COPY_DIR) {
+  const root = path.join(process.env.DB_COPY_DIR, path.basename(process.env.VLAB_CANDIDATE_DATA ?? String(process.pid)));
+  const relocated = path.join(root, "state");
+  fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+  process.on("exit", () => fs.rmSync(root, { recursive: true, force: true }));
+  execFileSync("cp", ["-a", stateDir, relocated]);
+  const config = fs.readFileSync(configPath, "utf8").replaceAll(stateDir, relocated);
+  fs.writeFileSync(path.join(relocated, path.relative(stateDir, configPath)), config, { mode: 0o600 });
+  for (const key of ["OPENCLAW_STATE_DIR", "OPENCLAW_CONFIG_PATH", "OPENCLAW_DB91_INTEGRITY_STATE_ROOT"]) {
+    if (process.env[key]?.startsWith(stateDir)) process.env[key] = relocated + process.env[key].slice(stateDir.length);
+  }
+  stateDir = process.env.OPENCLAW_STATE_DIR;
+  configPath = process.env.OPENCLAW_CONFIG_PATH;
+}
 // V's session.maintenance is warn; keep VLab's enforce mode out of the candidate copy.
 {
   const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
   config.session = { ...config.session, maintenance: { ...config.session?.maintenance, mode: "warn" } };
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 }
-// DB_COPY_DIR: copy shared VLab's makaron database there (SQLite backup) instead of plan.databases, whose
-// copies land on VLab's nearly full data disk; the candidate's agent directory links to it.
 const agentDir = path.join(stateDir, "agents", "makaron", "agent");
 const agentDb = path.join(agentDir, "openclaw-agent.sqlite");
+fs.mkdirSync(path.join(stateDir, "agents", "makaron", "sessions"), { recursive: true });
 if (process.env.DB_COPY_DIR) {
-  const copyDir = path.join(process.env.DB_COPY_DIR, path.basename(process.env.VLAB_CANDIDATE_DATA ?? String(process.pid)));
-  fs.mkdirSync(copyDir, { recursive: true, mode: 0o700 });
-  process.on("exit", () => fs.rmSync(copyDir, { recursive: true, force: true }));
-  if (fs.existsSync(agentDir)) {
-    for (const name of fs.readdirSync(agentDir)) fs.renameSync(path.join(agentDir, name), path.join(copyDir, name));
-    fs.rmdirSync(agentDir);
-  } else fs.mkdirSync(path.dirname(agentDir), { recursive: true });
-  fs.symlinkSync(copyDir, agentDir);
+  fs.mkdirSync(agentDir, { recursive: true });
   const started = performance.now();
   execFileSync("python3", ["-c", String.raw`import sqlite3,sys
 src=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True)
@@ -120,7 +130,7 @@ function snapshotState() {
   const walk = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
-      if (full.startsWith(EVIDENCE_DIR) || entry.name === "logs") continue;
+      if (full.startsWith(EVIDENCE_DIR) || entry.name === "logs" || full === path.join(stateDir, "npm")) continue;
       if (entry.isDirectory() || entry.isSymbolicLink() && fs.statSync(full).isDirectory()) walk(full);
       else if (entry.isFile()) {
         const stat = fs.statSync(full);
@@ -135,6 +145,8 @@ const changedFiles = (before, after) => [...new Set([...before.keys(), ...after.
 
 // ---- main-thread measurement ----
 async function measure(arm, run) {
+  // the state snapshots walk the directory synchronously, so they stay outside the measured window
+  const before = snapshotState();
   const gaps = [];
   let last = performance.now();
   const timer = setInterval(() => {
@@ -164,7 +176,6 @@ async function measure(arm, run) {
     }
   }, 2000);
   const elu = performance.eventLoopUtilization();
-  const before = snapshotState();
   const started = performance.now();
   let error;
   try {
@@ -259,7 +270,8 @@ async function runArm(arm) {
     const script = `const dist = ${JSON.stringify(DIST)};
 const { loadConfig } = await import(dist + "/config/config.js");
 const cfg = loadConfig();
-const timings = {};
+const { o: storeTargets } = await import(dist + "/targets-M9xRkscp.js");
+const timings = { targets: storeTargets(cfg, { env: process.env }).map((target) => target.agentId) };
 for (const [name, file, fn] of [["headers", "doctor-session-transcript-headers-QxFtPRSC.js", "noteSessionTranscriptHeaderHealth"], ["labels", "doctor-session-transcript-labels-DTxp6Q8J.js", "noteSessionTranscriptLabelHealth"]]) {
   const started = performance.now();
   await (await import(dist + "/" + file))[fn]({ cfg, env: process.env, shouldRepair: false });
