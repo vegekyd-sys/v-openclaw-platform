@@ -438,7 +438,8 @@
         "lab/gateway-fullread-hotpaths.test.mjs",
         "lab/subagent-scoped-row-index.test.mjs",
         "lab/health-summary-worker.test.mjs",
-        "lab/nightshift-throughput.test.mjs"
+        "lab/nightshift-throughput.test.mjs",
+        "lab/doctor-subprocess.test.mjs"
       ]
     }
   ],
