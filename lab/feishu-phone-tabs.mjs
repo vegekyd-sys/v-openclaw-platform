@@ -20,8 +20,8 @@ export async function readPhoneTabSettings(file, account) {
     const settings = config.accounts[account.accountId];
     if (settings.enabled !== true) return null;
     if (!appId(settings.appId) || settings.appId !== account.appId ||
-        !Array.isArray(settings.allowedOpenIds) || !settings.allowedOpenIds.length ||
-        settings.allowedOpenIds.some(value => !openId(value))) throw Error('invalid_configuration');
+        (settings.conversations !== true && (!Array.isArray(settings.allowedOpenIds) || !settings.allowedOpenIds.length ||
+        settings.allowedOpenIds.some(value => !openId(value))))) throw Error('invalid_configuration');
     return {...settings, url: publicPhoneUrl(settings.url)};
   } finally { await handle.close(); }
 }
@@ -33,7 +33,7 @@ export function publicPhoneUrl(value) {
       !/^\/[A-Za-z0-9_-]+\/feishu$/u.test(url.pathname) ||
       [...url.searchParams.keys()].some(key => key !== 'phone') ||
       url.searchParams.getAll('phone').length > 1 ||
-      url.searchParams.has('phone') && !/^[A-Za-z0-9_-]{1,128}$/u.test(url.searchParams.get('phone'))) {
+      url.searchParams.has('phone') && !/^[A-Za-z0-9_-]{1,407}$/u.test(url.searchParams.get('phone'))) {
     throw Error('invalid_configuration');
   }
   return url.href;
@@ -42,8 +42,12 @@ export function publicPhoneUrl(value) {
 function eventIdentity(data, expectedAppId) {
   if (!data || typeof data !== 'object' ||
       data.header?.app_id && data.header.app_id !== expectedAppId ||
-      data.header?.event_type && data.header.event_type !== 'im.chat.access_event.bot_p2p_chat_entered_v1') return null;
+      data.header?.event_type && !['im.chat.access_event.bot_p2p_chat_entered_v1','im.chat.member.bot.added_v1','im.message.receive_v1'].includes(data.header.event_type)) return null;
   const event = data.event ?? data;
+  if(data.header?.event_type === 'im.message.receive_v1') {
+    const chat=event.message?.chat_id,operator=event.sender?.sender_id?.open_id;
+    return chatId(chat)&&openId(operator)&&['p2p','group'].includes(event.message.chat_type)?{chat,operator}:null;
+  }
   if (!chatId(event.chat_id) || !openId(event.operator_id?.open_id)) return null;
   return {chat: event.chat_id, operator: event.operator_id.open_id};
 }
@@ -57,12 +61,12 @@ function sameTab(a, b) {
   return JSON.stringify(normalize(a)) === JSON.stringify(normalize(b));
 }
 
-export async function ensurePhoneTab({api, chat, url}) {
+export async function ensurePhoneTab({api, chat, url, allowGroup=false}) {
   if (!chatId(chat)) throw Error('invalid_event');
   url = publicPhoneUrl(url);
   const path = `/open-apis/im/v1/chats/${chat}`;
   const info = await api('GET', path);
-  if (info?.chat_mode !== 'p2p') return {status:'ignored_non_p2p'};
+  if (info?.chat_mode !== 'p2p' && !(allowGroup&&info?.chat_mode==='group')) return {status:'ignored_non_p2p'};
   const read = async () => {
     const result = await api('GET', path + '/chat_tabs/list_tabs');
     if (!Array.isArray(result?.chat_tabs)) throw Error('unconfirmed_read');
@@ -101,13 +105,15 @@ export function createPhoneTabHandler({account, getSettings, api, log = () => {}
   };
   const execute = async ({identity}) => {
     const settings = await getSettings();
-    if (!settings || settings.appId !== account.appId || !settings.allowedOpenIds?.includes(identity.operator)) return {status:'ignored_audience'};
-    const url = publicPhoneUrl(settings.url), key = identity.chat + ':' + identity.operator;
+    if (!settings || settings.appId !== account.appId || settings.conversations!==true&&!settings.allowedOpenIds?.includes(identity.operator)) return {status:'ignored_audience'};
+    const target=new URL(publicPhoneUrl(settings.url));
+    if(settings.conversations===true)target.searchParams.set('phone','feishu_'+Buffer.from(JSON.stringify([account.accountId,identity.chat])).toString('base64url'));
+    const url=target.href, key = identity.chat;
     const hit = cache.get(key);
     if (hit?.url === url && hit.until > now()) return {status:'cached'};
     try {
       if (closed) return {status:'stopped'};
-      const result = await ensurePhoneTab({api, chat:identity.chat, url});
+      const result = await ensurePhoneTab({api, chat:identity.chat, url,allowGroup:settings.conversations===true});
       cache.delete(key); cache.set(key, {url,until:now()+cacheMs});
       if (cache.size > 512) cache.delete(cache.keys().next().value);
       return result;
@@ -130,7 +136,7 @@ export function createPhoneTabHandler({account, getSettings, api, log = () => {}
   const run = data => {
     const identity = eventIdentity(data, account.appId);
     if (!identity || closed) return Promise.resolve({status:closed ? 'stopped' : 'ignored_event'});
-    const key = identity.chat + ':' + identity.operator;
+    const key = identity.chat;
     if (pending.has(key)) return pending.get(key);
     if (pending.size >= maxPending) {report({status:'queue_full'});return Promise.resolve({status:'queue_full'});}
     const deferred = Promise.withResolvers();
