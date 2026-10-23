@@ -4,17 +4,47 @@ import {mkdtemp,writeFile,chmod,symlink,rm,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createPhoneTabHandler,ensurePhoneTab,publicPhoneUrl,readPhoneTabSettings,createRuntimePhoneTabHandler} from './feishu-phone-tabs.mjs';
-import {patchFeishuPhoneTabs,patchFeishuPhoneTabClient} from './patch-feishu-phone-tabs.mjs';
+import {patchFeishuPhoneTabs,patchFeishuPhoneTabClient,patchConversationPhoneTabs} from './patch-feishu-phone-tabs.mjs';
 
 const account = {accountId:'trial',appId:'cli_test'};
 const url = 'https://voice.example/voice/feishu';
 const event = {chat_id:'oc_private',operator_id:{open_id:'ou_alice'}};
 const settings = {enabled:true,appId:account.appId,url,allowedOpenIds:['ou_alice']};
 const baseTab = {tab_id:'messages',tab_type:'message'};
+
+test('conversation mode automatically creates distinct public entries for new DMs and groups',async()=>{
+  for(const [chat,mode,operator] of [['oc_dmA','p2p','ou_alice'],['oc_dmB','p2p','ou_bob'],['oc_groupA','group','ou_alice'],['oc_groupB','group','ou_bob']]){
+    const f=fixture({mode}),h=createPhoneTabHandler({account,getSettings:async()=>({...settings,conversations:true,allowedOpenIds:[]}),api:f.api,cacheMs:0});
+    const entered={header:{event_type:mode==='group'?'im.chat.member.bot.added_v1':'im.chat.access_event.bot_p2p_chat_entered_v1'},event:{chat_id:chat,operator_id:{open_id:operator}}};
+    assert.equal((await h.run(entered)).created,true);
+    const entry=mode==='group'?f.menus[0].chat_menu_item.redirect_link.common_url:f.tabs[1].tab_content.url;
+    assert.equal(f.tabs.length,mode==='group'?1:2);
+    const phone=new URL(entry).searchParams.get('phone');
+    assert.deepEqual(JSON.parse(Buffer.from(phone.slice(7),'base64url').toString()),[account.accountId,chat]);
+    assert(!entry.includes(operator));
+    const firstMessage={header:{event_type:'im.message.receive_v1'},event:{sender:{sender_id:{open_id:operator}},message:{chat_id:chat,chat_type:mode}}};
+    assert.equal((await h.run(firstMessage)).created,false);assert.equal(f.writes,1);
+  }
+});
+
+test('conversation patch hooks added-group and first-message paths without changing text dispatch',async()=>{
+  const source=await readFile(new URL('./release-files/feishu-auto-phone-tab/monitor.account-WFdlCDhR.js',import.meta.url),'utf8');
+  const patched=patchConversationPhoneTabs(source);
+  assert.equal(patchConversationPhoneTabs(patched),patched);
+  assert.match(patched,/return handleFeishuMessage\(params\)/u);
+  assert.match(patched,/vPhoneTab.schedule\(\{header:\{event_type:"im.chat.member.bot.added_v1"/u);
+});
 function fixture(options = {}) {
-  let tabs = [structuredClone(baseTab)], requests = [], writes = 0;
+  let tabs = [structuredClone(baseTab)], menus = [], requests = [], writes = 0;
   const api = async (method,payloadPath,body) => {
     requests.push({method,path:payloadPath});
+    if(payloadPath.endsWith('/menu_tree')) {
+      if(method==='GET')return {menu_tree:{chat_menu_top_levels:structuredClone(menus)}};
+      writes++;
+      if(!options.rejectWrite)menus.push(...body.menu_tree.chat_menu_top_levels.map((row,index)=>({chat_menu_top_level_id:'menu'+index,...row})));
+      if(options.ambiguous||options.rejectWrite)throw Error('private-secret');
+      return {};
+    }
     if (method === 'GET' && !payloadPath.endsWith('list_tabs')) return {chat_mode:options.mode ?? 'p2p'};
     if (method === 'GET') return {chat_tabs:structuredClone(tabs)};
     writes++;
@@ -22,7 +52,7 @@ function fixture(options = {}) {
     if (options.ambiguous || options.rejectWrite) throw Error('SDK accidentally contains Bearer private-secret');
     return {};
   };
-  return {api,requests,get tabs(){return tabs;},set tabs(value){tabs=value;},get writes(){return writes;}};
+  return {api,requests,get menus(){return menus;},set menus(value){menus=value;},get tabs(){return tabs;},set tabs(value){tabs=value;},get writes(){return writes;}};
 }
 
 test('first private-chat entry creates one top tab and repeated entry preserves existing tabs',async () => {
@@ -137,4 +167,18 @@ export const untouchedCache=new Map();`;
   assert.equal(client.options.appType,'self');
   for(const log of Object.values(client.options.logger))assert.equal(log({Authorization:'Bearer fixture'}),undefined);
   assert.notEqual(client,module.createFeishuPhoneTabClient(config));assert.equal(module.untouchedCache.size,0);
+});
+
+test('group menu preserves other menus, handles unknown writes and refuses conflicts or a full menu',async()=>{
+  const f=fixture({mode:'group',ambiguous:true});
+  const other={chat_menu_top_level_id:'existing',chat_menu_item:{name:'已有应用',action_type:'NONE'},children:[]};
+  f.menus.push(other);
+  const args={api:f.api,chat:'oc_groupA',url,allowGroup:true};
+  assert.equal((await ensurePhoneTab(args)).recoveredUnknownWrite,true);
+  assert.deepEqual(f.menus[0],other);assert.equal(f.tabs.length,1);
+  assert.equal((await ensurePhoneTab(args)).created,false);assert.equal(f.writes,1);
+  f.menus[1].chat_menu_item.redirect_link.common_url='https://other.example';
+  await assert.rejects(ensurePhoneTab(args),/menu_conflict/);
+  f.menus=[other,{...other,chat_menu_top_level_id:'b'},{...other,chat_menu_top_level_id:'c'}];
+  await assert.rejects(ensurePhoneTab(args),/menu_full/);assert.equal(f.writes,1);
 });

@@ -40,6 +40,7 @@ import { dirname, join, resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { COMPONENTS, captureRuns, resolveVDirs, vPathForTarget } from './lib/runtime-components.mjs';
+import { feishuVoiceLayoutRemote } from './lib/feishu-voice-layout.mjs';
 
 // H5-only releases keep the Gateway runtime/current metadata unchanged. The
 // entry controller requires a frozen shared H5 proof and an idle voice entry.
@@ -168,6 +169,10 @@ const files = artifact.files.map((f) => {
   if (!vPath) fail(`${f.target}: no known place on V for this target; promote it by hand and extend this map`);
   return { target: f.target, vPath, before: f.before ?? null, after, bytes };
 });
+const voiceRuntime = files.find(f => f.target === 'openclaw/dist/v-feishu-voice-runtime.mjs');
+const voiceLayout = {core: vCore, feishu: vDirs.feishu, ...(voiceRuntime ? {source: voiceRuntime.bytes.toString('utf8')} : {})};
+// Validate cross-component import resolution before installing any bytes.
+console.log(ssh(V, `sudo ${V_NODE} --input-type=module`, feishuVoiceLayoutRemote(voiceLayout)).trim());
 
 console.log(`release ${args.release} (dev ${artifact.sourceCommit.slice(0, 12)}) -> V as ${args.name}`);
 for (const f of files) console.log(`  ${f.before ? 'replace' : 'add    '} ${f.vPath}`);
@@ -197,6 +202,7 @@ const installStatus = JSON.parse(vlab('status'));
 assertPromotionLease(installStatus, args.owner);
 assertAcceptedReleaseBinding(installStatus.current, args.release, manifestBytes, artifactBytes);
 console.log(ssh(V, `sudo ${V_NODE} - install ${sq(dir)}`, REMOTE).trim());
+console.log(ssh(V, `sudo ${V_NODE} --input-type=module`, feishuVoiceLayoutRemote({...voiceLayout, apply: true})).trim());
 
 // ---- 5. bookkeeping: capture, sentinel, align --------------------------------------
 const runs = captureRuns(args.name, vDirs);
