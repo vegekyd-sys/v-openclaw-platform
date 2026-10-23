@@ -40,7 +40,7 @@
       "source": "lab/release-files/feishu-multiuser-phone/monitor.account-WFdlCDhR.js",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
       "before": "85d6d08867fd21ecd393f0f8904a101d6b152cea279f0c2a969c6fc1a34c4e11",
-      "sha256": "84ca6293b6f10c32584d91d8d3be72334b52d3bd0abacce05c21511766d99998"
+      "sha256": "9e804fc3bf04acad4340699254a03ee6c90ecb85c5c2df55a6cb0cb9992c5eca"
     },
     {
       "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-actor.mjs",

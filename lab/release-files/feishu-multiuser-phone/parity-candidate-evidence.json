@@ -1,7 +1,7 @@
 {
-  "id": "candidate-30012bc2-aacc-4f06-a1e5-b881dc94b312",
+  "id": "candidate-44f4a653-42e7-49eb-a10c-5d6f99910c50",
   "ok": true,
-  "inputSha256": "cfd1494cc8eff7990d4f64b5a7646466afd50bdc9d7dafdc64b2090716c5c674",
+  "inputSha256": "bb60b20d423cdf655b71bd0314bb64e54b99734945665210e80aaa9321669147",
   "runtimeSha": "17b3685be83bfa7ba0b88ca8c134b589ac43647a0deb7cbcbfb5ad30112d76d3",
   "configSha256": "d2511d0b51aac69bb3ef4506bcac96789ca2453660cd5e2807ef1549fe1a881a",
   "sharedBeforePid": 1984654,
@@ -41,7 +41,7 @@
     {
       "source": "lab/release-files/feishu-multiuser-phone/monitor.account-WFdlCDhR.js",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
-      "after": "84ca6293b6f10c32584d91d8d3be72334b52d3bd0abacce05c21511766d99998"
+      "after": "9e804fc3bf04acad4340699254a03ee6c90ecb85c5c2df55a6cb0cb9992c5eca"
     },
     {
       "source": "lab/release-files/feishu-multiuser-phone/v-feishu-voice-actor.mjs",
@@ -69,7 +69,7 @@
       "after": "c4bd3f23ef142e3e2773a6b64b2347f06306cb8e20566d8ab31a2b25a081e64d"
     }
   ],
-  "tests": 24,
-  "scope": "native runtime fixtures and harmless exec; no Feishu live entry or audio acceptance",
+  "tests": 26,
+  "scope": "Native actor tool parity fixtures and authenticated URL-registration challenge. Live new-group event and OAuth acceptance recorded separately; first private conversation pending a real new account.",
   "productionChanged": false
 }

@@ -2,7 +2,8 @@
   "tests": [
     "lab/candidate/feishu-multiuser-phone.mjs",
     "lab/feishu-voice-actor.test.mjs",
-    "lab/feishu-phone-tabs.test.mjs"
+    "lab/feishu-phone-tabs.test.mjs",
+    "lab/feishu-webhook-challenge.test.mjs"
   ],
   "support": [
     "lab/feishu-voice-actor.mjs",
@@ -10,7 +11,8 @@
     "lab/feishu-phone-tabs.mjs",
     "lab/patch-feishu-phone-tabs.mjs",
     "lab/release-files/feishu-auto-phone-tab/monitor.account-WFdlCDhR.js",
-    "lab/release-files/feishu-ingress-catchup/monitor.account-WFdlCDhR.js"
+    "lab/release-files/feishu-ingress-catchup/monitor.account-WFdlCDhR.js",
+    "lab/patch-feishu-webhook-challenge.mjs"
   ],
   "files": [
     {

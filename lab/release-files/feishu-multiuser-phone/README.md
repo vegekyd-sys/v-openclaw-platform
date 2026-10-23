@@ -1,6 +1,6 @@
-# Feishu 多账号自动电话：Candidate v1
+# Feishu 电话与文字能力一致：独立 Candidate
 
-2026-10-23。配套 Voice 分支：`codex/feishu-multiuser-phone-20261023`。本目录为候选产物，不是已部署 release。
+2026-10-24。配套 Voice 分支：`codex/feishu-phone-text-parity-20261024`，Voice commit `7a83022698b62d046b946172a812bac180e6ae71`。本目录仅用于独立 Candidate；没有合入 dev、部署共享 VLab 或生产。
 
 ## 行为与授权
 
@@ -18,14 +18,20 @@ DM/group 的 route 必须仍对应原生飞书 peer。共享 main、别的 peer 
 
 `lab/build-feishu-voice-actor.mjs` 从只读 runtime 基线生成本目录，逐个 patch 检查唯一 anchor，产物保留已有其他修复。源补丁与纯授权逻辑在 `lab/patch-feishu-voice-actor.mjs`、`lab/feishu-voice-actor.mjs`、`lab/feishu-voice-policy.mjs`。`candidate-files.json` 记录产物与 before/after hash，不包含环境或聊天数据。
 
-合入前执行 `lab/candidate/feishu-multiuser-phone.plan.json`。候选加载真实 VLab runtime、原生 Feishu channel registry、ingress/routing/owner 和工具策略；配置、OAuth subjects、成员响应是明确的合成 fixture。原生 tools.invoke 的 memory_search 与 exec 拒绝测试实际经过处理器，未使用模型或付费语音。
+合入前执行 `lab/candidate/feishu-multiuser-phone.plan.json`。候选加载真实 VLab runtime、原生 Feishu channel registry、ingress/routing/owner 和工具策略；配置、OAuth subjects、成员响应是明确的合成 fixture。电话 catalog 与执行共用原生工具解析；非 owner 的原生 exec 实际成功，原有 sender/group deny 保留，未使用模型或付费语音。
 
-最终通过的 receipt 摘要在 `candidate-evidence.json`。原始 receipt 留在本地 ignored `tmp/candidate/`，不把线上配置/日志/数据快照放入 Git。没有共享 VLab 写入、lease、Gateway 重启、飞书发信、自动拨号、合并 dev 或生产发布。
+最新 26 项测试通过的 receipt 摘要在 `parity-candidate-evidence.json`。原始 receipt 留在本地 ignored `tmp/candidate/`，不把线上配置/日志/数据快照放入 Git。没有共享 VLab 写入、lease、共享 Gateway 重启、自动拨号、合并 dev 或生产发布。
+
+## HTTP 回调握手与真实入口验证
+
+V-Lab 测试应用使用独立 Candidate HTTP 回调，避免第二个长连接与共享实例随机竞争事件。实际观察到飞书的 URL 注册挑战仅携带加密正文，没有普通事件的签名头。`patch-feishu-webhook-challenge.mjs` 仅允许解密成功、类型为 `url_verification` 且 Verification Token 匹配的挑战返回结果；其他无签名/错签名事件仍然拒绝，不进入事件处理器。测试包括错误 token、普通事件、明文与损坏密文的拒绝。
+
+真实用户先建空群再邀请 V-Lab，Candidate 收到真实 `im.chat.member.bot.added_v1`，自动创建唯一的「📞 打给 V」tab；API 回读和飞书客户端均确认。随后真实飞书 OAuth（仅既有身份标识授权）进入 Candidate「可以拨号」页。没有手工创建 tab、伪造事件或发起通话。机器人创建群、以及用户创建时直接携带 bot 的两次 API 实验未观察到入群事件和自动 tab，不能视为通过；当前已通过范围是先建群、再拉入机器人。
 
 ## 尚需真实集成验收
 
-第二个真人账号尚缺。还需两位真实用户 OAuth、两个真实群与两个私聊的入口创建/刷新、成员撤销和各自工具账号、真实模型工具调用、手机音频/打断/重拨。合成 subject 不算真人验收，模块候选通过不算共享 Gateway/客户端通过。
+首次私聊所需的第二个真人账号姓名待用户提供。还需验证该账号首次打开 V-Lab 私聊时自动出现电话入口，以及该账号登录后的身份与原有能力。真实音频、模型工具调用及中途成员撤销未验证；合成 subject 和页面可拨号不等于这些场景通过。
 
-本改动涉及身份、工具策略和跨服务协议，最后走共享 VLab。按项目规则由 Tianyi 决定合入 dev 后取得空闲 lease，打包前重新核对 runtime/config/before hash；集成完毕按 VLab 流程回滚或经另行授权推广，不能占着共享环境等待第二个账号。生产不在本任务授权范围。
+用户当前明确要求独立 Candidate + V-Lab 飞书验证，不占共享 VLab，生产不动；本轮按该范围执行。后续合入和发布另按用户授权及项目流程进行。
 
 官方规范核对：[群成员列表](https://open.feishu.cn/document/server-docs/group/chat-member/get)、[机器人进群事件](https://open.feishu.cn/document/server-docs/group/chat-member/event/added-2)、[进入机器人私聊事件](https://open.feishu.cn/document/group/chat-member/event/bot_p2p_chat_entered)。成员查询需要对应应用已具备该接口任一受支持权限；不追加个人日历、通讯录或离线授权 scope。
