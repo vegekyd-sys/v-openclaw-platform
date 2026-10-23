@@ -11,6 +11,43 @@
 
 ---
 
+## v2026.9.1-db91.6-nightshift-throughput-20261022
+
+上线：2026-10-22 02:13 CST v-self-restart 生效（PID 352681 → 760077）  ·  tag `v2026.9.1-db91.6-nightshift-throughput-20261022`
+
+**摘要**：#454 夜班提效，Gateway 侧三项改动，一次重启生效：
+- worker 插件 schema 的上限放宽（maxWorkers 16→32，warmSpareWorkers 15→31），配置同时把 `maxWorkers` 从 15 调到 24（`v-self-restart --set`，配置不在捕获里）；
+- `agent:*:subagent:workboard-*` 卡片会话不再做 memory flush，避免卡片流水写进 daily memory（10-12..22 这些文件里 55–90% 是卡片流水）；
+- 卡片 notes 截断上限从 4,000 提到 Workboard 自己的 12,000。
+
+**文件变化**：
+- `core/dist/runtime-api-1CCazqtv.js` 3300629f… → 3bc03ce6…
+- `core/dist/agent-runner-memory-7VF-zwNt.js` 7d5eaa38… → befc094d…
+- `worker/openclaw.plugin.json` 1ec103e3… → 2223bae7…
+
+三个文件都来自 VLab 发版 `nightshift-throughput-v1`（dev e822d251，负责人 nightshift-throughput），验收证据记在 VLab 的 accept 里。
+
+**重启**：Codex 的 memory guard 显示 ready；`--check` dry-run 用新 schema 验证 maxWorkers=24 通过。用 `--idle-timeout 60 --if-busy wait-then-proceed` 重启，等满 62 s 后照常执行，打断了 11 个夜班回合，65 s 就绪。各项检查结果：worker 5/5 ready，invalidConfig 0。被打断的卡由夜班自动重试，02:15–02:21 之间重新开跑。
+
+**上线后验收**：
+- 日志出现 "started with 5-24 elastic workers"；`vlab.workers.status` 返回 workerCapacity 24、capacity 72；
+- 三个文件的哈希与计划一致；
+- Gateway 拒绝卡片写 memory 的日志（"Memory flush writes are restricted"）：18:00–02:13 共 9 条，重启后 0 条；
+- 夜班的 Worker 余量从 2 升到 11。
+
+## v2026.9.1-db91.6-gateway-451-452-20261021
+
+上线：2026-10-22 00:17 CST Gateway ready（PID 62954 → 352681）。本节记录运行时产物，尚未创建 git tag。
+
+**摘要**：#451 将单行会话快照的子任务登记读取限定到相关会话；#452 将定时健康汇总中的会话表读取移到常驻 worker 线程，减少主线程承受同步整表读取的机会。大闭包和 worker 故障保留旧路径回退，不声称所有卡顿均已解决。
+
+- 已验收源码：dev `53ed7f935c53d73e920d958a558df7e366533da0`；共享 VLab release `gateway-451-452-20261021-v1`，artifact SHA256 `158924f541a018f39cc2d58ec37c8cc199d05b350d8802e9a80db834fd8e7caf`。同一四文件产物部署到 V；与上一份生产捕获的 core 差异恰好为这四个文件，其他五组件无改动。
+- 功能：21 项静态检查、组合 candidate 537 次会话比较及 8 次健康汇总比较零差异；VLab 实际 12 并发工具/最终回复、子任务回传、连续对话通过。健康汇总副本冷读的主线程最长阻塞 500–543ms → 7–10ms，这不是生产整库端到端数字。
+- 生产：V Backup 三条已授权测试均拿到实际最终回复；普通 exec 8.683s、子任务创建到完成回传 32.003s、连续对话及新 exec 14.489s（本次 native user-event 到最终 assistant-event，非首字）。叶子子任务使用临时 cleanup=delete，单独的子会话记录在完成后被清理，回传链路与父会话工具事件保留。
+- 恢复：5/5 基础 worker、2/2 stream cron、indexer/vector-pin、夜班和语音入口恢复；NRestarts=0。夜班已恢复派单，语音页面显示可拨号，未验真人语音通话。原记忆补编译已成功；按用户最新指令重启时独立质检中断，随后由原 cron 自动重新运行。
+- 限制：VLab 首次冷态回合曾出现约23秒协调等待，暖机后复测通过；生产短窗口仍见约1.3–3.1秒 liveness overdue，未见同类30–60秒长停顿，不能外推长期性能已根治。未调整45会话槽/36夜班硬上限，也未归档历史记录。
+- 收尾：六组件774个捕获文件逐一核SHA256；漂移哨兵9215文件/6根目录0发现；V/VLab 18813文件 ALIGNED，integration lease已释放。保留本次四文件undo及前次整库备份；未合main、未打tag。
+
 ## v2026.9.1-db91.6-vector-budget-20261020
 
 上线：2026-10-20 23:13 CST v-self-restart 生效（PID 374689 → 2124560）  ·  tag `v2026.9.1-db91.6-vector-budget-20261020`
