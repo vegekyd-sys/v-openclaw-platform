@@ -35,3 +35,19 @@ export function createFeishuPhoneTabClient(creds) {
 }
 `;
 }
+
+export function patchConversationPhoneTabs(source) {
+  const marker='// v-feishu-conversation-phone-tabs-v2';
+  if(source.includes(marker))return source;
+  source=patchFeishuPhoneTabs(source);
+  const added='\t\t"im.chat.member.bot.added_v1": async (data) => {';
+  assert.equal(source.split(added).length,2,'Expected one bot-added handler');
+  source=source.replace(added,added+'\n\t\t\tvPhoneTab.schedule({header:{event_type:"im.chat.member.bot.added_v1"},event:data});');
+  const message='\t\t\thandleMessage: handleFeishuMessage,';
+  assert.equal(source.split(message).length,2,'Expected one message dispatch');
+  source=source.replace(message,`\t\t\thandleMessage: params => {
+        vPhoneTab.schedule({header:{event_type:"im.message.receive_v1"},event:params.event});
+        return handleFeishuMessage(params);
+      },`);
+  return marker+'\n'+source;
+}

@@ -4,13 +4,34 @@ import {mkdtemp,writeFile,chmod,symlink,rm,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createPhoneTabHandler,ensurePhoneTab,publicPhoneUrl,readPhoneTabSettings,createRuntimePhoneTabHandler} from './feishu-phone-tabs.mjs';
-import {patchFeishuPhoneTabs,patchFeishuPhoneTabClient} from './patch-feishu-phone-tabs.mjs';
+import {patchFeishuPhoneTabs,patchFeishuPhoneTabClient,patchConversationPhoneTabs} from './patch-feishu-phone-tabs.mjs';
 
 const account = {accountId:'trial',appId:'cli_test'};
 const url = 'https://voice.example/voice/feishu';
 const event = {chat_id:'oc_private',operator_id:{open_id:'ou_alice'}};
 const settings = {enabled:true,appId:account.appId,url,allowedOpenIds:['ou_alice']};
 const baseTab = {tab_id:'messages',tab_type:'message'};
+
+test('conversation mode automatically creates distinct public entries for new DMs and groups',async()=>{
+  for(const [chat,mode,operator] of [['oc_dmA','p2p','ou_alice'],['oc_dmB','p2p','ou_bob'],['oc_groupA','group','ou_alice'],['oc_groupB','group','ou_bob']]){
+    const f=fixture({mode}),h=createPhoneTabHandler({account,getSettings:async()=>({...settings,conversations:true,allowedOpenIds:[]}),api:f.api,cacheMs:0});
+    const entered={header:{event_type:mode==='group'?'im.chat.member.bot.added_v1':'im.chat.access_event.bot_p2p_chat_entered_v1'},event:{chat_id:chat,operator_id:{open_id:operator}}};
+    assert.equal((await h.run(entered)).created,true);
+    const phone=new URL(f.tabs[1].tab_content.url).searchParams.get('phone');
+    assert.deepEqual(JSON.parse(Buffer.from(phone.slice(7),'base64url').toString()),[account.accountId,chat]);
+    assert(!f.tabs[1].tab_content.url.includes(operator));
+    const firstMessage={header:{event_type:'im.message.receive_v1'},event:{sender:{sender_id:{open_id:operator}},message:{chat_id:chat,chat_type:mode}}};
+    assert.equal((await h.run(firstMessage)).created,false);assert.equal(f.writes,1);
+  }
+});
+
+test('conversation patch hooks added-group and first-message paths without changing text dispatch',async()=>{
+  const source=await readFile(new URL('./release-files/feishu-auto-phone-tab/monitor.account-WFdlCDhR.js',import.meta.url),'utf8');
+  const patched=patchConversationPhoneTabs(source);
+  assert.equal(patchConversationPhoneTabs(patched),patched);
+  assert.match(patched,/return handleFeishuMessage\(params\)/u);
+  assert.match(patched,/vPhoneTab.schedule\(\{header:\{event_type:"im.chat.member.bot.added_v1"/u);
+});
 function fixture(options = {}) {
   let tabs = [structuredClone(baseTab)], requests = [], writes = 0;
   const api = async (method,payloadPath,body) => {
