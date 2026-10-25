@@ -1,0 +1,797 @@
+{
+ "candidate": "candidate-cf243c46-9f5f-42a6-a3f0-ee9b1b75b966",
+ "commit": "7754873b22ac5c826b8125bc97286974b47e114d",
+ "dirty": false,
+ "baseRelease": "feishu-conversations-no-code-20261024",
+ "runtimeSha": "88c67961f3b47f03b50413b09f9483debea540aa55dc808b0fda6632d88b7f8b",
+ "testMs": 5607893,
+ "agents": {
+  "config": [
+   "makaron",
+   "short-v",
+   "v-codex",
+   "dealclaw",
+   "xiaoai"
+  ],
+  "multi": [
+   "makaron",
+   "short-v",
+   "v-codex",
+   "dealclaw",
+   "xiaoai"
+  ]
+ },
+ "invariant": {
+  "entries": 9642,
+  "sessionIdMismatch": 0,
+  "labelMismatch": 0,
+  "untrimmedSessionId": 0,
+  "examples": []
+ },
+ "progress.resolve": {
+  "done": 461,
+  "of": 463,
+  "mismatches": 0,
+  "s": 4354
+ },
+ "progress.ownership": {
+  "done": 101,
+  "of": 105,
+  "mismatches": 0,
+  "s": 5210
+ },
+ "equivalence": {
+  "cases": 568,
+  "resolve": 463,
+  "ownership": 105,
+  "mismatches": 0,
+  "byKind": {
+   "sessionId+agent": {
+    "n": 40,
+    "ok": 38,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 2,
+    "threw": 0,
+    "passed": 0
+   },
+   "sessionId+tools": {
+    "n": 40,
+    "ok": 38,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 2,
+    "threw": 0,
+    "passed": 0
+   },
+   "sessionId+allowMissing": {
+    "n": 10,
+    "ok": 9,
+    "ambiguous": 0,
+    "missing": 1,
+    "error": 0,
+    "threw": 0,
+    "passed": 0
+   },
+   "sessionId:other-agent": {
+    "n": 10,
+    "ok": 8,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 2,
+    "threw": 0,
+    "passed": 0
+   },
+   "multi:sessionId:other-agent": {
+    "n": 10,
+    "ok": 8,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 2,
+    "threw": 0,
+    "passed": 0
+   },
+   "multi:sessionId:other-agent+wrong-agent": {
+    "n": 10,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 10,
+    "threw": 0,
+    "passed": 0
+   },
+   "multi:sessionId+tools": {
+    "n": 10,
+    "ok": 9,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 1,
+    "threw": 0,
+    "passed": 0
+   },
+   "multi:label": {
+    "n": 10,
+    "ok": 6,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 4,
+    "threw": 0,
+    "passed": 0
+   },
+   "multi:shortId": {
+    "n": 6,
+    "ok": 6,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 0
+   },
+   "sessionId:duplicate": {
+    "n": 6,
+    "ok": 6,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 0
+   },
+   "multi:sessionId:cross-agent": {
+    "n": 3,
+    "ok": 2,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 1,
+    "threw": 0,
+    "passed": 0
+   },
+   "sessionId=key": {
+    "n": 6,
+    "ok": 6,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 0
+   },
+   "sessionId:synthetic": {
+    "n": 6,
+    "ok": 2,
+    "ambiguous": 0,
+    "missing": 2,
+    "error": 2,
+    "threw": 0,
+    "passed": 0
+   },
+   "sessionId:missing": {
+    "n": 4,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 2,
+    "error": 2,
+    "threw": 0,
+    "passed": 0
+   },
+   "sessionId+spawnedBy=parent": {
+    "n": 16,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 16,
+    "threw": 0,
+    "passed": 0
+   },
+   "sessionId+spawnedBy=other": {
+    "n": 16,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 16,
+    "threw": 0,
+    "passed": 0
+   },
+   "sessionId+spawnedBy=parent@fresh": {
+    "n": 16,
+    "ok": 12,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 4,
+    "threw": 0,
+    "passed": 0
+   },
+   "sessionId+spawnedBy=other@fresh": {
+    "n": 16,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 16,
+    "threw": 0,
+    "passed": 0
+   },
+   "label+agent": {
+    "n": 40,
+    "ok": 30,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 10,
+    "threw": 0,
+    "passed": 0
+   },
+   "label": {
+    "n": 40,
+    "ok": 30,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 10,
+    "threw": 0,
+    "passed": 0
+   },
+   "label:duplicate": {
+    "n": 3,
+    "ok": 3,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 0
+   },
+   "multi:label:cross-agent": {
+    "n": 3,
+    "ok": 2,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 1,
+    "threw": 0,
+    "passed": 0
+   },
+   "label:padded-entry": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 1,
+    "threw": 0,
+    "passed": 0
+   },
+   "label:padded-request": {
+    "n": 1,
+    "ok": 1,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 0
+   },
+   "label:synthetic": {
+    "n": 2,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 2,
+    "error": 0,
+    "threw": 0,
+    "passed": 0
+   },
+   "label:missing": {
+    "n": 2,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 1,
+    "error": 1,
+    "threw": 0,
+    "passed": 0
+   },
+   "label:invalid": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 1,
+    "threw": 0,
+    "passed": 0
+   },
+   "label+spawnedBy@fresh": {
+    "n": 6,
+    "ok": 2,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 4,
+    "threw": 0,
+    "passed": 0
+   },
+   "label+spawnedBy": {
+    "n": 6,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 6,
+    "threw": 0,
+    "passed": 0
+   },
+   "shortId+agent": {
+    "n": 40,
+    "ok": 40,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 0
+   },
+   "shortId": {
+    "n": 40,
+    "ok": 40,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 0
+   },
+   "shortId:32": {
+    "n": 5,
+    "ok": 5,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 0
+   },
+   "shortId:collision": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 1,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 0
+   },
+   "shortId:collision+slugHint": {
+    "n": 1,
+    "ok": 1,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 0
+   },
+   "shortId:collision+slugHint-miss": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 1,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 0
+   },
+   "shortId:internal": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 1,
+    "error": 0,
+    "threw": 0,
+    "passed": 0
+   },
+   "shortId:tombstone": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 1,
+    "error": 0,
+    "threw": 0,
+    "passed": 0
+   },
+   "shortId:missing": {
+    "n": 2,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 1,
+    "error": 1,
+    "threw": 0,
+    "passed": 0
+   },
+   "shortId:invalid": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 1,
+    "threw": 0,
+    "passed": 0
+   },
+   "slugHint-without-shortId": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 1,
+    "threw": 0,
+    "passed": 0
+   },
+   "multiple-selectors": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 1,
+    "threw": 0,
+    "passed": 0
+   },
+   "roles:read:sessionId": {
+    "n": 6,
+    "ok": 5,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 1,
+    "threw": 0,
+    "passed": 0
+   },
+   "roles:none:sessionId": {
+    "n": 6,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 6,
+    "threw": 0,
+    "passed": 0
+   },
+   "roles:read:label": {
+    "n": 4,
+    "ok": 3,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 1,
+    "threw": 0,
+    "passed": 0
+   },
+   "roles:none:label": {
+    "n": 4,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 4,
+    "threw": 0,
+    "passed": 0
+   },
+   "roles:read:shortId": {
+    "n": 4,
+    "ok": 4,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 0
+   },
+   "roles:none:shortId": {
+    "n": 4,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 4,
+    "threw": 0,
+    "passed": 0
+   },
+   "own:voice-run": {
+    "n": 40,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 40
+   },
+   "own:identities:id+key": {
+    "n": 40,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 40
+   },
+   "own:voice-run:main (shares its session id with a locked codex row)": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 1,
+    "passed": 0
+   },
+   "own:voice-run:main as the harness owner": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 1
+   },
+   "own:identities:locked-plugin id": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 1,
+    "passed": 0
+   },
+   "own:identities:locked-plugin id as owner": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 1
+   },
+   "own:identities:locked-plugin key": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 1,
+    "passed": 0
+   },
+   "own:identities:duplicate id": {
+    "n": 3,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 3
+   },
+   "own:identities:synthetic id": {
+    "n": 2,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 2
+   },
+   "own:identities:missing id": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 1
+   },
+   "own:identities:storePath": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 1
+   },
+   "own:identities:default agent": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 1,
+    "passed": 0
+   },
+   "own:identities:other agent": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 1
+   },
+   "own:voice-run:other agent": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 1
+   },
+   "own:files:key": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 1
+   },
+   "own:files:main key (session id shared with a locked row)": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 1,
+    "passed": 0
+   },
+   "own:files:locked key": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 1,
+    "passed": 0
+   },
+   "own:files:marker": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 1
+   },
+   "own:files:marker locked": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 1,
+    "passed": 0
+   },
+   "own:files:marker other agent": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 1
+   },
+   "own:files:marker missing": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 1,
+    "passed": 0
+   },
+   "own:files:marker internal": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 1,
+    "passed": 0
+   },
+   "own:files:not a marker": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 1,
+    "passed": 0
+   },
+   "own:files+ids": {
+    "n": 1,
+    "ok": 0,
+    "ambiguous": 0,
+    "missing": 0,
+    "error": 0,
+    "threw": 0,
+    "passed": 1
+   }
+  },
+  "sample": 0
+ },
+ "switch-off": [
+  {
+   "kind": "sessionId+tools",
+   "ms": 9859,
+   "same": true
+  },
+  {
+   "kind": "label:duplicate",
+   "ms": 8804,
+   "same": true
+  },
+  {
+   "kind": "shortId:collision",
+   "ms": 8677,
+   "same": true
+  },
+  {
+   "kind": "own:voice-run:main (shares its session id with a locked codex row)",
+   "ms": 7932,
+   "same": true
+  }
+ ],
+ "cost.base sessionId + agentId": {
+  "label": "V: sessionId + agentId",
+  "repeat": 3,
+  "msMedian": 8634.9,
+  "msMax": 8743.8,
+  "allocatedMBPerCall": 2406.5
+ },
+ "cost.patched sessionId + agentId": {
+  "label": "release: sessionId + agentId",
+  "repeat": 30,
+  "msMedian": 2.7,
+  "msMax": 14.2,
+  "allocatedMBPerCall": 0.4
+ },
+ "cost.base sessionId, no agentId (agent session tools)": {
+  "label": "V: sessionId, no agentId (agent session tools)",
+  "repeat": 3,
+  "msMedian": 8551.8,
+  "msMax": 9422,
+  "allocatedMBPerCall": 2422.8
+ },
+ "cost.patched sessionId, no agentId (agent session tools)": {
+  "label": "release: sessionId, no agentId (agent session tools)",
+  "repeat": 30,
+  "msMedian": 4.3,
+  "msMax": 17.5,
+  "allocatedMBPerCall": 0.8
+ },
+ "cost.base label + agentId": {
+  "label": "V: label + agentId",
+  "repeat": 3,
+  "msMedian": 9027.5,
+  "msMax": 9151.9,
+  "allocatedMBPerCall": 2406.6
+ },
+ "cost.patched label + agentId": {
+  "label": "release: label + agentId",
+  "repeat": 30,
+  "msMedian": 17,
+  "msMax": 21.9,
+  "allocatedMBPerCall": 0.4
+ },
+ "cost.base label, no agentId": {
+  "label": "V: label, no agentId",
+  "repeat": 3,
+  "msMedian": 9063.7,
+  "msMax": 9261.6,
+  "allocatedMBPerCall": 2420
+ },
+ "cost.patched label, no agentId": {
+  "label": "release: label, no agentId",
+  "repeat": 30,
+  "msMedian": 19,
+  "msMax": 27.8,
+  "allocatedMBPerCall": 0.9
+ },
+ "cost.base shortId + agentId": {
+  "label": "V: shortId + agentId",
+  "repeat": 3,
+  "msMedian": 8981.2,
+  "msMax": 9178.9,
+  "allocatedMBPerCall": 2424.7
+ },
+ "cost.patched shortId + agentId": {
+  "label": "release: shortId + agentId",
+  "repeat": 30,
+  "msMedian": 69.6,
+  "msMax": 94.6,
+  "allocatedMBPerCall": 15.8
+ },
+ "cost.base ownership (V Voice product task run)": {
+  "label": "V: voice run ownership",
+  "repeat": 3,
+  "msMedian": 8905.3,
+  "msMax": 8968.1,
+  "allocatedMBPerCall": 2361.6
+ },
+ "cost.patched ownership (V Voice product task run)": {
+  "label": "release: voice run ownership",
+  "repeat": 30,
+  "msMedian": 5.1,
+  "msMax": 21.4,
+  "allocatedMBPerCall": 1
+ }
+}
