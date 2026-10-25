@@ -19,6 +19,10 @@
 // (lab/candidate/channel-cards-support.mjs) and check the actionCard the
 // robot sends; `handoff-card` checks the Worker config the Gateway derives
 // carries the handoff plugin (the tool runs there).
+// `peer-case` (V 2026-10-15) makes the fake refuse group ids not spelled as
+// users wrote from them, sends to the folded id the core keeps in the session
+// key (Gateway `send`, and the message tool in a Worker turn), restarts the
+// Gateway, and checks `health`.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
@@ -77,7 +81,8 @@ assert.equal(spawnSync("tar", ["xzf", path.resolve(TARBALL), "-C", project]).sta
 const pluginDir = path.join(project, "node_modules", "@dingtalk-real-ai", "dingtalk-connector");
 const pluginDist = path.join(pluginDir, "dist");
 const { WebSocketServer } = createRequire(path.join(project, "node_modules", "noop.js"))("ws");
-const fake = createFakeDingTalkOpenApi({ WebSocketServer });
+// `peer-case`: the fake refuses a group id spelled differently from the one users wrote from.
+const fake = createFakeDingTalkOpenApi({ WebSocketServer, strictGroupIds: SCENARIO_NAMES.includes("peer-case") });
 const apiPort = await fake.listen();
 const fakeBase = `http://127.0.0.1:${apiPort}`;
 
@@ -168,14 +173,40 @@ const secretEntry = SCENARIO_NAMES.includes("secret-link")
   : undefined;
 if (secretEntry) Object.assign(env, secretEntry.gatewayEnv);
 const lines = [];
-const gateway = spawn(process.execPath, ["--max-old-space-size=4096", `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
-for (const s of [gateway.stdout, gateway.stderr]) {
-  s.setEncoding("utf8");
-  s.on("data", (chunk) => {
-    for (const line of chunk.split(/\r?\n/u).filter(Boolean)) lines.push({ at: Date.now(), line });
-    if (lines.length > 30_000) lines.splice(0, lines.length - 30_000);
+let gateway;
+const startGateway = () => {
+  gateway = spawn(process.execPath, ["--max-old-space-size=4096", `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
+  for (const s of [gateway.stdout, gateway.stderr]) {
+    s.setEncoding("utf8");
+    s.on("data", (chunk) => {
+      for (const line of chunk.split(/\r?\n/u).filter(Boolean)) lines.push({ at: Date.now(), line });
+      if (lines.length > 30_000) lines.splice(0, lines.length - 30_000);
+    });
+  }
+};
+const stopGateway = async () => {
+  const exited = new Promise((resolve) => (gateway.exitCode !== null ? resolve() : gateway.once("exit", resolve)));
+  gateway.kill("SIGTERM");
+  await Promise.race([exited, sleep(60_000)]);
+  if (gateway.exitCode === null) { gateway.kill("SIGKILL"); await exited; }
+};
+startGateway();
+// Gateway RPC as the operator (read-only lookups, `send`, `health`).
+const rpc = async (method, params, timeoutMs = 60_000) => {
+  const { GatewayClient } = await import(pathToFileURL(`${dist}/plugin-sdk/gateway-runtime.js`).href);
+  let client;
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Gateway hello timeout")), 15_000);
+    client = new GatewayClient({ url: `ws://127.0.0.1:${port}`, token: config.gateway?.auth?.token, deviceIdentity: null, clientName: "cli", mode: "cli", scopes: ["operator.admin", "operator.read", "operator.write"],
+      onHelloOk: () => { clearTimeout(timer); resolve(); }, onConnectError: (e) => { clearTimeout(timer); reject(e); } });
+    client.start();
   });
-}
+  try {
+    return await client.request(method, params, { timeoutMs });
+  } finally {
+    client.stop();
+  }
+};
 const waitFor = async (predicate, ms, label) => {
   for (const until = Date.now() + ms; Date.now() < until;) {
     const value = predicate();
@@ -428,6 +459,98 @@ const SCENARIOS = {
       log: lines.filter((l) => l.at >= since && /closeStreaming|final 响应无文本|idleNudge|SendMedia|sendMedia/u.test(l.line)).map((l) => redact(l.line).slice(0, 240)).slice(-12),
     };
   },
+  // V 2026-10-15: the core folds a group's openConversationId to lower case in
+  // the session key; sends whose target came from the session were refused
+  // (400 invalid.openConversationId). Session keys stay folded; the connector
+  // sends with the original spelling: learned from inbound messages (a file
+  // kept across restarts) or, for a group that has not written since, from its
+  // session entry. Two groups folding to the same id are left alone.
+  "peer-case": async () => {
+    const u = nextUser();
+    const ids = { g1: `cidPeerG1${u}AbCd==`, a: `cidAmbig${u}QwEr==`, b: `cidAMBIG${u}qWeR==`, g3: `cidSessG3${u}ZxCv==` };
+    const folded = (id) => id.toLowerCase();
+    assert.equal(folded(ids.a), folded(ids.b));
+    const idsFile = path.join(stateDir, "dingtalk-connector", "v-conversation-ids.json");
+    const readIds = () => { try { return JSON.parse(fs.readFileSync(idsFile, "utf8")).ids ?? {}; } catch { return null; } };
+    const CSV = Buffer.from("name,score\nA,1\n").toString("base64");
+    const inbound = async (conversationId, word) => {
+      const since = Date.now();
+      fake.sendUserText({ userId: u, text: `这是自动化测试，不要调用任何工具，只回复 ${word}`, group: true, conversationId });
+      await settle(conversationId, since, (t) => t.includes(word) && finishedCards(since).length > 0, { label: `${word} reply`, quietMs: 4000, timeoutMs: 240_000 }).catch(() => null);
+      const card = cardsSince(since).find((c) => (c.content ?? "").includes(word));
+      return { replied: Boolean(card), openSpaceId: card?.delivered?.openSpaceId ?? null };
+    };
+    const robotTo = (since) => fake.robotMessages.filter((m) => m.at >= since && m.openConversationId).map((m) => ({ msgKey: m.msgKey, openConversationId: m.openConversationId }));
+    const send = async (to, extra) => {
+      const since = Date.now();
+      let res, error;
+      try {
+        res = await rpc("send", { channel: "dingtalk-connector", to, agentId: "makaron", idempotencyKey: crypto.randomUUID(), ...extra }, 120_000);
+      } catch (e) {
+        error = redact(String(e?.message ?? e)).slice(0, 300);
+      }
+      await sleep(1500);
+      return {
+        to, ok: !error, error, messageId: res?.messageId ?? res?.result?.messageId,
+        robot: robotTo(since),
+        cardSpaces: cardsSince(since).map((c) => c.delivered?.openSpaceId).filter(Boolean),
+        rejected: fake.rejected.filter((r) => r.at >= since).map((r) => r.openConversationId),
+      };
+    };
+    const text = (word) => ({ message: word });
+    const file = (word) => ({ message: word, buffer: CSV, filename: "peer-case.csv", contentType: "text/csv" });
+    const r = { ids };
+    // 1. Inbound: the reply goes to the original id (unchanged path); the id is learned.
+    r.inbound = await inbound(ids.g1, "PEER_INBOUND_OK");
+    r.idsAfterInbound = readIds();
+    const rows = await rpc("sessions.list", { agentId: "makaron", limit: 500, includeLastMessage: false }).catch((e) => ({ error: String(e?.message ?? e) }));
+    r.sessionKeys = (Array.isArray(rows) ? rows : rows?.sessions ?? rows?.items ?? []).map((row) => String(row.key ?? "")).filter((k) => k.includes(":dingtalk-connector:group:"));
+    // 2. Sends whose target carries the folded id (as a target derived from the session does).
+    r.rpcText = await send(`group:${folded(ids.g1)}`, text("PEER_RPC_TEXT"));
+    r.rpcFile = await send(`group:${folded(ids.g1)}`, file("PEER_RPC_FILE"));
+    r.rpcFileChannelForm = await send(`channel:${folded(ids.g1)}`, file("PEER_RPC_FILE2"));
+    // 3. The agent's message tool (a Worker turn) with the folded id written out.
+    r.tool = { attempts: [] };
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const since = Date.now();
+      fake.sendUserText({ userId: u, group: true, conversationId: ids.g1, text: [
+        "这是自动化测试，请严格照做，不要解释。",
+        "1) 用 exec 运行：printf 'name,score\\nA,1\\n' > peer-case-table.csv",
+        `2) 调用 message 工具（action=send），target 填 group:${folded(ids.g1)}（照抄，大小写一个字母都不要改），message 填「PEER_TOOL_TEXT」，并把 peer-case-table.csv 作为附件（media 填这个文件路径）。`,
+        "3) message 工具返回后，最终回复只输出 NO_REPLY。",
+      ].join("\n") });
+      await settle(ids.g1, since, () => finishedCards(since).length > 0 || robotTo(since).length > 0 || fake.rejected.some((x) => x.at >= since), { label: "peer-case tool turn", quietMs: 15_000, timeoutMs: 300_000 }).catch(() => null);
+      const toolLog = lines.filter((l) => l.at >= since && /dingtalk target|sendMediaToDingTalk|DingTalk:SendMedia/u.test(l.line)).map((l) => redact(l.line).slice(0, 260)).slice(-8);
+      const attemptResult = { robot: robotTo(since), rejected: fake.rejected.filter((x) => x.at >= since).map((x) => x.openConversationId), log: toolLog };
+      r.tool.attempts.push(attemptResult);
+      if (attemptResult.robot.length || attemptResult.rejected.length) break;
+    }
+    // 4. Two groups that fold to the same id: nothing is changed.
+    r.ambiguousInbound = [await inbound(ids.a, "PEER_AMBIG_A"), await inbound(ids.b, "PEER_AMBIG_B")];
+    r.ambiguousFile = await send(`group:${folded(ids.a)}`, file("PEER_AMBIG_FILE"));
+    // 5. Restart. g3 is then known only from its session entry (taken out of the file).
+    r.g3Inbound = await inbound(ids.g3, "PEER_G3_OK");
+    const beforeRestart = Date.now();
+    await stopGateway();
+    const saved = readIds(); // null without the patch
+    if (saved) {
+      delete saved[folded(ids.g3)];
+      fs.writeFileSync(idsFile, `${JSON.stringify({ version: 1, ids: saved }, null, 1)}\n`, { mode: 0o600 });
+    }
+    r.idsBeforeRestart = saved;
+    startGateway();
+    await waitFor(() => fake.connected(), 600_000, "DingTalk Stream connection after restart");
+    await sleep(3000);
+    r.afterRestart = {
+      g1File: await send(`group:${folded(ids.g1)}`, file("PEER_RESTART_G1")),
+      g3File: await send(`group:${folded(ids.g3)}`, file("PEER_RESTART_G3")),
+      ids: readIds(),
+    };
+    r.health = await rpc("health", {}).then((h) => ({ ok: h?.ok, status: h?.status })).catch((e) => ({ error: redact(String(e?.message ?? e)).slice(0, 400) }));
+    r.restoreLog = lines.filter((l) => /dingtalk target|dingtalk conversation ids/u.test(l.line)).map((l) => ({ afterRestart: l.at >= beforeRestart, line: redact(l.line).slice(0, 300) }));
+    r.canonicalKeyErrors = lines.filter((l) => /SessionCanonicalKeyMigration/u.test(l.line)).length;
+    return r;
+  },
 };
 
 try {
@@ -524,6 +647,36 @@ if (EXPECT === "patched") {
     assert(r.toolTextSent, `the agent did not send with the message tool: ${JSON.stringify(r.attempts)}`);
     assert(!r.placeholder, `an empty-reply placeholder was shown: ${JSON.stringify(r.cards)}`);
     assert(r.cardFinals.length === 0 || r.cardSaysSent, `the reply card does not say the content was sent: ${JSON.stringify(r.cardFinals)}`);
+  }
+  if (s["peer-case"]) {
+    const r = s["peer-case"];
+    assert.equal(r.error, undefined, r.error);
+    const { g1, g3, a } = r.ids;
+    assert(r.inbound.replied && r.inbound.openSpaceId?.endsWith(g1), `inbound reply: ${JSON.stringify(r.inbound)}`);
+    assert.deepEqual(r.idsAfterInbound?.[g1.toLowerCase()], [g1], `inbound id not learned: ${JSON.stringify(r.idsAfterInbound)}`);
+    assert(r.sessionKeys.includes(`agent:makaron:dingtalk-connector:group:${g1.toLowerCase()}`), `session key not folded: ${JSON.stringify(r.sessionKeys)}`);
+    assert(!r.sessionKeys.some((k) => k.includes(g1)), "the session key changed");
+    for (const name of ["rpcText", "rpcFile", "rpcFileChannelForm"]) {
+      const x = r[name];
+      assert(x.ok && x.rejected.length === 0, `${name}: ${JSON.stringify(x)}`);
+      assert(x.robot.every((m) => m.openConversationId === g1) && x.cardSpaces.every((sp) => sp.endsWith(g1)), `${name} used a folded id: ${JSON.stringify(x)}`);
+    }
+    for (const name of ["rpcFile", "rpcFileChannelForm"]) assert(r[name].robot.some((m) => /file/iu.test(m.msgKey)), `${name}: no file was sent: ${JSON.stringify(r[name])}`);
+    assert(r.rpcFileChannelForm.cardSpaces.every((sp) => sp === `dtv1.card//IM_GROUP.${g1}`), `channel: target not sent to the group: ${JSON.stringify(r.rpcFileChannelForm)}`);
+    const tool = r.tool.attempts.at(-1);
+    assert(tool.robot.length > 0 && tool.robot.every((m) => m.openConversationId === g1) && tool.rejected.length === 0, `message tool: ${JSON.stringify(r.tool)}`);
+    // The connector reports a refused file as sent (its text part went out); the refusal is what counts.
+    assert(r.ambiguousFile.rejected.includes(a.toLowerCase()) && r.ambiguousFile.robot.length === 0, `ambiguous id was changed: ${JSON.stringify(r.ambiguousFile)}`);
+    assert(r.restoreLog.some((l) => l.line.includes("left as is: 2 conversations fold to it")), "no ambiguity log");
+    for (const [name, id] of [["g1File", g1], ["g3File", g3]]) {
+      const x = r.afterRestart[name];
+      assert(x.ok && x.rejected.length === 0 && x.robot.length > 0 && x.robot.every((m) => m.openConversationId === id), `after restart ${name}: ${JSON.stringify(x)}`);
+    }
+    assert(!r.restoreLog.some((l) => l.afterRestart && l.line.includes(g1.toLowerCase()) && l.line.includes("from its session")), "g1 was looked up again after the restart (file not used)");
+    assert(r.restoreLog.some((l) => l.afterRestart && l.line.includes(`${g3.toLowerCase()} sent as ${g3} (from its session)`)), `g3 not restored from its session: ${JSON.stringify(r.restoreLog)}`);
+    assert.deepEqual(r.afterRestart.ids?.[g3.toLowerCase()], [g3], "the session's id was not kept");
+    assert.equal(r.canonicalKeyErrors, 0, "SessionCanonicalKeyMigration errors");
+    assert(r.health.ok !== false && !r.health.error, `health: ${JSON.stringify(r.health)}`);
   }
   if (s["ask-card"]) {
     assert(s["ask-card"].questionCard, "no question card was delivered");

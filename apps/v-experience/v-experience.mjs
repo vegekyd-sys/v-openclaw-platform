@@ -1336,6 +1336,137 @@ export function channelSentSince(channel, ids, since) {
 /** An empty reply card closes with this when the turn's content went out on its own. */
 export const SENT_SEPARATELY_TEXT = "✅ 已发送";
 
+// ------------------------------------------------- DingTalk conversation ids
+//
+// The core folds the peer id of a DingTalk group to lower case in the session
+// key, and a delivery target derived from the session carries the folded id.
+// DingTalk's openConversationId is case-sensitive base64: the robot message
+// API rejects the folded spelling (400 invalid.openConversationId). The
+// session keys stay as they are; outbound sends put the original spelling
+// back. Originals come from inbound group messages (kept in a small file under
+// the state dir, shared by the Gateway and its workers and kept across
+// restarts) and, for a group that has not written since, from the delivery
+// fields of its session entry.
+const DINGTALK_IDS = Symbol.for("openclaw.v.dingtalkConversationIds");
+export const DINGTALK_IDS_FILE = "v-conversation-ids.json";
+const DINGTALK_LOOKUP_RETRY_MS = 10 * 60 * 1000;
+const DINGTALK_IDS_MAX = 2000;
+
+const dingtalkIdsState = () => (globalThis[DINGTALK_IDS] ??= { file: "", mtimeMs: -1, ids: new Map(), lookedUp: new Map(), logged: new Set() });
+const dingtalkIdsPath = (stateDir) => (stateDir ? `${String(stateDir).replace(/\/+$/u, "")}/dingtalk-connector/${DINGTALK_IDS_FILE}` : "");
+/** An openConversationId (`cid…`) that may have lost its case. */
+const isDingtalkConversationId = (id) => /^cid[\w+/=-]{8,}$/iu.test(id);
+
+function loadDingtalkIds(file) {
+  const state = dingtalkIdsState();
+  const fs = globalThis.process?.getBuiltinModule?.("node:fs");
+  if (!fs || !file) return state;
+  let mtimeMs;
+  try { mtimeMs = fs.statSync(file).mtimeMs; } catch { mtimeMs = 0; }
+  if (state.file === file && state.mtimeMs === mtimeMs) return state;
+  state.file = file;
+  state.mtimeMs = mtimeMs;
+  if (!mtimeMs) return state;
+  try {
+    const saved = JSON.parse(fs.readFileSync(file, "utf8"))?.ids ?? {};
+    for (const [folded, originals] of Object.entries(saved)) {
+      const known = state.ids.get(folded) ?? new Set();
+      for (const original of Array.isArray(originals) ? originals : []) if (typeof original === "string" && original.toLowerCase() === folded) known.add(original);
+      if (known.size) state.ids.set(folded, known);
+    }
+  } catch {}
+  return state;
+}
+
+function saveDingtalkIds(file, log) {
+  const fs = globalThis.process?.getBuiltinModule?.("node:fs");
+  if (!fs || !file) return;
+  // Merge with what other processes wrote since this one last read the file.
+  const state = loadDingtalkIds(file);
+  const ids = {};
+  for (const [folded, originals] of [...state.ids].slice(-DINGTALK_IDS_MAX)) ids[folded] = [...originals].sort();
+  try {
+    fs.mkdirSync(file.slice(0, file.lastIndexOf("/")), { recursive: true, mode: 0o700 });
+    const tmp = `${file}.${globalThis.process?.pid ?? 0}.tmp`;
+    fs.writeFileSync(tmp, `${JSON.stringify({ version: 1, ids }, null, 1)}\n`, { mode: 0o600 });
+    fs.renameSync(tmp, file);
+    state.mtimeMs = fs.statSync(file).mtimeMs;
+  } catch (err) {
+    log?.(`v-experience: dingtalk conversation ids not saved: ${String(err?.message ?? err)}`);
+  }
+}
+
+/** Learns the original spelling of a DingTalk conversation id; returns whether it was new. */
+export function rememberDingtalkConversationId(id, { stateDir, log } = {}) {
+  const original = String(id ?? "").trim();
+  if (!isDingtalkConversationId(original) || original === original.toLowerCase()) return false;
+  const file = dingtalkIdsPath(stateDir);
+  const state = file ? loadDingtalkIds(file) : dingtalkIdsState();
+  const folded = original.toLowerCase();
+  const known = state.ids.get(folded) ?? new Set();
+  if (known.has(original)) return false;
+  known.add(original);
+  state.ids.set(folded, known);
+  state.lookedUp.delete(folded);
+  saveDingtalkIds(file, log);
+  return true;
+}
+
+/** Original spellings of `folded` found among the strings of a session entry. */
+export function dingtalkIdsInEntry(entry, folded) {
+  const found = new Set();
+  const visit = (value, depth) => {
+    if (typeof value === "string") {
+      if (value.length > 200) return;
+      const id = channelTargetId(value);
+      if (id !== folded && id.toLowerCase() === folded) found.add(id);
+    } else if (value && typeof value === "object" && depth < 6) {
+      for (const child of Array.isArray(value) ? value : Object.values(value)) visit(child, depth + 1);
+    }
+  };
+  visit(entry, 0);
+  return [...found];
+}
+
+/**
+ * `to` with the original spelling of its DingTalk conversation id. Only an
+ * all-lower-case `cid…` id is changed, and only when exactly one original is
+ * known; `lookup(folded)` (the session entry's delivery fields) is asked at
+ * most once per id every ten minutes when neither the memory nor the file
+ * knows it. Any target prefix (`group:`, `channel:`) is kept.
+ */
+export function restoreDingtalkTarget(to, { stateDir, lookup, log } = {}) {
+  const raw = String(to ?? "").trim();
+  const id = channelTargetId(raw);
+  if (!isDingtalkConversationId(id) || id !== id.toLowerCase()) return to;
+  const file = dingtalkIdsPath(stateDir);
+  const state = file ? loadDingtalkIds(file) : dingtalkIdsState();
+  let known = state.ids.get(id);
+  let fromSession = false;
+  if (!known?.size && lookup && Date.now() - (state.lookedUp.get(id) ?? -Infinity) >= DINGTALK_LOOKUP_RETRY_MS) {
+    state.lookedUp.set(id, Date.now());
+    let found = [];
+    try { found = lookup(id) ?? []; } catch (err) { log?.(`v-experience: dingtalk session lookup failed for ${id}: ${String(err?.message ?? err)}`); }
+    for (const original of found) rememberDingtalkConversationId(original, { stateDir, log });
+    known = state.ids.get(id);
+    fromSession = Boolean(known?.size);
+  }
+  if (!known?.size) return to;
+  if (known.size > 1) {
+    if (!state.logged.has(`ambiguous:${id}`)) {
+      state.logged.add(`ambiguous:${id}`);
+      log?.(`v-experience: dingtalk target ${id} left as is: ${known.size} conversations fold to it (${[...known].join(", ")})`);
+    }
+    return to;
+  }
+  const [original] = known;
+  if (!state.logged.has(`restored:${id}`)) {
+    state.logged.add(`restored:${id}`);
+    log?.(`v-experience: dingtalk target ${id} sent as ${original}${fromSession ? " (from its session)" : ""}`);
+  }
+  return raw.slice(0, raw.length - id.length) + original;
+}
+
 // ---------------------------------------------------------------- telegram
 
 /** Callback data prefix owned by v-experience; Telegram allows 64 bytes. */

@@ -11,13 +11,19 @@
 // package the connector itself depends on.
 import http from "node:http";
 
-export function createFakeDingTalkOpenApi({ WebSocketServer }) {
+// With `strictGroupIds`, robot group messages are accepted only for a group id
+// a user wrote from, spelled exactly (DingTalk's openConversationId is
+// case-sensitive: a folded id gets 400 invalid.openConversationId).
+const STATUS = Symbol("status");
+export function createFakeDingTalkOpenApi({ WebSocketServer, strictGroupIds = false }) {
   const calls = [];
   const cards = new Map(); // outTrackId -> {target, history, content, status}
   const webhookMessages = []; // {at, conversationId, msgtype, text, actionCard?}
   const robotMessages = []; // robot OpenAPI sends: {at, path, userIds|openConversationId, msgKey, msgParam}
   const mediaUploads = []; // oapi media uploads: {at, type, bytes}
   const sockets = new Set();
+  const groups = new Set(); // group conversation ids users wrote from
+  const rejected = []; // robot group sends refused for their id: {at, openConversationId, msgKey}
   let nextMsg = 1;
   let port;
 
@@ -36,6 +42,10 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
   const robotSend = (path, body) => {
     let msgParam = body.msgParam;
     try { msgParam = JSON.parse(body.msgParam); } catch {}
+    if (strictGroupIds && body.openConversationId !== undefined && !groups.has(body.openConversationId)) {
+      rejected.push({ at: Date.now(), openConversationId: body.openConversationId, msgKey: body.msgKey });
+      return { [STATUS]: 400, code: "invalid.openConversationId", message: "openConversationId is invalid", requestid: "candidate" };
+    }
     robotMessages.push({ at: Date.now(), path, userIds: body.userIds, openConversationId: body.openConversationId, robotCode: body.robotCode, msgKey: body.msgKey, msgParam });
     return { processQueryKey: `candidate-pqk-${robotMessages.length}`, invalidStaffIdList: [], flowControlledStaffIdList: [] };
   };
@@ -99,7 +109,7 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
     const handler = routes[key];
     // Unknown endpoints (emotion reply/recall, user lookups, media) succeed quietly.
     const result = handler ? handler(body, url.searchParams) : (url.pathname.startsWith("/topapi") || url.pathname.startsWith("/user") ? { errcode: 0, errmsg: "ok", result: {} } : { success: true, result: {} });
-    res.writeHead(200, { "content-type": "application/json" });
+    res.writeHead(result?.[STATUS] ?? 200, { "content-type": "application/json" });
     res.end(JSON.stringify(result));
   });
 
@@ -124,6 +134,7 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
     webhookMessages,
     robotMessages,
     mediaUploads,
+    rejected,
     /** A user taps a control on an interactive card; resolves with the client's ack. */
     pressCard({ outTrackId, userId, params }) {
       const messageId = `card-${Date.now()}-${nextMsg++}`;
@@ -141,6 +152,7 @@ export function createFakeDingTalkOpenApi({ WebSocketServer }) {
     /** A user writes to the robot (direct chat unless `group`). */
     sendUserText({ userId, text, group = false, conversationId, senderNick = "Tianyi" }) {
       const conv = conversationId ?? (group ? `cidGroup${userId}` : `cidDirect${userId}`);
+      if (group) groups.add(conv);
       const msgId = `msg${Date.now()}${nextMsg++}`;
       const data = {
         conversationId: conv, conversationType: group ? "2" : "1", conversationTitle: group ? "VLab candidate group" : undefined,
