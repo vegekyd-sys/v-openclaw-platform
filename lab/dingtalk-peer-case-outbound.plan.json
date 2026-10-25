@@ -1,0 +1,23 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/v-experience-dingtalk-peer-case-outbound/dist/message-handler-BUoLSylZ.mjs",
+      "target": "npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/message-handler-BUoLSylZ.mjs",
+      "before": "a973a1b6bcf42529fbe90dcde50cc3c71e289f18e4aa949d5c799e5a6baae7db",
+      "after": "5cd4d5d761641f8dd2809163ab5a00e55817f47e7b8c125f5533147e1db0ee23"
+    },
+    {
+      "source": "lab/release-files/v-experience-dingtalk-peer-case-outbound/dist/runtime-C81EKBS1.mjs",
+      "target": "npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/runtime-C81EKBS1.mjs",
+      "before": "fa36036c441ceddf187c4102d5cf4934e42ba16f98067b7cf12e976ed55f577d",
+      "after": "6c9d9e2d3604cc0a97824f498d047feecb7ce885bcda040c0e602a3fa3979835"
+    },
+    {
+      "source": "lab/release-files/v-experience-dingtalk-peer-case-outbound/dist/v-experience.mjs",
+      "target": "npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/v-experience.mjs",
+      "before": "a85c1d37db7a88d3556349c3a9a7bceb35b56f3fa431f36f76d1accd331a3850",
+      "after": "6555ba08e72b4c46d58f8756a4e43bd4991371fbaab56fb904c507357cc784df"
+    }
+  ]
+}
