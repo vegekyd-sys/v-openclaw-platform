@@ -1,6 +1,6 @@
 # V 调用 openclaw 工具（内置系统助手）的重新评估 — 2026-10-25
 
-结论：选 **(b)**。V 遇到自己的系统问题，自己只读诊断，不再交给 `openclaw` 工具；`openclaw` 工具保留，只用于用户明确要求走 OpenClaw 内置审批的配置/渠道/插件变更和引导流程。冻结本身由 PR #463（doctor 改在子进程跑）解决，本文解决的是「这个调用有没有用、该不该调」。
+结论：**(c) 不再调用**，用官方配置 `agents.entries.makaron.tools.deny: ["openclaw"]` 让 V（makaron）拿不到 `openclaw` 工具。2026-10-25 第一版提交的是 (b)：往 V 的 AGENTS.md 加规则，再加一个诊断技能。Tianyi 回复：「V现在自己本来就会做诊断，可以不保留或者不用openclaw这个工具。agent.md加内容我不太赞同」，所以改成这一版：不动 AGENTS.md，不加技能，不靠提示词，也不改 dist。冻结本身由 PR #463（doctor 改在子进程跑）解决。
 
 ## 1. 调用链（V 运行时 `db91-release-v2026.9.1-db91.6/core/dist`，只读）
 
@@ -41,73 +41,51 @@
 
 三次的共同点：V 自己已经查到根因附近，卡在「宿主侧受支持的修法是什么」，于是把证据转给助手。助手看不到宿主配置、环境变量和插件代码，只能跑 doctor 或复述；而 doctor 冻住 Gateway 又让 V 自己的工具也失灵。Tianyi 的判断「它本质上也修不好，最后就不了了之」与记录一致。
 
-## 3. 三个选项
+## 3. 三个选项与决定
 
-- **(a) 让助手把任务做完：不可行。** 要让它诊断这类问题，得给它日志/文件/命令能力，而 OpenClaw 强制它只有 `openclaw` 一个工具；改这个等于在 Gateway 进程里再造一个权限更高、能力更弱的 V。即使 #463 上线，doctor 子进程也要约 60 s，加上一轮 120 s 上限和 V 侧 90–120 s 超时，答案仍然常常送不到。
-- **(b) V 自己诊断：采用。** V 有 shell、sudo（按 TOOLS.md 授权）、日志、插件源码、`openclaw` CLI，助手能读的它都能读，助手读不到的它也能读。缺的只是「按问题类型怎么查、哪些读法会伤生产」的步骤。
-- **(c) 禁用：不采用。** 审批卡变更和渠道引导仍是正当用途（9/15、9/16、10/03 三次真实落地），Tianyi 说过保留 V 用 openclaw 的权利。(b) 加上 #463 已经去掉了主要伤害，没有必要再从工具层禁掉。
+- (a) 让助手把任务做完：不可行。要能诊断这类问题，就得给它日志和命令能力，而 OpenClaw 强制它只有 `openclaw` 一个工具；即使 #463 上线，一轮 120 s 的上限和 V 侧 90–120 s 的超时也不变。
+- (b) V 自己诊断，靠 AGENTS.md 规则加技能来引导：第一版做的就是这个。Tianyi 不赞成往 AGENTS.md 加内容，而且 V 本来就会自己诊断（第 5 节里，两组对照都是 V 自己查完的）。
+- **(c) 不再调用：采用。** 理由是第 2 节的记录：诊断类请求 0 件解决、三次冻结。能落地的那几次变更都有替代：重启用 `sudo v-self-restart`，配置用 `v-openclaw-config` 技能或官方 `openclaw config` CLI。Tianyi 已确认不需要保留。
 
 ## 4. 改动
 
-| 文件 | 作用 |
-|---|---|
-| `ops/v-workspace/skills/v-system-diagnosis/SKILL.md` | 新技能：为什么不交给助手；只读原则（有界 journal、不全表扫会话库、不跑完整 `openclaw doctor`，需要时 `doctor --lint --only <id>`）；A–G 七类问题的具体步骤（定时任务、宿主代理/网络、插件与 V Browser、Gateway/Worker、飞书收发、配置键、卡住的会话）；openclaw 工具还能用在哪；查不出来时给 Tianyi 报什么。所列命令都在 9.1 CLI 上核对过存在。 |
-| `ops/v-workspace/agents-md/v-system-diagnosis.md` | 插进 V 工作区 AGENTS.md 的四行规则（505 字符），指向技能路径。 |
-| `scripts/install-v-system-diagnosis.py` | 在 V 上安装：备份 AGENTS.md 和旧技能 → 在 `### Real-Time Progress Updates` 之前插入带标记的规则块（再次运行原地替换，幂等）→ 复制技能 → 回读校验；`--check` 只报告，`--uninstall` 按字节还原。拒绝把 AGENTS.md 推过 2 万字符的 bootstrap 上限。 |
-| `tests/v-system-diagnosis-install.test.py` | 8 项：只读检查不写、插入位置、块外字节不变、幂等、替换、卸载还原、锚点缺失/重复拒绝、超限拒绝。 |
-| `lab/candidate/openclaw-delegate-routing.mjs` + `.plan.json` | VLab candidate A/B，见第 5 节。 |
+只有一份配置补丁：`config/v-makaron-deny-openclaw-tool.json`
 
-**为什么规则写进 AGENTS.md 而不是只靠技能描述**：V 的技能目录在提示里被截断。10/25 两个会话的 `systemPromptReport` 都只收进 109 个技能，按字母排到 `geelark-tiktok-login` 为止（默认 `maxSkillsPromptChars` 18000），`makaron`、`v-openclaw-config` 都不在；新技能 `v-…` 也会被截掉。注入的工作区文件只有 AGENTS / SOUL / IDENTITY / USER（TOOLS.md 不在列表里），子 agent 只注入 AGENTS.md。所以 AGENTS.md 是唯一所有会话都看得到的地方，规则里直接写技能路径。AGENTS.md 现为 13132 字符，加上后 13637，离 2 万上限还远。
+```json
+{ "agents": { "entries": { "makaron": { "tools": { "deny": ["openclaw"] } } } } }
+```
 
-AGENTS.md 是核心文档，按其「Core Document Modification Rules」，这段 diff 需要 Tianyi 批准后才能装。
+- 用的是 per-agent 的 deny，没用全局 `tools.deny`。系统助手自己的运行（agentId `openclaw`，`toolsAllow: ["openclaw"]`）要用同名的 ring-zero 工具，全局 deny 会连它一起禁掉。其他 agent（v-codex、short-v、xiaoai、dealclaw 等）保持不变。
+- 9.1 的工具策略（`agent-tools.policy`，`resolveEffectiveToolPolicy`）会把 `agents.entries.<id>.tools` 的 deny 合进这个 agent 每次运行的工具过滤里，在 harness 之前生效，所以 Codex 的动态工具、Gateway 内的 embedded 运行都过同一道过滤。
+- V 生产上 `agents.entries.makaron.tools` 目前是 `{}`，全局 `tools.deny` 是 `[]`，合并后只多这一项。
+- Worker 那份配置（`worker-openclaw.json`）不手改：10/03 起它由 Worker 插件从主配置自动推导、逐字复制，手改会被下一次推导覆盖。第 5 节验证了推导后的文件里确实带上了这条 deny。vlab-worker 会话原本就没有 `openclaw` 工具（委托工具只给非 embedded 的运行），写进去也不影响它。
 
 ## 5. VLab candidate 验证
 
-`lab/candidate/openclaw-delegate-routing.mjs`：独立 candidate Gateway，makaron 用 `/vds`（Codex harness + DeepSeek，和 `/vcodex` 同一个 harness，openclaw 工具同样以动态工具出现；`/vcodex` 需要 ChatGPT 登录，candidate 不复制）。工作区是从 V 只读拿来的 AGENTS/SOUL/IDENTITY/USER/TOOLS/REDLINES 和 `skills/v-openclaw-config`（打包在被 git 忽略的 `tmp/v-workspace-docs.tgz`，不进仓库）。两组交替跑，只差工作区：
+`lab/candidate/makaron-deny-openclaw-tool.mjs`：一个 candidate Gateway 进程从头跑到尾。
 
-- baseline：V 现状；
-- fixed：同一份文件跑过 `install-v-system-diagnosis.py`。
+1. 改前跑两个真实回合并记录工具列表：一个 `/vds`（Codex harness，和生产 `/vcodex` 同一个 harness；`openclaw` 工具以动态工具形式出现），一个走 makaron 默认的 Worker 路由。
+2. Gateway 运行中，用官方 `openclaw config patch --file config/v-makaron-deny-openclaw-tool.json` 改配置。记录 `config.schema.lookup` 给出的 reloadKind、Gateway 的日志反应，以及推导出的 Worker 配置。
+3. 改后在新会话里再跑同样两个回合。
 
-每轮新会话，消息复刻 10/22 UM、10/25 V Browser 两次 V 发给助手前的状态（用户请求 + V 已查到的证据 + V 转给助手的那个问题）。判据：Codex rollout 和 OpenClaw 会话镜像里有没有 `openclaw` 工具调用；Gateway 日志里有没有 `openclaw-turn-` / `openclaw.chat`；V 有没有读 `v-system-diagnosis`；有没有自己跑完整 `openclaw doctor`。
+判据：改前 `/vds` 有 `openclaw`；改后 `/vds` 的工具列表正好少了 `openclaw` 这一个；Worker 路由的工具列表不变；四个回合都正常回复「收到」；Gateway 进程没有退出、没有重启。
 
-冒烟（candidate-ae92e637，V Browser 场景各 1 轮）：两组都看到了 `openclaw` 工具，**两组都没调**；baseline 用 exec 自己查了 495 s，fixed 读了技能、313 s 给出结论。也就是说 DeepSeek（`/vds`）复现不了生产的触发——三次事故都是 gpt-6.1-sol。因此 baseline 调用率只记录、不作断言（`ODR_REQUIRE_BASELINE_CALL=1` 可改回闸门），fixed 组的四项判据仍是硬断言。冒烟里 agent 顺着镜像配置里的生产地址，用 VLab 的 relay token 探测了 V 的 `100.82.39.107:24906`（只读 HTTP，返回 401）；正式一轮两组提示都加了「不要连生产主机」。
-
-正式一轮（candidate-b909e0bf，2026-10-25 10:49–11:35，`/vds`，UM 与 V Browser 各 2 轮 × 两组，交替顺序）：
-
-| | baseline（V 现状） | fixed（装了本 PR） |
-|---|---|---|
-| 每轮都提供了 `openclaw` 工具 | 4/4 | 4/4 |
-| 调用 `openclaw` 工具 | **0/4** | **0/4** |
-| Gateway 起系统助手回合（`openclaw-turn-` / `openclaw.chat`） | 0 | 0 |
-| 自己跑完整 `openclaw doctor` | 0 | 0 |
-| 读了 `v-system-diagnosis` | （计数被污染，见下） | 4/4，其中 1 轮可确认 |
-| 完成 / 中位耗时 | 3/4（1 轮 480 s 超时被中止）/ 353 s | 4/4 / 320 s |
-
-- **DeepSeek 下 baseline 也一次没调**，生产的触发（gpt-6.1-sol）没有复现。所以这轮能证明的是：装上以后 V 读技能、按技能自己查、不调 openclaw、不碰 doctor，回合不变慢；**证明不了「装之前会调、装之后不调」的因果**。这一点要靠生产记录（三次都是 `/vcodex`）和上线后的核对。
-- fixed 组的结论有实质内容：UM 两轮都查到 `proxy.loopbackMode` 只覆盖精确 loopback、`secrets.egressProxy.allowedHosts` 只管 HTTPS，最小修法是让 Gateway 进程继承带 IPv6 方括号的 `NO_PROXY` 再重启一次；V Browser 两轮都指出租约只回传槽位名、relay 地址来自静态 profile，`target:"host"` 在哪台机器解析决定了连哪个 facade。
-- 计数缺陷：脚本按修改时间找 Codex rollout，前一轮会话的文件被追加后也算进下一轮，于是 baseline 有 2 轮被记成「读了技能」（baseline 工作区里没有这个技能，不可能读到）。同样的原因让 fixed 组第 2–4 轮的读技能计数不可确认，只有第 1 轮（前一轮是 baseline）可信。`openclaw` 调用和系统助手回合两项只会多算不会漏算，0 是可靠的。脚本已改为只统计本轮新建的 rollout，未重跑。
-
-重新生成输入：
-
-```sh
-ssh v 'sudo -n tar czf - -C /home/openclaw/makaron-openclaw/.openclaw-local/workspace AGENTS.md SOUL.md IDENTITY.md USER.md TOOLS.md REDLINES.md skills/v-openclaw-config' > tmp/v-workspace-docs.tgz
-node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo "$PWD" --owner <task> --plan "$PWD/lab/candidate/openclaw-delegate-routing.plan.json"
-```
+CANDIDATE_RESULTS
 
 ## 6. 上线（合入后，由生产监控 session 安排）
 
-不需要重启 Gateway：AGENTS.md 和技能每轮都从磁盘读。
-
 ```sh
-sudo python3 scripts/install-v-system-diagnosis.py --check   # 看 diff 与字数
-sudo python3 scripts/install-v-system-diagnosis.py           # 备份到 ~openclaw/.openclaw/backups/workspace-docs/
+openclaw gateway call config.schema.lookup --params '{"path":"agents.entries.makaron.tools.deny"}' --json | grep -m1 '"reloadKind"'
+openclaw config patch --file config/v-makaron-deny-openclaw-tool.json --dry-run
+openclaw config patch --file config/v-makaron-deny-openclaw-tool.json
 ```
 
-之后在 V 工作区 git 里提交 AGENTS.md 和 `skills/v-system-diagnosis/`。回滚：`--uninstall`，或从备份目录拷回。验收：下一次 V 遇到同类系统问题时，会话里没有 `openclaw` 工具调用、Gateway 日志没有 `openclaw-turn-`，V 读了技能并给出带证据的结论或给 Tianyi 的具体问题。
+RELOAD_NOTE
 
-## 7. 没覆盖 / 顺带发现
+验收：在 V 上找一个 `/vcodex` 会话发一条新消息，看它 `systemPromptReport.tools` 里已经没有 `openclaw`、回复正常；Worker 配置里有同样的 deny。回滚：`openclaw config unset agents.entries.makaron.tools.deny`。
 
-- candidate 用 DeepSeek（`/vds`），生产三次都是 gpt-6.1-sol（`/vcodex`）；模型不同，遵从度可能不同。
-- 只测了路由（调不调、读不读技能），没测 V 按技能查下去能否真修好 UM 和 V Browser——VLab 没有那两个环境。
-- **技能目录截断**：V 的提示里只有 109 个技能，字母序 `geelark-…` 之后全部看不到，包括 `makaron`、`night-shift-operator`、`v-openclaw-config`。影响面远大于本问题，另开处理。
-- **TOOLS.md 没有注入**：10/25 两个会话的注入列表里都没有 TOOLS.md（会话过滤逻辑只对群聊去掉 MEMORY.md，原因未查）。TOOLS.md 里「重启只用 `sudo v-self-restart`、不要走 openclaw 工具」那条规则因此只有 V 按启动顺序主动去读时才看得到；TOOLS.md 本身 21783 字节，也超过 2 万字符上限的量级，需要核对。
+## 7. 没覆盖
+
+- candidate 用的是 `/vds`（Codex + DeepSeek）。生产三次都是 `/vcodex`（gpt-6.1-sol），而 candidate 不复制 ChatGPT 登录。工具过滤按 agent 生效、在模型之前，与模型无关；但 `/vcodex` 的实际列表要等上线后核对。
+- `/vcc`（claude-cli）没跑：candidate 没有 Claude 登录。claude-cli 拿到的普通工具走同一套 agent 工具策略；另外那个单独的 `openclaw-tools` MCP（`OPENCLAW_TOOLS_MCP_TOOLS=openclaw`）只给系统助手自己的运行用，不给普通 agent。上线后用一个 `/vcc` 会话核对。
+- 第一版附带的发现（V 提示里的技能列表截断在 `geelark-…`、TOOLS.md 没有被注入）与本 PR 无关，已另开处理。
