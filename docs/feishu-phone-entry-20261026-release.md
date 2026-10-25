@@ -23,7 +23,7 @@ Voice 957 项主测试、95 项音响测试、11 项发布测试通过；PR 和 
 
 ## 平台验收
 
-生产 `v-self-restart` 于 00:27:49 完成，无告警，2 个 stream cron 恢复，6 个 worker 就绪。原 Gateway 配置 hash 保留，Voice 双节点切换期间 Gateway 身份稳定。生产漂移检查覆盖六个目录、9,222 个文件，0 findings。VLab/V 最终对齐回执随后补入。
+生产 `v-self-restart` 于 00:27:49 完成，无告警，2 个 stream cron 恢复，6 个 worker 就绪。原 Gateway 配置 hash 保留，Voice 双节点切换期间 Gateway 身份稳定。生产漂移检查覆盖六个目录、9,222 个文件，0 findings。2026-10-26 00:51:18，VLab/V 完整比较 18,820 个文件，结果 ALIGNED。
 
 本次归档相对前一 tag 有四个文件差异：一个是本次电话入口模块，另外三个是此前已上线的钉钉 PR #472；没有重新部署这三个文件。原候选路径的局限已在 [候选与共享验收](acceptance/feishu-phone-entry-migration-20261025/README.md) 中更正。
 

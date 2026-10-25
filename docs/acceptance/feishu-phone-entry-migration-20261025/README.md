@@ -33,5 +33,5 @@ Tianyi subsequently authorized merge, release and restart. Platform PR #476 merg
 
 Shared health RPC passed. A read-only probe against the isolated Lab bot discovered 35 groups and exercised 101 real API reads; 31 planned writes were deliberately blocked and four existing menu conflicts rejected. These are API compatibility and rejection checks, not evidence of real new menu creation. Real writes and readbacks are covered by the 477 production menu/tab migrations with the identical module bytes.
 
-Production activation, alignment and Voice fleet completion are recorded in the release receipt once verified.
+Production activation, 18,820-file ALIGNED verification and Voice fleet completion are now recorded in [the release receipt](../../feishu-phone-entry-20261026-release.md).
 
