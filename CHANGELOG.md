@@ -13,7 +13,7 @@
 
 ## v-feishu-voice-confirm-20261025
 
-产物归档：2026-10-25 21:34 CST  ·  tag `v-feishu-voice-confirm-20261025`
+上线：2026-10-25 21:50 CST（21:59 完成身份与 iOS 绑定验收） · tag `v-feishu-voice-confirm-20261025`
 
 **摘要**：飞书电话页通过原会话中的确认卡连接身份，确认后原页可继续拨号并绑定 iOS。原生 SDK 卡片事件先于模型和审批分发处理，身份与工具权限仍由原生 Gateway 核对。
 

@@ -26,7 +26,13 @@ Gateway 仅在原生 SDK 验证的 `card.action.trigger` 入口处理 `v.voice.c
 
 2026-10-25 21:40 CST，promotion 完成生产文件安装、六组件 capture、漂移期望更新和 align。比较 18,820 个文件，VLab 与 V 为 ALIGNED；生产漂移检查覆盖 9,222 个文件，0 findings。平台静态检查通过。
 
-激活验收进行中：`v-self-restart` 请求 `20261025-212713-fa39` 使用 `--if-busy abort --idle-timeout 3600`，正在等待既有每晚编译任务完成；尚未停止 Gateway。Voice 双节点尚未切换，生产卡片与 iOS 绑定验收将在安全重启和切换完成后补入本节。
+`v-self-restart` 请求 `20261025-212713-fa39` 等待既有编译任务自然完成后，于 21:46:32 停止旧进程，21:48:25 完成稳定性检查。Gateway PID 从 1041284 变为 1500835；2/2 streams 正常，5/5 workers 就绪，warnings 为空。
+
+21:50，统一 fleet 发布完成 web/iOS 与上海 devices 两节点切换，均为 Voice `ccebd66084d44d87cdf452b84741fe21c08d936a`，产物 SHA-256 `07c1af61d86c461efee83314037808c7ff12c8797ddf808864d80af9914019db`。两个节点 ready、接入 hold 已释放，Voice 切换过程中 Gateway PID/Invocation 保持不变。21:57 幂等复核未改变两个服务 PID。
+
+生产真实验收：原页面请求确认卡，真实飞书私聊点击匹配标记后，原页显示 Tianyi 身份和 V 私聊并恢复拨号；过期请求可从原按钮重试。随后使用页面生成的链接，在实际 iOS Debug 39 模拟器完成验证和保存，设置中显示对应姓名、V 私聊和当前入口，既有绑定保留。右侧模拟器镜像确认实际画面；生产首页更新日志已打开并验证最新条目。没有自动拨号或付费音频通话。
+
+共享测试专用服务已停止、临时 phone-tabs 按原始 SHA 恢复、integration lease 已释放。
 
 ## 回滚
 
