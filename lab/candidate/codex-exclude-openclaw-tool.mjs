@@ -1,6 +1,7 @@
-// Candidate: `agents.entries.makaron.tools.deny: ["openclaw"]` (config/v-makaron-deny-openclaw-tool.json)
-// must take the `openclaw` tool (the built-in system agent) away from makaron's runs and nothing else,
-// applied with the official `openclaw config patch` to a running Gateway.
+// Candidate: `plugins.entries.codex.config.codexDynamicToolsExclude: ["openclaw"]`
+// (config/v-codex-exclude-openclaw-tool.json) must take the `openclaw` tool (the built-in system
+// agent) away from makaron's Codex turns and change nothing else, applied with the official
+// `openclaw config patch` to a running Gateway and across a restart.
 //
 // Production V 2026-10-22 21:35 / 22:19 and 10-25 09:57: /vcodex sessions handed V's own
 // diagnosis to the openclaw tool; each time the system agent ran doctor in the Gateway
@@ -35,11 +36,13 @@ const stateDir = process.env.OPENCLAW_STATE_DIR;
 assert(runtime && configPath && stateDir, "candidate runtime environment is required");
 const here = path.dirname(new URL(import.meta.url).pathname);
 const repoRoot = path.resolve(here, "../..");
-// DENY_VARIANT=agent (default): agents.entries.makaron.tools.deny; codex: the Codex plugin's own
-// codexDynamicToolsExclude, which only reaches Codex app-server turns.
-const VARIANT = process.env.DENY_VARIANT ?? "agent";
+// DENY_VARIANT=codex (default): the Codex plugin's codexDynamicToolsExclude, which only reaches
+// Codex app-server turns; agent: agents.entries.makaron.tools.deny.
+// The shipped change is the Codex one (config/v-codex-exclude-openclaw-tool.json); the agent
+// variant is kept to reproduce why it was rejected (candidate-bee8efea).
+const VARIANT = process.env.DENY_VARIANT ?? "codex";
 assert(["agent", "codex"].includes(VARIANT));
-const PATCH = path.join(repoRoot, VARIANT === "agent" ? "config/v-makaron-deny-openclaw-tool.json" : "config/v-codex-exclude-openclaw-tool.json");
+let PATCH = path.join(repoRoot, "config/v-codex-exclude-openclaw-tool.json");
 const DENY_PATH = VARIANT === "agent" ? "agents.entries.makaron.tools.deny" : "plugins.entries.codex.config.codexDynamicToolsExclude";
 const readDeny = (c) => VARIANT === "agent" ? c.agents?.entries?.makaron?.tools?.deny : c.plugins?.entries?.codex?.config?.codexDynamicToolsExclude;
 const SECRETS = "/srv/vlab-production-mirror/labs/instances/db91-parity/secrets.env";
@@ -196,6 +199,10 @@ async function patchHot(label, file) {
   };
 }
 const routes = async (label) => ({ vds: await turn(`${label}-vds`, true), worker: await turn(`${label}-worker`, false) });
+if (VARIANT === "agent") {
+  PATCH = path.join(tmpDir, "agent-deny.json");
+  fs.writeFileSync(PATCH, JSON.stringify({ agents: { entries: { makaron: { tools: { deny: ["openclaw"] } } } } }));
+}
 const controlPatch = path.join(tmpDir, "control-deny.json");
 fs.writeFileSync(controlPatch, JSON.stringify(VARIANT === "agent" ? { agents: { entries: { makaron: { tools: { deny: ["__no_such_tool_control__"] } } } } } : { plugins: { entries: { codex: { config: { codexDynamicToolsExclude: ["__no_such_tool_control__"] } } } } }));
 

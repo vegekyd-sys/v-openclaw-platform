@@ -1,6 +1,8 @@
 # V 调用 openclaw 工具（内置系统助手）的重新评估 — 2026-10-25
 
-结论：**(c) 不再调用**，用官方配置 `agents.entries.makaron.tools.deny: ["openclaw"]` 让 V（makaron）拿不到 `openclaw` 工具。2026-10-25 第一版提交的是 (b)：往 V 的 AGENTS.md 加规则，再加一个诊断技能。Tianyi 回复：「V现在自己本来就会做诊断，可以不保留或者不用openclaw这个工具。agent.md加内容我不太赞同」，所以改成这一版：不动 AGENTS.md，不加技能，不靠提示词，也不改 dist。冻结本身由 PR #463（doctor 改在子进程跑）解决。
+结论：**(c) 不再调用**，用 Codex 插件自带的官方配置 `plugins.entries.codex.config.codexDynamicToolsExclude: ["openclaw"]`，把 `openclaw` 工具从 V（makaron）的 Codex 回合（`/vcodex`、`/vds` 等）里去掉。三次冻结都发生在这条路由上。不动 AGENTS.md，不加技能，不靠提示词，也不改 dist。冻结本身由 PR #463（doctor 改在子进程跑）解决。
+
+过程：10/25 第一版做的是 (b)，往 V 的 AGENTS.md 加规则、再加一个诊断技能。Tianyi 回复：「V现在自己本来就会做诊断，可以不保留或者不用openclaw这个工具。agent.md加内容我不太赞同」，于是改成用配置禁用。之后实测发现，per-agent 的 `tools.deny` 会关掉 Codex 原生工具面（见第 4 节），Monitor session 受 Tianyi 授权选了现在这个方案。
 
 ## 1. 调用链（V 运行时 `db91-release-v2026.9.1-db91.6/core/dist`，只读）
 
@@ -14,7 +16,7 @@
 
 所以助手**读不了日志、文件、进程、环境变量、插件内部状态，也执行不了命令**；它能做的诊断只有读配置和跑 doctor。这是 OpenClaw 的设计（ring-zero、只给系统助手一个工具），不是配置问题。
 
-官方开关：`agents.defaults.systemAgent` 只有 `agentId`，没有关掉委托的开关；能从工具层限制的只有 `tools.deny: ["openclaw"]`，即选项 (c)。
+官方开关：`agents.defaults.systemAgent` 只有 `agentId`，没有关掉委托的开关。能从工具层去掉它的有两个：agent 工具策略 `tools.deny`，以及 Codex 插件的 `codexDynamicToolsExclude`（只作用于 Codex 回合），见第 4 节。
 
 ## 2. 调用记录（全部只读）
 
@@ -44,48 +46,76 @@
 ## 3. 三个选项与决定
 
 - (a) 让助手把任务做完：不可行。要能诊断这类问题，就得给它日志和命令能力，而 OpenClaw 强制它只有 `openclaw` 一个工具；即使 #463 上线，一轮 120 s 的上限和 V 侧 90–120 s 的超时也不变。
-- (b) V 自己诊断，靠 AGENTS.md 规则加技能来引导：第一版做的就是这个。Tianyi 不赞成往 AGENTS.md 加内容，而且 V 本来就会自己诊断（第 5 节里，两组对照都是 V 自己查完的）。
-- **(c) 不再调用：采用。** 理由是第 2 节的记录：诊断类请求 0 件解决、三次冻结。能落地的那几次变更都有替代：重启用 `sudo v-self-restart`，配置用 `v-openclaw-config` 技能或官方 `openclaw config` CLI。Tianyi 已确认不需要保留。
+- (b) V 自己诊断，靠 AGENTS.md 规则加技能来引导：Tianyi 不赞成往 AGENTS.md 加内容，而且 V 本来就会自己诊断（第一版对照的两组都是 V 自己查完的，见附录）。
+- **(c) 不再调用：采用。** 诊断类请求 0 件解决、三次冻结。能落地的那几次变更都有替代：重启用 `sudo v-self-restart`，配置用 `v-openclaw-config` 技能或官方 `openclaw config` CLI。
 
-## 4. 改动
+## 4. 用哪个配置键
 
-只有一份配置补丁：`config/v-makaron-deny-openclaw-tool.json`
+两个官方候选都在 VLab candidate 上实测过（`lab/candidate/codex-exclude-openclaw-tool.mjs`，`DENY_VARIANT=agent|codex`）：
+
+| | `agents.entries.makaron.tools.deny: ["openclaw"]` | `plugins.entries.codex.config.codexDynamicToolsExclude: ["openclaw"]` |
+|---|---|---|
+| 去掉 openclaw 的路由 | 全部（Codex、Worker、Gateway 内 harness） | 只有 Codex app-server 回合 |
+| 其他工具 | **Codex 路由被判为「策略受限」**：Codex harness 只把 `CODEX_TOOL_POLICY_SAFE_DENY_NAMES`（web_fetch、memory_search、gateway、message 等 16 个）当作可安全拒绝，`openclaw` 不在其中；只要 agent 策略里有它不认的 deny，`shouldEnableCodexAppServerNativeToolSurface` 就返回 false，关掉 Codex 原生工具面。`gateway_exec`/`gateway_process` 消失，换成 OpenClaw 的 `read/edit/write/apply_patch/exec/process/*_goal`。对照组（deny 一个不存在的工具）一样会这样，冷启动也一样 | 不变：`/vds` 正好少一个 `openclaw`；对照组（排除一个不存在的工具）列表完全不变 |
+| 生效方式 | `agents.entries` 热生效，不重启（约 10 s） | `plugins.entries.*` 热改会全量重载插件（实测约 40 s），和 9/20 停摆是同一条路径，所以上线走重启 |
+| 证据 | candidate-bee8efea | candidate-cfea0cb5 |
+
+采用右列。按 provider 写的 `tools.byProvider` 不可行：V 上 Codex 路由（`openai/gpt-6.1-sol`、`openai/gpt-6-sol`、`openai/gpt-5.6-sol`、`openai/gpt-6-astra`、`deepseek/vds-deepseek-flash`）和非 Codex 路由用的是同一批 provider，provider 级 deny 会落到 Codex 上，按模型逐个列名单又太脆弱。
+
+### 已知缺口
+
+其他路由还保留 `openclaw` 工具。V 近期有工具记录的会话里，Gateway 内 openclaw harness 约 75 个、vlab-worker 约 47 个、claude-cli 2 个，都带着它（按 `systemPromptReport.tools` 统计）。近 14 天的 3 次调用、9/05 以来的 38 件请求里，找不到这几条路由发起的调用记录（journal 只到 10/17，更早的无法按路由区分）。要连这些路由一起去掉，只有 per-agent deny，代价是上面左列的 Codex 退化。
+
+## 5. 改动
+
+`config/v-codex-exclude-openclaw-tool.json`（同一内容，供 `openclaw config patch --file` 使用）：
 
 ```json
-{ "agents": { "entries": { "makaron": { "tools": { "deny": ["openclaw"] } } } } }
+{ "plugins": { "entries": { "codex": { "config": { "codexDynamicToolsExclude": ["openclaw"] } } } } }
 ```
 
-- 用的是 per-agent 的 deny，没用全局 `tools.deny`。系统助手自己的运行（agentId `openclaw`，`toolsAllow: ["openclaw"]`）要用同名的 ring-zero 工具，全局 deny 会连它一起禁掉。其他 agent（v-codex、short-v、xiaoai、dealclaw 等）保持不变。
-- 9.1 的工具策略（`agent-tools.policy`，`resolveEffectiveToolPolicy`）会把 `agents.entries.<id>.tools` 的 deny 合进这个 agent 每次运行的工具过滤里，在 harness 之前生效，所以 Codex 的动态工具、Gateway 内的 embedded 运行都过同一道过滤。
-- V 生产上 `agents.entries.makaron.tools` 目前是 `{}`，全局 `tools.deny` 是 `[]`，合并后只多这一项。
-- Worker 那份配置（`worker-openclaw.json`）不手改：10/03 起它由 Worker 插件从主配置自动推导、逐字复制，手改会被下一次推导覆盖。第 5 节验证了推导后的文件里确实带上了这条 deny。vlab-worker 会话原本就没有 `openclaw` 工具（委托工具只给非 embedded 的运行），写进去也不影响它。
+V 现在的值是 `[]`（主配置与 Worker 配置都是），数组整体替换成 `["openclaw"]`，没有其他排除项会被冲掉。
 
-## 5. VLab candidate 验证
+## 6. VLab candidate 结果（candidate-cfea0cb5，`/vds` + makaron 默认 Worker 路由，V 的 reload 设置）
 
-`lab/candidate/makaron-deny-openclaw-tool.mjs`：一个 candidate Gateway 进程从头跑到尾。
+| 阶段 | `/vds`（Codex） | Worker 路由 |
+|---|---|---|
+| before | 123 个工具，含 `openclaw` | 130 个，含 `openclaw` |
+| control（排除不存在的工具，热改） | 不变 | 不变 |
+| hot（热改本补丁） | 122 个，只少 `openclaw` | 不变 |
+| restart（带本补丁冷启动） | 122 个，只少 `openclaw` | 不变 |
 
-1. 改前跑两个真实回合并记录工具列表：一个 `/vds`（Codex harness，和生产 `/vcodex` 同一个 harness；`openclaw` 工具以动态工具形式出现），一个走 makaron 默认的 Worker 路由。
-2. Gateway 运行中，用官方 `openclaw config patch --file config/v-makaron-deny-openclaw-tool.json` 改配置。记录 `config.schema.lookup` 给出的 reloadKind、Gateway 的日志反应，以及推导出的 Worker 配置。
-3. 改后在新会话里再跑同样两个回合。
+8 个回合全部正常回复「收到」。热改时 CLI 打印 "Restart the gateway to apply"，但 `config.schema.lookup` 给出 `reloadKind: hot`，Gateway 实际在约 40 s 后 `config hot reload applied`，期间全部插件重载、Worker 代际排空换代；Worker 配置约 6 s 后由推导写入同样的值。Gateway 进程全程没换。
 
-判据：改前 `/vds` 有 `openclaw`；改后 `/vds` 的工具列表正好少了 `openclaw` 这一个；Worker 路由的工具列表不变；四个回合都正常回复「收到」；Gateway 进程没有退出、没有重启。
+## 7. 上线（由生产监控 session 安排）
 
-CANDIDATE_RESULTS
-
-## 6. 上线（合入后，由生产监控 session 安排）
+不要在运行中热改（会全量重载插件）。和其他需要重启的改动放进同一次 `v-self-restart`：
 
 ```sh
-openclaw gateway call config.schema.lookup --params '{"path":"agents.entries.makaron.tools.deny"}' --json | grep -m1 '"reloadKind"'
-openclaw config patch --file config/v-makaron-deny-openclaw-tool.json --dry-run
-openclaw config patch --file config/v-makaron-deny-openclaw-tool.json
+sudo v-self-restart --reason "PR #479: drop the openclaw tool from Codex turns" \
+  --requested-by "<谁、在哪、几点批准>" --chat <oc_群id> --session-key <会话 key> \
+  --set 'plugins.entries.codex.config.codexDynamicToolsExclude=["openclaw"]'
 ```
 
-RELOAD_NOTE
+- `--set` 先 dry-run 校验，停机后用 `openclaw config set <path> '["openclaw"]' --strict-json` 写进**主配置** `/home/openclaw/.openclaw/openclaw.json`；停机前会备份主配置和 Worker 配置两份，失败按字节回滚。
+- **Worker 配置** `/home/openclaw/.openclaw/experiments/agent-worker-isolation-v1/worker-openclaw.json` 不要手改：10/03 起它在 Gateway 启动和主配置变化时由 Worker 插件自动推导、逐字复制（candidate 里约 6 s，日志 `Worker config derivation (overlay v1): rewrote Worker config, 1 changed path(s): plugins.entries.codex.config.codexDynamicToolsExclude`）。Codex 回合跑在 Gateway 进程里，读的是主配置；Worker 那份只是保持一致。
 
-验收：在 V 上找一个 `/vcodex` 会话发一条新消息，看它 `systemPromptReport.tools` 里已经没有 `openclaw`、回复正常；Worker 配置里有同样的 deny。回滚：`openclaw config unset agents.entries.makaron.tools.deny`。
+上线后核对：
 
-## 7. 没覆盖
+```sh
+sudo python3 -c 'import json
+for p in ("/home/openclaw/.openclaw/openclaw.json","/home/openclaw/.openclaw/experiments/agent-worker-isolation-v1/worker-openclaw.json"):
+    print(p, json.load(open(p))["plugins"]["entries"]["codex"]["config"]["codexDynamicToolsExclude"])'
+```
 
-- candidate 用的是 `/vds`（Codex + DeepSeek）。生产三次都是 `/vcodex`（gpt-6.1-sol），而 candidate 不复制 ChatGPT 登录。工具过滤按 agent 生效、在模型之前，与模型无关；但 `/vcodex` 的实际列表要等上线后核对。
-- `/vcc`（claude-cli）没跑：candidate 没有 Claude 登录。claude-cli 拿到的普通工具走同一套 agent 工具策略；另外那个单独的 `openclaw-tools` MCP（`OPENCLAW_TOOLS_MCP_TOOLS=openclaw`）只给系统助手自己的运行用，不给普通 agent。上线后用一个 `/vcc` 会话核对。
-- 第一版附带的发现（V 提示里的技能列表截断在 `geelark-…`、TOOLS.md 没有被注入）与本 PR 无关，已另开处理。
+两份都应是 `['openclaw']`。然后在一个 `/vcodex` 会话发一条新消息，确认回复正常，且该会话 `systemPromptReport.tools` 里没有 `openclaw`、仍有 `gateway_exec`。回滚：同样用 `--set 'plugins.entries.codex.config.codexDynamicToolsExclude=[]'`。
+
+## 8. 没覆盖
+
+- candidate 用的是 `/vds`（Codex + DeepSeek），`/vcodex`（gpt-6.1-sol）要 ChatGPT 登录，candidate 不复制。排除在 Codex 插件构建动态工具列表时按名字过滤，和模型无关；但 `/vcodex` 的实际列表要在上线后核对。
+- 其他路由保留 `openclaw`（第 4 节「已知缺口」）。
+- 第一版附带的发现（V 提示里的技能列表截断在 `geelark-…`、TOOLS.md 没有被注入）与本 PR 无关，已另开处理（v-skills-truncation session）。
+
+## 附录：第一版 (b) 的对照
+
+candidate-b909e0bf（`/vds`，UM 与 V Browser 各 2 轮 × 两组）：两组都 0 次调用 `openclaw`，DeepSeek 下复现不了生产的触发；装了规则的一组读了技能、中位 320 s 完成，未装的一组 353 s。这说明 V 本来就会自己诊断，也是 Tianyi 不需要那条规则的依据之一。
