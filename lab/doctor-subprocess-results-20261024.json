@@ -1,0 +1,438 @@
+{
+  "note": "lab/doctor-subprocess.md; candidates on VLab runtime feishu-auto-phone-tab-v1, harness lab/candidate/doctor-subprocess-ab.mjs",
+  "round1_shared_vlab_makaron_0.5GB_transcripts_scans_not_reached": {
+    "candidate": "candidate-10cc740a-225a-45d1-a26a-b6a8290109e3",
+    "commit": "147e13ec",
+    "arms": {
+      "base": {
+        "wallMs": 80771,
+        "eventLoopUtilization": 0.965,
+        "heartbeat": {
+          "ticks": 204,
+          "maxGapMs": 26857,
+          "p99GapMs": 7158,
+          "gapsOver100ms": 21,
+          "gapsOver1s": 9,
+          "blockedMsInGapsOver100ms": 75683
+        },
+        "changedStateFiles": [
+          "agents/main/agent/openclaw-agent.sqlite",
+          "agents/main/agent/openclaw-agent.sqlite-shm",
+          "agents/main/agent/openclaw-agent.sqlite-wal",
+          "agents/makaron/agent/openclaw-agent.sqlite-shm",
+          "plugins/workboard/workboard.sqlite",
+          "plugins/workboard/workboard.sqlite-shm",
+          "plugins/workboard/workboard.sqlite-wal",
+          "state/openclaw.sqlite",
+          "state/openclaw.sqlite-shm",
+          "state/openclaw.sqlite-wal"
+        ],
+        "children": [],
+        "reportLines": 347,
+        "reportBytes": 34055
+      },
+      "patched": {
+        "wallMs": 35352,
+        "eventLoopUtilization": 0.053,
+        "heartbeat": {
+          "ticks": 1665,
+          "maxGapMs": 141,
+          "p99GapMs": 26,
+          "gapsOver100ms": 2,
+          "gapsOver1s": 0,
+          "blockedMsInGapsOver100ms": 281
+        },
+        "changedStateFiles": [
+          "agents/main/agent/openclaw-agent.sqlite",
+          "agents/main/agent/openclaw-agent.sqlite-shm",
+          "agents/main/agent/openclaw-agent.sqlite-wal",
+          "state/openclaw.sqlite-shm",
+          "state/openclaw.sqlite-wal"
+        ],
+        "children": [
+          {
+            "nice": 10,
+            "ioClass": "idle",
+            "args": "/opt/vlab/node-v22.23.1-linux-x64/bin/node --experimental-async-context-frame --max-old-space-size=8192 <candidate>",
+            "maxCpuPercent": 104,
+            "maxRssMb": 174
+          }
+        ],
+        "reportLines": 348,
+        "reportBytes": 34305,
+        "sectionsVsBase": {
+          "onlyInBase": [
+            "Session transcript headers"
+          ],
+          "onlyHere": [
+            "Session transcripts"
+          ]
+        },
+        "diffLines": 20
+      },
+      "patched-full": {
+        "wallMs": 47552,
+        "eventLoopUtilization": 0.03,
+        "heartbeat": {
+          "ticks": 2271,
+          "maxGapMs": 128,
+          "p99GapMs": 18,
+          "gapsOver100ms": 1,
+          "gapsOver1s": 0,
+          "blockedMsInGapsOver100ms": 128
+        },
+        "changedStateFiles": [
+          "agents/main/agent/openclaw-agent.sqlite-shm",
+          "agents/main/agent/openclaw-agent.sqlite-wal",
+          "state/openclaw.sqlite-shm",
+          "state/openclaw.sqlite-wal"
+        ],
+        "children": [
+          {
+            "nice": 10,
+            "ioClass": "idle",
+            "args": "/opt/vlab/node-v22.23.1-linux-x64/bin/node --experimental-async-context-frame --max-old-space-size=8192 <candidate>",
+            "maxCpuPercent": 65.5,
+            "maxRssMb": 156
+          }
+        ],
+        "reportLines": 348,
+        "reportBytes": 34225,
+        "sectionsVsBase": {
+          "onlyInBase": [],
+          "onlyHere": []
+        },
+        "diffLines": 6
+      },
+      "lint": {
+        "wallMs": 4972,
+        "eventLoopUtilization": 0.031,
+        "heartbeat": {
+          "ticks": 233,
+          "maxGapMs": 51,
+          "p99GapMs": 16,
+          "gapsOver100ms": 0,
+          "gapsOver1s": 0,
+          "blockedMsInGapsOver100ms": 0
+        },
+        "changedStateFiles": [
+          "state/openclaw.sqlite-shm"
+        ],
+        "children": [
+          {
+            "nice": 0,
+            "ioClass": "none: prio 0",
+            "args": "/opt/vlab/node-v22.23.1-linux-x64/bin/node <candidate>",
+            "maxCpuPercent": 71.5,
+            "maxRssMb": 130
+          }
+        ],
+        "reportLines": 20,
+        "reportBytes": 686
+      }
+    },
+    "database": {
+      "bytes": 7177707520
+    },
+    "transcripts": {
+      "sessions": 3896,
+      "rows": 142836,
+      "eventJsonBytes": 467687273
+    }
+  },
+  "round4_inflated_5.1GB_transcripts": {
+    "candidate": "candidate-7d367360-58c5-4650-9457-401179193fba",
+    "commit": "c5d5ffee",
+    "arms": {
+      "base": {
+        "wallMs": 331416,
+        "eventLoopUtilization": 0.992,
+        "heartbeat": {
+          "ticks": 216,
+          "maxGapMs": 264316,
+          "p99GapMs": 10078,
+          "gapsOver100ms": 25,
+          "gapsOver1s": 11,
+          "blockedMsInGapsOver100ms": 326305
+        },
+        "changedStateFiles": [
+          "agents/main/agent/openclaw-agent.sqlite",
+          "agents/main/agent/openclaw-agent.sqlite-shm",
+          "agents/main/agent/openclaw-agent.sqlite-wal",
+          "agents/makaron/agent/openclaw-agent.sqlite-shm",
+          "plugins/workboard/workboard.sqlite",
+          "plugins/workboard/workboard.sqlite-shm",
+          "plugins/workboard/workboard.sqlite-wal",
+          "state/openclaw.sqlite",
+          "state/openclaw.sqlite-shm",
+          "state/openclaw.sqlite-wal",
+          "plugin-skills/* (128 files)"
+        ],
+        "children": [],
+        "reportLines": 433,
+        "reportBytes": 60183
+      },
+      "patched": {
+        "wallMs": 60513,
+        "eventLoopUtilization": 0.032,
+        "heartbeat": {
+          "ticks": 2856,
+          "maxGapMs": 218,
+          "p99GapMs": 15,
+          "gapsOver100ms": 1,
+          "gapsOver1s": 0,
+          "blockedMsInGapsOver100ms": 218
+        },
+        "changedStateFiles": [
+          "agents/main/agent/openclaw-agent.sqlite",
+          "agents/main/agent/openclaw-agent.sqlite-shm",
+          "agents/main/agent/openclaw-agent.sqlite-wal",
+          "state/openclaw.sqlite-shm",
+          "state/openclaw.sqlite-wal"
+        ],
+        "children": [
+          {
+            "nice": 10,
+            "ioClass": "idle",
+            "args": "/opt/vlab/node-v22.23.1-linux-x64/bin/node --experimental-async-context-frame --max-old-space-size=8192 --disable-warning=ExperimentalWarning <candidate>",
+            "maxCpuPercent": 62.7,
+            "maxRssMb": 189
+          }
+        ],
+        "reportLines": 433,
+        "reportBytes": 60507,
+        "sectionsVsBase": {
+          "onlyInBase": [
+            "Session transcript headers"
+          ],
+          "onlyHere": [
+            "Session transcripts"
+          ]
+        },
+        "diffLines": 29
+      },
+      "patched-full": {
+        "wallMs": 320827,
+        "eventLoopUtilization": 0.016,
+        "heartbeat": {
+          "ticks": 15352,
+          "maxGapMs": 51,
+          "p99GapMs": 12,
+          "gapsOver100ms": 0,
+          "gapsOver1s": 0,
+          "blockedMsInGapsOver100ms": 0
+        },
+        "changedStateFiles": [
+          "agents/main/agent/openclaw-agent.sqlite-shm",
+          "agents/main/agent/openclaw-agent.sqlite-wal",
+          "state/openclaw.sqlite-shm",
+          "state/openclaw.sqlite-wal"
+        ],
+        "children": [
+          {
+            "nice": 10,
+            "ioClass": "idle",
+            "args": "/opt/vlab/node-v22.23.1-linux-x64/bin/node --experimental-async-context-frame --max-old-space-size=8192 --disable-warning=ExperimentalWarning <candidate>",
+            "maxCpuPercent": 93,
+            "maxRssMb": 177
+          }
+        ],
+        "reportLines": 433,
+        "reportBytes": 60427,
+        "sectionsVsBase": {
+          "onlyInBase": [],
+          "onlyHere": []
+        },
+        "diffLines": 15
+      },
+      "scans": {
+        "wallMs": 203573,
+        "eventLoopUtilization": 0.018,
+        "heartbeat": {
+          "ticks": 9683,
+          "maxGapMs": 82,
+          "p99GapMs": 14,
+          "gapsOver100ms": 0,
+          "gapsOver1s": 0,
+          "blockedMsInGapsOver100ms": 0
+        },
+        "changedStateFiles": [
+          "state/openclaw.sqlite-shm"
+        ],
+        "children": [],
+        "scanMs": {
+          "targets": [
+            "makaron",
+            "main"
+          ],
+          "headers": 3753,
+          "labels": 194267
+        },
+        "reportLines": 12,
+        "reportBytes": 2995
+      },
+      "lint": {
+        "wallMs": 36833,
+        "eventLoopUtilization": 0.023,
+        "heartbeat": {
+          "ticks": 1722,
+          "maxGapMs": 104,
+          "p99GapMs": 15,
+          "gapsOver100ms": 1,
+          "gapsOver1s": 0,
+          "blockedMsInGapsOver100ms": 104
+        },
+        "changedStateFiles": [],
+        "children": [
+          {
+            "nice": 0,
+            "ioClass": "none: prio 0",
+            "args": "/opt/vlab/node-v22.23.1-linux-x64/bin/node <candidate>",
+            "maxCpuPercent": 59.3,
+            "maxRssMb": 160
+          }
+        ],
+        "exitCode": 1,
+        "reportLines": 18,
+        "reportBytes": 8067
+      }
+    },
+    "copyMs": 61984,
+    "inflateMs": 336952,
+    "npmPluginsCopied": true,
+    "database": {
+      "bytes": 13313454080,
+      "inflate": 10
+    },
+    "transcripts": {
+      "sessions": 42856,
+      "rows": 1571196,
+      "eventJsonBytes": 5144560003
+    }
+  },
+  "order_check_patched_first": {
+    "candidate": "candidate-faed65b9-37d5-44bc-b37f-01366a3a07cd",
+    "commit": "c5d5ffee",
+    "env": {
+      "ARMS": "patched,base,patched-full",
+      "INFLATE": "0"
+    },
+    "arms": {
+      "patched": {
+        "wallMs": 67353,
+        "eventLoopUtilization": 0.015,
+        "heartbeat": {
+          "ticks": 3225,
+          "maxGapMs": 62,
+          "p99GapMs": 10,
+          "gapsOver100ms": 0,
+          "gapsOver1s": 0,
+          "blockedMsInGapsOver100ms": 0
+        },
+        "changedStateFiles": [
+          "agents/main/agent/openclaw-agent.sqlite",
+          "agents/main/agent/openclaw-agent.sqlite-shm",
+          "agents/main/agent/openclaw-agent.sqlite-wal",
+          "agents/makaron/agent/openclaw-agent.sqlite-shm",
+          "plugins/workboard/workboard.sqlite",
+          "plugins/workboard/workboard.sqlite-shm",
+          "plugins/workboard/workboard.sqlite-wal",
+          "state/openclaw.sqlite",
+          "state/openclaw.sqlite-shm",
+          "state/openclaw.sqlite-wal",
+          "plugin-skills/* (128 files)"
+        ],
+        "children": [
+          {
+            "nice": 10,
+            "ioClass": "idle",
+            "args": "/opt/vlab/node-v22.23.1-linux-x64/bin/node --experimental-async-context-frame --max-old-space-size=8192 --disable-warning=ExperimentalWarning <candidate>",
+            "maxCpuPercent": 80.1,
+            "maxRssMb": 184
+          }
+        ],
+        "reportLines": 430,
+        "reportBytes": 60100,
+        "sectionsVsBase": {
+          "onlyInBase": [
+            "Session transcript headers"
+          ],
+          "onlyHere": [
+            "Session transcripts"
+          ]
+        },
+        "diffLines": 31
+      },
+      "base": {
+        "wallMs": 74874,
+        "eventLoopUtilization": 0.962,
+        "heartbeat": {
+          "ticks": 206,
+          "maxGapMs": 31500,
+          "p99GapMs": 8100,
+          "gapsOver100ms": 25,
+          "gapsOver1s": 10,
+          "blockedMsInGapsOver100ms": 69805
+        },
+        "changedStateFiles": [
+          "agents/main/agent/openclaw-agent.sqlite",
+          "agents/main/agent/openclaw-agent.sqlite-shm",
+          "agents/main/agent/openclaw-agent.sqlite-wal",
+          "agents/makaron/agent/openclaw-agent.sqlite-shm",
+          "plugins/workboard/workboard.sqlite-shm",
+          "state/openclaw.sqlite",
+          "state/openclaw.sqlite-shm",
+          "state/openclaw.sqlite-wal"
+        ],
+        "children": [],
+        "reportLines": 434,
+        "reportBytes": 60419
+      },
+      "patched-full": {
+        "wallMs": 65355,
+        "eventLoopUtilization": 0.034,
+        "heartbeat": {
+          "ticks": 3116,
+          "maxGapMs": 241,
+          "p99GapMs": 11,
+          "gapsOver100ms": 2,
+          "gapsOver1s": 0,
+          "blockedMsInGapsOver100ms": 391
+        },
+        "changedStateFiles": [
+          "agents/main/agent/openclaw-agent.sqlite-shm",
+          "agents/main/agent/openclaw-agent.sqlite-wal",
+          "state/openclaw.sqlite-shm",
+          "state/openclaw.sqlite-wal"
+        ],
+        "children": [
+          {
+            "nice": 10,
+            "ioClass": "idle",
+            "args": "/opt/vlab/node-v22.23.1-linux-x64/bin/node --experimental-async-context-frame --max-old-space-size=8192 --disable-warning=ExperimentalWarning <candidate>",
+            "maxCpuPercent": 95,
+            "maxRssMb": 178
+          }
+        ],
+        "reportLines": 431,
+        "reportBytes": 60265,
+        "sectionsVsBase": {
+          "onlyInBase": [],
+          "onlyHere": []
+        },
+        "diffLines": 6
+      }
+    },
+    "copyMs": 61416,
+    "npmPluginsCopied": true,
+    "database": {
+      "bytes": 7176937472,
+      "inflate": 0
+    },
+    "transcripts": {
+      "sessions": 3887,
+      "rows": 142779,
+      "eventJsonBytes": 467654714
+    }
+  }
+}
