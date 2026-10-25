@@ -11,6 +11,45 @@
 
 ---
 
+## v-feishu-voice-confirm-20261025
+
+产物归档：2026-10-25 21:34 CST  ·  tag `v-feishu-voice-confirm-20261025`
+
+**摘要**：飞书电话页通过原会话中的确认卡连接身份，确认后原页可继续拨号并绑定 iOS。原生 SDK 卡片事件先于模型和审批分发处理，身份与工具权限仍由原生 Gateway 核对。
+
+本次新部署仅下列 `voice-feishu-confirm-20261025` 的 2 个 Feishu 文件；其余 12 个变化是此前已在生产运行、本次补齐完整归档的内容。生产重启、双节点 Voice 与真实界面验收见 [发布验收](docs/feishu-voice-confirm-20261025-release.md)。
+
+相对上一版 `feishu-conversations-20261024`：14 个文件变化。
+
+**经 VLab 发版 `fullread-dingtalk-r2-20261025`**（monitor-v-production，dev `8a9f7cf3`）
+> 验收：2026-10-25 shared VLab: real deepseek turn (exec+sessions_list+sessions_search) replied vlab_fullread_ok 3; 0 load errors; dingtalk/wecom connected; installed hashes match plan (operations 54ae7d7b, v-session-entries-matching d2d2c2cd); doctor CLI run by agent did not stall Gateway (0 liveness delays). #382 session-key excluded after first deploy broke health (SessionCanonicalKeyMigrationRequiredE…
+- `core` combined-store-gateway-BwDhjbIt.js  4b7612af → 9cb53296
+- `core` doctor-health-contributions-Dz7xROs_.js  a9b70992 → 3d9cdefb
+- `core` operations-CTofDiKh.js  eb6286b4 → 54ae7d7b
+- `core` registry-runtime-session-ownership-B1XvaNE7.js  f1c58a03 → d8e335dc
+- `core` sessions-resolve-_D6BmQTT.js  c3d8c801 → a1b3f4b3
+- `core` v-session-entries-matching.mjs  — → d2d2c2cd
+
+**经 VLab 发版 `voice-feishu-confirm-20261025`**（voice-feishu-confirm-release-01a15dce，dev `bf271e72`）
+> 验收：docs/feishu-voice-confirm-20261025-release.md; real internal/external Feishu native websocket card callbacks, same group/session distinct actors/tenants, actor-scoped catalogs 127/114, both iOS Debug39 bindings saved; candidate 6/6; platform focused 4/4; Voice955 tests; no paid audio call
+- `feishu` dist/monitor.account-WFdlCDhR.js  9e804fc3 → 535841d0
+- `feishu` dist/v-feishu-voice-confirm.mjs  — → 6eba4d8d
+
+**经 VLab 发版 `noon-batch-20261016b`**（monitor-v-production，dev `5b925124`）
+> 验收：共享 VLab 11:28 部署 #380+#381（9 文件：core dist 3 个上下文溢出续写、钉钉 3 个、企微 3 个；before 均等于 V 线上字节）。Gateway 11:2x ready，journal 错误 0、SessionCanonicalKeyMigration 0，worker 12 进程，钉钉 connected、企微 websocket 启动。真实回合 vlab-dev-1792121414509：模型调用 exec(date +%F; uname -m)，toolResult 2026-10-16/x86_64，最终回复两行一致，约 10 s。#380/#381 的功能证据为各自 PR 在相同字节上的 candidate 记录（PR #380 docs/experiments/context-overflow-big-sessions.md，PR #…
+- `dingtalk` dist/message-handler-BUoLSylZ.mjs  d914cbce → a973a1b6
+- `dingtalk` dist/runtime-C81EKBS1.mjs  af93e121 → fa36036c
+- `dingtalk` dist/v-experience.mjs  5d939fa7 → a85c1d37
+- `wecom` dist/src/channel.js  30eb4a17 → 4b21464a
+- `wecom` dist/src/monitor.js  d4fe3561 → f015717e
+- `wecom` dist/src/v-experience.mjs  5d939fa7 → a85c1d37
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #468 perf(sessions): resolve 的 sessionId/label/shortId 与插件 ownership 检查只读匹配行（~9 s → 3–70 ms）
+- #457 ops(egress): V 出口限速 45→55 Mbit（带宽已升到 60 Mbps）
+- #463 perf(system-agent): 内置助手的 doctor 改在子进程跑并跳过两项全量转录扫描
+
+
 ## feishu-conversations-20261024
 
 上线：2026-10-24 03:07 CST  ·  tag `feishu-conversations-20261024`
