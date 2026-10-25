@@ -509,6 +509,85 @@ function vCommandAuthorized({ core, cfg, config, senderId, text }) {
     anchor: "\t\tconst timeoutText = accumulatedText.trim() || pickEmptyReplyFallbackText(!isDirect);\n",
     replace: "\t\tconst timeoutText = accumulatedText.trim() || vEmptyReplyText(!isDirect);\n",
   },
+  {
+    // The core folds group ids to lower case in session keys, and targets
+    // derived from a session carry the folded id, which DingTalk rejects
+    // (400 invalid.openConversationId). Inbound messages teach the original
+    // spelling; outbound sends put it back (restoreDingtalkTarget).
+    name: "ids-imports",
+    anchor: `import * as vExperience from "./${EXPERIENCE_FILE}";\n`,
+    insert: "after",
+    code: `import { resolveStateDir as vResolveStateDir } from "openclaw/plugin-sdk/state-paths"; // ${MARKER}\n`,
+  },
+  {
+    name: "ids-remember",
+    anchor: "async function handleDingTalkMessage(params) {\n",
+    insert: "after",
+    code: `\t// ${MARKER}: the original spelling of this chat's id, for outbound sends.
+\tvExperience.rememberDingtalkConversationId(params.data?.conversationId, { stateDir: vResolveStateDir(), log: (message) => params.runtime?.log?.(message) });
+`,
+  },
+  {
+    file: "runtime",
+    name: "runtime-ids-imports",
+    anchor: `import * as vExperience from "./${EXPERIENCE_FILE}";\n`,
+    insert: "after",
+    code: `import { resolveStateDir as vResolveStateDir } from "openclaw/plugin-sdk/state-paths"; // ${MARKER}
+import { getSessionEntry as vGetSessionEntry } from "openclaw/plugin-sdk/session-store-runtime"; // ${MARKER}
+`,
+  },
+  {
+    file: "runtime",
+    name: "runtime-ids-restore",
+    anchor: "function stripProviderPrefix(raw) {\n",
+    insert: "before",
+    code: `// ${MARKER}: \`to\` with the original case of a folded group id. Unknown ids are
+// looked up (read-only, by key) in the group session of each agent DingTalk
+// routes to; the session entry's delivery fields keep the original spelling.
+function vDingtalkAgentIds(cfg) {
+	const ids = (cfg?.bindings ?? []).filter((b) => b?.match?.channel === CHANNEL_ID && b.agentId).map((b) => String(b.agentId));
+	const agents = cfg?.agents?.list ?? [];
+	ids.push(String((agents.find((a) => a?.default) ?? agents[0])?.id ?? "main"));
+	return [...new Set(ids.map((id) => id.trim().toLowerCase()).filter(Boolean))];
+}
+function vRestoreTarget(cfg, to) {
+	// The connector reads \`channel:cid…\` (the shape of a target the core derives
+	// from a group session) as a user id; it is the group.
+	if (typeof to === "string") to = to.trim().replace(/^(?:channel|conversation):(?=cid)/iu, "group:");
+	return vExperience.restoreDingtalkTarget(to, {
+		stateDir: vResolveStateDir(),
+		lookup: (folded) => vDingtalkAgentIds(cfg).flatMap((agentId) => {
+			try {
+				return vExperience.dingtalkIdsInEntry(vGetSessionEntry({ agentId, sessionKey: \`agent:\${agentId}:\${CHANNEL_ID}:group:\${folded}\` }), folded);
+			} catch {
+				return [];
+			}
+		}),
+		log: (message) => console.warn(\`[DingTalk]\${message}\`)
+	});
+}
+`,
+  },
+  {
+    file: "runtime",
+    name: "runtime-ids-card",
+    anchor: "\t\t\tconst to = String(ctx.to ?? \"\");\n",
+    replace: "\t\t\tconst to = String(vRestoreTarget(ctx.cfg, ctx.to) ?? \"\");\n",
+  },
+  {
+    file: "runtime",
+    name: "runtime-ids-text",
+    anchor: "\t\tsendText: async ({ cfg, to, text, accountId, replyToId, threadId }) => {\n",
+    insert: "after",
+    code: `\t\t\tto = vRestoreTarget(cfg, to); // ${MARKER}\n`,
+  },
+  {
+    file: "runtime",
+    name: "runtime-ids-media",
+    anchor: "\t\tsendMedia: async ({ cfg, to, text, mediaUrl, accountId, mediaLocalRoots, replyToId, threadId }) => {\n",
+    insert: "after",
+    code: `\t\t\tto = vRestoreTarget(cfg, to); // ${MARKER}\n`,
+  },
 ];
 
 /** The rewritten chunk source; throws when an anchor is missing or ambiguous. */

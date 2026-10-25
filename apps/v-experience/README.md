@@ -20,7 +20,7 @@ transport (send, rewrite, Gateway calls).
 
 | Channel | Patch | Target on V | Notes |
 |---|---|---|---|
-| DingTalk | `dingtalk/patch.mjs` | `@dingtalk-real-ai/dingtalk-connector` 0.8.26 `dist/message-handler-BUoLSylZ.mjs`, `dist/connection-DCvu-l09.mjs`, `dist/runtime-C81EKBS1.mjs` | Work view inside the streaming AI card; background line rewrites the finished card. Questions used to be dropped (the connector ignored `tool` payloads). |
+| DingTalk | `dingtalk/patch.mjs` | `@dingtalk-real-ai/dingtalk-connector` 0.8.26 `dist/message-handler-BUoLSylZ.mjs`, `dist/connection-DCvu-l09.mjs`, `dist/runtime-C81EKBS1.mjs` | Work view inside the streaming AI card; background line rewrites the finished card. Questions used to be dropped (the connector ignored `tool` payloads). Proactive group sends put back the case of a group id the core folded in the session key (`restoreDingtalkTarget`; ids from inbound messages in `<state>/dingtalk-connector/v-conversation-ids.json`, else the group session's delivery fields). |
 | WeCom | `wecom/patch.mjs` | `@wecom/wecom-openclaw-plugin` 2026.8.17-vlab.2 `dist/src/monitor.js`, `dist/src/channel.js` | Adds answer streaming (the plugin sent the whole reply at the end) and the work view inside the stream message. Six-minute stream limit: the background line is part of the finished reply and "已结束" is a new message. Answers used to wait behind the turn that asked (per-chat queue). |
 
 `*/baseline/` holds V's unpatched bytes for the tests; `*/fetch-*.sh` copies the
@@ -36,6 +36,7 @@ node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo "$PWD" --owner TASK
 node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo "$PWD" --owner TASK --plan "$PWD/lab/candidate/wecom-experience.plan.json"
 # link cards: {dingtalk,wecom}-{secret-link,handoff-card}.plan.json, telegram-secret-link.plan.json (one at a time)
 # 「电脑」 card: {dingtalk,wecom,telegram}-handoff-card.plan.json, {wecom,telegram}-handoff-card-loopback.plan.json
+# folded group ids: dingtalk-peer-case-{baseline,patched}.plan.json
 ```
 
 The candidates run the real plugin in a private Gateway against loopback fakes
