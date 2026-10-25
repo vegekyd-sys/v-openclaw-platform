@@ -72,7 +72,20 @@ AGENTS.md 是核心文档，按其「Core Document Modification Rules」，这�
 
 冒烟（candidate-ae92e637，V Browser 场景各 1 轮）：两组都看到了 `openclaw` 工具，**两组都没调**；baseline 用 exec 自己查了 495 s，fixed 读了技能、313 s 给出结论。也就是说 DeepSeek（`/vds`）复现不了生产的触发——三次事故都是 gpt-6.1-sol。因此 baseline 调用率只记录、不作断言（`ODR_REQUIRE_BASELINE_CALL=1` 可改回闸门），fixed 组的四项判据仍是硬断言。冒烟里 agent 顺着镜像配置里的生产地址，用 VLab 的 relay token 探测了 V 的 `100.82.39.107:24906`（只读 HTTP，返回 401）；正式一轮两组提示都加了「不要连生产主机」。
 
-结果：见 PR 描述（receipt 在 `tmp/candidate/`，不进仓库）。
+正式一轮（candidate-b909e0bf，2026-10-25 10:49–11:35，`/vds`，UM 与 V Browser 各 2 轮 × 两组，交替顺序）：
+
+| | baseline（V 现状） | fixed（装了本 PR） |
+|---|---|---|
+| 每轮都提供了 `openclaw` 工具 | 4/4 | 4/4 |
+| 调用 `openclaw` 工具 | **0/4** | **0/4** |
+| Gateway 起系统助手回合（`openclaw-turn-` / `openclaw.chat`） | 0 | 0 |
+| 自己跑完整 `openclaw doctor` | 0 | 0 |
+| 读了 `v-system-diagnosis` | （计数被污染，见下） | 4/4，其中 1 轮可确认 |
+| 完成 / 中位耗时 | 3/4（1 轮 480 s 超时被中止）/ 353 s | 4/4 / 320 s |
+
+- **DeepSeek 下 baseline 也一次没调**，生产的触发（gpt-6.1-sol）没有复现。所以这轮能证明的是：装上以后 V 读技能、按技能自己查、不调 openclaw、不碰 doctor，回合不变慢；**证明不了「装之前会调、装之后不调」的因果**。这一点要靠生产记录（三次都是 `/vcodex`）和上线后的核对。
+- fixed 组的结论有实质内容：UM 两轮都查到 `proxy.loopbackMode` 只覆盖精确 loopback、`secrets.egressProxy.allowedHosts` 只管 HTTPS，最小修法是让 Gateway 进程继承带 IPv6 方括号的 `NO_PROXY` 再重启一次；V Browser 两轮都指出租约只回传槽位名、relay 地址来自静态 profile，`target:"host"` 在哪台机器解析决定了连哪个 facade。
+- 计数缺陷：脚本按修改时间找 Codex rollout，前一轮会话的文件被追加后也算进下一轮，于是 baseline 有 2 轮被记成「读了技能」（baseline 工作区里没有这个技能，不可能读到）。同样的原因让 fixed 组第 2–4 轮的读技能计数不可确认，只有第 1 轮（前一轮是 baseline）可信。`openclaw` 调用和系统助手回合两项只会多算不会漏算，0 是可靠的。脚本已改为只统计本轮新建的 rollout，未重跑。
 
 重新生成输入：
 

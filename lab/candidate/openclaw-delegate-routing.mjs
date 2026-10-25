@@ -167,8 +167,11 @@ async function send(key, message) {
 }
 
 // Codex keeps its own transcript of every tool call; OpenClaw's dynamic tools show up there by name.
-function rolloutCalls(sinceMs) {
-  const files = spawnSync("bash", ["-c", `find ${JSON.stringify(path.join(CODEX_HOME, "sessions"))} -name 'rollout-*.jsonl' -newermt @${Math.floor(sinceMs / 1000) - 1} 2>/dev/null | sort`], { encoding: "utf8" }).stdout.split("\n").filter(Boolean);
+// Only rollouts created by this turn: an earlier session's file can be appended (and so look new) later,
+// which in candidate-b909e0bf credited baseline turns with the fixed arm's skill reads.
+const rolloutFiles = () => spawnSync("bash", ["-c", `find ${JSON.stringify(path.join(CODEX_HOME, "sessions"))} -name 'rollout-*.jsonl' 2>/dev/null | sort`], { encoding: "utf8" }).stdout.split("\n").filter(Boolean);
+function rolloutCalls(before) {
+  const files = rolloutFiles().filter((f) => !before.has(f));
   const calls = [];
   let dynamicTools = null;
   for (const f of files) {
@@ -226,12 +229,13 @@ try {
       for (const arm of i % 2 === 0 ? ["baseline", "fixed"] : ["fixed", "baseline"]) {
         const installed = resetWorkspace(arm);
         const key = `agent:makaron:explicit:odr-${scenario}-${arm}-${i}-${Date.now().toString(36)}`;
+        const rolloutsBefore = new Set(rolloutFiles());
         await send(key, "/vds");
         const mark = lines.length;
         const t0 = Date.now();
         const r = await send(key, PROMPTS[scenario]);
         await sleep(3000);
-        const { dynamicTools, calls } = rolloutCalls(t0);
+        const { dynamicTools, calls } = rolloutCalls(rolloutsBefore);
         const hist = await client.request("chat.history", { agentId: "makaron", sessionKey: key, limit: 60 }, { timeoutMs: 15_000 }).catch(() => null);
         const messages = hist?.messages ?? [];
         const last = [...messages].reverse().find((m) => m.role === "assistant");
