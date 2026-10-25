@@ -21,8 +21,17 @@ Feishu documents `232024` as app visibility or collaboration restrictions: https
 
 `scripts/migrate-feishu-phone-entries.mjs` accepts `--login`, `--inventory`, `--output`, `--base` and `--account`. Default mode records planned changes without writing Feishu. `--apply` performs the same reconciled operation; `--only` limits a retry to comma-separated chat IDs already found in the full inventory. Each output directory must be new. Credentials remain inside the process and output files are mode-restricted.
 
-## Release boundary
+## Initial candidate boundary
 
-This branch is not merged or deployed. The external Feishu menu/tab data repair is already applied as described above. Future event handling changes require Tianyi's explicit dev merge approval, the shared VLab integration gate and the normal platform release. Existing Gateway hooks for group-added, DM-entered and first-message events are retained.
+At the initial candidate checkpoint, this branch was not merged or deployed. The external Feishu menu/tab data repair is already applied as described above. Future event handling changes require Tianyi's explicit dev merge approval, the shared VLab integration gate and the normal platform release. Existing Gateway hooks for group-added, DM-entered and first-message events are retained.
 
-Old bookmarked browser links are handled separately by v-voice PR #148. That Voice candidate preserves fixed custom entries, protected APIs and device grants, and is not deployed.
+Old bookmarked browser links are handled separately by v-voice PR #148. That Voice candidate preserves fixed custom entries, protected APIs and device grants. Its initial candidate checkpoint was not a deployment.
+
+## Shared integration on 2026-10-26
+
+Tianyi subsequently authorized merge, release and restart. Platform PR #476 merged at dev `396e3146f763e1b4939280fb842ad913ae385d31`. The exact npm plugin module was deployed as `feishu-phone-entry-20261026` and all 19 tests imported that installed module successfully. This corrects a limitation of the original Candidate plan: its overlay target named an unused core package path, while its tests covered the source module. Shared integration used the actual npm plugin path.
+
+Shared health RPC passed. A read-only probe against the isolated Lab bot discovered 35 groups and exercised 101 real API reads; 31 planned writes were deliberately blocked and four existing menu conflicts rejected. These are API compatibility and rejection checks, not evidence of real new menu creation. Real writes and readbacks are covered by the 477 production menu/tab migrations with the identical module bytes.
+
+Production activation, alignment and Voice fleet completion are recorded in the release receipt once verified.
+
