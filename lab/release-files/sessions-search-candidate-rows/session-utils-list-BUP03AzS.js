@@ -1725,5 +1725,65 @@ async function listSessionsFromStoreAsync(params) {
 		return buildSessionsListResult(params, list, sessions);
 	});
 }
+// sessions-search-candidate-rows: the rows sessions_search lists only to run its row visibility check, which reads key,
+// agentId, parentSessionKey and spawnedBy. Same selection as listSessionsFromStoreAsync (filters,
+// archived, order, offset/limit) and the same derivation as buildGatewaySessionRow (the list's row
+// context and clock: spawnedBy from the displayed subagent run's controller, agentId from the row
+// classification), without the model, thinking, usage, ACP, child-session and transcript projections.
+function listSessionVisibilityRowsFromStore(params) {
+	const { cfg, store, opts } = params;
+	const now = Date.now();
+	const userProfileIdentityById = /* @__PURE__ */ new Map();
+	let rowContext;
+	const getRowContext = () => {
+		rowContext ??= buildSessionListRowMetadataContext({
+			now,
+			userProfileIdentityById
+		});
+		return rowContext;
+	};
+	const hasSpawnedByFilter = typeof opts.spawnedBy === "string" && opts.spawnedBy.length > 0;
+	const selection = selectSessionEntries({
+		cfg,
+		store,
+		opts,
+		now,
+		...params.entryFilter ? { entryFilter: params.entryFilter } : {},
+		defaultLimit: SESSIONS_LIST_DEFAULT_LIMIT,
+		getRowContext: hasSpawnedByFilter || Boolean(normalizeOptionalString(opts.search)) ? getRowContext : void 0,
+		userProfileIdentityById,
+		configuredAgentIds: new Set(listAgentIds(cfg)),
+		involvingActorId: params.involvingActorId,
+		ownerFirstActorId: params.ownerFirstActorId
+	});
+	const sessions = selection.entries.map(([key, entry]) => {
+		const parsedAgent = parseAgentSessionKey(key);
+		const rowAgentId = !parsedAgent && typeof opts.agentId === "string" ? normalizeAgentId(opts.agentId) : void 0;
+		const sessionAgentId = normalizeAgentId(parsedAgent?.agentId ?? rowAgentId ?? resolveSessionStoreAgentId(cfg, key));
+		const subagentIndex = getRowContext().subagentRuns ?? buildSingleRowSubagentRunIndex(now, {
+			key,
+			store
+		});
+		const subagentRun = subagentIndex ? subagentIndex.getDisplaySubagentRun(key) : getSessionDisplaySubagentRunByChildSessionKey(key);
+		const subagentOwner = normalizeOptionalString(subagentRun?.controllerSessionKey) || normalizeOptionalString(subagentRun?.requesterSessionKey);
+		const { agentId } = sessionClassificationForRow(cfg, key, sessionAgentId, entry);
+		return {
+			key,
+			spawnedBy: subagentOwner || entry?.spawnedBy,
+			...agentId ? { agentId } : {},
+			parentSessionKey: entry?.parentSessionKey
+		};
+	});
+	return {
+		ts: now,
+		count: sessions.length,
+		totalCount: selection.totalCount,
+		limitApplied: selection.limitApplied,
+		offset: selection.offset > 0 ? selection.offset : void 0,
+		nextOffset: selection.nextOffset,
+		hasMore: selection.hasMore,
+		sessions
+	};
+}
 //#endregion
-export { resolveActiveSessionAgentStatus as C, deriveSessionTitle as E, isSessionAgentAttentionIconId as S, sessionAgentStatusExpiresAt as T, readSessionAutomationVersion as _, loadGatewaySessionLifecycleSnapshot as a, disableCronJobsBoundToSessions as b, buildSessionListRowMetadataContext as c, beginSessionPermissionChange as d, projectAssignableSessionOwner as f, claimSessionAutomationEpoch as g, bumpSessionAutomationVersion as h, buildGatewaySessionInfo as i, readSessionTitleFieldsFromTranscript as l, projectSessionParticipant as m, listSessionsFromStoreAsync as n, loadGatewaySessionRow as o, projectSessionActor as p, resolveSessionsListDefaultsAgentId as r, buildGatewaySessionRow as s, filterAndSortSessionEntries as t, readSessionTitleProjectionUnavailableVersion as u, registerSessionAutomationSource as v, sanitizeSessionAgentStatusNote as w, resolveCronJobBoundSessionKeys as x, unregisterSessionAutomationSource as y };
+export { listSessionVisibilityRowsFromStore, resolveActiveSessionAgentStatus as C, deriveSessionTitle as E, isSessionAgentAttentionIconId as S, sessionAgentStatusExpiresAt as T, readSessionAutomationVersion as _, loadGatewaySessionLifecycleSnapshot as a, disableCronJobsBoundToSessions as b, buildSessionListRowMetadataContext as c, beginSessionPermissionChange as d, projectAssignableSessionOwner as f, claimSessionAutomationEpoch as g, bumpSessionAutomationVersion as h, buildGatewaySessionInfo as i, readSessionTitleFieldsFromTranscript as l, projectSessionParticipant as m, listSessionsFromStoreAsync as n, loadGatewaySessionRow as o, projectSessionActor as p, resolveSessionsListDefaultsAgentId as r, buildGatewaySessionRow as s, filterAndSortSessionEntries as t, readSessionTitleProjectionUnavailableVersion as u, registerSessionAutomationSource as v, sanitizeSessionAgentStatusNote as w, resolveCronJobBoundSessionKeys as x, unregisterSessionAutomationSource as y };

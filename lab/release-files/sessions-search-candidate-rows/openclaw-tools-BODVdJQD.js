@@ -12495,22 +12495,34 @@ async function listVisibleSearchSessions(params) {
 		};
 		candidates.set(candidateId(requesterCandidate), requesterCandidate);
 	}
+	// sessions-search-candidate-rows: active and archived sessions in one listing of the fields read below, 10,000 rows a
+	// page (was 200-row pages per archived state: ~100 sessions.list calls per search on V). A Gateway
+	// without visibilityRowsOnly rejects it as an invalid parameter; then the 200-row pages as before.
+	let candidateRows = process.env.OPENCLAW_V_SESSIONS_SEARCH_CANDIDATE_ROWS !== "0";
 	const listPages = async (agentId) => {
-		for (const archived of [false, true]) {
+		for (const archived of candidateRows ? ["all"] : [false, true]) {
 			let offset = 0;
 			while (true) {
-				const page = await params.gatewayCall({
-					method: "sessions.list",
-					params: {
-						limit: 200,
-						offset,
-						archived,
-						includeGlobal: !params.restrictToSpawned,
-						includeUnknown: false,
-						...agentId ? { agentId } : {},
-						...params.restrictToSpawned ? { spawnedBy: params.effectiveRequesterKey } : {}
-					}
-				});
+				let page;
+				try {
+					page = await params.gatewayCall({
+						method: "sessions.list",
+						params: {
+							limit: candidateRows ? 1e4 : 200,
+							offset,
+							archived,
+							includeGlobal: !params.restrictToSpawned,
+							includeUnknown: false,
+							...agentId ? { agentId } : {},
+							...params.restrictToSpawned ? { spawnedBy: params.effectiveRequesterKey } : {},
+							...candidateRows ? { visibilityRowsOnly: true } : {}
+						}
+					});
+				} catch (error) {
+					if (!candidateRows || offset !== 0 || !/invalid sessions\.list params/iu.test(String(error?.message ?? error))) throw error;
+					candidateRows = false;
+					return await listPages(agentId);
+				}
 				for (const row of Array.isArray(page.sessions) ? page.sessions : []) {
 					if (typeof row.key !== "string" || !agentId && parseAgentSessionKey(row.key) === null) continue;
 					const visibilityRow = {

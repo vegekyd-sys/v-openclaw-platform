@@ -2435,6 +2435,8 @@ const SessionsListParamsSchema = closedObject({
 	activeMinutes: Type.Optional(Type.Integer({ minimum: 1 })),
 	/** v-workboard-sweep-light-v1: rows only for lifecycle reconciliation; skips sharing and placement projections when the caller has no visibility filter. */
 	lifecycleOnly: Type.Optional(Type.Boolean()),
+	/** sessions-search-candidate-rows: rows carry only key, agentId, parentSessionKey and spawnedBy (session tools' row visibility check). */
+	visibilityRowsOnly: Type.Optional(Type.Boolean()),
 	/** Require a real user/channel interaction; excludes synthetic isolated heartbeat rows. */
 	requireLastInteraction: Type.Optional(Type.Boolean()),
 	sortBy: Type.Optional(Type.Union([Type.Literal("updatedAt"), Type.Literal("lastInteractionAt")])),

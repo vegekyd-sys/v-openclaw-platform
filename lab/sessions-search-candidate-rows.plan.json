@@ -1,0 +1,29 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/sessions-search-candidate-rows/src-B9mb84px.js",
+      "target": "openclaw/dist/src-B9mb84px.js",
+      "before": "24cc77ba4cb12e8b25d9006d081f646bc2c021386c047d66452d918bcb29c995",
+      "after": "adc5204b576324562d0f42bd77d1f2c944816fdd38b0889b37b384c2eb8d5c61"
+    },
+    {
+      "source": "lab/release-files/sessions-search-candidate-rows/session-utils-list-BUP03AzS.js",
+      "target": "openclaw/dist/session-utils-list-BUP03AzS.js",
+      "before": "779063a67aef63b59f38a4774e6f89023c32d11b8f44691fe7e069d139c08d8e",
+      "after": "a6e3d70fba29547fa1a9e303216fb0743798b8b71896c9e3a2eaaa5f5fc8f0a7"
+    },
+    {
+      "source": "lab/release-files/sessions-search-candidate-rows/sessions-read-C6mAMxyQ.js",
+      "target": "openclaw/dist/sessions-read-C6mAMxyQ.js",
+      "before": "2d2d0fb1da978015e168ba3d6c05965104b84bb1bf7a2acd08173582a421267a",
+      "after": "eb18ffa53ef8ff816f42010572e9cef083e575c6f16dc218b53f5866a7616a7a"
+    },
+    {
+      "source": "lab/release-files/sessions-search-candidate-rows/openclaw-tools-BODVdJQD.js",
+      "target": "openclaw/dist/openclaw-tools-BODVdJQD.js",
+      "before": "af27d9ae18e783d376b31ed9e5ad6082a305225bdfadde53e58f0045c7cd6019",
+      "after": "c4f575f2f75a7113ce612d54a7c83f09d0e54765be519e4b95789d8a61b405d0"
+    }
+  ]
+}

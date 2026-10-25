@@ -26,7 +26,7 @@ import { u as listSessionMembershipKeys } from "./sessions-eI69vxPt.js";
 import { r as runSessionsCleanup, s as serializeSessionCleanupResult } from "./cleanup-service-CHVXsp6n.js";
 import { h as gatewayClientSessionCreator, i as operatorSessionCap, n as hasOperatorBoundary } from "./operator-role-policy-B_VzZMic.js";
 import { l as readSessionPreviewItemsFromTranscript, n as readRecentSessionMessagesWithStatsAsync } from "./session-transcript-readers-Bry9KBsD.js";
-import { _ as readSessionAutomationVersion, n as listSessionsFromStoreAsync, r as resolveSessionsListDefaultsAgentId, s as buildGatewaySessionRow, u as readSessionTitleProjectionUnavailableVersion } from "./session-utils-list-BUP03AzS.js";
+import { listSessionVisibilityRowsFromStore, _ as readSessionAutomationVersion, n as listSessionsFromStoreAsync, r as resolveSessionsListDefaultsAgentId, s as buildGatewaySessionRow, u as readSessionTitleProjectionUnavailableVersion } from "./session-utils-list-BUP03AzS.js";
 import { i as tryResolveSessionCompatibilityOwnerAgentId, n as resolveRequestedSessionAgentId } from "./session-request-agent-Db9uggbl.js";
 import { f as resolveGatewaySessionStoreTargetWithStore, s as resolveCanonicalSessionEntryFromStoreKeys, u as createGatewaySessionStoreDiscoveryCache } from "./session-utils-store-Dlphca2N.js";
 import "./session-utils-C2DgQXXH.js";
@@ -127,7 +127,8 @@ async function respondWithCachedSessionList(params) {
 	const workKey = sessionListWorkKey(params.request, params.client, params.config);
 	const state = sessionListState(params.context, params.config);
 	const fence = readSessionListFence(params.context, params.modelCatalog);
-	const cacheCompleted = params.request.activeMinutes === void 0 && !params.request.spawnedBy;
+	// sessions-search-candidate-rows: visibility rows lack the active-run fields that decide whether a list may be kept.
+	const cacheCompleted = params.request.activeMinutes === void 0 && !params.request.spawnedBy && params.request.visibilityRowsOnly !== true;
 	const completed = cacheCompleted ? state.completed.get(workKey) : void 0;
 	if (completed && matchesSessionListFence(completed, fence) && (completed.expiresAt === void 0 || completed.expiresAt > Date.now())) {
 		params.respond(true, completed.result, void 0);
@@ -347,8 +348,11 @@ const sessionReadHandlers = {
 			// v-workboard-sweep-light-v1: a caller that sees every row and reads only lifecycle fields skips the
 			// per-session sharing resolution (synchronous, ~3.5 s on V for every Workboard full sweep).
 			const lifecycleOnly = p.lifecycleOnly === true && !visibilityFilter;
+			// sessions-search-candidate-rows: rows with only the session tools' visibility fields; the sharing projection runs
+			// only for a caller with a visibility filter (it decides which rows that caller sees).
+			const visibilityRowsOnly = p.visibilityRowsOnly === true;
 			const entryFilter = visibilityFilter || options.excludedKeys?.size ? (key, entry) => !options.excludedKeys?.has(key) && (visibilityFilter?.(key, entry) ?? true) : void 0;
-			const result = await measureDiagnosticsTimelineSpan("gateway.sessions.list.rows", () => listSessionsFromStoreAsync({
+			const result = await measureDiagnosticsTimelineSpan("gateway.sessions.list.rows", () => (visibilityRowsOnly ? listSessionVisibilityRowsFromStore : listSessionsFromStoreAsync)({
 				cfg,
 				durableStorePath,
 				...entryFilter ? { entryFilter } : {},
@@ -366,7 +370,7 @@ const sessionReadHandlers = {
 				...result.defaults,
 				modelSelectionTarget
 			};
-			const { sharingTargets, membershipKeys } = lifecycleOnly ? {
+			const { sharingTargets, membershipKeys } = lifecycleOnly || visibilityRowsOnly && !visibilityFilter ? {
 				sharingTargets: [],
 				membershipKeys: /* @__PURE__ */ new Set()
 			} : await measureDiagnosticsTimelineSpan("gateway.sessions.list.sharing", () => {
@@ -421,14 +425,14 @@ const sessionReadHandlers = {
 				phase: "sessions.list",
 				attributes: { sessions: result.sessions.length }
 			});
-			const projectPlacement = lifecycleOnly ? () => ({}) : createSessionPlacementBatchProjector(context, result.sessions);
-			const trackedActiveRuns = collectTrackedActiveSessionRuns(context);
-			const projectedAgentRunIndex = buildProjectedAgentRunIndex();
+			const projectPlacement = lifecycleOnly || visibilityRowsOnly ? () => ({}) : createSessionPlacementBatchProjector(context, result.sessions);
+			const trackedActiveRuns = visibilityRowsOnly ? void 0 : collectTrackedActiveSessionRuns(context);
+			const projectedAgentRunIndex = visibilityRowsOnly ? void 0 : buildProjectedAgentRunIndex();
 			const sharing = prepareSessionSharing({
 				client,
 				cfg
 			});
-			const sessions = measureDiagnosticsTimelineSpanSync("gateway.sessions.list.active_run_flags", () => {
+			const sessions = visibilityRowsOnly ? result.sessions : measureDiagnosticsTimelineSpanSync("gateway.sessions.list.active_run_flags", () => {
 				return result.sessions.map((session, index) => {
 					const sharingTarget = sharingTargets[index];
 					const visibility = sharingTarget ? resolveSessionVisibility(sharingTarget.entry) : "shared";
