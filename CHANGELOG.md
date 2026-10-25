@@ -11,6 +11,30 @@
 
 ---
 
+## v-feishu-phone-entry-20261026
+
+上线：2026-10-26 00:27 CST（00:30 完成双节点 Voice 发布）  ·  tag `v-feishu-phone-entry-20261026`
+
+**摘要**：PR #476 修复群聊和私聊电话入口，旧菜单原位迁移，新群与私聊自动生成对应会话的标准链接；群桌面入口在飞书侧栏打开，私聊使用内置页签。V 通过 `v-self-restart` 空闲重启，Voice PR #148 同步兼容历史收藏链接。
+
+本次新部署仅 `feishu-phone-entry-20261026` 的 1 个 Feishu 文件；其余 3 个 DingTalk 文件已在此前的 `dingtalk-outbound-20261025` 上线，本次补齐存档。验收与限制见 [发布记录](docs/feishu-phone-entry-20261026-release.md)。
+
+相对上一版 `v-feishu-voice-confirm-20261025`：4 个文件变化。
+
+**经 VLab 发版 `feishu-phone-entry-20261026`**（voice-entry-migration-01a15dce，dev `396e3146`）
+> 验收：Entry migration: 19 tests import deployed npm module SHA 6c3b8c2adebf; shared health RPC ok and live Feishu API read-only compatibility; identical module performed 477 real production entry migrations/readbacks. Evidence /Users/tianyicai/v-voice-releases/audits/20261025-entry-migration/shared-integration.md; no paid calls.
+- `feishu` dist/v-feishu-phone-tabs.mjs  4c103733 → 6c3b8c2a
+
+**经 VLab 发版 `dingtalk-outbound-20261025`**（monitor-v-production，dev `888e08d2`）
+> 验收：2026-10-25 23:07 shared VLab: deploy ready, 0 load errors (no SessionCanonicalKeyMigration), dingtalk connected; real deepseek turn replied vlab_dingtalk_ok. Functional evidence for case restore: PR #472 candidates 4fcd72b3 (baseline 400) vs 73ba96f9 (patched, original-case ids incl. after restart).
+- `dingtalk` dist/message-handler-BUoLSylZ.mjs  a973a1b6 → 5cd4d5d7
+- `dingtalk` dist/runtime-C81EKBS1.mjs  fa36036c → 6c9d9e2d
+- `dingtalk` dist/v-experience.mjs  a85c1d37 → 6555ba08
+
+**这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #472 fix(dingtalk): 主动群发恢复 openConversationId 原始大小写（不改会话键）
+
+
 ## v-feishu-voice-confirm-20261025
 
 上线：2026-10-25 21:50 CST（21:59 完成身份与 iOS 绑定验收） · tag `v-feishu-voice-confirm-20261025`
