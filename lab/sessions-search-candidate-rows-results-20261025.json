@@ -1,0 +1,4450 @@
+{
+  "candidate": "candidate-d1b00c2b",
+  "data": "V session tables of 8 agents + subagent_runs, exported read-only 2026-10-25 22:09 CST",
+  "fixture": {
+    "dealclaw": {
+      "session_nodes": 26,
+      "session_windows": 26,
+      "session_participants": 23,
+      "session_transcript_index_state": 26,
+      "session_progress_cards": 4
+    },
+    "hy-codex": {
+      "session_nodes": 0,
+      "session_windows": 0,
+      "session_participants": 0,
+      "session_transcript_index_state": 0,
+      "session_progress_cards": 0
+    },
+    "main": {
+      "session_nodes": 0,
+      "session_windows": 0,
+      "session_participants": 0,
+      "session_transcript_index_state": 0,
+      "session_progress_cards": 0
+    },
+    "makaron": {
+      "session_nodes": 9869,
+      "session_windows": 12323,
+      "session_participants": 9558,
+      "session_transcript_index_state": 12250,
+      "session_progress_cards": 3981
+    },
+    "openclaw": {
+      "session_nodes": 0,
+      "session_windows": 0,
+      "session_participants": 0,
+      "session_transcript_index_state": 0,
+      "session_progress_cards": 0
+    },
+    "short-v": {
+      "session_nodes": 2,
+      "session_windows": 2,
+      "session_participants": 3,
+      "session_transcript_index_state": 2,
+      "session_progress_cards": 0
+    },
+    "v-codex": {
+      "session_nodes": 61,
+      "session_windows": 61,
+      "session_participants": 109,
+      "session_transcript_index_state": 61,
+      "session_progress_cards": 50
+    },
+    "xiaoai": {
+      "session_nodes": 41,
+      "session_windows": 41,
+      "session_participants": 34,
+      "session_transcript_index_state": 39,
+      "session_progress_cards": 0
+    },
+    "state": {
+      "subagent_runs": 9375
+    }
+  },
+  "phases": {
+    "A": {
+      "ready": {
+        "ms": 187096,
+        "disabledPlugins": [
+          "codex",
+          "deepseek",
+          "kimi",
+          "moonshot",
+          "msteams",
+          "openclaw-qqbot",
+          "perplexity"
+        ],
+        "rss": {
+          "rssMB": 1954,
+          "hwmMB": 1955
+        }
+      },
+      "warm": {
+        "ms": 36964,
+        "attempts": 4,
+        "rss": {
+          "rssMB": 4845,
+          "hwmMB": 4862
+        }
+      },
+      "rssEnd": {
+        "rssMB": 1695,
+        "hwmMB": 5285
+      }
+    },
+    "B": {
+      "ready": {
+        "ms": 102234,
+        "disabledPlugins": [
+          "codex",
+          "deepseek",
+          "kimi",
+          "moonshot",
+          "msteams",
+          "openclaw-qqbot",
+          "perplexity"
+        ],
+        "rss": {
+          "rssMB": 3388,
+          "hwmMB": 3388
+        }
+      },
+      "warm": {
+        "ms": 17321,
+        "attempts": 3,
+        "rss": {
+          "rssMB": 3389,
+          "hwmMB": 3435
+        }
+      },
+      "rssEnd": {
+        "rssMB": 1351,
+        "hwmMB": 5550
+      }
+    }
+  },
+  "comparisons": 141,
+  "differences": 0,
+  "firstCase": {
+    "label": "makaron:main/all",
+    "perCallBefore": [
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 0,
+        "rows": 200,
+        "ms": 1406,
+        "bytes": 425299
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 200,
+        "rows": 200,
+        "ms": 1156,
+        "bytes": 449315
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 400,
+        "rows": 200,
+        "ms": 1184,
+        "bytes": 450750
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 600,
+        "rows": 200,
+        "ms": 1229,
+        "bytes": 448991
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 800,
+        "rows": 200,
+        "ms": 1201,
+        "bytes": 448561
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 1000,
+        "rows": 200,
+        "ms": 1182,
+        "bytes": 406660
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 1200,
+        "rows": 200,
+        "ms": 1190,
+        "bytes": 432522
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 1400,
+        "rows": 200,
+        "ms": 1201,
+        "bytes": 449293
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 1600,
+        "rows": 200,
+        "ms": 1241,
+        "bytes": 448940
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 1800,
+        "rows": 200,
+        "ms": 1048,
+        "bytes": 449119
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 2000,
+        "rows": 200,
+        "ms": 1703,
+        "bytes": 449429
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 2200,
+        "rows": 200,
+        "ms": 1099,
+        "bytes": 448217
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 2400,
+        "rows": 200,
+        "ms": 1058,
+        "bytes": 449975
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 2600,
+        "rows": 200,
+        "ms": 1182,
+        "bytes": 444745
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 2800,
+        "rows": 200,
+        "ms": 1203,
+        "bytes": 444549
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 3000,
+        "rows": 200,
+        "ms": 1165,
+        "bytes": 449852
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 3200,
+        "rows": 200,
+        "ms": 1049,
+        "bytes": 449757
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 3400,
+        "rows": 200,
+        "ms": 1069,
+        "bytes": 450039
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 3600,
+        "rows": 200,
+        "ms": 1118,
+        "bytes": 447928
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 3800,
+        "rows": 200,
+        "ms": 1220,
+        "bytes": 445815
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 4000,
+        "rows": 200,
+        "ms": 1068,
+        "bytes": 449530
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 4200,
+        "rows": 200,
+        "ms": 966,
+        "bytes": 452293
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 4400,
+        "rows": 200,
+        "ms": 1019,
+        "bytes": 450151
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 4600,
+        "rows": 200,
+        "ms": 1054,
+        "bytes": 449647
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 4800,
+        "rows": 200,
+        "ms": 1100,
+        "bytes": 453819
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 5000,
+        "rows": 200,
+        "ms": 962,
+        "bytes": 451989
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 5200,
+        "rows": 200,
+        "ms": 1160,
+        "bytes": 446832
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 5400,
+        "rows": 200,
+        "ms": 1076,
+        "bytes": 443433
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 5600,
+        "rows": 200,
+        "ms": 1016,
+        "bytes": 452051
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 5800,
+        "rows": 200,
+        "ms": 1064,
+        "bytes": 451337
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 6000,
+        "rows": 200,
+        "ms": 945,
+        "bytes": 450417
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 6200,
+        "rows": 200,
+        "ms": 1039,
+        "bytes": 453900
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 6400,
+        "rows": 200,
+        "ms": 1122,
+        "bytes": 449072
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 6600,
+        "rows": 200,
+        "ms": 1033,
+        "bytes": 455158
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 6800,
+        "rows": 200,
+        "ms": 1011,
+        "bytes": 446560
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 7000,
+        "rows": 200,
+        "ms": 1151,
+        "bytes": 436706
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 7200,
+        "rows": 200,
+        "ms": 947,
+        "bytes": 440123
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 7400,
+        "rows": 200,
+        "ms": 1018,
+        "bytes": 450651
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 7600,
+        "rows": 200,
+        "ms": 1037,
+        "bytes": 450504
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 7800,
+        "rows": 200,
+        "ms": 1265,
+        "bytes": 445042
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 8000,
+        "rows": 200,
+        "ms": 1046,
+        "bytes": 445577
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 8200,
+        "rows": 200,
+        "ms": 1096,
+        "bytes": 444041
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 8400,
+        "rows": 200,
+        "ms": 1100,
+        "bytes": 461723
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 8600,
+        "rows": 200,
+        "ms": 1029,
+        "bytes": 455468
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 8800,
+        "rows": 200,
+        "ms": 1077,
+        "bytes": 447095
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 9000,
+        "rows": 200,
+        "ms": 978,
+        "bytes": 437235
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 9200,
+        "rows": 200,
+        "ms": 1078,
+        "bytes": 430572
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 9400,
+        "rows": 200,
+        "ms": 1091,
+        "bytes": 456524
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 9600,
+        "rows": 200,
+        "ms": 1152,
+        "bytes": 433943
+      },
+      {
+        "archived": false,
+        "agentId": null,
+        "offset": 9800,
+        "rows": 58,
+        "ms": 1072,
+        "bytes": 109489
+      },
+      {
+        "archived": true,
+        "agentId": null,
+        "offset": 0,
+        "rows": 140,
+        "ms": 1139,
+        "bytes": 325867
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 0,
+        "rows": 200,
+        "ms": 1107,
+        "bytes": 425410
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 200,
+        "rows": 200,
+        "ms": 1075,
+        "bytes": 449426
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 400,
+        "rows": 200,
+        "ms": 1089,
+        "bytes": 450861
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 600,
+        "rows": 200,
+        "ms": 1056,
+        "bytes": 449102
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 800,
+        "rows": 200,
+        "ms": 1169,
+        "bytes": 448672
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 1000,
+        "rows": 200,
+        "ms": 1053,
+        "bytes": 406771
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 1200,
+        "rows": 200,
+        "ms": 1132,
+        "bytes": 431596
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 1400,
+        "rows": 200,
+        "ms": 1405,
+        "bytes": 449401
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 1600,
+        "rows": 200,
+        "ms": 1047,
+        "bytes": 449051
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 1800,
+        "rows": 200,
+        "ms": 1117,
+        "bytes": 449230
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 2000,
+        "rows": 200,
+        "ms": 1035,
+        "bytes": 449543
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 2200,
+        "rows": 200,
+        "ms": 1154,
+        "bytes": 448326
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 2400,
+        "rows": 200,
+        "ms": 1049,
+        "bytes": 450085
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 2600,
+        "rows": 200,
+        "ms": 1183,
+        "bytes": 444857
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 2800,
+        "rows": 200,
+        "ms": 1062,
+        "bytes": 444661
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 3000,
+        "rows": 200,
+        "ms": 1158,
+        "bytes": 449961
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 3200,
+        "rows": 200,
+        "ms": 1043,
+        "bytes": 449868
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 3400,
+        "rows": 200,
+        "ms": 1023,
+        "bytes": 449602
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 3600,
+        "rows": 200,
+        "ms": 1200,
+        "bytes": 447425
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 3800,
+        "rows": 200,
+        "ms": 1085,
+        "bytes": 445900
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 4000,
+        "rows": 200,
+        "ms": 1097,
+        "bytes": 449062
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 4200,
+        "rows": 200,
+        "ms": 1071,
+        "bytes": 451469
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 4400,
+        "rows": 200,
+        "ms": 1059,
+        "bytes": 450212
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 4600,
+        "rows": 200,
+        "ms": 1076,
+        "bytes": 448464
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 4800,
+        "rows": 200,
+        "ms": 1503,
+        "bytes": 453937
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 5000,
+        "rows": 200,
+        "ms": 1091,
+        "bytes": 452142
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 5200,
+        "rows": 200,
+        "ms": 1108,
+        "bytes": 443472
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 5400,
+        "rows": 200,
+        "ms": 1026,
+        "bytes": 447018
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 5600,
+        "rows": 200,
+        "ms": 1171,
+        "bytes": 452234
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 5800,
+        "rows": 200,
+        "ms": 1129,
+        "bytes": 451386
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 6000,
+        "rows": 200,
+        "ms": 1275,
+        "bytes": 450392
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 6200,
+        "rows": 200,
+        "ms": 1190,
+        "bytes": 453557
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 6400,
+        "rows": 200,
+        "ms": 1047,
+        "bytes": 448845
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 6600,
+        "rows": 200,
+        "ms": 1082,
+        "bytes": 452434
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 6800,
+        "rows": 200,
+        "ms": 480,
+        "bytes": 447104
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 7000,
+        "rows": 200,
+        "ms": 1181,
+        "bytes": 435235
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 7200,
+        "rows": 200,
+        "ms": 1134,
+        "bytes": 437582
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 7400,
+        "rows": 200,
+        "ms": 1202,
+        "bytes": 446665
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 7600,
+        "rows": 200,
+        "ms": 1068,
+        "bytes": 449292
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 7800,
+        "rows": 200,
+        "ms": 1160,
+        "bytes": 444644
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 8000,
+        "rows": 200,
+        "ms": 1088,
+        "bytes": 441452
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 8200,
+        "rows": 200,
+        "ms": 1220,
+        "bytes": 447038
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 8400,
+        "rows": 200,
+        "ms": 1183,
+        "bytes": 471241
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 8600,
+        "rows": 200,
+        "ms": 1298,
+        "bytes": 446195
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 8800,
+        "rows": 200,
+        "ms": 1112,
+        "bytes": 445901
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 9000,
+        "rows": 200,
+        "ms": 1029,
+        "bytes": 438362
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 9200,
+        "rows": 200,
+        "ms": 1041,
+        "bytes": 415785
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 9400,
+        "rows": 200,
+        "ms": 1083,
+        "bytes": 459833
+      },
+      {
+        "archived": false,
+        "agentId": "makaron",
+        "offset": 9600,
+        "rows": 145,
+        "ms": 999,
+        "bytes": 307036
+      },
+      {
+        "archived": true,
+        "agentId": "makaron",
+        "offset": 0,
+        "rows": 123,
+        "ms": 523,
+        "bytes": 283966
+      }
+    ],
+    "perCallAfter": [
+      {
+        "archived": "all",
+        "agentId": null,
+        "offset": 0,
+        "rows": 9998,
+        "ms": 1407,
+        "bytes": 1395622
+      },
+      {
+        "archived": "all",
+        "agentId": "makaron",
+        "offset": 0,
+        "rows": 9868,
+        "ms": 1430,
+        "bytes": 1372450
+      }
+    ]
+  },
+  "cases": [
+    {
+      "phase": "A",
+      "cases": [
+        {
+          "label": "makaron:main/all",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 101,
+              "listRealMs": 111775,
+              "gatewayListLines": 101,
+              "gatewayListMs": 108884,
+              "gatewayListMaxMs": 1679,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 114328
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 102,
+              "listRealMs": 111821,
+              "gatewayListLines": 101,
+              "gatewayListMs": 108982,
+              "gatewayListMaxMs": 1558,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 114291
+            }
+          }
+        },
+        {
+          "label": "makaron:main/agent",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 654
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 575
+            }
+          }
+        },
+        {
+          "label": "makaron:main/tree",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 506
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 521
+            }
+          }
+        },
+        {
+          "label": "makaron:main/self",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b5657820983e",
+              "ms": 408
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b5657820983e",
+              "ms": 576
+            }
+          }
+        },
+        {
+          "label": "makaron:top-spawner/all",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 523
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 524
+            }
+          }
+        },
+        {
+          "label": "makaron:top-spawner/agent",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 529
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 557
+            }
+          }
+        },
+        {
+          "label": "makaron:top-spawner/tree",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 14,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "37b69eae6c81",
+              "ms": 377
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 14,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "37b69eae6c81",
+              "ms": 502
+            }
+          }
+        },
+        {
+          "label": "makaron:top-spawner/self",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ce823ede7302",
+              "ms": 431
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ce823ede7302",
+              "ms": 420
+            }
+          }
+        },
+        {
+          "label": "makaron:group/all",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 598
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 511
+            }
+          }
+        },
+        {
+          "label": "makaron:group/agent",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 512
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 526
+            }
+          }
+        },
+        {
+          "label": "makaron:group/tree",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1202efa35ae7",
+              "ms": 412
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1202efa35ae7",
+              "ms": 412
+            }
+          }
+        },
+        {
+          "label": "makaron:group/self",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1202efa35ae7",
+              "ms": 385
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1202efa35ae7",
+              "ms": 340
+            }
+          }
+        },
+        {
+          "label": "makaron:direct/all",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 565
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 476
+            }
+          }
+        },
+        {
+          "label": "makaron:direct/agent",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 497
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 476
+            }
+          }
+        },
+        {
+          "label": "makaron:direct/tree",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "a84717eac540",
+              "ms": 353
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "a84717eac540",
+              "ms": 418
+            }
+          }
+        },
+        {
+          "label": "makaron:direct/self",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "a84717eac540",
+              "ms": 359
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "a84717eac540",
+              "ms": 325
+            }
+          }
+        },
+        {
+          "label": "makaron:subagent/all",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 489
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 536
+            }
+          }
+        },
+        {
+          "label": "makaron:subagent/agent",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 503
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 570
+            }
+          }
+        },
+        {
+          "label": "makaron:subagent/tree",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ea8e77bfbf63",
+              "ms": 435
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ea8e77bfbf63",
+              "ms": 446
+            }
+          }
+        },
+        {
+          "label": "makaron:subagent/self",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ea8e77bfbf63",
+              "ms": 369
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ea8e77bfbf63",
+              "ms": 354
+            }
+          }
+        },
+        {
+          "label": "makaron:archived/all",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 564
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 480
+            }
+          }
+        },
+        {
+          "label": "makaron:archived/agent",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 530
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 453
+            }
+          }
+        },
+        {
+          "label": "makaron:archived/tree",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "604cf54ec443",
+              "ms": 449
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "604cf54ec443",
+              "ms": 492
+            }
+          }
+        },
+        {
+          "label": "makaron:archived/self",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "604cf54ec443",
+              "ms": 428
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "604cf54ec443",
+              "ms": 370
+            }
+          }
+        },
+        {
+          "label": "makaron:cron-run/all",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9973,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "376cf97ef76c",
+              "ms": 2224
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 53,
+              "searchedKeys": 9973,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "376cf97ef76c",
+              "ms": 2384
+            }
+          }
+        },
+        {
+          "label": "makaron:cron-run/agent",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9869,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "f07612385fff",
+              "ms": 558
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 50,
+              "searchedKeys": 9869,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "f07612385fff",
+              "ms": 501
+            }
+          }
+        },
+        {
+          "label": "makaron:cron-run/tree",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "63997786d9c2",
+              "ms": 332
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "63997786d9c2",
+              "ms": 431
+            }
+          }
+        },
+        {
+          "label": "makaron:cron-run/self",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "63997786d9c2",
+              "ms": 394
+            },
+            "release": {
+              "listCalls": 102,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44328208,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "63997786d9c2",
+              "ms": 413
+            }
+          }
+        },
+        {
+          "label": "v-codex:first/all",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 2,
+              "listRealMs": 785,
+              "gatewayListLines": 2,
+              "gatewayListMs": 742,
+              "gatewayListMaxMs": 673,
+              "listBytes": 22481394,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 1126
+            },
+            "release": {
+              "listCalls": 54,
+              "listReal": 2,
+              "listRealMs": 54,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22481394,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 393
+            }
+          }
+        },
+        {
+          "label": "v-codex:first/agent",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22481394,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 61,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "3e384932b47b",
+              "ms": 223
+            },
+            "release": {
+              "listCalls": 54,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22481394,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 61,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "3e384932b47b",
+              "ms": 209
+            }
+          }
+        },
+        {
+          "label": "v-codex:first/tree",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22481394,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ed4243d8a2d8",
+              "ms": 221
+            },
+            "release": {
+              "listCalls": 54,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22481394,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ed4243d8a2d8",
+              "ms": 261
+            }
+          }
+        },
+        {
+          "label": "v-codex:first/self",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22481394,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ed4243d8a2d8",
+              "ms": 248
+            },
+            "release": {
+              "listCalls": 54,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22481394,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ed4243d8a2d8",
+              "ms": 223
+            }
+          }
+        },
+        {
+          "label": "xiaoai:first/all",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 2,
+              "listRealMs": 732,
+              "gatewayListLines": 1,
+              "gatewayListMs": 692,
+              "gatewayListMaxMs": 692,
+              "listBytes": 22403529,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 1067
+            },
+            "release": {
+              "listCalls": 54,
+              "listReal": 2,
+              "listRealMs": 60,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22403529,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 400
+            }
+          }
+        },
+        {
+          "label": "xiaoai:first/agent",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22403529,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 41,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "f32547b81e72",
+              "ms": 251
+            },
+            "release": {
+              "listCalls": 54,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22403529,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 41,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "f32547b81e72",
+              "ms": 214
+            }
+          }
+        },
+        {
+          "label": "xiaoai:first/tree",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22403529,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1ff64eb51b9e",
+              "ms": 215
+            },
+            "release": {
+              "listCalls": 54,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22403529,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1ff64eb51b9e",
+              "ms": 339
+            }
+          }
+        },
+        {
+          "label": "xiaoai:first/self",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22403529,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1ff64eb51b9e",
+              "ms": 213
+            },
+            "release": {
+              "listCalls": 54,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22403529,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1ff64eb51b9e",
+              "ms": 177
+            }
+          }
+        },
+        {
+          "label": "short-v:first/all",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 2,
+              "listRealMs": 672,
+              "gatewayListLines": 1,
+              "gatewayListMs": 636,
+              "gatewayListMaxMs": 636,
+              "listBytes": 22324311,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 1013
+            },
+            "release": {
+              "listCalls": 54,
+              "listReal": 2,
+              "listRealMs": 63,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22324311,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 417
+            }
+          }
+        },
+        {
+          "label": "short-v:first/agent",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22324311,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 2,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ca28f6029911",
+              "ms": 233
+            },
+            "release": {
+              "listCalls": 54,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22324311,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 2,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ca28f6029911",
+              "ms": 220
+            }
+          }
+        },
+        {
+          "label": "short-v:first/tree",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22324311,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "9327cec5c0fc",
+              "ms": 235
+            },
+            "release": {
+              "listCalls": 54,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22324311,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "9327cec5c0fc",
+              "ms": 265
+            }
+          }
+        },
+        {
+          "label": "short-v:first/self",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22324311,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "9327cec5c0fc",
+              "ms": 262
+            },
+            "release": {
+              "listCalls": 54,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22324311,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "9327cec5c0fc",
+              "ms": 239
+            }
+          }
+        },
+        {
+          "label": "dealclaw:first/all",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 2,
+              "listRealMs": 1835,
+              "gatewayListLines": 1,
+              "gatewayListMs": 1777,
+              "gatewayListMaxMs": 1777,
+              "listBytes": 22373165,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 26,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "16db480a42c3",
+              "ms": 2178
+            },
+            "release": {
+              "listCalls": 54,
+              "listReal": 2,
+              "listRealMs": 35,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22373165,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 26,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "16db480a42c3",
+              "ms": 286
+            }
+          }
+        },
+        {
+          "label": "dealclaw:first/agent",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22373165,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 26,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "16db480a42c3",
+              "ms": 245
+            },
+            "release": {
+              "listCalls": 54,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22373165,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 26,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "16db480a42c3",
+              "ms": 202
+            }
+          }
+        },
+        {
+          "label": "dealclaw:first/tree",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22373165,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "216c9c1bda39",
+              "ms": 204
+            },
+            "release": {
+              "listCalls": 54,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22373165,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "216c9c1bda39",
+              "ms": 236
+            }
+          }
+        },
+        {
+          "label": "dealclaw:first/self",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22373165,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "216c9c1bda39",
+              "ms": 231
+            },
+            "release": {
+              "listCalls": 54,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22373165,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "216c9c1bda39",
+              "ms": 220
+            }
+          }
+        },
+        {
+          "label": "makaron:main/sandboxed",
+          "arms": {
+            "v": {
+              "listCalls": 2,
+              "listReal": 2,
+              "listRealMs": 2137,
+              "gatewayListLines": 2,
+              "gatewayListMs": 2023,
+              "gatewayListMaxMs": 1038,
+              "listBytes": 1274,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b5657820983e",
+              "ms": 2138
+            },
+            "release": {
+              "listCalls": 3,
+              "listReal": 3,
+              "listRealMs": 1636,
+              "gatewayListLines": 2,
+              "gatewayListMs": 1530,
+              "gatewayListMaxMs": 1118,
+              "listBytes": 1274,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b5657820983e",
+              "ms": 1637
+            }
+          }
+        },
+        {
+          "label": "makaron:group/sandboxed",
+          "arms": {
+            "v": {
+              "listCalls": 2,
+              "listReal": 2,
+              "listRealMs": 1385,
+              "gatewayListLines": 2,
+              "gatewayListMs": 1303,
+              "gatewayListMaxMs": 892,
+              "listBytes": 1274,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1202efa35ae7",
+              "ms": 1385
+            },
+            "release": {
+              "listCalls": 3,
+              "listReal": 3,
+              "listRealMs": 1482,
+              "gatewayListLines": 2,
+              "gatewayListMs": 1380,
+              "gatewayListMaxMs": 964,
+              "listBytes": 1274,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1202efa35ae7",
+              "ms": 1483
+            }
+          }
+        },
+        {
+          "label": "v-codex:first/sandboxed",
+          "arms": {
+            "v": {
+              "listCalls": 2,
+              "listReal": 2,
+              "listRealMs": 1421,
+              "gatewayListLines": 2,
+              "gatewayListMs": 1324,
+              "gatewayListMaxMs": 1007,
+              "listBytes": 1274,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ed4243d8a2d8",
+              "ms": 1422
+            },
+            "release": {
+              "listCalls": 3,
+              "listReal": 3,
+              "listRealMs": 1249,
+              "gatewayListLines": 2,
+              "gatewayListMs": 1171,
+              "gatewayListMaxMs": 837,
+              "listBytes": 1274,
+              "lean": 1,
+              "listRejected": 1,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ed4243d8a2d8",
+              "ms": 1249
+            }
+          }
+        }
+      ]
+    },
+    {
+      "phase": "B",
+      "cases": [
+        {
+          "label": "makaron:main/all",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 101,
+              "listRealMs": 124024,
+              "gatewayListLines": 101,
+              "gatewayListMs": 120807,
+              "gatewayListMaxMs": 1811,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 127938
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 2,
+              "listRealMs": 2837,
+              "gatewayListLines": 2,
+              "gatewayListMs": 2694,
+              "gatewayListMaxMs": 1365,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 6013
+            }
+          }
+        },
+        {
+          "label": "makaron:main/agent",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 603
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 226
+            }
+          }
+        },
+        {
+          "label": "makaron:main/tree",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 545
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 242
+            }
+          }
+        },
+        {
+          "label": "makaron:main/self",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b5657820983e",
+              "ms": 568
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b5657820983e",
+              "ms": 425
+            }
+          }
+        },
+        {
+          "label": "makaron:top-spawner/all",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 646
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 328
+            }
+          }
+        },
+        {
+          "label": "makaron:top-spawner/agent",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 630
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 238
+            }
+          }
+        },
+        {
+          "label": "makaron:top-spawner/tree",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 14,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "37b69eae6c81",
+              "ms": 691
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 14,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "37b69eae6c81",
+              "ms": 152
+            }
+          }
+        },
+        {
+          "label": "makaron:top-spawner/self",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ce823ede7302",
+              "ms": 645
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ce823ede7302",
+              "ms": 103
+            }
+          }
+        },
+        {
+          "label": "makaron:group/all",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 646
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 310
+            }
+          }
+        },
+        {
+          "label": "makaron:group/agent",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 642
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 284
+            }
+          }
+        },
+        {
+          "label": "makaron:group/tree",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1202efa35ae7",
+              "ms": 453
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1202efa35ae7",
+              "ms": 145
+            }
+          }
+        },
+        {
+          "label": "makaron:group/self",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1202efa35ae7",
+              "ms": 380
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1202efa35ae7",
+              "ms": 103
+            }
+          }
+        },
+        {
+          "label": "makaron:direct/all",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 558
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 178
+            }
+          }
+        },
+        {
+          "label": "makaron:direct/agent",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 669
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 217
+            }
+          }
+        },
+        {
+          "label": "makaron:direct/tree",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "a84717eac540",
+              "ms": 410
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "a84717eac540",
+              "ms": 194
+            }
+          }
+        },
+        {
+          "label": "makaron:direct/self",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "a84717eac540",
+              "ms": 410
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "a84717eac540",
+              "ms": 60
+            }
+          }
+        },
+        {
+          "label": "makaron:subagent/all",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 641
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 245
+            }
+          }
+        },
+        {
+          "label": "makaron:subagent/agent",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 748
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 258
+            }
+          }
+        },
+        {
+          "label": "makaron:subagent/tree",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ea8e77bfbf63",
+              "ms": 448
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ea8e77bfbf63",
+              "ms": 118
+            }
+          }
+        },
+        {
+          "label": "makaron:subagent/self",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ea8e77bfbf63",
+              "ms": 464
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ea8e77bfbf63",
+              "ms": 55
+            }
+          }
+        },
+        {
+          "label": "makaron:archived/all",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 551
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 209
+            }
+          }
+        },
+        {
+          "label": "makaron:archived/agent",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 562
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9868,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b0f86c7f170b",
+              "ms": 172
+            }
+          }
+        },
+        {
+          "label": "makaron:archived/tree",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "604cf54ec443",
+              "ms": 346
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "604cf54ec443",
+              "ms": 119
+            }
+          }
+        },
+        {
+          "label": "makaron:archived/self",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "604cf54ec443",
+              "ms": 425
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "604cf54ec443",
+              "ms": 72
+            }
+          }
+        },
+        {
+          "label": "makaron:cron-run/all",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9973,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "376cf97ef76c",
+              "ms": 2993
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9973,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "376cf97ef76c",
+              "ms": 4175
+            }
+          }
+        },
+        {
+          "label": "makaron:cron-run/agent",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9869,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "f07612385fff",
+              "ms": 580
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 50,
+              "searchedKeys": 9869,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "f07612385fff",
+              "ms": 259
+            }
+          }
+        },
+        {
+          "label": "makaron:cron-run/tree",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "63997786d9c2",
+              "ms": 501
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "63997786d9c2",
+              "ms": 110
+            }
+          }
+        },
+        {
+          "label": "makaron:cron-run/self",
+          "arms": {
+            "v": {
+              "listCalls": 101,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 44326734,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "63997786d9c2",
+              "ms": 569
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 2768072,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "63997786d9c2",
+              "ms": 83
+            }
+          }
+        },
+        {
+          "label": "v-codex:first/all",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 2,
+              "listRealMs": 2199,
+              "gatewayListLines": 2,
+              "gatewayListMs": 2127,
+              "gatewayListMaxMs": 2028,
+              "listBytes": 22480657,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 2588
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 1,
+              "listRealMs": 756,
+              "gatewayListLines": 1,
+              "gatewayListMs": 718,
+              "gatewayListMaxMs": 718,
+              "listBytes": 1412661,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 957
+            }
+          }
+        },
+        {
+          "label": "v-codex:first/agent",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22480657,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 61,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "3e384932b47b",
+              "ms": 253
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 1412661,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 61,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "3e384932b47b",
+              "ms": 41
+            }
+          }
+        },
+        {
+          "label": "v-codex:first/tree",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22480657,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ed4243d8a2d8",
+              "ms": 272
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 1412661,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ed4243d8a2d8",
+              "ms": 135
+            }
+          }
+        },
+        {
+          "label": "v-codex:first/self",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22480657,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ed4243d8a2d8",
+              "ms": 267
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 1412661,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ed4243d8a2d8",
+              "ms": 71
+            }
+          }
+        },
+        {
+          "label": "xiaoai:first/all",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 2,
+              "listRealMs": 785,
+              "gatewayListLines": 1,
+              "gatewayListMs": 733,
+              "gatewayListMaxMs": 733,
+              "listBytes": 22402792,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 1189
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 1,
+              "listRealMs": 78,
+              "gatewayListLines": 1,
+              "gatewayListMs": 61,
+              "gatewayListMaxMs": 61,
+              "listBytes": 1399306,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 291
+            }
+          }
+        },
+        {
+          "label": "xiaoai:first/agent",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22402792,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 41,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "f32547b81e72",
+              "ms": 255
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 1399306,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 41,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "f32547b81e72",
+              "ms": 47
+            }
+          }
+        },
+        {
+          "label": "xiaoai:first/tree",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22402792,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1ff64eb51b9e",
+              "ms": 218
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 1399306,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1ff64eb51b9e",
+              "ms": 74
+            }
+          }
+        },
+        {
+          "label": "xiaoai:first/self",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22402792,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1ff64eb51b9e",
+              "ms": 222
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 1399306,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1ff64eb51b9e",
+              "ms": 45
+            }
+          }
+        },
+        {
+          "label": "short-v:first/all",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 2,
+              "listRealMs": 837,
+              "gatewayListLines": 1,
+              "gatewayListMs": 771,
+              "gatewayListMaxMs": 771,
+              "listBytes": 22323574,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 1208
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 1,
+              "listRealMs": 123,
+              "gatewayListLines": 1,
+              "gatewayListMs": 84,
+              "gatewayListMaxMs": 84,
+              "listBytes": 1396125,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 53,
+              "searchedKeys": 9972,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "05a154e65a1f",
+              "ms": 359
+            }
+          }
+        },
+        {
+          "label": "short-v:first/agent",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22323574,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 2,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ca28f6029911",
+              "ms": 232
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 1396125,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 2,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ca28f6029911",
+              "ms": 38
+            }
+          }
+        },
+        {
+          "label": "short-v:first/tree",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22323574,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "9327cec5c0fc",
+              "ms": 245
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 1396125,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "9327cec5c0fc",
+              "ms": 89
+            }
+          }
+        },
+        {
+          "label": "short-v:first/self",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22323574,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "9327cec5c0fc",
+              "ms": 268
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 1396125,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "9327cec5c0fc",
+              "ms": 66
+            }
+          }
+        },
+        {
+          "label": "dealclaw:first/all",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 2,
+              "listRealMs": 1024,
+              "gatewayListLines": 1,
+              "gatewayListMs": 975,
+              "gatewayListMaxMs": 975,
+              "listBytes": 22372428,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 26,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "16db480a42c3",
+              "ms": 1334
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 1,
+              "listRealMs": 107,
+              "gatewayListLines": 1,
+              "gatewayListMs": 75,
+              "gatewayListMaxMs": 75,
+              "listBytes": 1398210,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 26,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "16db480a42c3",
+              "ms": 242
+            }
+          }
+        },
+        {
+          "label": "dealclaw:first/agent",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22372428,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 26,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "16db480a42c3",
+              "ms": 268
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 1398210,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 26,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "16db480a42c3",
+              "ms": 42
+            }
+          }
+        },
+        {
+          "label": "dealclaw:first/tree",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22372428,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "216c9c1bda39",
+              "ms": 267
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 1398210,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "216c9c1bda39",
+              "ms": 98
+            }
+          }
+        },
+        {
+          "label": "dealclaw:first/self",
+          "arms": {
+            "v": {
+              "listCalls": 53,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 22372428,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "216c9c1bda39",
+              "ms": 308
+            },
+            "release": {
+              "listCalls": 2,
+              "listReal": 0,
+              "listRealMs": 0,
+              "gatewayListLines": 0,
+              "gatewayListMs": 0,
+              "gatewayListMaxMs": 0,
+              "listBytes": 1398210,
+              "lean": 2,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "216c9c1bda39",
+              "ms": 46
+            }
+          }
+        },
+        {
+          "label": "makaron:main/sandboxed",
+          "arms": {
+            "v": {
+              "listCalls": 2,
+              "listReal": 2,
+              "listRealMs": 2870,
+              "gatewayListLines": 2,
+              "gatewayListMs": 2751,
+              "gatewayListMaxMs": 1798,
+              "listBytes": 1274,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b5657820983e",
+              "ms": 2871
+            },
+            "release": {
+              "listCalls": 1,
+              "listReal": 1,
+              "listRealMs": 478,
+              "gatewayListLines": 1,
+              "gatewayListMs": 371,
+              "gatewayListMaxMs": 371,
+              "listBytes": 160,
+              "lean": 1,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "b5657820983e",
+              "ms": 479
+            }
+          }
+        },
+        {
+          "label": "makaron:group/sandboxed",
+          "arms": {
+            "v": {
+              "listCalls": 2,
+              "listReal": 2,
+              "listRealMs": 1878,
+              "gatewayListLines": 2,
+              "gatewayListMs": 1775,
+              "gatewayListMaxMs": 1347,
+              "listBytes": 1274,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1202efa35ae7",
+              "ms": 1878
+            },
+            "release": {
+              "listCalls": 1,
+              "listReal": 1,
+              "listRealMs": 942,
+              "gatewayListLines": 1,
+              "gatewayListMs": 888,
+              "gatewayListMaxMs": 888,
+              "listBytes": 160,
+              "lean": 1,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "1202efa35ae7",
+              "ms": 942
+            }
+          }
+        },
+        {
+          "label": "v-codex:first/sandboxed",
+          "arms": {
+            "v": {
+              "listCalls": 2,
+              "listReal": 2,
+              "listRealMs": 1676,
+              "gatewayListLines": 2,
+              "gatewayListMs": 1586,
+              "gatewayListMaxMs": 1129,
+              "listBytes": 1274,
+              "lean": 0,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ed4243d8a2d8",
+              "ms": 1676
+            },
+            "release": {
+              "listCalls": 1,
+              "listReal": 1,
+              "listRealMs": 414,
+              "gatewayListLines": 1,
+              "gatewayListMs": 379,
+              "gatewayListMaxMs": 379,
+              "listBytes": 160,
+              "lean": 1,
+              "listRejected": 0,
+              "searchCalls": 1,
+              "searchedKeys": 1,
+              "resultHash": "5021e624e752",
+              "searchSequenceHash": "ed4243d8a2d8",
+              "ms": 415
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
