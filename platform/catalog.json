@@ -351,6 +351,7 @@
         "lab/feishu-ingress-catchup.test.mjs",
         "lab/feishu-phone-tabs.test.mjs",
         "lab/feishu-voice-actor.test.mjs",
+        "lab/feishu-voice-confirm.test.mjs",
         "lab/feishu-webhook-challenge.test.mjs",
         "scripts/node-async-context-frame.test.mjs",
         "lab/workboard-incremental-sweep.test.mjs",
