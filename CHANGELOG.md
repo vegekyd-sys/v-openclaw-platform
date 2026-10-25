@@ -11,6 +11,139 @@
 
 ---
 
+## v-feishu-phone-entry-20261026
+
+上线：2026-10-26 00:27 CST（00:30 完成双节点 Voice 发布）  ·  tag `v-feishu-phone-entry-20261026`
+
+**摘要**：PR #476 修复群聊和私聊电话入口，旧菜单原位迁移，新群与私聊自动生成对应会话的标准链接；群桌面入口在飞书侧栏打开，私聊使用内置页签。V 通过 `v-self-restart` 空闲重启，Voice PR #148 同步兼容历史收藏链接。
+
+本次新部署仅 `feishu-phone-entry-20261026` 的 1 个 Feishu 文件；其余 3 个 DingTalk 文件已在此前的 `dingtalk-outbound-20261025` 上线，本次补齐存档。验收与限制见 [发布记录](docs/feishu-phone-entry-20261026-release.md)。
+
+相对上一版 `v-feishu-voice-confirm-20261025`：4 个文件变化。
+
+**经 VLab 发版 `feishu-phone-entry-20261026`**（voice-entry-migration-01a15dce，dev `396e3146`）
+> 验收：Entry migration: 19 tests import deployed npm module SHA 6c3b8c2adebf; shared health RPC ok and live Feishu API read-only compatibility; identical module performed 477 real production entry migrations/readbacks. Evidence /Users/tianyicai/v-voice-releases/audits/20261025-entry-migration/shared-integration.md; no paid calls.
+- `feishu` dist/v-feishu-phone-tabs.mjs  4c103733 → 6c3b8c2a
+
+**经 VLab 发版 `dingtalk-outbound-20261025`**（monitor-v-production，dev `888e08d2`）
+> 验收：2026-10-25 23:07 shared VLab: deploy ready, 0 load errors (no SessionCanonicalKeyMigration), dingtalk connected; real deepseek turn replied vlab_dingtalk_ok. Functional evidence for case restore: PR #472 candidates 4fcd72b3 (baseline 400) vs 73ba96f9 (patched, original-case ids incl. after restart).
+- `dingtalk` dist/message-handler-BUoLSylZ.mjs  a973a1b6 → 5cd4d5d7
+- `dingtalk` dist/runtime-C81EKBS1.mjs  fa36036c → 6c9d9e2d
+- `dingtalk` dist/v-experience.mjs  a85c1d37 → 6555ba08
+
+**这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #472 fix(dingtalk): 主动群发恢复 openConversationId 原始大小写（不改会话键）
+
+
+## v-feishu-voice-confirm-20261025
+
+上线：2026-10-25 21:50 CST（21:59 完成身份与 iOS 绑定验收） · tag `v-feishu-voice-confirm-20261025`
+
+**摘要**：飞书电话页通过原会话中的确认卡连接身份，确认后原页可继续拨号并绑定 iOS。原生 SDK 卡片事件先于模型和审批分发处理，身份与工具权限仍由原生 Gateway 核对。
+
+本次新部署仅下列 `voice-feishu-confirm-20261025` 的 2 个 Feishu 文件；其余 12 个变化是此前已在生产运行、本次补齐完整归档的内容。生产重启、双节点 Voice 与真实界面验收见 [发布验收](docs/feishu-voice-confirm-20261025-release.md)。
+
+相对上一版 `feishu-conversations-20261024`：14 个文件变化。
+
+**经 VLab 发版 `fullread-dingtalk-r2-20261025`**（monitor-v-production，dev `8a9f7cf3`）
+> 验收：2026-10-25 shared VLab: real deepseek turn (exec+sessions_list+sessions_search) replied vlab_fullread_ok 3; 0 load errors; dingtalk/wecom connected; installed hashes match plan (operations 54ae7d7b, v-session-entries-matching d2d2c2cd); doctor CLI run by agent did not stall Gateway (0 liveness delays). #382 session-key excluded after first deploy broke health (SessionCanonicalKeyMigrationRequiredE…
+- `core` combined-store-gateway-BwDhjbIt.js  4b7612af → 9cb53296
+- `core` doctor-health-contributions-Dz7xROs_.js  a9b70992 → 3d9cdefb
+- `core` operations-CTofDiKh.js  eb6286b4 → 54ae7d7b
+- `core` registry-runtime-session-ownership-B1XvaNE7.js  f1c58a03 → d8e335dc
+- `core` sessions-resolve-_D6BmQTT.js  c3d8c801 → a1b3f4b3
+- `core` v-session-entries-matching.mjs  — → d2d2c2cd
+
+**经 VLab 发版 `voice-feishu-confirm-20261025`**（voice-feishu-confirm-release-01a15dce，dev `bf271e72`）
+> 验收：docs/feishu-voice-confirm-20261025-release.md; real internal/external Feishu native websocket card callbacks, same group/session distinct actors/tenants, actor-scoped catalogs 127/114, both iOS Debug39 bindings saved; candidate 6/6; platform focused 4/4; Voice955 tests; no paid audio call
+- `feishu` dist/monitor.account-WFdlCDhR.js  9e804fc3 → 535841d0
+- `feishu` dist/v-feishu-voice-confirm.mjs  — → 6eba4d8d
+
+**经 VLab 发版 `noon-batch-20261016b`**（monitor-v-production，dev `5b925124`）
+> 验收：共享 VLab 11:28 部署 #380+#381（9 文件：core dist 3 个上下文溢出续写、钉钉 3 个、企微 3 个；before 均等于 V 线上字节）。Gateway 11:2x ready，journal 错误 0、SessionCanonicalKeyMigration 0，worker 12 进程，钉钉 connected、企微 websocket 启动。真实回合 vlab-dev-1792121414509：模型调用 exec(date +%F; uname -m)，toolResult 2026-10-16/x86_64，最终回复两行一致，约 10 s。#380/#381 的功能证据为各自 PR 在相同字节上的 candidate 记录（PR #380 docs/experiments/context-overflow-big-sessions.md，PR #…
+- `dingtalk` dist/message-handler-BUoLSylZ.mjs  d914cbce → a973a1b6
+- `dingtalk` dist/runtime-C81EKBS1.mjs  af93e121 → fa36036c
+- `dingtalk` dist/v-experience.mjs  5d939fa7 → a85c1d37
+- `wecom` dist/src/channel.js  30eb4a17 → 4b21464a
+- `wecom` dist/src/monitor.js  d4fe3561 → f015717e
+- `wecom` dist/src/v-experience.mjs  5d939fa7 → a85c1d37
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #468 perf(sessions): resolve 的 sessionId/label/shortId 与插件 ownership 检查只读匹配行（~9 s → 3–70 ms）
+- #457 ops(egress): V 出口限速 45→55 Mbit（带宽已升到 60 Mbps）
+- #463 perf(system-agent): 内置助手的 doctor 改在子进程跑并跳过两项全量转录扫描
+
+
+## feishu-conversations-20261024
+
+上线：2026-10-24 03:07 CST  ·  tag `feishu-conversations-20261024`
+
+**摘要**：新群自动提供输入框下方的电话入口，私聊保留顶部标签；已连接飞书身份的电话沿用原生会话工具权限，未识别身份可直接语音聊天。聊天验证码登录机制已移除，旧浏览器登录失效后可重新连接飞书账号。
+
+生产新群真实入群事件自动创建底部菜单，浏览器确认无验证码入口及首页更新日志；105 项有效工具、原生 read、身份伪造拒绝及旧登录 RPC 移除通过。生产直接 exec 与原生 Gateway 均要求 admitted agent run，未绕过 Secret 代理。网页与设备同为 Voice `b071724`。
+
+本次激活发生约 9 分钟服务中断：退出清理较慢，且首次启动暴露 VLab/生产 Feishu 目录差异。补齐到已验收插件的目录映射后恢复；发布脚本增加安装前映射检查和生产布局导入测试。详见 `docs/feishu-conversations-20261024-release.md`。
+
+相对上一版 `v2026.9.1-db91.6-session-phone-20261023`：12 个文件变化。
+
+**经 VLab 发版 `feishu-multiuser-phone-v1`**（01a168a1-6a0f-7fa2-87fd-6978882b531d，dev `e4b72047`）
+- `core` realtime-session-harness-CEO5kVAJ.js  02f37cb2 → 74bc94f5
+- `core` talk-DkFuKRod.js  80d9cec1 → f01a6e7b
+- `core` v-feishu-voice-runtime.mjs  — → 4be65ba0
+
+**经 VLab 发版 `feishu-conversations-no-code-20261024`**（01a168a1-6a0f-7fa2-87fd-6978882b531d，dev `888024d1`）
+> 验收：2026-10-23T18:54:17Z real RPC PID2013260: group membership and native route resolved; 127 effective tools; native exec printf voice_parity_release_ok succeeded; forged identity rejected; removed login begin/status unavailable; new Voice module has no challenge. /tmp/feishu-release-live-check.mjs shared. No paid voice call.
+- `core` server-methods-CLElG7qF.js  b75a130d → f3889a32
+- `core` tools-catalog-DGR0f9wo.js  93eae85c → bbc820d3
+- `core` tools-invoke-ev4-EXmh.js  20da277d → a5f191fc
+- `core` tools-invoke-shared-CjpflNGO.js  ac465c5b → f327eda6
+- `core` v-feishu-voice-actor.mjs  — → 17608d69
+- `core` v-feishu-voice-policy.mjs  — → 88e361a3
+- `core` v-feishu-voice-tools.mjs  — → c4bd3f23
+- `feishu` dist/monitor.account-WFdlCDhR.js  85d6d088 → 9e804fc3
+- `feishu` dist/v-feishu-phone-tabs.mjs  72c3ce04 → 4c103733
+
+
+## v2026.9.1-db91.6-session-phone-20261023
+
+上线：2026-10-23 18:23 CST  ·  tag `v2026.9.1-db91.6-session-phone-20261023`
+
+**摘要**：正式飞书机器人接收进入私聊事件后，为已配置用户自动补齐顶部「📞 打给 V」标签。群内入口使用各自群电话映射，Voice 同步发布会话上下文、通话状态、结束纪要和 iOS 绑定能力。
+
+本次新增部署仅为 Feishu 插件 3 个文件；下列其他 8 个文件是此前已在生产运行的发布，本次完整捕获归档。共享 VLab 的真实进入私聊事件验证通过，promotion 后 parity ALIGNED，漂移检查 0 findings，integration lease 已释放。Gateway 自动标签需受控重启激活，当前等待空闲窗口；Voice 双节点和飞书应用 1.0.24 已上线。
+
+相对上一版 `v2026.9.1-db91.6-vector-budget-20261020`：11 个文件变化。
+
+**经 VLab 发版 `nightshift-throughput-v1`**（nightshift-throughput，dev `e822d251`）
+> 验收：shared VLab 2026-10-22 02:0x CST: deploy hashes match plan (3 files); Gateway pid 1685292->1699695 ready; vlab.workers.status started=true min5/max15 with patched worker manifest (plugin loaded); chat.send in agent:makaron:explicit:vlab-dev-nightshift-throughput-1792606007094 replied '收到 nightshift-throughput' (reply path through runMemoryFlushIfNeeded works); lab/nightshift-throughput.test.mjs 4/…
+- `core` agent-runner-memory-7VF-zwNt.js  7d5eaa38 → befc094d
+- `core` runtime-api-1CCazqtv.js  3300629f → 3bc03ce6
+- `worker` openclaw.plugin.json  1ec103e3 → 2223bae7
+
+**经 VLab 发版 `gateway-451-452-20261021-v1`**（gateway-451-452-64g-20261021，dev `53ed7f93`）
+> 验收：/var/tmp/gateway-451-452-vlab-20261021/acceptance.json: 21 static tests; combined candidate 537 session + 8 health comparisons zero diff; 12 concurrent actual exec + persisted final replies verified; child spawn/yield/completion and continuity pass. First cold coordinator timeout and final-receipt race retained as limitations.
+- `core` collector-DyqVHdcZ.js  8056582c → 376387c5
+- `core` session-utils-list-BUP03AzS.js  2f30da37 → 779063a6
+- `core` subagent-registry.store.sqlite-hzGu4QSk.js  f37ed94d → 4bc27059
+- `core` v-health-session-summary-worker.mjs  — → b5cf6c19
+
+**经 VLab 发版 `memsearch-overlap-20261021`**（monitor-v-production，dev `3def4ebc`）
+> 验收：共享 VLab 01:02 部署 #447（dev 3def4ebc）：manager-runtime.js 272177d5→97812535，before 等于 V 线上字节。部署后哈希为 97812535，TypeError/ReferenceError/SyntaxError/InvalidConfig 均为 0。第一次验收回合失败，原因是 Agent DB process coordinator wait exceeded 5000ms：VLab 刚启动、事件循环卡了 23 s，同时副本演练也在占 IO，和本补丁无关。第二次回合 memory_search 成功，命中 6 条，degraded=vector-timeout（VLab 没有 Gemini 密钥，向量路径本来就走不通，降级到关键词是预期结果），说明 #444 外壳加 #447 并行路径能跑通。热态提速和结果等价性靠 …
+- `core` extensions/memory-core/manager-runtime.js  272177d5 → 97812535
+
+**经 VLab 发版 `feishu-auto-phone-tab-v1`**（01a162db-1bb2-7873-9c89-73f5fef546e2，dev `3cbb48e9`）
+> 验收：2026-10-23 18:13:24 CST native Feishu entered V-Lab DM; live shared Gateway logged voice.phone-tab status=verified created=false, matching existing top tab. Real websocket ingress verified. Shared deploy byte hashes 3/3, ready PID1958174. Task suite 11/11, merged catalog tests passed; GitHub static CI39935751933 passed. Prior candidate exercised real Feishu APIs including 10 repeated entries, unkn…
+- `feishu` dist/client-DMbIL3UH.js  9316572c → 8402132e
+- `feishu` dist/monitor.account-WFdlCDhR.js  ffdf7072 → 85d6d088
+- `feishu` dist/v-feishu-phone-tabs.mjs  — → 72c3ce04
+
+**这期间合入 dev 的 PR**（5 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #454 feat(gateway): Night Shift card sessions skip memory flush, keep whole notes, Worker pool above 16
+- #450 fix(memory-indexer): reuse the running Gateway's DB91 integrity proof at start
+- #447 perf(memory): 关键词检索改在 KNN 子进程扫描期间跑（热态 −0.2 s，结果等价）
+- #448 perf(memory-indexer): 没变的 chunk 不再重写（向量表不再长空槽，log.md 占锁降到 12–20 ms）
+- #446 release: 捕获 V（10/20 三次发版：#442 #441 #444）+ CHANGELOG
+
 ## v2026.9.1-db91.6-gateway-451-452-20261021
 
 上线：2026-10-22 00:17 CST Gateway ready（PID 62954 → 352681）。本节记录运行时产物，尚未创建 git tag。

@@ -1,0 +1,266 @@
+{
+ "candidate": "candidate-51cc7ce8-d295-4cec-a310-e69d6f8fc04b",
+ "sourceCommit": "c11900b7d829c7ca3057d92b86929328ad15fb18",
+ "dirty": true,
+ "baseRelease": "feishu-auto-phone-tab-v1",
+ "runtimeSha": "17b3685be83bfa7ba0b88ca8c134b589ac43647a0deb7cbcbfb5ad30112d76d3",
+ "fixture": {
+  "counts": {
+   "session_nodes": 9050,
+   "session_windows": 11326,
+   "session_participants": 8737,
+   "session_transcript_index_state": 11254,
+   "session_progress_cards": 3664
+  },
+  "entryJsonMB": 592,
+  "bytes": 629252096,
+  "ms": 50477
+ },
+ "equivalence": {
+  "cases": 528,
+  "mismatches": 0,
+  "byKind": {
+   "key": {
+    "n": 100,
+    "ok": 100,
+    "missing": 0,
+    "error": 0,
+    "threw": 0
+   },
+   "key+agent": {
+    "n": 100,
+    "ok": 100,
+    "missing": 0,
+    "error": 0,
+    "threw": 0
+   },
+   "key+allowMissing": {
+    "n": 20,
+    "ok": 20,
+    "missing": 0,
+    "error": 0,
+    "threw": 0
+   },
+   "spawnedBy=parent": {
+    "n": 40,
+    "ok": 0,
+    "missing": 0,
+    "error": 40,
+    "threw": 0
+   },
+   "spawnedBy=other": {
+    "n": 40,
+    "ok": 0,
+    "missing": 0,
+    "error": 40,
+    "threw": 0
+   },
+   "spawnedBy=parent+global": {
+    "n": 40,
+    "ok": 0,
+    "missing": 0,
+    "error": 40,
+    "threw": 0
+   },
+   "spawnedBy=parent@fresh": {
+    "n": 40,
+    "ok": 30,
+    "missing": 0,
+    "error": 10,
+    "threw": 0
+   },
+   "spawnedBy=other@fresh": {
+    "n": 40,
+    "ok": 0,
+    "missing": 0,
+    "error": 40,
+    "threw": 0
+   },
+   "spawnedBy=parent+global@fresh": {
+    "n": 40,
+    "ok": 30,
+    "missing": 0,
+    "error": 10,
+    "threw": 0
+   },
+   "archived+spawnedBy@fresh": {
+    "n": 10,
+    "ok": 0,
+    "missing": 0,
+    "error": 10,
+    "threw": 0
+   },
+   "alias": {
+    "n": 9,
+    "ok": 5,
+    "missing": 0,
+    "error": 4,
+    "threw": 0
+   },
+   "alias+agent": {
+    "n": 9,
+    "ok": 7,
+    "missing": 0,
+    "error": 2,
+    "threw": 0
+   },
+   "missing": {
+    "n": 4,
+    "ok": 0,
+    "missing": 0,
+    "error": 4,
+    "threw": 0
+   },
+   "missing+allowMissing": {
+    "n": 4,
+    "ok": 0,
+    "missing": 3,
+    "error": 1,
+    "threw": 0
+   },
+   "internal-effects": {
+    "n": 1,
+    "ok": 0,
+    "missing": 0,
+    "error": 1,
+    "threw": 0
+   },
+   "internal-effects+allowMissing": {
+    "n": 1,
+    "ok": 0,
+    "missing": 1,
+    "error": 0,
+    "threw": 0
+   },
+   "roles:read": {
+    "n": 15,
+    "ok": 15,
+    "missing": 0,
+    "error": 0,
+    "threw": 0
+   },
+   "roles:none": {
+    "n": 15,
+    "ok": 0,
+    "missing": 0,
+    "error": 15,
+    "threw": 0
+   }
+  }
+ },
+ "cost": {
+  "cost.base key (Night Shift subagent, as the Mac app on 10/23)": {
+   "label": "V: key (Night Shift subagent, as the Mac app on 10/23)",
+   "repeat": 5,
+   "msMedian": 7452.6,
+   "msMax": 7722,
+   "allocatedMBPerCall": 2239.3
+  },
+  "cost.patched key (Night Shift subagent, as the Mac app on 10/23)": {
+   "label": "release: key (Night Shift subagent, as the Mac app on 10/23)",
+   "repeat": 50,
+   "msMedian": 1.8,
+   "msMax": 10,
+   "allocatedMBPerCall": 0.4
+  },
+  "cost.base key agent:makaron:main": {
+   "label": "V: key agent:makaron:main",
+   "repeat": 5,
+   "msMedian": 7466.4,
+   "msMax": 7658.9,
+   "allocatedMBPerCall": 2239.7
+  },
+  "cost.patched key agent:makaron:main": {
+   "label": "release: key agent:makaron:main",
+   "repeat": 50,
+   "msMedian": 2.1,
+   "msMax": 10,
+   "allocatedMBPerCall": 0.4
+  },
+  "cost.base key, missing + allowMissing": {
+   "label": "V: key, missing + allowMissing",
+   "repeat": 5,
+   "msMedian": 7439.1,
+   "msMax": 8107.2,
+   "allocatedMBPerCall": 2235.5
+  },
+  "cost.patched key, missing + allowMissing": {
+   "label": "release: key, missing + allowMissing",
+   "repeat": 50,
+   "msMedian": 0.3,
+   "msMax": 3.7,
+   "allocatedMBPerCall": 0.1
+  },
+  "cost.base key + spawnedBy": {
+   "label": "V: key + spawnedBy",
+   "repeat": 5,
+   "msMedian": 8652.6,
+   "msMax": 9002.5,
+   "allocatedMBPerCall": 2379.2
+  },
+  "cost.patched key + spawnedBy": {
+   "label": "release: key + spawnedBy",
+   "repeat": 50,
+   "msMedian": 1.6,
+   "msMax": 4.6,
+   "allocatedMBPerCall": 0.4
+  },
+  "cost.unchanged.base sessionId + agentId": {
+   "label": "V: sessionId + agentId",
+   "repeat": 3,
+   "msMedian": 8862.9,
+   "msMax": 9002,
+   "allocatedMBPerCall": 2290.9
+  },
+  "cost.unchanged.patched sessionId + agentId": {
+   "label": "release: sessionId + agentId",
+   "repeat": 3,
+   "msMedian": 9455.2,
+   "msMax": 10366.5,
+   "allocatedMBPerCall": 2294.1
+  },
+  "cost.unchanged.base sessionId, no agentId": {
+   "label": "V: sessionId, no agentId",
+   "repeat": 3,
+   "msMedian": 10538.1,
+   "msMax": 11068.1,
+   "allocatedMBPerCall": 2287.4
+  },
+  "cost.unchanged.patched sessionId, no agentId": {
+   "label": "release: sessionId, no agentId",
+   "repeat": 3,
+   "msMedian": 9783.8,
+   "msMax": 12086.2,
+   "allocatedMBPerCall": 2283.8
+  },
+  "cost.unchanged.base label + agentId": {
+   "label": "V: label + agentId",
+   "repeat": 3,
+   "msMedian": 8230.9,
+   "msMax": 8620.2,
+   "allocatedMBPerCall": 2276.1
+  },
+  "cost.unchanged.patched label + agentId": {
+   "label": "release: label + agentId",
+   "repeat": 3,
+   "msMedian": 9158.7,
+   "msMax": 9698.3,
+   "allocatedMBPerCall": 2280.5
+  },
+  "cost.unchanged.base shortId + agentId": {
+   "label": "V: shortId + agentId",
+   "repeat": 3,
+   "msMedian": 8013.2,
+   "msMax": 8090.3,
+   "allocatedMBPerCall": 2291.9
+  },
+  "cost.unchanged.patched shortId + agentId": {
+   "label": "release: shortId + agentId",
+   "repeat": 3,
+   "msMedian": 9700.1,
+   "msMax": 10735.9,
+   "allocatedMBPerCall": 2295.3
+  }
+ },
+ "totalServerMs": 4319957
+}

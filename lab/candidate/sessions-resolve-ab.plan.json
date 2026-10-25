@@ -1,0 +1,18 @@
+{
+  "support": [
+    "lab/candidate/sessions-resolve-ab.mjs",
+    "lab/sessions-resolve-exact-read.plan.json",
+    "lab/release-files/sessions-resolve-exact-read/sessions-resolve-_D6BmQTT.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "--expose-gc",
+    "lab/candidate/sessions-resolve-ab.mjs"
+  ],
+  "timeoutSeconds": 0,
+  "env": {
+    "FIXTURE_DIR": "/var/tmp/rsx-20261023",
+    "REPEAT": "5",
+    "SAMPLE": "100"
+  }
+}

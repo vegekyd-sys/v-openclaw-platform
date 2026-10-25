@@ -1,0 +1,246 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,writeFile,chmod,symlink,rm,readFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {createPhoneTabHandler,ensurePhoneTab,publicPhoneUrl,readPhoneTabSettings,createRuntimePhoneTabHandler,conversationPhoneUrl,managedPhoneUrl} from './feishu-phone-tabs.mjs';
+import {patchFeishuPhoneTabs,patchFeishuPhoneTabClient,patchConversationPhoneTabs} from './patch-feishu-phone-tabs.mjs';
+
+const account = {accountId:'trial',appId:'cli_test'};
+const url = 'https://voice.example/voice/feishu';
+const event = {chat_id:'oc_private',operator_id:{open_id:'ou_alice'}};
+const settings = {enabled:true,appId:account.appId,url,allowedOpenIds:['ou_alice']};
+const baseTab = {tab_id:'messages',tab_type:'message'};
+
+test('conversation mode automatically creates distinct public entries for new DMs and groups',async()=>{
+  for(const [chat,mode,operator] of [['oc_dmA','p2p','ou_alice'],['oc_dmB','p2p','ou_bob'],['oc_groupA','group','ou_alice'],['oc_groupB','group','ou_bob']]){
+    const f=fixture({mode}),h=createPhoneTabHandler({account,getSettings:async()=>({...settings,conversations:true,allowedOpenIds:[]}),api:f.api,cacheMs:0});
+    const entered={header:{event_type:mode==='group'?'im.chat.member.bot.added_v1':'im.chat.access_event.bot_p2p_chat_entered_v1'},event:{chat_id:chat,operator_id:{open_id:operator}}};
+    assert.equal((await h.run(entered)).created,true);
+    const entry=mode==='group'?f.menus[0].chat_menu_item.redirect_link.common_url:f.tabs[1].tab_content.url;
+    assert.equal(f.tabs.length,mode==='group'?1:2);
+    const phone=new URL(entry).searchParams.get('phone');
+    assert.deepEqual(JSON.parse(Buffer.from(phone.slice(7),'base64url').toString()),[account.accountId,chat]);
+    assert(!entry.includes(operator));
+    const firstMessage={header:{event_type:'im.message.receive_v1'},event:{sender:{sender_id:{open_id:operator}},message:{chat_id:chat,chat_type:mode}}};
+    assert.equal((await h.run(firstMessage)).created,false);assert.equal(f.writes,1);
+  }
+});
+
+test('conversation patch hooks added-group and first-message paths without changing text dispatch',async()=>{
+  const source=await readFile(new URL('./release-files/feishu-auto-phone-tab/monitor.account-WFdlCDhR.js',import.meta.url),'utf8');
+  const patched=patchConversationPhoneTabs(source);
+  assert.equal(patchConversationPhoneTabs(patched),patched);
+  assert.match(patched,/return handleFeishuMessage\(params\)/u);
+  assert.match(patched,/vPhoneTab.schedule\(\{header:\{event_type:"im.chat.member.bot.added_v1"/u);
+});
+function fixture(options = {}) {
+  let tabs = [structuredClone(baseTab)], menus = [], requests = [], writes = 0;
+  const api = async (method,payloadPath,body) => {
+    requests.push({method,path:payloadPath});
+    if(method==='PATCH'&&payloadPath.includes('/menu_items/')){
+      writes++;const row=menus.find(row=>row.chat_menu_top_level_id===payloadPath.split('/').at(-1));
+      if(!options.rejectWrite)row.chat_menu_item.redirect_link={...row.chat_menu_item.redirect_link,...body.chat_menu_item.redirect_link};
+      if(options.ambiguous||options.rejectWrite)throw Error('private-secret');return {};
+    }
+    if(method==='POST'&&payloadPath.endsWith('/update_tabs')){
+      writes++;if(!options.rejectWrite)for(const next of body.chat_tabs)Object.assign(tabs.find(tab=>tab.tab_id===next.tab_id),next);
+      if(options.ambiguous||options.rejectWrite)throw Error('private-secret');return {};
+    }
+    if(payloadPath.endsWith('/menu_tree')) {
+      if(method==='GET')return {menu_tree:{chat_menu_top_levels:structuredClone(menus)}};
+      writes++;
+      if(!options.rejectWrite)menus.push(...body.menu_tree.chat_menu_top_levels.map((row,index)=>({chat_menu_top_level_id:'menu'+index,...row})));
+      if(options.ambiguous||options.rejectWrite)throw Error('private-secret');
+      return {};
+    }
+    if (method === 'GET' && !payloadPath.endsWith('list_tabs')) return {chat_mode:options.mode ?? 'p2p'};
+    if (method === 'GET') return {chat_tabs:structuredClone(tabs)};
+    writes++;
+    if (!options.rejectWrite) tabs.push(...body.chat_tabs.map((tab,index) => ({tab_id:'new'+index,...tab})));
+    if (options.ambiguous || options.rejectWrite) throw Error('SDK accidentally contains Bearer private-secret');
+    return {};
+  };
+  return {api,requests,get menus(){return menus;},set menus(value){menus=value;},get tabs(){return tabs;},set tabs(value){tabs=value;},get writes(){return writes;}};
+}
+
+test('first private-chat entry creates one top tab and repeated entry preserves existing tabs',async () => {
+  const f=fixture();const h=createPhoneTabHandler({account,getSettings:async()=>settings,api:f.api,cacheMs:0});
+  const first=await h.run(event);assert.equal(first.created,true);assert.equal(first.status,'verified');
+  assert.equal((await h.run(event)).created,false);assert.equal(f.writes,1);assert.deepEqual(f.tabs[0],baseTab);
+  assert.equal(f.tabs[1].tab_content.url,url);assert.equal(f.tabs[1].tab_config.is_built_in,true);
+});
+
+test('a lost successful POST response is reconciled without a second write',async()=>{
+  const f=fixture({ambiguous:true});
+  assert.equal((await ensurePhoneTab({api:f.api,chat:event.chat_id,url})).recoveredUnknownWrite,true);
+  assert.equal((await ensurePhoneTab({api:f.api,chat:event.chat_id,url})).created,false);assert.equal(f.writes,1);
+});
+
+test('a conflicting tab is not overwritten and failed writes back off then retry on next entry',async()=>{
+  const f=fixture();f.tabs.push({tab_name:'📞 打给 V',tab_type:'url',tab_content:{url:'https://other.example'}});
+  await assert.rejects(ensurePhoneTab({api:f.api,chat:event.chat_id,url}),/tab_conflict/);assert.equal(f.writes,0);
+  const broken=fixture({rejectWrite:true});let time=0;const logs=[];
+  const h=createPhoneTabHandler({account,getSettings:async()=>settings,api:broken.api,now:()=>time,log:x=>logs.push(x)});
+  assert.equal((await h.run(event)).status,'unconfirmed_write');assert.equal(broken.writes,1);
+  assert.equal((await h.run(event)).status,'cached');assert.equal(broken.writes,1);
+  time=30001;assert.equal((await h.run(event)).status,'unconfirmed_write');assert.equal(broken.writes,2);
+  assert.ok(logs.every(line=>!line.includes('private-secret')&&!line.includes('oc_private')&&!line.includes('ou_alice')));
+});
+
+test('unknown users, accounts, malformed events and group conversations do not receive private tabs',async()=>{
+  const f=fixture();const h=createPhoneTabHandler({account,getSettings:async()=>settings,api:f.api});
+  assert.equal((await h.run({...event,operator_id:{open_id:'ou_other'}})).status,'ignored_audience');
+  assert.equal((await h.run({...event,chat_id:'oc_a/../b'})).status,'ignored_event');
+  assert.equal((await h.run({header:{app_id:'cli_other'},event})).status,'ignored_event');
+  assert.equal((await h.run({header:{event_type:'im.message.receive_v1'},event})).status,'ignored_event');
+  assert.equal(f.requests.length,0);
+  const other=createPhoneTabHandler({account:{...account,appId:'cli_other'},getSettings:async()=>settings,api:f.api});
+  assert.equal((await other.run(event)).status,'ignored_audience');assert.equal(f.requests.length,0);
+  const group=fixture({mode:'group'});
+  assert.equal((await ensurePhoneTab({api:group.api,chat:event.chat_id,url})).status,'ignored_non_p2p');assert.equal(group.writes,0);
+});
+
+test('API work does not delay event acknowledgement and duplicate concurrent events coalesce',async()=>{
+  const gate=Promise.withResolvers();const f=fixture();let entered=false;
+  const h=createPhoneTabHandler({account,getSettings:async()=>{entered=true;await gate.promise;return settings;},api:f.api});
+  assert.equal(h.schedule(event),undefined);await Promise.resolve();assert.equal(entered,true);
+  const requests=Array.from({length:30},()=>h.run(event));assert.equal(f.requests.length,0);
+  gate.resolve();const results=await Promise.all(requests);assert.ok(results.every(result=>result.created));assert.equal(f.writes,1);
+});
+
+test('queue is bounded and abort stops queued entries',async()=>{
+  const gate=Promise.withResolvers(),abort=new AbortController();let active=0,max=0;
+  const h=createPhoneTabHandler({account,getSettings:async()=>{active++;max=Math.max(max,active);await gate.promise;active--;return settings;},
+    api:fixture().api,signal:abort.signal,concurrency:1,maxPending:2});
+  const first=h.run(event),second=h.run({...event,chat_id:'oc_second'});
+  assert.equal((await h.run({...event,chat_id:'oc_third'})).status,'queue_full');abort.abort();gate.resolve();
+  assert.equal((await second).status,'stopped');assert.equal((await first).status,'stopped');assert.equal(max,1);
+});
+
+test('configured HTTPS login URLs cannot publish credentials or caller-selected session identity',()=>{
+  assert.equal(publicPhoneUrl(url),url);
+  assert.equal(publicPhoneUrl(url+'?phone=dm-alice'),url+'?phone=dm-alice');
+  for (const bad of [url+'#access=secret',url+'?access=secret',url+'?sessionKey=other',url+'?phone=a&phone=b',
+    'http://voice.example/voice/feishu','https://secret@voice.example/voice/feishu',url+'/callback',url+'?phone=']) {
+    assert.throws(()=>publicPhoneUrl(bad));
+  }
+});
+
+test('private rollout settings are scoped by both account ID and app ID',async()=>{
+  const root=await mkdtemp(path.join(tmpdir(),'phone-tabs-'));const file=path.join(root,'settings.json');
+  try {
+    assert.equal(await readPhoneTabSettings(undefined,account),null);
+    await writeFile(file,JSON.stringify({version:1,accounts:{trial:settings}}),{mode:0o600});
+    assert.equal((await readPhoneTabSettings(file,account)).url,url);
+    assert.equal(await readPhoneTabSettings(file,{...account,accountId:'other'}),null);
+    await assert.rejects(readPhoneTabSettings(file,{...account,appId:'cli_other'}));
+    await chmod(file,0o644);await assert.rejects(readPhoneTabSettings(file,account));await chmod(file,0o600);
+    await symlink(file,path.join(root,'link'));await assert.rejects(readPhoneTabSettings(path.join(root,'link'),account));
+  } finally {await rm(root,{recursive:true,force:true});}
+});
+
+test('runtime handler is opt-in and does not create a Feishu API client when disabled',async()=>{
+  const original=process.env.OPENCLAW_FEISHU_PHONE_TABS_FILE;delete process.env.OPENCLAW_FEISHU_PHONE_TABS_FILE;
+  try {
+    const handler=createRuntimePhoneTabHandler({account,createClient:()=>{throw Error('must not create');}});
+    assert.equal((await handler.run(event)).status,'ignored_audience');
+  } finally {if(original)process.env.OPENCLAW_FEISHU_PHONE_TABS_FILE=original;}
+});
+
+test('runtime patch replaces only the existing private-entry no-op and is idempotent',async()=>{
+  const original=await readFile(new URL('./release-files/feishu-ingress-catchup/monitor.account-WFdlCDhR.js',import.meta.url),'utf8');
+  const patched=patchFeishuPhoneTabs(original);assert.equal(patchFeishuPhoneTabs(patched),patched);
+  assert.ok(patched.includes('data => vPhoneTab.schedule(data)'));
+  const restored=patched.replace(/^import \{createFeishuPhoneTabClient[^\n]+\n/u,'').replace(/^import \{createRuntimePhoneTabHandler[^\n]+\n\/\/ v-feishu-auto-phone-tab-v1\n/u,'')
+    .replace('\n\tconst vPhoneTab = vCreatePhoneTabHandler({account:resolveFeishuAccount({cfg,accountId}),createClient:vCreatePhoneTabClient,runtime,abortSignal});','')
+    .replace('data => vPhoneTab.schedule(data),','async () => {},');
+  assert.equal(restored,original);assert.throws(()=>patchFeishuPhoneTabs('different upstream source'));
+});
+
+
+test('dedicated phone client preserves transport settings and cannot log SDK error headers',async()=>{
+  const source = `const feishuClientSdk={AppType:{SelfBuild:'self'},Client:class {constructor(options){this.options=options;}}};
+const resolveSdkDomain=value=>'domain:'+value;
+const resolveConfiguredHttpTimeoutMs=creds=>creds.httpTimeoutMs;
+const createFeishuHttpInstance=(timeout,domain)=>({timeout,domain});
+export const untouchedCache=new Map();`;
+  const patched=patchFeishuPhoneTabClient(source);
+  assert.equal(patchFeishuPhoneTabClient(patched),patched);
+  assert(patched.startsWith(source));
+  const module=await import('data:text/javascript;base64,'+Buffer.from(patched).toString('base64'));
+  const config={appId:'cli_test',appSecret:'fixture',domain:'feishu',httpTimeoutMs:8000};
+  const client=module.createFeishuPhoneTabClient(config);
+  assert.deepEqual(client.options.httpInstance,{timeout:8000,domain:'feishu'});
+  assert.equal(client.options.domain,'domain:feishu');
+  assert.equal(client.options.appType,'self');
+  for(const log of Object.values(client.options.logger))assert.equal(log({Authorization:'Bearer fixture'}),undefined);
+  assert.notEqual(client,module.createFeishuPhoneTabClient(config));assert.equal(module.untouchedCache.size,0);
+});
+
+test('group menu preserves other menus, handles unknown writes and refuses conflicts or a full menu',async()=>{
+  const f=fixture({mode:'group',ambiguous:true});
+  const other={chat_menu_top_level_id:'existing',chat_menu_item:{name:'已有应用',action_type:'NONE'},children:[]};
+  f.menus.push(other);
+  const args={api:f.api,chat:'oc_groupA',url,allowGroup:true};
+  assert.equal((await ensurePhoneTab(args)).recoveredUnknownWrite,true);
+  assert.deepEqual(f.menus[0],other);assert.equal(f.tabs.length,1);
+  assert.equal((await ensurePhoneTab(args)).created,false);assert.equal(f.writes,1);
+  f.menus[1].chat_menu_item.redirect_link.common_url='https://other.example';
+  await assert.rejects(ensurePhoneTab(args),/menu_conflict/);
+  f.menus=[other,{...other,chat_menu_top_level_id:'b'},{...other,chat_menu_top_level_id:'c'}];
+  await assert.rejects(ensurePhoneTab(args),/menu_full/);assert.equal(f.writes,1);
+});
+
+test('old group links and app-ID aliases migrate in place, including every platform override',async()=>{
+  for(const legacy of ['feishu-group-private','feishu-group-oc_private',new URL(conversationPhoneUrl(url,'cli_test','oc_private')).searchParams.get('phone')]){
+    const f=fixture({mode:'group',ambiguous:true}),target=conversationPhoneUrl(url,'trial','oc_private');
+    const old=url+'?phone='+legacy,other={chat_menu_top_level_id:'other',chat_menu_item:{name:'Family calendar',action_type:'NONE'},children:[]};
+    f.menus=[other,{chat_menu_top_level_id:'phone',chat_menu_item:{name:'📞 打给 V',action_type:'REDIRECT_LINK',i18n_names:{en_us:'Call V'},redirect_link:{common_url:old,ios_url:old,android_url:old,pc_url:'',web_url:''}},children:[]}];
+    const result=await ensurePhoneTab({api:f.api,chat:'oc_private',url:target,allowGroup:true,accountAliases:['cli_test']});
+    assert.equal(result.updated,true);assert.equal(result.recoveredUnknownWrite,true);assert.deepEqual(f.menus[0],other);
+    const links=f.menus[1].chat_menu_item.redirect_link;
+    assert.equal(links.common_url,target);assert.equal(links.ios_url,target);assert.equal(links.android_url,target);
+    assert.equal(new URL(links.pc_url).searchParams.get('url'),target);
+    assert.equal((await ensurePhoneTab({api:f.api,chat:'oc_private',url:target,allowGroup:true})).updated,undefined);assert.equal(f.writes,1);
+  }
+});
+
+test('DM inventory aliases migrate the existing tab without duplicates or unrelated changes',async()=>{
+  const f=fixture({ambiguous:true}),target=conversationPhoneUrl(url,'trial','oc_private');
+  const phone={tab_id:'phone',tab_name:'📞 打给 V',tab_type:'url',tab_content:{url:url+'?phone=feishu-dm-owner'},tab_config:{is_built_in:false,icon_key:'existing'}};
+  f.tabs.push(phone);
+  await assert.rejects(ensurePhoneTab({api:f.api,chat:'oc_private',url:target}),/tab_conflict/);
+  assert.equal(f.writes,0);
+  const args={api:f.api,chat:'oc_private',url:target,legacyPhoneIds:['feishu-dm-owner']};
+  assert.equal((await ensurePhoneTab(args)).updated,true);assert.equal(f.tabs.length,2);assert.deepEqual(f.tabs[0],baseTab);
+  assert.equal(f.tabs[1].tab_content.url,target);assert.deepEqual(f.tabs[1].tab_config,{is_built_in:true,icon_key:'existing'});
+  assert.equal((await ensurePhoneTab(args)).updated,undefined);assert.equal(f.writes,1);
+});
+
+test('managed URL migration refuses other hosts, accounts, chats and credential-bearing links',()=>{
+  const target=conversationPhoneUrl(url,'trial','oc_private'),args={url:target,chat:'oc_private'};
+  for(const value of ['https://other.example/voice/feishu?phone=feishu-group-private',
+    conversationPhoneUrl(url,'trial','oc_other'),conversationPhoneUrl(url,'other','oc_private'),
+    url+'?phone=feishu-group-private&sessionKey=other',url+'?phone=feishu-group-private#access=secret',
+    url+'?phone=feishu-group-private&phone=feishu-group-private',url+'?phone=feishu-dm-owner'])assert.equal(managedPhoneUrl(value,args),false,value);
+  assert.equal(managedPhoneUrl(target,args),true);
+});
+
+test('duplicate phone menus and denied migrations fail closed',async()=>{
+  const target=conversationPhoneUrl(url,'trial','oc_private');
+  const f=fixture({mode:'group',rejectWrite:true}),row={chat_menu_top_level_id:'one',chat_menu_item:{name:'📞 打给 V',action_type:'REDIRECT_LINK',redirect_link:{common_url:url+'?phone=feishu-group-private'}},children:[]};
+  f.menus=[row,{...structuredClone(row),chat_menu_top_level_id:'two'}];
+  const args={api:f.api,chat:'oc_private',url:target,allowGroup:true};
+  await assert.rejects(ensurePhoneTab(args),/menu_conflict/);assert.equal(f.writes,0);
+  f.menus=[row];await assert.rejects(ensurePhoneTab(args),/unconfirmed_write/);assert.equal(f.writes,1);
+});
+
+test('the original queryless DM pilot migrates only with a private legacy DM binding',async()=>{
+ const canonical=conversationPhoneUrl(url,account.accountId,event.chat_id);
+ assert.equal(managedPhoneUrl(url,{url:canonical,chat:event.chat_id}),false);
+ assert.equal(managedPhoneUrl(url,{url:canonical,chat:event.chat_id,legacyPhoneIds:['feishu-dm-fixture']}),true);
+ const f=fixture();f.tabs.push({tab_id:'pilot',tab_name:'📞 打给 V',tab_type:'url',tab_content:{url},tab_config:{is_built_in:false}});
+ const result=await ensurePhoneTab({api:f.api,chat:event.chat_id,url:canonical,legacyPhoneIds:['feishu-dm-fixture']});
+ assert.equal(result.updated,true);assert.equal(f.tabs[1].tab_id,'pilot');assert.equal(f.tabs[1].tab_content.url,canonical);
+});

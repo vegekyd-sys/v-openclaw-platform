@@ -1,0 +1,29 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/sessions-search-exact-read/sessions-resolve-_D6BmQTT.js",
+      "target": "openclaw/dist/sessions-resolve-_D6BmQTT.js",
+      "before": "c3d8c8017ee3d0122493d762cd6790165810dca5adf6e107b5e1b836b7acd3a7",
+      "after": "a1b3f4b3c5368c3cc0a6f1e7a330f465e4aedfde3a5ef78b08e1c4fa95a8f6b2"
+    },
+    {
+      "source": "lab/release-files/sessions-search-exact-read/combined-store-gateway-BwDhjbIt.js",
+      "target": "openclaw/dist/combined-store-gateway-BwDhjbIt.js",
+      "before": "4b7612af99fe8bf9d54b28ea89feeb132858ea0d659ceb3efca072008d95c186",
+      "after": "9cb53296f60b4d375f19cdd0e52d104a7b255c9feaae34656654c718bb6f5c51"
+    },
+    {
+      "source": "lab/release-files/sessions-search-exact-read/registry-runtime-session-ownership-B1XvaNE7.js",
+      "target": "openclaw/dist/registry-runtime-session-ownership-B1XvaNE7.js",
+      "before": "f1c58a03dc5ef50a3e54b2e9db399f93438da9ac70de8236d28c6e5a1ba873fe",
+      "after": "d8e335dc000702f4909d5ed3e054b2c04b9199bc8d85e3239fde08fd09f79607"
+    },
+    {
+      "source": "lab/release-files/sessions-search-exact-read/v-session-entries-matching.mjs",
+      "target": "openclaw/dist/v-session-entries-matching.mjs",
+      "before": null,
+      "after": "d2d2c2cd7b33622fabcd1ab52ec003d2bf471735c64b49030294a76f27af7e02"
+    }
+  ]
+}

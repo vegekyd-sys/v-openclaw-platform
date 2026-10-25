@@ -1,0 +1,25 @@
+{
+  "platformPR": 476,
+  "runtimeSourceCommit": "396e3146f763e1b4939280fb842ad913ae385d31",
+  "runtimeArtifactSha": "8e49580f68a4bae764ea76fdc09d49486c0924b8d6308d00dfb0cbda4b638cc3",
+  "release": "feishu-phone-entry-20261026",
+  "alignment": {
+    "result": "ALIGNED",
+    "comparedFiles": 18820,
+    "at": "2026-10-25T16:51:18.299Z",
+    "driftFindings": 0,
+    "driftFiles": 9222
+  },
+  "gatewayRestart": {
+    "method": "v-self-restart",
+    "request": "20261026-002224-3ea7",
+    "outcome": "ok",
+    "finishedAt": "2026-10-26T00:27:49+08:00",
+    "streams": 2,
+    "readyWorkers": 6,
+    "warnings": 0
+  },
+  "voiceArtifactCommit": "9ae49f523f735e9bb4dd8d9700128d2a66eb9e5e",
+  "productionRuntimeVerifiedEntryEvents": 10,
+  "verifiedEntries": 477
+}
