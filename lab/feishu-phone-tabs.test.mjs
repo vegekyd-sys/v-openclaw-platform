@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,chmod,symlink,rm,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {createPhoneTabHandler,ensurePhoneTab,publicPhoneUrl,readPhoneTabSettings,createRuntimePhoneTabHandler} from './feishu-phone-tabs.mjs';
+import {createPhoneTabHandler,ensurePhoneTab,publicPhoneUrl,readPhoneTabSettings,createRuntimePhoneTabHandler,conversationPhoneUrl,managedPhoneUrl} from './feishu-phone-tabs.mjs';
 import {patchFeishuPhoneTabs,patchFeishuPhoneTabClient,patchConversationPhoneTabs} from './patch-feishu-phone-tabs.mjs';
 
 const account = {accountId:'trial',appId:'cli_test'};
@@ -38,6 +38,15 @@ function fixture(options = {}) {
   let tabs = [structuredClone(baseTab)], menus = [], requests = [], writes = 0;
   const api = async (method,payloadPath,body) => {
     requests.push({method,path:payloadPath});
+    if(method==='PATCH'&&payloadPath.includes('/menu_items/')){
+      writes++;const row=menus.find(row=>row.chat_menu_top_level_id===payloadPath.split('/').at(-1));
+      if(!options.rejectWrite)row.chat_menu_item.redirect_link={...row.chat_menu_item.redirect_link,...body.chat_menu_item.redirect_link};
+      if(options.ambiguous||options.rejectWrite)throw Error('private-secret');return {};
+    }
+    if(method==='POST'&&payloadPath.endsWith('/update_tabs')){
+      writes++;if(!options.rejectWrite)for(const next of body.chat_tabs)Object.assign(tabs.find(tab=>tab.tab_id===next.tab_id),next);
+      if(options.ambiguous||options.rejectWrite)throw Error('private-secret');return {};
+    }
     if(payloadPath.endsWith('/menu_tree')) {
       if(method==='GET')return {menu_tree:{chat_menu_top_levels:structuredClone(menus)}};
       writes++;
@@ -59,7 +68,7 @@ test('first private-chat entry creates one top tab and repeated entry preserves 
   const f=fixture();const h=createPhoneTabHandler({account,getSettings:async()=>settings,api:f.api,cacheMs:0});
   const first=await h.run(event);assert.equal(first.created,true);assert.equal(first.status,'verified');
   assert.equal((await h.run(event)).created,false);assert.equal(f.writes,1);assert.deepEqual(f.tabs[0],baseTab);
-  assert.equal(f.tabs[1].tab_content.url,url);assert.equal(f.tabs[1].tab_config.is_built_in,false);
+  assert.equal(f.tabs[1].tab_content.url,url);assert.equal(f.tabs[1].tab_config.is_built_in,true);
 });
 
 test('a lost successful POST response is reconciled without a second write',async()=>{
@@ -181,4 +190,57 @@ test('group menu preserves other menus, handles unknown writes and refuses confl
   await assert.rejects(ensurePhoneTab(args),/menu_conflict/);
   f.menus=[other,{...other,chat_menu_top_level_id:'b'},{...other,chat_menu_top_level_id:'c'}];
   await assert.rejects(ensurePhoneTab(args),/menu_full/);assert.equal(f.writes,1);
+});
+
+test('old group links and app-ID aliases migrate in place, including every platform override',async()=>{
+  for(const legacy of ['feishu-group-private','feishu-group-oc_private',new URL(conversationPhoneUrl(url,'cli_test','oc_private')).searchParams.get('phone')]){
+    const f=fixture({mode:'group',ambiguous:true}),target=conversationPhoneUrl(url,'trial','oc_private');
+    const old=url+'?phone='+legacy,other={chat_menu_top_level_id:'other',chat_menu_item:{name:'Family calendar',action_type:'NONE'},children:[]};
+    f.menus=[other,{chat_menu_top_level_id:'phone',chat_menu_item:{name:'📞 打给 V',action_type:'REDIRECT_LINK',i18n_names:{en_us:'Call V'},redirect_link:{common_url:old,ios_url:old,android_url:old,pc_url:'',web_url:''}},children:[]}];
+    const result=await ensurePhoneTab({api:f.api,chat:'oc_private',url:target,allowGroup:true,accountAliases:['cli_test']});
+    assert.equal(result.updated,true);assert.equal(result.recoveredUnknownWrite,true);assert.deepEqual(f.menus[0],other);
+    const links=f.menus[1].chat_menu_item.redirect_link;
+    assert.equal(links.common_url,target);assert.equal(links.ios_url,target);assert.equal(links.android_url,target);
+    assert.equal(new URL(links.pc_url).searchParams.get('url'),target);
+    assert.equal((await ensurePhoneTab({api:f.api,chat:'oc_private',url:target,allowGroup:true})).updated,undefined);assert.equal(f.writes,1);
+  }
+});
+
+test('DM inventory aliases migrate the existing tab without duplicates or unrelated changes',async()=>{
+  const f=fixture({ambiguous:true}),target=conversationPhoneUrl(url,'trial','oc_private');
+  const phone={tab_id:'phone',tab_name:'📞 打给 V',tab_type:'url',tab_content:{url:url+'?phone=feishu-dm-owner'},tab_config:{is_built_in:false,icon_key:'existing'}};
+  f.tabs.push(phone);
+  await assert.rejects(ensurePhoneTab({api:f.api,chat:'oc_private',url:target}),/tab_conflict/);
+  assert.equal(f.writes,0);
+  const args={api:f.api,chat:'oc_private',url:target,legacyPhoneIds:['feishu-dm-owner']};
+  assert.equal((await ensurePhoneTab(args)).updated,true);assert.equal(f.tabs.length,2);assert.deepEqual(f.tabs[0],baseTab);
+  assert.equal(f.tabs[1].tab_content.url,target);assert.deepEqual(f.tabs[1].tab_config,{is_built_in:true,icon_key:'existing'});
+  assert.equal((await ensurePhoneTab(args)).updated,undefined);assert.equal(f.writes,1);
+});
+
+test('managed URL migration refuses other hosts, accounts, chats and credential-bearing links',()=>{
+  const target=conversationPhoneUrl(url,'trial','oc_private'),args={url:target,chat:'oc_private'};
+  for(const value of ['https://other.example/voice/feishu?phone=feishu-group-private',
+    conversationPhoneUrl(url,'trial','oc_other'),conversationPhoneUrl(url,'other','oc_private'),
+    url+'?phone=feishu-group-private&sessionKey=other',url+'?phone=feishu-group-private#access=secret',
+    url+'?phone=feishu-group-private&phone=feishu-group-private',url+'?phone=feishu-dm-owner'])assert.equal(managedPhoneUrl(value,args),false,value);
+  assert.equal(managedPhoneUrl(target,args),true);
+});
+
+test('duplicate phone menus and denied migrations fail closed',async()=>{
+  const target=conversationPhoneUrl(url,'trial','oc_private');
+  const f=fixture({mode:'group',rejectWrite:true}),row={chat_menu_top_level_id:'one',chat_menu_item:{name:'📞 打给 V',action_type:'REDIRECT_LINK',redirect_link:{common_url:url+'?phone=feishu-group-private'}},children:[]};
+  f.menus=[row,{...structuredClone(row),chat_menu_top_level_id:'two'}];
+  const args={api:f.api,chat:'oc_private',url:target,allowGroup:true};
+  await assert.rejects(ensurePhoneTab(args),/menu_conflict/);assert.equal(f.writes,0);
+  f.menus=[row];await assert.rejects(ensurePhoneTab(args),/unconfirmed_write/);assert.equal(f.writes,1);
+});
+
+test('the original queryless DM pilot migrates only with a private legacy DM binding',async()=>{
+ const canonical=conversationPhoneUrl(url,account.accountId,event.chat_id);
+ assert.equal(managedPhoneUrl(url,{url:canonical,chat:event.chat_id}),false);
+ assert.equal(managedPhoneUrl(url,{url:canonical,chat:event.chat_id,legacyPhoneIds:['feishu-dm-fixture']}),true);
+ const f=fixture();f.tabs.push({tab_id:'pilot',tab_name:'📞 打给 V',tab_type:'url',tab_content:{url},tab_config:{is_built_in:false}});
+ const result=await ensurePhoneTab({api:f.api,chat:event.chat_id,url:canonical,legacyPhoneIds:['feishu-dm-fixture']});
+ assert.equal(result.updated,true);assert.equal(f.tabs[1].tab_id,'pilot');assert.equal(f.tabs[1].tab_content.url,canonical);
 });
