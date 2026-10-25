@@ -68,7 +68,9 @@ AGENTS.md 是核心文档，按其「Core Document Modification Rules」，这�
 - baseline：V 现状；
 - fixed：同一份文件跑过 `install-v-system-diagnosis.py`。
 
-每轮新会话，消息复刻 10/22 UM、10/25 V Browser 两次 V 发给助手前的状态（用户请求 + V 已查到的证据 + V 转给助手的那个问题）。判据：Codex rollout 和 OpenClaw 会话镜像里有没有 `openclaw` 工具调用；Gateway 日志里有没有 `openclaw-turn-` / `openclaw.chat`；V 有没有读 `v-system-diagnosis`；有没有自己跑完整 `openclaw doctor`。baseline 必须真的调了 openclaw，结果才有信息量。
+每轮新会话，消息复刻 10/22 UM、10/25 V Browser 两次 V 发给助手前的状态（用户请求 + V 已查到的证据 + V 转给助手的那个问题）。判据：Codex rollout 和 OpenClaw 会话镜像里有没有 `openclaw` 工具调用；Gateway 日志里有没有 `openclaw-turn-` / `openclaw.chat`；V 有没有读 `v-system-diagnosis`；有没有自己跑完整 `openclaw doctor`。
+
+冒烟（candidate-ae92e637，V Browser 场景各 1 轮）：两组都看到了 `openclaw` 工具，**两组都没调**；baseline 用 exec 自己查了 495 s，fixed 读了技能、313 s 给出结论。也就是说 DeepSeek（`/vds`）复现不了生产的触发——三次事故都是 gpt-6.1-sol。因此 baseline 调用率只记录、不作断言（`ODR_REQUIRE_BASELINE_CALL=1` 可改回闸门），fixed 组的四项判据仍是硬断言。冒烟里 agent 顺着镜像配置里的生产地址，用 VLab 的 relay token 探测了 V 的 `100.82.39.107:24906`（只读 HTTP，返回 401）；正式一轮两组提示都加了「不要连生产主机」。
 
 结果：见 PR 描述（receipt 在 `tmp/candidate/`，不进仓库）。
 

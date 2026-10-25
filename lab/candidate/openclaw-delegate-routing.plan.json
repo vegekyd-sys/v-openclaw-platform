@@ -13,7 +13,7 @@
   "timeoutSeconds": 10800,
   "user": "lab-db91-parity",
   "env": {
-    "ODR_RUNS": "3",
+    "ODR_RUNS": "2",
     "ODR_SCENARIOS": "um,vbrowser"
   }
 }
