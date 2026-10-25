@@ -11,6 +11,28 @@
 
 ---
 
+## v2026.9.1-db91.6-sessions-search-20261026
+
+上线：2026-10-26 02:58 CST（02:56 v-self-restart 一次）  ·  tag `v2026.9.1-db91.6-sessions-search-20261026`
+
+**摘要**：V 的 `sessions_search` 列候选会话从约 100 次 `sessions.list` 降到 2 次（#475，VLab A/B 108.9 s → 2.7 s，141 组对比 0 差异），以前它是 Gateway 主线程被会话 RPC 长时间占住的来源之一。同一次重启还带上 #479 的配置：`plugins.entries.codex.config.codexDynamicToolsExclude: ["openclaw"]`，把 `openclaw` 系统助手工具从 `/vcodex`、`/vds` 回合里拿掉（三次 Gateway 冻结都发生在这条路由上）；其他 runtime 不变。配置改动不在下面的文件列表里，由 `v-self-restart --set` 写入主配置，Worker 配置自动推导同步。
+
+验收：v-self-restart 86 s 就绪、worker 5/5、stream 2/2、加载错误 0；两份配置均为 `["openclaw"]`。测试群「V｜codex 首字回归 1008」用 `/vcodex` 真实回合：`sessions_search` 返回 6 个会话，这一回合 Gateway 只有 3 次 `sessions.list`（172/580/2126 ms）；V 自报工具里 openclaw 没有、gateway_exec 有。Tianyi 03:04 在测试群的真实 deepseek/worker 回合正常回复。漂移 0 findings（9222 个文件），VLab ALIGNED。
+
+相对上一版 `v-feishu-phone-entry-20261026`：4 个文件变化。
+
+**经 VLab 发版 `sessions-search-20261026`**（monitor-v-production，dev `874f8fbc`）
+> 验收：2026-10-26 02:35 shared VLab: real deepseek turn with sessions_search replied vlab_search_ok 3; sessions.list calls 2 (1153 ms, 261 ms) instead of ~100; 0 load errors, no invalid-params fallback. PR #475 A/B: 141 comparisons 0 diffs, 101 -> 2 lists, 108.9 s -> 2.7 s.
+- `core` openclaw-tools-BODVdJQD.js  af27d9ae → c4f575f2
+- `core` session-utils-list-BUP03AzS.js  779063a6 → a6e3d70f
+- `core` sessions-read-C6mAMxyQ.js  2d2d0fb1 → eb18ffa5
+- `core` src-B9mb84px.js  24cc77ba → adc5204b
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #479 把 openclaw 工具从 V 的 Codex 回合里去掉（codexDynamicToolsExclude）
+- #469 release: 捕获 V（10/25 两次发版：fullread-doctor-dingtalk #468 #463 #381、dingtalk-outbound-case #472）+ CHANGELOG
+- #475 perf(sessions): sessions_search 列候选从 ~100 次 sessions.list 降到 2 次（108.9 s → 2.7 s）
+
 ## v-feishu-phone-entry-20261026
 
 上线：2026-10-26 00:27 CST（00:30 完成双节点 Voice 发布）  ·  tag `v-feishu-phone-entry-20261026`
