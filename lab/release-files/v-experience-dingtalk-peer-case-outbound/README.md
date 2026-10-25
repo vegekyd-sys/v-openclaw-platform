@@ -44,3 +44,24 @@ Evidence: `lab/candidate/dingtalk-peer-case-{baseline,patched}.plan.json`
 (fake DingTalk open platform that refuses a group id not spelled as users
 wrote from it; real model turns on the VLab Worker; Gateway restarted inside
 the run).
+
+## Candidate results (2026-10-25, commit 5978d5d5, runtime fullread-dingtalk-r2-20261025)
+
+`candidate-4fcd72b3` (baseline) and `candidate-73ba96f9` (patched), same
+scenario, real DeepSeek turns, fake open platform refusing misspelled group ids:
+
+| step | baseline | patched |
+| --- | --- | --- |
+| inbound group message → reply card | `IM_GROUP.cidPeerG1…AbCd==` | same |
+| session key | `…:group:cidpeerg1…abcd==` (folded) | same (unchanged) |
+| Gateway `send` text to `group:<folded>` | AI card to the folded id | card to the original id |
+| `send` file to `group:<folded>` | robot API **400**, not delivered | `sampleFile` to the original id |
+| `send` file to `channel:<folded>` | card to `IM_ROBOT.channel:…` (as a user), no file | file + card to the group, original id |
+| message tool file in a Worker turn, target `group:<folded>` | **400** | `sampleFile` to the original id |
+| two groups folding to the same id | 400 | left as is (400), logged once |
+| after a Gateway restart: group in the file | 400 | original id (from the file, no lookup) |
+| after a restart: group only in its session entry | 400 | original id `(from its session)`, then kept in the file |
+| `health` / `SessionCanonicalKeyMigration` lines | ok / 0 | ok / 0 |
+
+The connector reports a refused file as sent (its text part went out), so the
+agent never saw these failures; only the robot API's refusal shows them.
