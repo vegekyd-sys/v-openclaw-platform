@@ -1,0 +1,17 @@
+{
+  "id": "candidate-6c066c5b-6dc6-4723-9fef-16b1c38a9f35",
+  "ok": true,
+  "baseRelease": "dingtalk-outbound-20261025",
+  "inputSha256": "3d65b34e976e6f66e6cf1ba17a1b642a427ea79b7614345b2504a49b7edb6fc4",
+  "sharedBeforePid": 2325038,
+  "sharedAfterPid": 2325038,
+  "sharedUnchanged": true,
+  "totalClientMs": 10941,
+  "files": [
+    {
+      "source": "lab/release-files/feishu-phone-entry-migration/v-feishu-phone-tabs.mjs",
+      "target": "openclaw/node_modules/@openclaw/feishu/dist/v-feishu-phone-tabs.mjs",
+      "after": "6c3b8c2adebf3ce1fd0f47a90cd2fb9d794f499609bae69539f7b610a57912d5"
+    }
+  ]
+}

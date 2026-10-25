@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/feishu-voice-confirm/monitor.account-WFdlCDhR.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+      "before": "9e804fc3bf04acad4340699254a03ee6c90ecb85c5c2df55a6cb0cb9992c5eca",
+      "sha256": "535841d0219848a266d146094ee3441bbf48ed7a8aa28f04d111afb330247fef"
+    },
+    {
+      "source": "lab/release-files/feishu-voice-confirm/v-feishu-voice-confirm.mjs",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-voice-confirm.mjs",
+      "before": null,
+      "sha256": "6eba4d8dc140be24901ae0836a27a64ad6fbca863fd3cd8078bbfe88f2d9ee53"
+    }
+  ]
+}

@@ -555,12 +555,16 @@ test("dingtalk channel patch: presentation with a link button goes out as an act
   const sent = [];
   const plain = [];
   const outbound = { textChunkLimit: 2000, chunker: (t) => [t], sendText: async (ctx) => { plain.push(ctx.text); return { channel: "dingtalk-connector", messageId: "t" }; }, sendMedia: async () => assert.fail("no media") };
-  const build = (sendProactive) => new Function("vExperience", "dingtalkPlugin", "vSendTextAndMedia", "resolveDingtalkAccount", "vSendProactive", "CHANNEL_ID", `return {${snippet}};`)(
+  const idsDir = fs.mkdtempSync(path.join(os.tmpdir(), "vx-dtcard-"));
+  vx.rememberDingtalkConversationId("cidGroupAbCd12==", { stateDir: idsDir });
+  const restore = (cfg, to) => vx.restoreDingtalkTarget(to, { stateDir: idsDir });
+  const build = (sendProactive) => new Function("vExperience", "dingtalkPlugin", "vSendTextAndMedia", "resolveDingtalkAccount", "vSendProactive", "CHANNEL_ID", "vRestoreTarget", `return {${snippet}};`)(
     vx, { outbound },
     async ({ ctx, sendText }) => sendText({ ...ctx, text: ctx.payload.text }),
     () => ({ config: { clientId: "ding1" }, clientSecret: "s" }),
     sendProactive,
     "dingtalk-connector",
+    restore,
   );
   const methods = build(async (config, target, content, options) => { sent.push({ config, target, content: JSON.parse(content), options }); return { ok: true, processQueryKey: "pqk" }; });
   const rendered = methods.renderPresentation({ payload: { text: "**需要你登录小红书**" }, presentation: HANDOFF_LINK_ONLY });
@@ -575,8 +579,26 @@ test("dingtalk channel patch: presentation with a link button goes out as an act
   assert.equal(sent[0].config.clientSecret, "s");
   await methods.sendPayload({ cfg: {}, to: "cidGroup1", payload: rendered });
   assert.deepEqual(sent[1].target, { openConversationId: "cidGroup1" });
+  // A target derived from the session carries the folded group id; the card goes out with the original.
+  assert.deepEqual((await methods.sendPayload({ cfg: {}, to: "group:cidgroupabcd12==", payload: rendered })).target, { kind: "conversation", id: "group:cidGroupAbCd12==" });
+  assert.deepEqual(sent[2].target, { openConversationId: "cidGroupAbCd12==" });
   await methods.sendPayload({ cfg: {}, to: "user:u1", payload: { text: "hello", channelData: { other: 1 } } });
   assert.deepEqual(plain, ["hello"], "other payloads keep the text path");
+  // Text and media (the message tool, files) restore the id the same way.
+  const tStart = patched.indexOf("\t\tsendText: async");
+  const plainSnippet = patched.slice(tStart, patched.indexOf("\n\t},\n\tstatus: {", tStart));
+  const delivered = [];
+  const adapter = new Function("vExperience", "resolveDingtalkAccount", "sendTextToDingTalk", "sendMediaToDingTalk", "createLogger", "CHANNEL_ID", "vRestoreTarget", `return {${plainSnippet}};`)(
+    vx, () => ({ config: {} }),
+    async ({ target }) => { delivered.push(["text", target]); return { ok: true, processQueryKey: "t1" }; },
+    async ({ target }) => { delivered.push(["media", target]); return { ok: true, processQueryKey: "m1" }; },
+    () => ({ info() {} }), "dingtalk-connector", restore,
+  );
+  await adapter.sendText({ cfg: {}, to: "cidgroupabcd12==", text: "hi" });
+  await adapter.sendMedia({ cfg: {}, to: "cidgroupabcd12==", mediaUrl: "/tmp/a.pdf" });
+  await adapter.sendText({ cfg: {}, to: "staff1", text: "hi" });
+  assert.deepEqual(delivered, [["text", "cidGroupAbCd12=="], ["media", "cidGroupAbCd12=="], ["text", "staff1"]]);
+  fs.rmSync(idsDir, { recursive: true, force: true });
   await assert.rejects(build(async () => ({ ok: false, error: "403" })).sendPayload({ cfg: {}, to: "staff1", payload: rendered }), /403/u, "a refused card is a failed delivery (the plugin then puts the link in the reply)");
 });
 
@@ -738,7 +760,7 @@ test("dingtalk channel patch: the 「电脑」 card uploads its picture and goes
   const snippet = patched.slice(start, patched.indexOf("\t\tchunker:", start));
   const posts = [];
   const uploads = [];
-  const make = ({ upload = true } = {}) => new Function("vExperience", "dingtalkPlugin", "vSendTextAndMedia", "resolveDingtalkAccount", "vSendProactive", "CHANNEL_ID", "vGetOapiAccessToken", "vDingtalkOapi", "vGetAccessToken", "vDingtalkApi", "dingtalkHttp", "fetch", `return {${snippet}};`)(
+  const make = ({ upload = true } = {}) => new Function("vExperience", "dingtalkPlugin", "vSendTextAndMedia", "resolveDingtalkAccount", "vSendProactive", "CHANNEL_ID", "vGetOapiAccessToken", "vDingtalkOapi", "vGetAccessToken", "vDingtalkApi", "dingtalkHttp", "fetch", "vRestoreTarget", `return {${snippet}};`)(
     vx, { outbound: {} }, async () => assert.fail("no text path"),
     () => ({ config: { clientId: "ding1" }, clientSecret: "s" }),
     async () => assert.fail("not the single-link path"),
@@ -746,6 +768,7 @@ test("dingtalk channel patch: the 「电脑」 card uploads its picture and goes
     async () => "oapi-token", "https://oapi.test", async () => "api-token", "https://api.test",
     { post: async (url, body, options) => { posts.push({ url, body, options }); return { data: { processQueryKey: "pqk3" } }; } },
     async (url, init) => { uploads.push({ url, file: init.body.get("media") }); return { json: async () => (upload ? { errcode: 0, media_id: "@lADPcandidate" } : { errcode: 40004, errmsg: "bad" }) }; },
+    (cfg, to) => to,
   );
   await withCardImage(async (ref) => {
     const methods = make();
@@ -852,4 +875,79 @@ test("wecom patch: a reply with nothing of its own after a tool send closes with
   const channel = patchChannel(fs.readFileSync(new URL("../apps/v-experience/wecom/baseline/channel.js", import.meta.url), "utf8"));
   assert.equal(channel.match(/vExperience\.noteChannelSend\(CHANNEL_ID, /gu)?.length, 3, "text, media, cards");
   assert.match(channel, /sendMedia: async \(vCtx\) => \{\n\s+const vResult = await wecomPlugin\.outbound\.vSendMedia\(vCtx\);/u);
+});
+
+test("dingtalk conversation ids: a folded group target goes out with its original case, kept across processes", () => {
+  const IDS = Symbol.for("openclaw.v.dingtalkConversationIds");
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "vx-dtids-"));
+  const file = path.join(stateDir, "dingtalk-connector", vx.DINGTALK_IDS_FILE);
+  const logs = [];
+  const log = (m) => logs.push(m);
+  delete globalThis[IDS];
+  assert.equal(vx.restoreDingtalkTarget("cidaaaqjsy6dl1d44iiu1h3qna==", { stateDir }), "cidaaaqjsy6dl1d44iiu1h3qna==", "unknown ids are sent as they are");
+  assert.equal(vx.rememberDingtalkConversationId("cidAaaQJSy6DL1D44iIU1h3QnA==", { stateDir, log }), true);
+  assert.equal(vx.rememberDingtalkConversationId("cidAaaQJSy6DL1D44iIU1h3QnA==", { stateDir, log }), false, "already known");
+  assert.equal(vx.rememberDingtalkConversationId("cidonlylower1234==", { stateDir, log }), false, "an all-lower-case id teaches nothing");
+  assert.equal(vx.rememberDingtalkConversationId("Versa0001", { stateDir, log }), false, "user ids are not conversation ids");
+  for (const [to, sent] of [
+    ["cidaaaqjsy6dl1d44iiu1h3qna==", "cidAaaQJSy6DL1D44iIU1h3QnA=="],
+    ["group:cidaaaqjsy6dl1d44iiu1h3qna==", "group:cidAaaQJSy6DL1D44iIU1h3QnA=="],
+    ["channel:cidaaaqjsy6dl1d44iiu1h3qna==", "channel:cidAaaQJSy6DL1D44iIU1h3QnA=="],
+    ["cidAaaQJSy6DL1D44iIU1h3QnA==", "cidAaaQJSy6DL1D44iIU1h3QnA=="],
+    ["user:versa0001", "user:versa0001"],
+  ]) assert.equal(vx.restoreDingtalkTarget(to, { stateDir, log }), sent, to);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).ids, { "cidaaaqjsy6dl1d44iiu1h3qna==": ["cidAaaQJSy6DL1D44iIU1h3QnA=="] });
+  // A restart (or a worker) starts with an empty memory and reads the file.
+  delete globalThis[IDS];
+  assert.equal(vx.restoreDingtalkTarget("cidaaaqjsy6dl1d44iiu1h3qna==", { stateDir }), "cidAaaQJSy6DL1D44iIU1h3QnA==");
+  // Two conversations folding to the same id: nothing is changed.
+  vx.rememberDingtalkConversationId("cidAAAQJSy6DL1D44iIU1h3QnA==", { stateDir, log });
+  assert.equal(vx.restoreDingtalkTarget("cidaaaqjsy6dl1d44iiu1h3qna==", { stateDir, log }), "cidaaaqjsy6dl1d44iiu1h3qna==");
+  assert(logs.some((m) => /left as is: 2 conversations fold to it/u.test(m)), logs.join("\n"));
+  // A group that has not written since: the session entry's delivery fields.
+  const entry = { groupId: "cidbbbs13fzqxfw5znrtumu2q==", delivery: { route: { target: { to: "channel:cidBbbS13FzQXFw5ZNRTUMU2Q==" } }, origin: { to: "cidBbbS13FzQXFw5ZNRTUMU2Q==" } } };
+  assert.deepEqual(vx.dingtalkIdsInEntry(entry, "cidbbbs13fzqxfw5znrtumu2q=="), ["cidBbbS13FzQXFw5ZNRTUMU2Q=="]);
+  let lookups = 0;
+  const lookup = (folded) => { lookups++; return vx.dingtalkIdsInEntry(entry, folded); };
+  assert.equal(vx.restoreDingtalkTarget("cidbbbs13fzqxfw5znrtumu2q==", { stateDir, lookup }), "cidBbbS13FzQXFw5ZNRTUMU2Q==");
+  assert.equal(vx.restoreDingtalkTarget("cidbbbs13fzqxfw5znrtumu2q==", { stateDir, lookup }), "cidBbbS13FzQXFw5ZNRTUMU2Q==");
+  assert.equal(lookups, 1, "found once, then remembered");
+  const none = () => { lookups++; return []; };
+  lookups = 0;
+  assert.equal(vx.restoreDingtalkTarget("cidcccnothinghere==", { stateDir, lookup: none }), "cidcccnothinghere==");
+  assert.equal(vx.restoreDingtalkTarget("cidcccnothinghere==", { stateDir, lookup: none }), "cidcccnothinghere==");
+  assert.equal(lookups, 1, "a miss is not looked up again within ten minutes");
+  assert.equal(vx.restoreDingtalkTarget("cidddthrows000==", { stateDir, lookup: () => { throw new Error("db"); }, log }), "cidddthrows000==", "a failing lookup sends as is");
+  fs.rmSync(stateDir, { recursive: true, force: true });
+});
+
+test("dingtalk patch: inbound messages teach the original id; text, media and card sends restore it", () => {
+  const reply = patchReplyChunk(fs.readFileSync(new URL("../apps/v-experience/dingtalk/baseline/message-handler-BUoLSylZ.mjs", import.meta.url), "utf8"));
+  assert.match(reply, /async function handleDingTalkMessage\(params\) \{\n[^\n]*\n\tvExperience\.rememberDingtalkConversationId\(params\.data\?\.conversationId, \{ stateDir: vResolveStateDir\(\),/u);
+  assert.match(reply, /import \{ resolveStateDir as vResolveStateDir \} from "openclaw\/plugin-sdk\/state-paths";/u);
+  const runtime = patchRuntimeChunk(fs.readFileSync(new URL("../apps/v-experience/dingtalk/baseline/runtime-C81EKBS1.mjs", import.meta.url), "utf8"));
+  assert.match(runtime, /sendText: async \(\{ cfg, to, text, accountId, replyToId, threadId \}\) => \{\n\t+to = vRestoreTarget\(cfg, to\);/u);
+  assert.match(runtime, /sendMedia: async \(\{ cfg, to, text, mediaUrl, accountId, mediaLocalRoots, replyToId, threadId \}\) => \{\n\t+to = vRestoreTarget\(cfg, to\);/u);
+  assert.match(runtime, /const to = String\(vRestoreTarget\(ctx\.cfg, ctx\.to\) \?\? ""\);/u);
+  assert.match(runtime, /import \{ getSessionEntry as vGetSessionEntry \} from "openclaw\/plugin-sdk\/session-store-runtime";/u);
+  assert.match(runtime, /sessionKey: `agent:\$\{agentId\}:\$\{CHANNEL_ID\}:group:\$\{folded\}`/u);
+});
+
+test("dingtalk patch: the outbound lookup reads the group session of the agents DingTalk routes to; channel: targets are the group", () => {
+  const runtime = patchRuntimeChunk(fs.readFileSync(new URL("../apps/v-experience/dingtalk/baseline/runtime-C81EKBS1.mjs", import.meta.url), "utf8"));
+  const start = runtime.indexOf("function vDingtalkAgentIds(cfg) {");
+  const source = runtime.slice(start, runtime.indexOf("function stripProviderPrefix(raw) {", start));
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "vx-dtlookup-"));
+  const reads = [];
+  const entries = { "agent:makaron:dingtalk-connector:group:cideeelookup1234==": { delivery: { origin: { to: "cidEeeLookup1234==" } } } };
+  const restore = new Function("vExperience", "vResolveStateDir", "vGetSessionEntry", "CHANNEL_ID", `${source}; return vRestoreTarget;`)(
+    vx, () => stateDir, ({ agentId, sessionKey }) => { reads.push([agentId, sessionKey]); return entries[sessionKey]; }, "dingtalk-connector",
+  );
+  const cfg = { bindings: [{ agentId: "Makaron", match: { channel: "dingtalk-connector" } }, { agentId: "other", match: { channel: "feishu" } }] };
+  assert.equal(restore(cfg, "group:cideeelookup1234=="), "group:cidEeeLookup1234==");
+  assert.deepEqual(reads, [["makaron", "agent:makaron:dingtalk-connector:group:cideeelookup1234=="], ["main", "agent:main:dingtalk-connector:group:cideeelookup1234=="]]);
+  assert.equal(restore(cfg, "channel:cideeelookup1234=="), "group:cidEeeLookup1234==");
+  assert.equal(restore(cfg, "channel:cidAlreadyRight1=="), "group:cidAlreadyRight1==");
+  assert.equal(restore(cfg, "user:Versa0001"), "user:Versa0001");
+  fs.rmSync(stateDir, { recursive: true, force: true });
 });

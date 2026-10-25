@@ -1,0 +1,36 @@
+{
+  "id": "candidate-4cdff914-2a23-42ae-9912-da2bdf9d2eb6",
+  "ok": true,
+  "inputSha256": "ea9fb187bf502f3954bcb97c3b6e657242aeb525a755c6b20f85f9487b7eca6a",
+  "runtimeSha": "615e7a177984078b0ecf9a4f29f6848c3f08c04d0f0c92295c3e06c10479c5c1",
+  "baseRelease": "nightshift-throughput-v1",
+  "timings": {
+    "inspectMs": 15,
+    "baselineMs": 0,
+    "snapshotMs": 4221,
+    "overlayMs": 1,
+    "testMs": 13201
+  },
+  "sharedUnchanged": true,
+  "acceptance": {
+    "kind": "phone-tab-candidate-acceptance",
+    "source": "actual patched monitor + actual Feishu SDK dispatcher",
+    "input": "synthetic entry event for existing authorized pilot DM",
+    "realApi": true,
+    "secondBotConnection": false,
+    "beforeMonitorSha256": "ffdf7072cf7d93cec6d52ad2f72ed2357d872ef310c7e643d169829ef8671bcc",
+    "patchedMonitorSha256": "85d6d08867fd21ecd393f0f8904a101d6b152cea279f0c2a969c6fc1a34c4e11",
+    "moduleSha256": "72c3ce04860b05f1c4f058c052957ba14c46ee6eebd05e7e134a75cf2c75b837",
+    "sdkFailurePathExercised": true,
+    "acknowledgementMs": 1.02,
+    "existingTabVerified": true,
+    "repeatedEntryDidNotDuplicate": true,
+    "unauthorizedActorIgnored": true,
+    "allExistingTabsPreserved": true,
+    "realNewTabCreation": false,
+    "livePushAcceptance": false,
+    "agentTurns": 0,
+    "messagesSent": 0,
+    "sharedGatewayChanged": false
+  }
+}
