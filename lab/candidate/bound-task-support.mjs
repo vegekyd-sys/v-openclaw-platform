@@ -251,7 +251,7 @@ export class Candidate {
     const mark = this.lines.length;
     const startedAt = Date.now();
     this.startGateway(extraEnv);
-    const need = this.env.BOUND_TASK_OUTBOUND_ONLY==='1'?[/listening on ws:\/\//u]:this.platformMode==='live'?[/WebSocket client started|WebSocket.*ready/iu]:[/starting Webhook server on 127\.0\.0\.1/u];
+    const need = this.env.BOUND_TASK_OUTBOUND_ONLY==='1'?[/\[gateway\] http server listening/u]:this.platformMode==='live'?[/WebSocket client started|WebSocket.*ready/iu]:[/starting Webhook server on 127\.0\.0\.1/u];
 
 
     const seen = new Set();
