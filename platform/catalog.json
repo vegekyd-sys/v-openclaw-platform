@@ -445,7 +445,8 @@
         "lab/nightshift-throughput.test.mjs",
         "lab/sessions-resolve-exact-read.test.mjs",
         "lab/sessions-search-exact-read.test.mjs",
-        "lab/doctor-subprocess.test.mjs"
+        "lab/doctor-subprocess.test.mjs",
+        "lab/sessions-search-candidate-rows.test.mjs"
       ]
     }
   ],

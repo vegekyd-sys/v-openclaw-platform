@@ -11,6 +11,28 @@
 
 ---
 
+## v2026.9.1-db91.6-sessions-search-20261026
+
+上线：2026-10-26 02:58 CST（02:56 v-self-restart 一次）  ·  tag `v2026.9.1-db91.6-sessions-search-20261026`
+
+**摘要**：V 的 `sessions_search` 列候选会话从约 100 次 `sessions.list` 降到 2 次（#475，VLab A/B 108.9 s → 2.7 s，141 组对比 0 差异），以前它是 Gateway 主线程被会话 RPC 长时间占住的来源之一。同一次重启还带上 #479 的配置：`plugins.entries.codex.config.codexDynamicToolsExclude: ["openclaw"]`，把 `openclaw` 系统助手工具从 `/vcodex`、`/vds` 回合里拿掉（三次 Gateway 冻结都发生在这条路由上）；其他 runtime 不变。配置改动不在下面的文件列表里，由 `v-self-restart --set` 写入主配置，Worker 配置自动推导同步。
+
+验收：v-self-restart 86 s 就绪、worker 5/5、stream 2/2、加载错误 0；两份配置均为 `["openclaw"]`。测试群「V｜codex 首字回归 1008」用 `/vcodex` 真实回合：`sessions_search` 返回 6 个会话，这一回合 Gateway 只有 3 次 `sessions.list`（172/580/2126 ms）；V 自报工具里 openclaw 没有、gateway_exec 有。Tianyi 03:04 在测试群的真实 deepseek/worker 回合正常回复。漂移 0 findings（9222 个文件），VLab ALIGNED。
+
+相对上一版 `v-feishu-phone-entry-20261026`：4 个文件变化。
+
+**经 VLab 发版 `sessions-search-20261026`**（monitor-v-production，dev `874f8fbc`）
+> 验收：2026-10-26 02:35 shared VLab: real deepseek turn with sessions_search replied vlab_search_ok 3; sessions.list calls 2 (1153 ms, 261 ms) instead of ~100; 0 load errors, no invalid-params fallback. PR #475 A/B: 141 comparisons 0 diffs, 101 -> 2 lists, 108.9 s -> 2.7 s.
+- `core` openclaw-tools-BODVdJQD.js  af27d9ae → c4f575f2
+- `core` session-utils-list-BUP03AzS.js  779063a6 → a6e3d70f
+- `core` sessions-read-C6mAMxyQ.js  2d2d0fb1 → eb18ffa5
+- `core` src-B9mb84px.js  24cc77ba → adc5204b
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #479 把 openclaw 工具从 V 的 Codex 回合里去掉（codexDynamicToolsExclude）
+- #469 release: 捕获 V（10/25 两次发版：fullread-doctor-dingtalk #468 #463 #381、dingtalk-outbound-case #472）+ CHANGELOG
+- #475 perf(sessions): sessions_search 列候选从 ~100 次 sessions.list 降到 2 次（108.9 s → 2.7 s）
+
 ## v-feishu-phone-entry-20261026
 
 上线：2026-10-26 00:27 CST（00:30 完成双节点 Voice 发布）  ·  tag `v-feishu-phone-entry-20261026`
@@ -34,6 +56,24 @@
 **这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
 - #472 fix(dingtalk): 主动群发恢复 openConversationId 原始大小写（不改会话键）
 
+## v2026.9.1-db91.6-dingtalk-outbound-case-20261025
+
+上线：2026-10-25 23:14 CST  ·  tag `v2026.9.1-db91.6-dingtalk-outbound-case-20261025`
+
+**摘要**：钉钉群里 V 主动发消息、发文件不再被钉钉以 `invalid.openConversationId`（400）拒收。会话键仍是小写、会话库不动；钉钉连接器在出站时把小写群 id 换回原始大小写（入站记录 + 按键只读查会话兜底，#472），并把 `channel:cid…` 目标按群发送。
+
+验收：共享 VLab 加载错误 0、钉钉已连、真实回合正确；V 23:14 v-self-restart 一次，75 s 就绪、worker 5/5；真实钉钉群「蔡天懿」里 @V 让它用全小写 id 往本群发文件，日志 `dingtalk target cidtoqjsy6dl1d44iiu1h3qna== sent as cidToQJSy6DL1D44iIU1h3QnA==` → `File[Proactive] 发送成功`；漂移 0 findings，VLab ALIGNED（18,820 个文件）。
+
+相对上一版 `v-feishu-voice-confirm-20261025`：3 个文件变化。
+
+**经 VLab 发版 `dingtalk-outbound-20261025`**（monitor-v-production，dev `888e08d2`）
+> 验收：2026-10-25 23:07 shared VLab: deploy ready, 0 load errors (no SessionCanonicalKeyMigration), dingtalk connected; real deepseek turn replied vlab_dingtalk_ok. Functional evidence for case restore: PR #472 candidates 4fcd72b3 (baseline 400) vs 73ba96f9 (patched, original-case ids incl. after restart).
+- `dingtalk` dist/message-handler-BUoLSylZ.mjs  a973a1b6 → 5cd4d5d7
+- `dingtalk` dist/runtime-C81EKBS1.mjs  fa36036c → 6c9d9e2d
+- `dingtalk` dist/v-experience.mjs  a85c1d37 → 6555ba08
+
+**这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #472 fix(dingtalk): 主动群发恢复 openConversationId 原始大小写（不改会话键）
 
 ## v-feishu-voice-confirm-20261025
 
@@ -73,6 +113,41 @@
 - #457 ops(egress): V 出口限速 45→55 Mbit（带宽已升到 60 Mbps）
 - #463 perf(system-agent): 内置助手的 doctor 改在子进程跑并跳过两项全量转录扫描
 
+## v2026.9.1-db91.6-fullread-doctor-dingtalk-20261025
+
+上线：2026-10-25 11:25 00:11 CST  ·  tag `v2026.9.1-db91.6-fullread-doctor-dingtalk-20261025`
+
+**摘要**：Gateway 不再因为会话查找和内置助手 doctor 被卡住。`sessions.resolve` 的各个分支和 V Voice 任务开始前的会话归属检查，从每次在主线程整读 makaron 全部会话行（约 7–9 s）改成只读匹配的那几行（2–17 ms，#468）；内置系统助手的 doctor 改在子进程跑、跳过两项全量转录扫描（#463，VLab 主线程最长阻塞 264 s → 0.22 s），10/22、10/25 三次 158–310 s 的冻结都是它。钉钉 / 企微：只用工具发出内容时，预建卡片收尾为「✅ 已发送」（#381）。
+
+钉钉 #382（群会话键保留大小写）没带：VLab 部署后 health 报 `SessionCanonicalKeyMigrationRequiredError`，已回滚；改由下一版 #472 在出站侧解决。
+
+验收：共享 VLab 真实回合（exec + sessions_list + sessions_search）正确，加载错误 0；V 11:25 v-self-restart 一次，76 s 就绪、worker 5/5，飞书测试群 lark-cli 自测通过；漂移 0 findings，VLab ALIGNED（18,819 个文件）。
+
+相对上一版 `feishu-conversations-20261024`：12 个文件变化。
+
+**经 VLab 发版 `fullread-dingtalk-r2-20261025`**（monitor-v-production，dev `8a9f7cf3`）
+> 验收：2026-10-25 shared VLab: real deepseek turn (exec+sessions_list+sessions_search) replied vlab_fullread_ok 3; 0 load errors; dingtalk/wecom connected; installed hashes match plan (operations 54ae7d7b, v-session-entries-matching d2d2c2cd); doctor CLI run by agent did not stall Gateway (0 liveness delays). #382 session-key excluded after first deploy broke health (SessionCanonicalKeyMigrationRequiredE…
+- `core` combined-store-gateway-BwDhjbIt.js  4b7612af → 9cb53296
+- `core` doctor-health-contributions-Dz7xROs_.js  a9b70992 → 3d9cdefb
+- `core` operations-CTofDiKh.js  eb6286b4 → 54ae7d7b
+- `core` registry-runtime-session-ownership-B1XvaNE7.js  f1c58a03 → d8e335dc
+- `core` sessions-resolve-_D6BmQTT.js  c3d8c801 → a1b3f4b3
+- `core` v-session-entries-matching.mjs  — → d2d2c2cd
+
+**经 VLab 发版 `noon-batch-20261016b`**（monitor-v-production，dev `5b925124`）
+> 验收：共享 VLab 11:28 部署 #380+#381（9 文件：core dist 3 个上下文溢出续写、钉钉 3 个、企微 3 个；before 均等于 V 线上字节）。Gateway 11:2x ready，journal 错误 0、SessionCanonicalKeyMigration 0，worker 12 进程，钉钉 connected、企微 websocket 启动。真实回合 vlab-dev-1792121414509：模型调用 exec(date +%F; uname -m)，toolResult 2026-10-16/x86_64，最终回复两行一致，约 10 s。#380/#381 的功能证据为各自 PR 在相同字节上的 candidate 记录（PR #380 docs/experiments/context-overflow-big-sessions.md，PR #…
+- `dingtalk` dist/message-handler-BUoLSylZ.mjs  d914cbce → a973a1b6
+- `dingtalk` dist/runtime-C81EKBS1.mjs  af93e121 → fa36036c
+- `dingtalk` dist/v-experience.mjs  5d939fa7 → a85c1d37
+- `wecom` dist/src/channel.js  30eb4a17 → 4b21464a
+- `wecom` dist/src/monitor.js  d4fe3561 → f015717e
+- `wecom` dist/src/v-experience.mjs  5d939fa7 → a85c1d37
+
+**这期间合入 dev 的 PR**（4 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #472 fix(dingtalk): 主动群发恢复 openConversationId 原始大小写（不改会话键）
+- #468 perf(sessions): resolve 的 sessionId/label/shortId 与插件 ownership 检查只读匹配行（~9 s → 3–70 ms）
+- #457 ops(egress): V 出口限速 45→55 Mbit（带宽已升到 60 Mbps）
+- #463 perf(system-agent): 内置助手的 doctor 改在子进程跑并跳过两项全量转录扫描
 
 ## feishu-conversations-20261024
 
@@ -144,6 +219,42 @@
 - #448 perf(memory-indexer): 没变的 chunk 不再重写（向量表不再长空槽，log.md 占锁降到 12–20 ms）
 - #446 release: 捕获 V（10/20 三次发版：#442 #441 #444）+ CHANGELOG
 
+## v2026.9.1-db91.6-nightshift-throughput-20261022
+
+上线：2026-10-22 02:13 CST v-self-restart 生效（PID 352681 → 760077）  ·  tag `v2026.9.1-db91.6-nightshift-throughput-20261022`
+
+**摘要**：#454 夜班提效，Gateway 侧三项改动，一次重启生效：
+- worker 插件 schema 的上限放宽（maxWorkers 16→32，warmSpareWorkers 15→31），配置同时把 `maxWorkers` 从 15 调到 24（`v-self-restart --set`，配置不在捕获里）；
+- `agent:*:subagent:workboard-*` 卡片会话不再做 memory flush，避免卡片流水写进 daily memory（10-12..22 这些文件里 55–90% 是卡片流水）；
+- 卡片 notes 截断上限从 4,000 提到 Workboard 自己的 12,000。
+
+**文件变化**：
+- `core/dist/runtime-api-1CCazqtv.js` 3300629f… → 3bc03ce6…
+- `core/dist/agent-runner-memory-7VF-zwNt.js` 7d5eaa38… → befc094d…
+- `worker/openclaw.plugin.json` 1ec103e3… → 2223bae7…
+
+三个文件都来自 VLab 发版 `nightshift-throughput-v1`（dev e822d251，负责人 nightshift-throughput），验收证据记在 VLab 的 accept 里。
+
+**重启**：Codex 的 memory guard 显示 ready；`--check` dry-run 用新 schema 验证 maxWorkers=24 通过。用 `--idle-timeout 60 --if-busy wait-then-proceed` 重启，等满 62 s 后照常执行，打断了 11 个夜班回合，65 s 就绪。各项检查结果：worker 5/5 ready，invalidConfig 0。被打断的卡由夜班自动重试，02:15–02:21 之间重新开跑。
+
+**上线后验收**：
+- 日志出现 "started with 5-24 elastic workers"；`vlab.workers.status` 返回 workerCapacity 24、capacity 72；
+- 三个文件的哈希与计划一致；
+- Gateway 拒绝卡片写 memory 的日志（"Memory flush writes are restricted"）：18:00–02:13 共 9 条，重启后 0 条；
+- 夜班的 Worker 余量从 2 升到 11。
+
+## v2026.9.1-db91.6-gateway-451-452-20261021
+
+上线：2026-10-22 00:17 CST Gateway ready（PID 62954 → 352681）。本节记录运行时产物，尚未创建 git tag。
+
+**摘要**：#451 将单行会话快照的子任务登记读取限定到相关会话；#452 将定时健康汇总中的会话表读取移到常驻 worker 线程，减少主线程承受同步整表读取的机会。大闭包和 worker 故障保留旧路径回退，不声称所有卡顿均已解决。
+
+- 已验收源码：dev `53ed7f935c53d73e920d958a558df7e366533da0`；共享 VLab release `gateway-451-452-20261021-v1`，artifact SHA256 `158924f541a018f39cc2d58ec37c8cc199d05b350d8802e9a80db834fd8e7caf`。同一四文件产物部署到 V；与上一份生产捕获的 core 差异恰好为这四个文件，其他五组件无改动。
+- 功能：21 项静态检查、组合 candidate 537 次会话比较及 8 次健康汇总比较零差异；VLab 实际 12 并发工具/最终回复、子任务回传、连续对话通过。健康汇总副本冷读的主线程最长阻塞 500–543ms → 7–10ms，这不是生产整库端到端数字。
+- 生产：V Backup 三条已授权测试均拿到实际最终回复；普通 exec 8.683s、子任务创建到完成回传 32.003s、连续对话及新 exec 14.489s（本次 native user-event 到最终 assistant-event，非首字）。叶子子任务使用临时 cleanup=delete，单独的子会话记录在完成后被清理，回传链路与父会话工具事件保留。
+- 恢复：5/5 基础 worker、2/2 stream cron、indexer/vector-pin、夜班和语音入口恢复；NRestarts=0。夜班已恢复派单，语音页面显示可拨号，未验真人语音通话。原记忆补编译已成功；按用户最新指令重启时独立质检中断，随后由原 cron 自动重新运行。
+- 限制：VLab 首次冷态回合曾出现约23秒协调等待，暖机后复测通过；生产短窗口仍见约1.3–3.1秒 liveness overdue，未见同类30–60秒长停顿，不能外推长期性能已根治。未调整45会话槽/36夜班硬上限，也未归档历史记录。
+- 收尾：六组件774个捕获文件逐一核SHA256；漂移哨兵9215文件/6根目录0发现；V/VLab 18813文件 ALIGNED，integration lease已释放。保留本次四文件undo及前次整库备份；未合main、未打tag。
 
 ## v2026.9.1-db91.6-vector-budget-20261020
 
