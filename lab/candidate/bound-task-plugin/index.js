@@ -17,7 +17,7 @@ export default {id:'bound-task-candidate',register(api){
      const entry=JSON.parse(JSON.stringify(row.entry).replaceAll(live.bindingSourceState??process.env.VLAB_SHARED_STATE_DIR,process.env.OPENCLAW_STATE_DIR).replaceAll(process.env.VLAB_SHARED_STATE_DIR,process.env.OPENCLAW_STATE_DIR));
      await replaceEntry({storePath,sessionKey:row.key},entry);
     }
-    await m.recover();respond(true,{seeded:live.bindings?.map(r=>r.key)});return;
+    await m.recover();respond(true,{seeded:live.bindings?.map(r=>r.key),recovered:[...m.tasks.values()].map(h=>({id:h.record.id,delivered:h.record.delivered,error:h.record.error}))});return;
    }
    if(p.op==='attach-live-sender'){
     if(process.env.BOUND_TASK_OUTBOUND_ONLY!=='1'||process.env.OPENCLAW_SKIP_CHANNELS!=='1')throw Error('Outbound-only candidate mode required');
@@ -25,7 +25,9 @@ export default {id:'bound-task-candidate',register(api){
     // The probe plugin's api.config has no Feishu credential capability. Use
     // the explicit private test configuration, as normal channel startup does.
     const cfg=JSON.parse(fs.readFileSync(process.env.OPENCLAW_CONFIG_PATH));
-    m.registerAccount('default',native.createTaskPresentationAccount({cfg,accountId:'default',runtime:{log:()=>{},error:()=>{}},createClient:native.createFeishuClient,createReplyDispatcher:native.createFeishuReplyDispatcher,resolveAccount:(cfg,accountId)=>native.resolveFeishuRuntimeAccount({cfg,accountId}),resolveProgressRuntimes:native.resolveVisibleProgressRuntimes}));
+    const factory=native.createTaskPresentationAccount({cfg,accountId:'default',runtime:{log:()=>{},error:()=>{}},createClient:native.createFeishuClient,createReplyDispatcher:native.createFeishuReplyDispatcher,resolveAccount:(cfg,accountId)=>native.resolveFeishuRuntimeAccount({cfg,accountId}),resolveProgressRuntimes:native.resolveVisibleProgressRuntimes});
+    const live=JSON.parse(fs.readFileSync(process.env.BOUND_TASK_LIVE_CONFIG));
+    await factory.authorize({accountId:'default',kind:'group',chatId:live.groupChat});m.registerAccount('default',factory);
     respond(true,{attached:true,channelsStarted:false});return;
    }
    if(p.op==='inspect'){
