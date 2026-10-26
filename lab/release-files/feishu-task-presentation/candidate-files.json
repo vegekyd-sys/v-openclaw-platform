@@ -10,7 +10,7 @@
       "source": "lab/release-files/feishu-task-presentation/monitor.account-WFdlCDhR.js",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
       "before": "535841d0219848a266d146094ee3441bbf48ed7a8aa28f04d111afb330247fef",
-      "sha256": "9e0e833d3a1df091b61170b94d6a168e023871d02c0b9f86f83bd18e73542c91"
+      "sha256": "f40290adb020ab17b921babeadc305d182b96e553acdfa55a6506c4764a634d8"
     },
     {
       "source": "lab/release-files/feishu-task-presentation/embedded-agent-DaSvA-Yk.js",
@@ -46,7 +46,7 @@
       "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation-runtime.mjs",
       "target": "openclaw/dist/v-feishu-task-presentation-runtime.mjs",
       "before": null,
-      "sha256": "f18b2df22ff56195c5d0da77e4d208d709d7b01930c15c0558fac72c1af22a8b"
+      "sha256": "41fbfd972f6be115d0a13b56d24074407f17af7378543ac3510e67d90f5baba4"
     },
     {
       "source": "lab/release-files/feishu-task-presentation/v-feishu-voice-actor.mjs",

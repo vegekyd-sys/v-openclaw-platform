@@ -1,4 +1,5 @@
 // feishu-bound-task-presentation-v1
+import {getAgentScopedMediaLocalRoots} from "openclaw/plugin-sdk/media-local-roots";
 import {runtimeVoiceCardConfirmation as vVoiceCardConfirmation} from "./v-feishu-voice-confirm.mjs";
 // v-feishu-voice-card-confirm-v1
 // v-feishu-authenticated-url-challenge-v1
@@ -3388,6 +3389,7 @@ function createFeishuReplyDispatcher(params) {
 						cfg,
 						to: sendTarget,
 						mediaUrl,
+						...(params.boundTaskPresentation ? {mediaLocalRoots:getAgentScopedMediaLocalRoots(cfg,agentId)} : {}),
 						replyToMessageId: sendReplyToMessageId,
 						replyInThread: effectiveReplyInThread,
 						allowTopLevelReplyFallback,

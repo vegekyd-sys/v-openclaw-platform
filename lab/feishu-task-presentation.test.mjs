@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {TaskPresentationManager,boundFeishuRoute,PRESENTATION_KEY} from './feishu-task-presentation.mjs';
-import {observeEmbeddedTask,presentInterSessionTask,presentNativeVoiceTask} from './feishu-task-presentation-runtime.mjs';
+import {observeEmbeddedTask,presentInterSessionTask,presentNativeVoiceTask,publicNativeVoiceText} from './feishu-task-presentation-runtime.mjs';
 const sessionKey='agent:test:feishu:group:oc_test',agentId='test';
 function fixture(t,{directory}={}){
   let entry={sessionId:'session-1',delivery:{kind:'external',context:{channel:'feishu',accountId:'work',to:'chat:oc_test'}}};
@@ -18,6 +18,13 @@ function fixture(t,{directory}={}){
   return {manager,calls,sent,entry:()=>entry,setEntry:e=>entry=e,open:(more={},options={trusted:true})=>manager.open({agentId,sessionKey,source:'voice-native',taskId:'task-1',runId:'run-1',text:'公开任务',...more},options)};
 }
 const flush=async h=>{await h.flush();await new Promise(r=>setTimeout(r,0));await h.flush();};
+
+test('GPT Live native task anchors exclude transcript deltas and appended execution policy',()=>{
+ const request='<realtime_delegation>\n  <input>计算 101 乘以 99</input>\n  <transcript_delta>user: PRIVATE_PREVIOUS_TURN</transcript_delta>\n</realtime_delegation>\n\nPRIVATE_HOST_POLICY';
+ assert.equal(publicNativeVoiceText(request),'计算 101 乘以 99');
+ for(const malformed of ['<realtime_delegation>PRIVATE_BROKEN','prefix <transcript_delta>PRIVATE</transcript_delta>'])assert.equal(publicNativeVoiceText(malformed),'收到一个语音后台任务。');
+ assert.equal(publicNativeVoiceText('公开后台任务'),'公开后台任务');
+});
 
 test('a verified Voice actor can arbitrate its native session run without acquiring another connection handle',async t=>{
  const f=fixture(t),h=await f.open();await h.flush();

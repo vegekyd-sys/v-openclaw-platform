@@ -9,6 +9,8 @@ export function patchTaskPresentationEntry(source){already(source);
   return `// ${MARKER}\nimport {registerTaskPresentation} from "./v-feishu-task-presentation.mjs";\nimport {onAgentEvent} from "openclaw/plugin-sdk/agent-harness-runtime";\n`+source;
 }
 export function patchTaskPresentationMonitor(source){already(source);
+  source=once(source,'\t\t\t\t\t\tmediaUrl,\n\t\t\t\t\t\treplyToMessageId:',
+    '\t\t\t\t\t\tmediaUrl,\n\t\t\t\t\t\t...(params.boundTaskPresentation ? {mediaLocalRoots:getAgentScopedMediaLocalRoots(cfg,agentId)} : {}),\n\t\t\t\t\t\treplyToMessageId:');
   source=once(source,'\tconst typingTargetMessageId = explicitTypingTargetMessageId?.trim() || replyToMessageId;',
     '\tconst typingTargetMessageId = params.boundTaskPresentation ? void 0 : explicitTypingTargetMessageId?.trim() || replyToMessageId;');
   const stateEnd='\t\t\thasNote: Boolean(options?.note)\n\t\t};';
@@ -45,7 +47,7 @@ ${returned}`);
     void vTaskHost?.recover();
 ${handlers}`);
   source=once(source,'\t\t} finally {\n\t\t\tvIngressCatchup?.stop();','\t\t} finally {\n      vTaskRelease?.();\n\t\t\tvIngressCatchup?.stop();');
-  return `// ${MARKER}\n`+source+'\n'+createTaskPresentationAccount.toString()+'\n';
+  return `// ${MARKER}\nimport {getAgentScopedMediaLocalRoots} from "openclaw/plugin-sdk/media-local-roots";\n`+source+'\n'+createTaskPresentationAccount.toString()+'\n';
 }
 export function patchTaskPresentationEmbedded(source){already(source);
   const resolved='\tconst initialResolvedRuntimeModel = resolveEffectiveModel(runtimeModel);';
