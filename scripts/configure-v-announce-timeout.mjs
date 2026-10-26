@@ -9,12 +9,10 @@
 // that turn and is cut off at ~120 s with no final reply and nothing in Feishu (production
 // 2026-10-26 14:27 and 14:38 CST, group oc_1f2843b2, task row delivery_status=failed / "gateway
 // request timeout for agent"; 7 of 9 Feishu-group Codex native completions in the week before were
-// not visible). 30 min, chosen by Tianyi (2026-10-26) as the first step: long enough for the follow-up
-// work seen so far, short enough that a hung announce turn is given up and retried within the hour.
-// Ordinary turns already get the 48 h default; raise this (e.g. 6 h = runTimeoutSeconds) if parents
-// need to work longer inside the announce turn.
+// not visible). 6 h equals V's subagents.runTimeoutSeconds, so an announce turn may run as long as a
+// child; ordinary turns already get the 48 h default.
 // Validated by lab/candidate/codex-announce-timeout-{baseline,fixed}.plan.json (V's bytes: unset
-// cuts the parent's 150 s command at the 120 s mark; 30 min finishes it and delivers the final).
+// cuts the parent's 150 s command at the 120 s mark; 6 h finishes it and delivers the final).
 //
 // The Gateway reads openclaw.json; turns run in Workers, which read worker-openclaw.json (a second
 // file). Both get the same value.
@@ -33,7 +31,7 @@ import os from "node:os";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 
-export const NEW = 1_800_000;
+export const NEW = 21_600_000;
 export const OLD = undefined; // unset: OpenClaw's default 120 000
 
 export const timeoutOf = (config) => config.agents?.defaults?.subagents?.announceTimeoutMs;
