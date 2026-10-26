@@ -82,3 +82,13 @@ test('membership denial exposes only a fixed recovery reason after verified acto
   await assert.rejects(check(actor,undefined,undefined,{resolvePolicy:async()=>({admitted:false,reason:'private-identifier'})}),
     error=>error.code===undefined&&!error.message.includes('private-identifier'));
 });
+test('presentation capabilities remain bound to the exact signed Voice actor and conversation',async()=>{
+ const middleware=createVoiceActorMiddleware({...deps,now:()=>now});
+ const prepare=async(a,method,p)=>{const params={sessionKey:session(a),...p};return middleware({req:{method,params:{...params,voiceActor:signed(a,method,params)}},client,context:{getRuntimeConfig:()=>({})},respond(){}});};
+ const started=await prepare(actor,'voice.product.task.start',{voiceSessionId:'voice-A'});started.respond(true,{runId:'run-A',taskId:'run-A'});
+ const begun=await prepare(actor,'v.feishu.taskPresentation',{op:'begin',runId:'run-A',taskId:'run-A'});begun.respond(true,{presentationId:'presentation-A'});
+ const finish={op:'finish',presentationId:'presentation-A',runId:'run-A'};
+ assert((await prepare(actor,'v.feishu.taskPresentation',finish)).client.internal.voiceActor);
+ await assert.rejects(prepare({...actor,openId:'ou_bob'},'v.feishu.taskPresentation',finish),/not_authorized/);
+ await assert.rejects(prepare({...actor,chatId:'oc_groupB'},'v.feishu.taskPresentation',finish),/not_authorized/);
+});

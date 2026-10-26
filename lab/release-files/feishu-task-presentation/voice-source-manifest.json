@@ -1,0 +1,10 @@
+{
+  "files": [
+    {
+      "source": "lab/realtime-direct-tools/backend.mjs",
+      "target": "realtime-direct-tools/backend.mjs",
+      "sha256": "58bbcf2ca26faecbeffa5b20067712c207da855d4bf172d6f24365940c2ee446"
+    }
+  ],
+  "note": "Voice source artifact, separate from the Gateway files; no Voice service deployed."
+}

@@ -1,0 +1,71 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/feishu-task-presentation/index.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/index.js",
+      "before": "17f2e4d25ca24f4f7694b2f109e20d1c7411a5ca8583e600373473673dc61706"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/monitor.account-WFdlCDhR.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+      "before": "535841d0219848a266d146094ee3441bbf48ed7a8aa28f04d111afb330247fef"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/embedded-agent-DaSvA-Yk.js",
+      "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
+      "before": "bcb20f5dc47a3bd6f543c5140d51a85e80157d50ec945ca708bd78fb718bf50b"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/agent-command-DPfawBbr.js",
+      "target": "openclaw/dist/agent-command-DPfawBbr.js",
+      "before": "d63e33079b900243b2f7f6d94a0f8476de0ed12c41a6d83fba5eb1c8ad24577a"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/realtime-session-harness-CEO5kVAJ.js",
+      "target": "openclaw/dist/realtime-session-harness-CEO5kVAJ.js",
+      "before": "74bc94f5d66fbfbd0ffe2994f5c7cac501e656d898ad142851b8bdaf592c49cf"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation.mjs",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-task-presentation.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation-runtime.mjs",
+      "target": "openclaw/dist/v-feishu-task-presentation-runtime.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/v-feishu-voice-actor.mjs",
+      "target": "openclaw/dist/v-feishu-voice-actor.mjs",
+      "before": "17608d695ff0893a71f94574e2cbb8a1a765246f36b7b51d2932afdf002f6a42"
+    },
+    {
+      "source": "lab/candidate/bound-task-plugin/index.mjs",
+      "target": "extensions/bound-task-candidate/index.mjs"
+    },
+    {
+      "source": "lab/candidate/bound-task-plugin/openclaw.plugin.json",
+      "target": "extensions/bound-task-candidate/openclaw.plugin.json"
+    }
+  ],
+  "tests": [
+    "lab/candidate/bound-task-smoke.mjs"
+  ],
+  "support": [
+    "lab/candidate/bound-task-support.mjs",
+    "lab/candidate/feishu-fake-open-api.mjs",
+    "lab/candidate/feishu-no-live.cjs",
+    "lab/realtime-direct-tools/backend.mjs",
+    "lab/realtime-direct-tools/tools.mjs",
+    "lab/realtime-direct-tools/lark-readonly.mjs",
+    "lab/gpt-live-consult-progress.mjs",
+    "lab/gpt-live-h5/result-presentation.mjs",
+    "lab/gpt-live-h5/media-references.mjs"
+  ],
+  "user": "lab-db91-parity",
+  "env": {
+    "BOUND_TASK_HARNESS": "worker"
+  },
+  "timeoutSeconds": 600
+}

@@ -206,7 +206,10 @@
         "scripts/vlab-channel-plugins-prep.test.mjs",
         "scripts/lib/runtime-components.test.mjs",
         "tests/install-secret-entry-host.test.mjs",
-        "scripts/lib/parity-config.test.mjs"
+        "scripts/lib/parity-config.test.mjs",
+        "lab/feishu-task-presentation.test.mjs",
+        "lab/feishu-task-presentation-native.test.mjs",
+        "lab/feishu-task-presentation-patch.test.mjs"
       ]
     },
     {
@@ -1215,6 +1218,17 @@
       ],
       "disposition": "needs-live-reconciliation",
       "sourceSha256": "578002ac862cfe172a7c39ca4936d6e14ad748c6ef2b13a6811551e42120f6fd"
+    },
+    {
+      "id": "patch-feishu-task-presentation",
+      "file": "lab/patch-feishu-task-presentation.mjs",
+      "component": "feishu-channel",
+      "reason": "Bound Feishu backend tasks reuse the native dispatcher for one execution; feature-gated candidate awaiting Worker/VDS acceptance.",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "excluded-candidate",
+      "sourceSha256": "7d4beebda2b4997742f5ce2ebc4d221281c9ceb73e704c97cc849f27e87b2425"
     }
   ],
   "externalInputs": [

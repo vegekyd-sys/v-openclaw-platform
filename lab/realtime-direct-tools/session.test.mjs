@@ -11,6 +11,7 @@ async function fixture(invoke=async()=>({ok:true,output:{answer:'实际结果'}}
   close(){this.readyState=3;this.emit('close');}}
  class Server {handleUpgrade(req,socket,head,done){done(socket);}close(){}}
  const gateway={request:async(method,args)=>{
+  if(method==='v.feishu.taskPresentation')return {enabled:false};
   if(method==='tools.catalog')return {groups:[{tools:['memory_search','web_search','web_fetch','exec','process'].map(id=>({id}))}]};
   invocations.push(args);return invoke(args,method);
  }};
