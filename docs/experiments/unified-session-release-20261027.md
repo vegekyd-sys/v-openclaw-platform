@@ -1,6 +1,30 @@
-# 统一跨会话版本：上线前修正与验收
+# 统一跨会话版本：生产发布与功能验收
 
 2026-10-27。用户已授权：修正剩余问题，共享 VLab 验收通过后自行上线，使用 v-self-restart，完成 align 并做生产完整验收。此前共享 v1 的失败与回滚保留在 [10 月 26 日报告](unified-session-shared-20261026.md)，不能继承为本轮通过。
+
+## 最终结果
+
+已上线 `v2026.9.1-db91.6-unified-session-20261027`，50 份运行文件与共享 v3 精确相同。生产 Gateway PID 3617971，`v-self-restart` 第二轮 `20261027-032914-6653` outcome=ok，Worker 5/5、stream 2/2；Night Shift 14 项自动派发均已恢复。03:44:20 CST 最终 align=ALIGNED，比较 18847 项；生产漂移 7 个根目录、9249 文件、0 findings。
+
+| 生产真实功能用例 | 结果与可核对证据 |
+| --- | --- |
+| VDS 同步返回 | `PROD-F2-442e39`；实际工具时间戳 1793043274，来源最终卡片一致 |
+| Worker 完整分发 | `PROD-WORKER-692328`；目标真实 sleep25 后计算 1517，目标和来源卡片一致 |
+| VDS 异步回源 | `PROD-F2-8e49cb`；目标真实时间戳 1793043403；一个完成的 wake，attempt=0 |
+| 三目标嵌套 | `PROD-F13-07d3d8`；4 次 send，深度 [1,2,2,2]；323、667、1793043475 全部收齐；两个完成的 wake，attempt=0；五个群实际读回 |
+| 原生子 agent announce | 原生 spawn_agent→yield→announce，实际文件哈希 6dbb1a138142e926、父 token NATIVE_ec861d6d0bc3；过程在终结前可见 |
+| 飞书排队追问 | 与 announce 独立卡片；先读回 FOLLOW-PLAN，再读回独立最终回复；没有串 plan |
+| 真实 /stop | run f5d496e7-5e4e-49de-83de-93309f5dca9a；卡片 om_x100b62ce9d637c6ccf1557a20a2138e 显示“任务已取消”，无正常完成标记 |
+| GPT Live 真通话 | 目标新执行 1793043838；源卡 om_x100b62ce9c37dca0ce4fafd84f54966、目标工具与通话结果一致 |
+| Grok 真通话 | 目标新执行 1793044065；源卡 om_x100b62ceafd1e4a0cfdd8bbdbaee744、目标工具与通话结果一致 |
+
+Voice web/devices 正式两端均为 `ab8d078dd2937c303ab1eb0008b62fc5a4b8d309` / files SHA `06eaef28eda1999cbf4d31c7a0510b00d080e438aa531e6b42578d31b27724e3`，ready=true、admission held=false。已在内置浏览器核对生产首页更新日志“后台任务在飞书里也看得见”。真实语音测试使用同一正式产物、生产 Gateway 和私有测试绑定；输入为合成 PCM 经原生 getUserMedia/RTC，不采集用户麦克风，不冒充真人测试。未新增 iPhone App 或硬件固件发布。
+
+本地 Node22 3003/3003，相关274/274；Voice966/966、设备95/95、发布流程11/11。真实 Worker/VDS 候选、异常最终总结恢复、共享普通语音不建任务卡证据见下文；无最终回复故障只在候选注入，不向生产注入。
+
+完整生产回执：本机 `vlab-dev/tmp/unified-production-20261027/summary.json` 及同目录的精确卡片、目标工具、通话、restart、align、drift 回执；共享回执 `vlab-dev/tmp/unified-shared-20261027-v3/`。生产回滚备份 `/opt/v-release-backups/v2026.9.1-db91.6-unified-session-20261027-20261026T184631`。源码修复 #488/#489/#490、候选目录 #491、发布存档 #492；Voice #151。
+
+以下按阶段保留修正与失败记录，“待验收”描述只属于当时阶段。
 
 ## 修正
 
@@ -64,3 +88,19 @@ Grok Voice 3.0 的真实 direct 通话也已完成异步跨会话：目标新的
 Voice fleet 两端已发布 `ab8d078dd2937c303ab1eb0008b62fc5a4b8d309`，同一 files SHA256 `06eaef28eda1999cbf4d31c7a0510b00d080e438aa531e6b42578d31b27724e3`；web/devices 均 ready、无 admission hold。回执 `v-voice-releases/background-feishu-20261027/production-receipts/20261027-024039-536e9431/matrix.json`。内置浏览器已核对真实生产 `/voice/?phone=public` 更新日志，截图保存于 `vlab-dev/tmp/unified-production-20261027/voice-changelog.png`。不将服务端一致性宣称为新的 iPhone/硬件固件验收。
 
 平台生产 promote plan 已核对 50 个文件的 before bytes 全部一致，正在正式安装。尚待 v-self-restart、生产功能验收和最终 align。
+
+平台已用正式 promote 安装同一份 50 文件，回滚备份 `/opt/v-release-backups/v2026.9.1-db91.6-unified-session-20261027-20261026T184631`。七组件 capture 完成，漂移哨兵 9249 文件、0 findings；2026-10-27 02:49:41 CST 首次 align=ALIGNED（这里只证明字节一致，Gateway 尚在等空闲激活）。
+
+`v-self-restart` 请求 `20261027-024655-d1db` 使用 `--if-busy abort --idle-timeout 3600 --while-stopped production-activate.mjs`。等待期间 Night Shift 持续进入新任务，因此 02:54 左右正常停止 `nightshift-workboard.service` 的新任务调度；既有三个 Gateway-native Workboard 回合仍在运行、有新进展，未中止。原状态和健康快照保存为服务器 `nightshift-hold.json`，Gateway 就绪后须立即恢复 Night Shift 并核对健康，再跑生产验收。
+
+03:05:48 现有 Night Shift watchdog 自动拉起 dashboard，新增两个回合；单独停服务不能可靠阻止新派发。已改用 Workboard 原生 `/api/instances/{id}/dispatch-control` 暂停此前启用的 14 个项目 automaticDispatch，保持 dashboard 在线和现有回合继续运行。已核对 14 项均 false，并安装一次性恢复单元 `v-unified-nightshift-restore-20261027.service`：self-restart 结束（成功或失败）后恢复这 14 项原值并验证服务健康。03:18 仍有 3 个回合运行；初始两项已自然完成，尚在运行的是原第三项及 watchdog 恢复后新增的两项。发布验收尚未开始，未取消业务任务。
+
+03:25:59 所有业务自然空闲，首轮 self-restart 03:26:05 完成停机/配置激活，03:27:39 就绪（91 秒），03:28:23 Worker 5/5、stream 2/2；14 项 Night Shift 自动派发已恢复。加载日志另发现 relay 插件 index.js 为历史 UID 501，生产插件属主检查拒绝加载，故首轮健康成功不计作功能上线成功。已将本次 relay 插件目录属主修正为 root:root，字节不变；在尚未执行核心测试时暂停验收脚本、重新暂停同 14 项自动派发，再以 `v-self-restart` 请求 `20261027-032914-6653` 等空闲重启。配置校验命令的 browser/memory env 警告已核对实际服务进程，两个环境变量均存在；不改业务配置。
+
+第二轮 03:31:33 日志确认 `v-session-relay 2.0 started`，03:32:08 self-restart outcome=ok、Worker 5/5、stream 2/2，生产 PID 3617971。14 项 Night Shift 再次恢复并逐项读回 true，dashboard healthy。已逐一复核安装的 50 文件 SHA 全部等于冻结产物。
+
+生产验收辅助脚本起初假设服务总有 OPENCLAW_STATE_DIR，实际生产使用默认 `/home/openclaw/.openclaw`，导致证据读取报错；修正读取路径后复用原来的 Worker 执行结果验收，没有重跑模型冒充首轮通过。Worker `PROD-WORKER-692328` 目标执行 sleep25 后得到 1517，目标和原群真实卡片读回通过。原生 announce/queued followup 最终两张卡片 `om_x100b62ceff1f5ca4b01a0450d47156a` 与 `om_x100b62cefb32a0a0cf9ac6d6829a162`，过程、哈希、token、独立 plan 隔离均通过。
+
+首个生产 VDS 用例 `PROD-F2-442e39` 实际为 delivered_inline（时间戳 1793043274），只能算同步证据。已明确异步任务“不用同步等、先让出”，并将断言收紧为必须存在一个 woken batch 和 handed_back，避免空 batch 数组让 all() 真值误报一次回源。`PROD-F2-8e49cb` 实际异步与一次回源、目标工具输出、来源最终卡片读回通过。
+
+最终生产嵌套检查曾在 requester wake 刚启动、尚未结束时提前采样，断言 status=null 未通过；已让检查同时等待 wake.endedAt，再从原执行读回，不重新派发任务。最终两级 wake 均 status=ok、attempt=0，来源实际卡片包含三份结果。语音测试还修正了私有 SSH 本地转发的 AddressFamily 和首屏渲染等待；两次最终实际通话、目标工具和源卡三方证据全部通过，不以测试脚本启动算成功。
