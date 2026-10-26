@@ -10,6 +10,6 @@
   "user": "lab-db91-parity",
   "env": {
     "ANN_EXPECT": "fixed",
-    "ANN_TIMEOUT_MS": "21600000"
+    "ANN_TIMEOUT_MS": "1800000"
   }
 }

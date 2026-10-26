@@ -4,8 +4,9 @@ import { setTimeoutMs, timeoutOf, NEW, OLD } from "./configure-v-announce-timeou
 
 const v = () => ({ agents: { defaults: { subagents: { maxConcurrent: 45, runTimeoutSeconds: 21600 }, model: "x" } } });
 
-test("the new timeout lets an announce turn run as long as a child may", () => {
-  assert.equal(NEW, v().agents.defaults.subagents.runTimeoutSeconds * 1000);
+test("the new timeout is 30 min: far above the 120 s default, within a child's run limit", () => {
+  assert.equal(NEW, 30 * 60 * 1000);
+  assert(NEW <= v().agents.defaults.subagents.runTimeoutSeconds * 1000);
   assert(NEW <= 2 ** 31 - 1, "fits a Node timer");
 });
 
