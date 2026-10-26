@@ -445,7 +445,8 @@
         "lab/sessions-resolve-exact-read.test.mjs",
         "lab/sessions-search-exact-read.test.mjs",
         "lab/doctor-subprocess.test.mjs",
-        "lab/sessions-search-candidate-rows.test.mjs"
+        "lab/sessions-search-candidate-rows.test.mjs",
+        "lab/openclaw-tool-safe-deny.test.mjs"
       ]
     }
   ],
