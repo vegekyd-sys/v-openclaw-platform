@@ -2,6 +2,7 @@
 // This file is candidate-only and never part of a Gateway release.
 import fs from 'node:fs';import path from 'node:path';import http from 'node:http';
 import {execFileSync} from 'node:child_process';import {randomUUID} from 'node:crypto';
+import {createRequire} from 'node:module';
 import assert from 'node:assert/strict';
 import {prepareCandidate,sha256,redact,freePort} from './bound-task-support.mjs';
 const privateConfig=process.env.BOUND_TASK_LIVE_CONFIG;
@@ -23,9 +24,9 @@ save('allowance.json',{exportNativeConsult:{before:sha256(original),after:sha256
 await c.start({timeoutMs:150000});
 const {createLiveH5Server}=await import(path.join(voice,'lab/gpt-live-h5/server.mjs'));
 const {createDirectVoiceService}=await import(path.join(voice,'lab/realtime-direct-tools/session.mjs'));
-const wsModule=await import(path.join(voice,'node_modules/ws/index.js'));
+const wsModule=createRequire(path.join(voice,'package.json'))('ws');
 const audit=[];const record=row=>{audit.push(row);save('voice-audit.json',audit);};
-const directVoice=createDirectVoiceService({gateway:c.client,wsModule,audit:record,apiKeys:{grok:c.env.XAI_API_KEY,seeduplex:c.env.VOLCENGINE_REALTIME_API_KEY??c.env.DOUBAO_SPEECH_API_KEY}});
+const directVoice=createDirectVoiceService({gateway:c.client,wsModule,audit:record,apiKeys:{grok:c.env.XAI_API_KEY??live.voiceKeys?.XAI_API_KEY,seeduplex:c.env.VOLCENGINE_REALTIME_API_KEY??c.env.DOUBAO_SPEECH_API_KEY??live.voiceKeys?.VOLCENGINE_REALTIME_API_KEY??live.voiceKeys?.DOUBAO_SPEECH_API_KEY}});
 const sessionKey=`agent:makaron:feishu:group:${live.groupChat}`;
 const bridge=createLiveH5Server({gateway:c.client,directVoice,gptProvider:'v-voice-gpt-live',defaultModel:'grok',avatarEvaluate:async()=>null,callControlAudit:record,
  conversationEntries:[{id:'bound-task-test',agentId:'makaron',sessionKey,accountId:'default',kind:'group',callerId:'tianyi',permissionProfile:'personal-tianyi',accessToken:randomUUID()+randomUUID()}],
