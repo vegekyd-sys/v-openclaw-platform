@@ -14,10 +14,14 @@ export function patchTaskPresentationMonitor(source){already(source);
   source=once(source,'\tconst typingTargetMessageId = explicitTypingTargetMessageId?.trim() || replyToMessageId;',
     '\tconst typingTargetMessageId = params.boundTaskPresentation ? void 0 : explicitTypingTargetMessageId?.trim() || replyToMessageId;');
   const stateEnd='\t\t\thasNote: Boolean(options?.note)\n\t\t};';
-  source=once(source,stateEnd,stateEnd+'\n\t\tawait options?.taskCheckpoint?.({...this.state});\n\t\tif (options?.resumeMessageId) { this.state.messageId = options.resumeMessageId; return; }');
+  source=once(source,stateEnd,stateEnd+'\n\t\tif (options?.resumeMessageId) this.state.messageId = options.resumeMessageId;\n\t\tawait options?.taskCheckpoint?.({...this.state});\n\t\tif (options?.resumeMessageId) return;');
   source=once(source,'\t\t\t\t...sendOptions.replyInThread ? { reply_in_thread: true } : {}','\t\t\t\t...sendOptions.replyInThread ? { reply_in_thread: true } : {},\n\t\t\t\t...sendOptions.taskUuid ? {uuid:sendOptions.taskUuid} : {}');
   source=once(source,'\t\t\t\t...sendMode === "root_create" ? { root_id: sendOptions.rootId } : {}','\t\t\t\t...sendMode === "root_create" ? { root_id: sendOptions.rootId } : {},\n\t\t\t\t...sendOptions.taskUuid ? {uuid:sendOptions.taskUuid} : {}');
   source=once(source,'\t\tif (messageId && this.state) this.state.messageId = messageId;','\t\tif (messageId && this.state) this.state.messageId = messageId;\n\t\tawait options?.taskCheckpoint?.({...this.state});');
+  source=once(source,'\tconst ensureVisibleStreamingDelivery = async (result, content, infoKind) => {',
+    '\tconst ensureVisibleStreamingDelivery = async (result, content, infoKind) => {\n    if (params.boundTaskPresentation) return result; // the durable owner retries the same card, never a second static card');
+  source=once(source,'\t\t\t\t\tif (useCard) {\n\t\t\t\t\t\tconst cardHeader = resolveCardHeader(agentId, identity);',
+    '\t\t\t\t\tif (useCard) {\n            if (params.boundTaskPresentation?.state?.stream?.cardId) throw Error("Owned task card is awaiting retry; refusing duplicate static fallback");\n\t\t\t\t\t\tconst cardHeader = resolveCardHeader(agentId, identity);');
   source=once(source,'\t\tif (!VFEISHU_CARD_PRECREATE_ENABLED || vPrecreateAttempted || !streamingEnabled',
     '\t\tif (params.boundTaskPresentation?.state?.stream?.cardId || !VFEISHU_CARD_PRECREATE_ENABLED || vPrecreateAttempted || !streamingEnabled');
   const precreated='\t\t\t\t...precreated ? { precreatedCardId: precreated.cardId, precreatedSequence: precreated.sequence } : {},';

@@ -56,6 +56,16 @@ export async function buildUnifiedPresentation({write=true}={}){
  if(write){
   fs.writeFileSync(path.join(root,dir,'manifest.json'),JSON.stringify({capture:CAPTURE,scope:'Feishu relay plus task presentation; other channel bridges unchanged',files},null,2)+'\n');
   fs.writeFileSync(path.join(root,'lab/unified-session-presentation.plan.json'),JSON.stringify(plan,null,2)+'\n');
+  const base=JSON.parse(fs.readFileSync(path.join(root,'lab/candidate/inter-session-feishu-v-env.plan.json'),'utf8'));
+  const savePlan=(name,p)=>fs.writeFileSync(path.join(root,'lab/unified-session-presentation.'+name+'.plan.json'),JSON.stringify(p,null,2)+'\n');
+  for(const harness of ['worker','vds']){
+   savePlan('core.'+harness,{...base,files:plan.files,env:{...base.env,RELAY_HARNESS:harness,V_FEISHU_TASK_PRESENTATION:'1',ISC_FEISHU_MODE:'mock',RUN_TAG:'UNIFIED',ISC_SCENARIOS:'F1i,F2,F3b-rpc,F3c,F5,F7,F10,F13,F15'}});
+   const voice=JSON.parse(fs.readFileSync(path.join(root,'lab/feishu-task-presentation.'+harness+'.plan.json'),'utf8'));
+   savePlan('voice.'+harness,{...voice,files:[...plan.files,...voice.files.filter(f=>f.target.startsWith('extensions/bound-task-candidate/'))]});
+  }
+  for(const [name,env] of [['joint',{ISC_ANNOUNCE_FOLLOWUP:'1'}],['announce-fault',{ISC_ANNOUNCE_EMPTY_RETRY:'1'}]])
+   savePlan(name,{...base,files:plan.files,support:[...base.support,'lab/candidate/unified-announce.mjs'],command:['/opt/vlab/node-v22.23.1-linux-x64/bin/node','lab/candidate/unified-announce.mjs'],timeoutSeconds:720,
+    env:{...base.env,RELAY_HARNESS:'vds',V_FEISHU_TASK_PRESENTATION:'1',ISC_FEISHU_MODE:'mock',RUN_TAG:'UNIFIED',...env}});
  }
  return{files,plan};
 }

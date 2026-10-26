@@ -50,15 +50,25 @@ export function createTaskPresentationAccount({cfg,accountId,runtime,createClien
             const info={kind:'final'},payload=native.dispatcherOptions.beforeDeliver?.(payloads[i],info)??payloads[i];
             let result=await native.delivery.deliver(payload,info);
             // Native streaming receipts settle only after idle closes the CardKit stream.
-            await native.dispatcherOptions.onIdle?.();
-            if(result?.finalization)result=await result.finalization;
+            // Attach both rejection handlers before idle starts. A failed close
+            // rejects both promises; observing only idle leaves finalization
+            // unhandled and can terminate the Gateway before its retry timer.
+            const settled=await Promise.allSettled([
+              Promise.resolve(result?.finalization??result),
+              Promise.resolve().then(()=>native.dispatcherOptions.onIdle?.()),
+            ]);
+            for(const outcome of settled)if(outcome.status==='rejected')throw outcome.reason;
+            result=settled[0].value;
             native.delivery.onDelivered?.(payload,info,result);
             // A previously visible progress card is not this final's receipt.
             // In particular, never acknowledge a failed attachment because the
             // text payload before it was successfully delivered.
             if(result?.visibleReplySent!==true)throw Error('Native Feishu reply did not confirm visible delivery');
-            await flush();await persist({...state,deliveredPayloads:i+1,receipts:[...(state.receipts??[]),{
-              payloadIndex:i,visibleReplySent:true,messageId:result.messageId??state.stream?.messageId??null,
+            await flush();
+            const messageId=result.receipt?.primaryPlatformMessageId??result.messageIds?.[0]??result.messageId??state.stream?.messageId;
+            if(!messageId)throw Error('Native Feishu final receipt has no message identity');
+            await persist({...state,deliveredPayloads:i+1,receipts:[...(state.receipts??[]),{
+              payloadIndex:i,visibleReplySent:true,messageId,
             }]});
           }
           await native.dispatcherOptions.onIdle?.();await flush();

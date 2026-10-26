@@ -1249,12 +1249,12 @@
         "2026.9.1"
       ],
       "disposition": "excluded-candidate",
-      "sourceSha256": "6a3c07360237b3d0ef25c14a18cc24a90d2c7af7484a0a2e613a077793363b79"
+      "sourceSha256": "5247ec9a10deda44b47d596384c8dc21d6b6f288f63e01bed233a400cd499f18"
     },
     {
       "id": "patch-feishu-task-followup",
       "file": "lab/patch-feishu-task-followup.mjs",
-      "component": "core",
+      "component": "openclaw-core",
       "reason": "Bind admitted queued followups to the shared native task presentation owner.",
       "hostVersions": [
         "2026.9.1"
@@ -1265,7 +1265,7 @@
     {
       "id": "patch-task-progress-identity",
       "file": "lab/patch-task-progress-identity.mjs",
-      "component": "core",
+      "component": "openclaw-core",
       "reason": "Fence progress-card updates by the admitted run identity.",
       "hostVersions": [
         "2026.9.1"
@@ -1276,7 +1276,7 @@
     {
       "id": "patch-task-command-delivery",
       "file": "lab/patch-task-command-delivery.mjs",
-      "component": "core",
+      "component": "openclaw-core",
       "reason": "Preserve native final ACKs and reconcile delayed announce receipts without replaying work.",
       "hostVersions": [
         "2026.9.1"

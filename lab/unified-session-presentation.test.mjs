@@ -132,3 +132,17 @@ test('late final ACK settles durable custody and reconciles cached announce fail
   assert.equal(reconcilePresentedResult('unrelated',cached),cached);
  }finally{await m.close();delete globalThis[PRESENTATION_KEY];delete globalThis[hook];}
 });
+
+test('a failed native finalizer is replaced while retry resumes the same saved card',async()=>{
+ const {TaskPresentationManager}=await import('./feishu-task-presentation.mjs');let now=0,opens=0;const resumed=[];
+ const m=new TaskPresentationManager({now:()=>now,getEntry:()=>({sessionId:'s',delivery:{kind:'external',context:{channel:'feishu',accountId:'a',to:'chat:oc_test'}}})});
+ m.registerAccount('a',{open:async(record,save)=>{
+  opens++;const first=opens===1;resumed.push(record.sinkState?.stream?.messageId);
+  return {finish:async()=>{await save({stream:{cardId:'card_existing',messageId:'om_existing'}});if(first)throw Error('permanently rejected native idle promise');}};
+ }});
+ try{
+  const h=await m.open({source:'subagent-announce',agentId:'a',sessionKey:'s',taskId:'t',runId:'r'},{trusted:true});
+  await h.finish({text:'original result'});assert(!h.record.delivered);now=61000;await m.retryPending();
+  assert(h.record.delivered);assert.equal(opens,2);assert.deepEqual(resumed,[undefined,'om_existing']);assert.equal(h.record.executionOutcome.result.payloads[0].text,'original result');
+ }finally{await m.close();}
+});

@@ -30,6 +30,12 @@ test('native adapter restores acknowledged anchor, CardKit identity and payload 
  assert.equal(f.calls.filter(c=>c[0]==='anchor').length,0);assert.equal(f.calls.filter(c=>c[0]==='deliver').length,1);
  assert.equal(f.params().boundTaskPresentation.state.deliveredPayloads,2);
 });
+test('a failed idle close and finalization are both observed without an unhandled rejection',async()=>{
+ const f=fixture({delivery:{deliver:async()=>({finalization:Promise.reject(Error('final ACK rejected'))})},
+  dispatcherOptions:{onIdle:async()=>{throw Error('idle close rejected');}}});
+ const s=await f.open();await assert.rejects(s.finish([{text:'real final'}]),/final ACK rejected/);
+ await new Promise(r=>setImmediate(r));assert.equal(f.saved.at(-1)?.deliveredPayloads,undefined);
+});
 test('native adapter rejects an unacknowledged finalization and preserves retry cursor',async()=>{
  const f=fixture({delivery:{deliver:async()=>({finalization:Promise.resolve({visibleReplySent:false})})}}),s=await f.open();
  await assert.rejects(s.finish([{text:'result'}]),/did not confirm/);assert.equal(f.record.sinkState.deliveredPayloads,undefined);
@@ -71,11 +77,16 @@ test('captured native CardKit stream checkpoints before sending and preserves st
  assert(f.requests.some(p=>p.url.endsWith('/settings')));assert.equal(f.messages.length,1);
 });
 test('captured native CardKit stream restores the same card/message without another visible create',async()=>{
- const f=nativeStreamingClass(),s=new f.Class(f.client,{domain:'test'});
- await s.start('oc_test','chat_id',{precreatedCardId:'old_card',precreatedSequence:10012,resumeMessageId:'om_original',taskCheckpoint:async()=>{}});
+ const f=nativeStreamingClass(),s=new f.Class(f.client,{domain:'test'}),checkpoints=[];
+ await s.start('oc_test','chat_id',{precreatedCardId:'old_card',precreatedSequence:10012,resumeMessageId:'om_original',taskCheckpoint:async state=>checkpoints.push(state)});
+ assert(checkpoints.every(s=>s.messageId==='om_original'),'a retry checkpoint must never discard the acknowledged original message');
  assert.equal(f.messages.length,0);assert.equal(f.requests.length,0);assert.equal(s.state.sequence,10012);
  const r=await s.closeWithResult('恢复后的真实结果');assert.equal(r.messageId,'om_original');assert.equal(r.visibleReplySent,true);
  assert(f.requests.every(p=>p.url.includes('/old_card/')));
+});
+test('native final receipt uses the actual payload message identity before the existing progress card',async()=>{
+ const f=fixture({delivery:{deliver:async()=>({visibleReplySent:true,receipt:{primaryPlatformMessageId:'om_attachment'},messageIds:['om_attachment']})}}),s=await f.open();
+ await s.finish([{mediaUrl:'https://example.test/actual-file.pdf'}]);assert.equal(f.saved.at(-1).receipts[0].messageId,'om_attachment');
 });
 test('classified public process uses the native item hook for the selected runtime',async()=>{
  const items=[],f=fixture({},['codex']);f.native.replyOptions.onItemEvent=p=>items.push(p);const s=await f.open();

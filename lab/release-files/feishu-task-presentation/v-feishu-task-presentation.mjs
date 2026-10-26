@@ -153,6 +153,11 @@ class TaskPresentation {
     if(this.manager.now()<(this.record.retryAfter??0))return;
     return fn();
   }).catch(error=>{this.record.error=String(error?.message??error).slice(0,500);this.record.deliveryAttempts=(this.record.deliveryAttempts??0)+1;
+    // A rejected native finalization can poison the dispatcher's internal idle
+    // promise. Retry with a fresh dispatcher resuming the persisted card/message,
+    // never with the failed in-memory sender or a new model execution.
+    const failedSink=this.sink;this.sink=null;
+    void Promise.resolve().then(()=>failedSink?.cleanup?.()).catch(()=>{});
     this.record.retryAfter=this.manager.now()+Math.min(60000,1000*2**Math.min(this.record.deliveryAttempts-1,6));
     this.manager.save(this.record);this.manager.logger.warn?.('Feishu task presentation: '+this.record.error);});return this.queue;}
   async ensureSink(){if(this.record.persistenceError)throw Error('Feishu task checkpoint unavailable');const f=this.manager.accounts.get(this.record.route.accountId);if(!f)throw Error('Feishu account unavailable');

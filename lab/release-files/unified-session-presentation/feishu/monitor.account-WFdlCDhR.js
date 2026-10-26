@@ -2309,8 +2309,9 @@ var FeishuStreamingSession = class {
 			sentText: "",
 			hasNote: Boolean(options?.note)
 		};
+		if (options?.resumeMessageId) this.state.messageId = options.resumeMessageId;
 		await options?.taskCheckpoint?.({...this.state});
-		if (options?.resumeMessageId) { this.state.messageId = options.resumeMessageId; return; }
+		if (options?.resumeMessageId) return;
 		const vInitialText = VFEISHU_CARD_PRECREATE_ENABLED && typeof options?.initialText === "function" ? options.initialText() : "";
 		const vInitialPut = vInitialText ? this.replaceCardContent(vInitialText, (e) => this.log?.(`Initial update failed: ${String(e)}`)).then((ok) => {
 			if (ok && this.state?.cardId === cardId && this.state.sentText === "") {
@@ -3474,6 +3475,7 @@ function createFeishuReplyDispatcher(params) {
 		}
 	};
 	const ensureVisibleStreamingDelivery = async (result, content, infoKind) => {
+    if (params.boundTaskPresentation) return result; // the durable owner retries the same card, never a second static card
 		if (result?.visibleReplySent === true || !content?.trim()) return result;
 		const cardHeader = resolveCardHeader(agentId, identity);
 		const cardNote = resolveCardNote(agentId, identity, responsePrefixContextProvider());
@@ -3797,6 +3799,7 @@ function createFeishuReplyDispatcher(params) {
 						return deferStreamingDelivery(mergeFeishuReplyDeliveryResults(deliveredResults, text), info?.kind, ownerGeneration);
 					}
 					if (useCard) {
+            if (params.boundTaskPresentation?.state?.stream?.cardId) throw Error("Owned task card is awaiting retry; refusing duplicate static fallback");
 						const cardHeader = resolveCardHeader(agentId, identity);
 						const cardNote = resolveCardNote(agentId, identity, responsePrefixContextProvider());
 						deliveredResults.push(await sendChunkedTextReply({
@@ -9873,15 +9876,25 @@ function createTaskPresentationAccount({cfg,accountId,runtime,createClient,creat
             const info={kind:'final'},payload=native.dispatcherOptions.beforeDeliver?.(payloads[i],info)??payloads[i];
             let result=await native.delivery.deliver(payload,info);
             // Native streaming receipts settle only after idle closes the CardKit stream.
-            await native.dispatcherOptions.onIdle?.();
-            if(result?.finalization)result=await result.finalization;
+            // Attach both rejection handlers before idle starts. A failed close
+            // rejects both promises; observing only idle leaves finalization
+            // unhandled and can terminate the Gateway before its retry timer.
+            const settled=await Promise.allSettled([
+              Promise.resolve(result?.finalization??result),
+              Promise.resolve().then(()=>native.dispatcherOptions.onIdle?.()),
+            ]);
+            for(const outcome of settled)if(outcome.status==='rejected')throw outcome.reason;
+            result=settled[0].value;
             native.delivery.onDelivered?.(payload,info,result);
             // A previously visible progress card is not this final's receipt.
             // In particular, never acknowledge a failed attachment because the
             // text payload before it was successfully delivered.
             if(result?.visibleReplySent!==true)throw Error('Native Feishu reply did not confirm visible delivery');
-            await flush();await persist({...state,deliveredPayloads:i+1,receipts:[...(state.receipts??[]),{
-              payloadIndex:i,visibleReplySent:true,messageId:result.messageId??state.stream?.messageId??null,
+            await flush();
+            const messageId=result.receipt?.primaryPlatformMessageId??result.messageIds?.[0]??result.messageId??state.stream?.messageId;
+            if(!messageId)throw Error('Native Feishu final receipt has no message identity');
+            await persist({...state,deliveredPayloads:i+1,receipts:[...(state.receipts??[]),{
+              payloadIndex:i,visibleReplySent:true,messageId,
             }]});
           }
           await native.dispatcherOptions.onIdle?.();await flush();
