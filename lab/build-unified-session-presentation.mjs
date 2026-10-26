@@ -8,6 +8,7 @@ import {patchTaskPresentationMonitor,patchTaskPresentationSessionsSend} from './
 import {patchFollowupPresentation} from './patch-feishu-task-followup.mjs';
 import {patchProgressToolIdentity,patchProgressProtocolIdentity,patchProgressEventIdentity,patchProgressRendererIdentity} from './patch-task-progress-identity.mjs';
 import {patchPresentedCommandDelivery,patchPresentedAnnounceReceipt} from './patch-task-command-delivery.mjs';
+import {patchSuppressedPromptContext,patchSuppressedPromptAttempt,patchPrePersistedPromptMirror,patchSettledFinalizerRoute,patchBoundedDeepSeekCatalog} from './patch-codex-suppressed-prompt-finalization.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const sha=b=>createHash('sha256').update(b).digest('hex');
 // One deterministic composition per runtime target. Never overlay two release
@@ -51,19 +52,26 @@ export async function buildUnifiedPresentation({write=true}={}){
   const source=PLUGIN_SOURCE+'/'+rel,target=PLUGIN_TARGET+'/'+rel;
   byTarget.set(target,{source,target,before:null,sha256:sha(fs.readFileSync(path.join(root,source)))});
  }
+ for(const [name,patch] of [['settled-turn-context-D3SNWtUn.js',patchSuppressedPromptContext],['run-attempt-D1hJO4fX.js',patchSuppressedPromptAttempt],['transcript-mirror-DTUxFWa_.js',patchPrePersistedPromptMirror],['settled-turn-finalizer-BVJx4yoc.js',patchSettledFinalizerRoute],['bounded-turn-wzJrwKKe.js',patchBoundedDeepSeekCatalog]]){
+  const before=fs.readFileSync(path.join(root,CAPTURE+'.codex/dist/dist',name),'utf8'),after=patch(before),source=dir+'/codex/'+name;
+  const target='npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/'+name;
+  if(write){fs.mkdirSync(path.dirname(path.join(root,source)),{recursive:true});fs.writeFileSync(path.join(root,source),after);}
+  byTarget.set(target,{source,target,before:sha(before),sha256:sha(after)});
+ }
  const files=[...byTarget.values()].sort((a,b)=>a.target.localeCompare(b.target));
  const plan={files:files.map(({sha256,...r})=>r)};
  if(write){
   fs.writeFileSync(path.join(root,dir,'manifest.json'),JSON.stringify({capture:CAPTURE,scope:'Feishu relay plus task presentation; other channel bridges unchanged',files},null,2)+'\n');
   fs.writeFileSync(path.join(root,'lab/unified-session-presentation.plan.json'),JSON.stringify(plan,null,2)+'\n');
   const base=JSON.parse(fs.readFileSync(path.join(root,'lab/candidate/inter-session-feishu-v-env.plan.json'),'utf8'));
+  base.env.ISC_CODEX_RUNTIME_FILES=plan.files.filter(f=>f.target.includes('/@openclaw/codex/dist/')).map(f=>f.target).join(',');
   const savePlan=(name,p)=>fs.writeFileSync(path.join(root,'lab/unified-session-presentation.'+name+'.plan.json'),JSON.stringify(p,null,2)+'\n');
   for(const harness of ['worker','vds']){
    savePlan('core.'+harness,{...base,files:plan.files,env:{...base.env,RELAY_HARNESS:harness,V_FEISHU_TASK_PRESENTATION:'1',ISC_FEISHU_MODE:'mock',RUN_TAG:'UNIFIED',ISC_SCENARIOS:'F1i,F2,F3b-rpc,F3c,F5,F7,F10,F13,F15'}});
    const voice=JSON.parse(fs.readFileSync(path.join(root,'lab/feishu-task-presentation.'+harness+'.plan.json'),'utf8'));
-   savePlan('voice.'+harness,{...voice,files:[...plan.files,...voice.files.filter(f=>f.target.startsWith('extensions/bound-task-candidate/'))]});
+   savePlan('voice.'+harness,{...voice,env:{...voice.env,ISC_CODEX_RUNTIME_FILES:base.env.ISC_CODEX_RUNTIME_FILES},files:[...plan.files,...voice.files.filter(f=>f.target.startsWith('extensions/bound-task-candidate/'))]});
   }
-  for(const [name,env] of [['joint',{ISC_ANNOUNCE_FOLLOWUP:'1'}],['announce-fault',{ISC_ANNOUNCE_EMPTY_RETRY:'1'}]])
+  for(const [name,env] of [['joint',{ISC_ANNOUNCE_FOLLOWUP:'1'}],['announce-fault',{ISC_ANNOUNCE_EMPTY_RETRY:'1'}],['finalizer-fault',{ISC_FINALIZER_SUPPRESSED:'1',ISC_ANNOUNCE_FOLLOWUP:'1'}]])
    savePlan(name,{...base,files:plan.files,support:[...base.support,'lab/candidate/unified-announce.mjs'],command:['/opt/vlab/node-v22.23.1-linux-x64/bin/node','lab/candidate/unified-announce.mjs'],timeoutSeconds:720,
     env:{...base.env,RELAY_HARNESS:'vds',V_FEISHU_TASK_PRESENTATION:'1',ISC_FEISHU_MODE:'mock',RUN_TAG:'UNIFIED',...env}});
  }
