@@ -239,4 +239,4 @@ flowchart LR
 
 另发现“此前有可见进度”可能被用来判定当前最终文件投递成功。现在每个 final payload 必须取得自己的原生确认，前一条文本成功不能掩盖后一份附件失败；游标只越过已经确认的 payload。
 
-本节是验收契约与阶段记录，不是全功能完成声明。announce/followup 的统一接入与完整联合验收仍须完成。
+本节是验收契约。announce/followup 的统一接入、steer 模式下联合候选、两条 Voice 后台入口与空 final/失败重试已完成候选功能验收；逐项版本及真实渠道边界见 [组合验收报告](experiments/unified-session-presentation-20261026.md)，不能据此宣称已上线。
