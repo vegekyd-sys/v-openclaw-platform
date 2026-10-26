@@ -38,3 +38,29 @@ Worker 候选 `candidate-87a2104c-17f7-4832-93b1-15e9481e54f7` 的 F1i/F2/F13 �
 新增候选专门要求目标工具生成运行时标记并真实回源，核对 caller 结果、工具记录、飞书卡片；不再用 ACK 或模型复述预设答案当作这项功能验收。共享和生产的最终结果仍待后续回执。
 
 本轮本地相关回归 274/274。真实 VDS 续接候选 `candidate-c3ea0023-47af-4f7c-abbd-6d4aedfabde0` 通过（50 份运行文件，输入 SHA256 `96576a4d085ccecc59e74e2f352fa09d931179c1c89764864ed2411fcfb6dfad`）：direct 调用返回目标实际输出 `RELAY_DIRECT_1793037530`，native owner 调用返回 `RELAY_NATIVE_1793037546`，均核对目标工具记录和模拟飞书 API 的实际卡片正文。前一版测试误用了仓库历史 `chat.send` 后台客户端，其 ACK 失败记录保留；现候选明确调用产品使用的 consult SDK，不以历史入口替代当前两条产品路径。
+
+## v3 再验收
+
+平台 PR #490 的续接修复已合入 dev；PR #491 补齐测试目录和可独立运行的候选计划。Node 22.23.1 本地全套 3003/3003，相关合并回归 274/274，GitHub 静态检查通过。catalog 提交未改变冻结产物的 50 个运行文件。
+
+冻结共享产物 `unified-session-20261027-v3`，source `24e38152e8e16d86882b5eb8faa249bd3c114b59`，artifact SHA256 `e7fc1cef9fcd0af835408957dba6cc87d329509a008b0a8b6ddff0aa8d70b550`。Worker 续接候选 `candidate-7bee93bc-e3c2-455b-9079-90d46b862644`（input SHA256 `e827c72525e1b04714db8c10608e3f2f03b00c841511cf836efe008f1a9075c6`）同样通过 direct 和 native owner 的实际 SDK → 目标工具 → 来源汇总 → caller 最终结果。
+
+真实共享飞书已验证旧上下文 Worker 完整转派 37×41=1517。真实 GPT Live 通话使用合成中文音频经私有麦克风送入正式 H5 getUserMedia/RTC，不采集用户麦克风：同步跨会话返回时间戳 1793038214；异步返回 1793039149，目标实际工具、来源精确卡片 `om_x100b62cde39004a0b09bc28ff2232bc` 和实时通话文字一致，batch 只 wake 一次。
+
+异步期间插入普通 2+2 对话仍正确继续后台工作，真实来源卡片显示时间戳 1793038470。现有语音策略对新话题后的旧任务结果采用上下文补充而非强行插播，不能把此例计作自动播报证据。内部 journal 的 publicSnapshot/currentText 保留过早 ACK，但实际 Feishu 卡片 readback 和 executionOutcome 已是正确最终结果；验收以精确 messageId 的 API 正文为准。
+
+原生 Codex spawn_agent → sessions_yield → announce 与被阻塞的真实飞书追问均有独立卡片。子任务实际文件哈希、父任务真实 token 和追问结果正确；在终结前已读回追问计划，最终卡片分别 `om_x100b62cdf43bb4a0cfe635df262d7f3` / `om_x100b62cdf1ad08a0ce783d825af7d3b`，未串计划、未重复投递。
+
+一次取消脚本使用 chat.abort 指定渠道 followup runId，RPC 明确返回 aborted:false；这不是已取消回合，不能当作取消卡片失败或验收通过。改用用户真实飞书 /stop 入口复验。剩余共享与生产回执继续补齐。
+
+Grok Voice 3.0 的真实 direct 通话也已完成异步跨会话：目标新的实际时间戳 1793039643，来源精确卡片 `om_x100b62cd824b84a0ce4075091563be2`、目标工具和通话播报一致。四次后台任务对应四条 presentation；普通插话没有额外建任务卡。飞书真实 `/stop` 停止 queued followup `c8171096-7245-4f24-8310-efded9d527f9`，精确卡片 `om_x100b62cd9db5e8a0cef49c8921e88e5` 为“任务已取消”，没有正常完成标记。
+
+共享 v3 最终核心复验通过：`SHARED-F2-2298be` 目标实际 sleep75 输出 1793039822 后一次回源；`SHARED-F13-87ee34` 四次 send、深度 [1,2,2,2]，三目标混合 Worker/VDS，真实计算 323/667 与新时间戳全部收齐后两级汇总，每个 batch wake attempt=0。五个真实群均逐一读回结果。完整回执保存在本机 `vlab-dev/tmp/unified-shared-20261027-v3/`。
+
+共享正式 accept 已绑定 v3 精确 SHA；为满足现有工具 config hash 约束，停机恢复原配置后登记 accept，再恢复已验收配置 SHA256 `ab29f8dae69e71dc9cd5b3967d64194e2115db89c4033e0ab7e769f2087b0e7c` 与同产物 Gateway Codex 五份副本。重启后真实飞书烟测 `RESTART-V3-4d9a2` 成功且只有一条回复。
+
+## 正式发布进行中
+
+Voice fleet 两端已发布 `ab8d078dd2937c303ab1eb0008b62fc5a4b8d309`，同一 files SHA256 `06eaef28eda1999cbf4d31c7a0510b00d080e438aa531e6b42578d31b27724e3`；web/devices 均 ready、无 admission hold。回执 `v-voice-releases/background-feishu-20261027/production-receipts/20261027-024039-536e9431/matrix.json`。内置浏览器已核对真实生产 `/voice/?phone=public` 更新日志，截图保存于 `vlab-dev/tmp/unified-production-20261027/voice-changelog.png`。不将服务端一致性宣称为新的 iPhone/硬件固件验收。
+
+平台生产 promote plan 已核对 50 个文件的 before bytes 全部一致，正在正式安装。尚待 v-self-restart、生产功能验收和最终 align。

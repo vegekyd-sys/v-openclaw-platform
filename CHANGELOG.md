@@ -11,6 +11,57 @@
 
 ---
 
+## v2026.9.1-db91.6-unified-session-20261027
+
+部署：2026-10-27 02:46 CST；等待 v-self-restart 空闲激活与生产验收  ·  tag `v2026.9.1-db91.6-unified-session-20261027`
+
+**摘要**：上线跨会话分发与回复的统一机制：完整任务交给目标会话执行，异步与多层任务收齐后回到原会话汇总。绑定飞书的 sessions_send、两条语音后台入口、原生子 agent 回报和排队追问统一复用原生任务卡，显示请求、公开过程、结果与失败/取消状态。普通逐句语音不逐条同步。
+
+共享已验收同一产物（50 文件、artifact `e7fc1cef9fcd0af835408957dba6cc87d329509a008b0a8b6ddff0aa8d70b550`），Voice 两端发布 `ab8d078d`；平台功能修正见 #488/#489/#490，候选与测试目录见 #491。详细证据和生产收尾见 [验收报告](docs/experiments/unified-session-release-20261027.md)。
+
+相对上一版 `v2026.9.1-db91.6-sessions-search-20261026`：30 个文件变化。
+
+**首次纳入存档的组件**（上一版没有它的存档，不逐个列出）：session-relay（20 个文件，整目录存档）
+
+**经 VLab 发版 `unified-session-20261027-v3`**（01a15e2e-bebb-7960-b90e-b822eb9b29de，dev `24e38152`）
+> 验收：docs/experiments/unified-session-release-20261027.md; v3 actual Worker full-task1517, VDS F2 1793039822, nested F13 mixed runtimes all4 sends handed_back/wake0; native announce+queued independent actual Feishu cards; /stop cancellation actual card; real GPT Live and Grok getUserMedia RTC async cross-session target-tool/source-card/spoken timestamps1793039149/1793039643; 3003 local tests; frozen ac…
+- `core` agent-command-DPfawBbr.js  d63e3307 → a7811ac0
+- `core` agent-runner.runtime-CAdsMsQt.js  8c192b9d → 09f1b500
+- `core` delivery.runtime-CAsclR-9.js  87623e02 → 3e943055
+- `core` dispatch-from-config-DOJq_7CI.js  f150902a → 97e69403
+- `core` embedded-agent-DaSvA-Yk.js  bcb20f5d → 88a9a95e
+- `core` get-reply-CqW1y05D.js  9bac6b7c → a22a84a9
+- `core` openclaw-tools-BODVdJQD.js  c4f575f2 → 4bed21d8
+- `core` progress-card-CciYmFS8.js  b579f12f → 40c4d10a
+- `core` realtime-session-harness-CEO5kVAJ.js  74bc94f5 → d8515037
+- `core` sessions-spawn-tool-1FQMTkIo.js  1a7ab8f9 → ba127bab
+- `core` src-B9mb84px.js  adc5204b → b082258b
+- `core` subagent-announce-delivery-Dosep7Zr.js  6269e1bd → f8b6fd0f
+- `core` task-registry-activity-DSlVVJwD.js  8a89045a → 2e70d33d
+- `core` gpt-live-consult-continuation.js  8a9c7292 → 41f572dd
+- `core` v-experience.js  5d939fa7 → 484da309
+- `core` v-feishu-voice-actor.mjs  17608d69 → 9c890ca5
+- `core` session-task-lifecycle.mjs  — → ee510a91
+- `core` v-feishu-task-presentation-command.mjs  — → acc0fcf5
+- `core` v-feishu-task-presentation-core-bridge.mjs  — → 920fd1f9
+- `core` v-feishu-task-presentation-delivery.mjs  — → 8e11035f
+- `core` v-feishu-task-presentation-followup.mjs  — → 2e3922a5
+- `core` v-feishu-task-presentation-runtime.mjs  — → e48e2604
+- `feishu` dist/index.js  17f2e4d2 → 7803f53a
+- `feishu` dist/monitor.account-WFdlCDhR.js  535841d0 → f1f45455
+- `feishu` dist/v-feishu-task-presentation.mjs  — → 604b98fa
+- `codex` dist/bounded-turn-wzJrwKKe.js  8f36224c → a2eebda0
+- `codex` dist/run-attempt-D1hJO4fX.js  80875cf3 → c34d6d77
+- `codex` dist/settled-turn-context-D3SNWtUn.js  57105bab → 929c1ea9
+- `codex` dist/settled-turn-finalizer-BVJx4yoc.js  5aae2e18 → 7506b388
+- `codex` dist/transcript-mirror-DTUxFWa_.js  17750f19 → af4c007c
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #485 fix(config): 子 agent 回传回合上限 120 s → 6 h（announceTimeoutMs）
+- #481 release: 捕获 V（sessions-search-20261026：#475 + #479 配置）+ CHANGELOG
+- #455 chore(release): capture V after v2026.9.1-db91.6-nightshift-throughput-20261022
+
+
 ## v2026.9.1-db91.6-sessions-search-20261026
 
 上线：2026-10-26 02:58 CST（02:56 v-self-restart 一次）  ·  tag `v2026.9.1-db91.6-sessions-search-20261026`
