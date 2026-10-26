@@ -197,6 +197,10 @@ async function runArm(arm) {
   await send("Profiler.setSamplingInterval", { interval: 1000 });
   await send("Profiler.start");
   const profileStartedAt = Date.now();
+  // V8 heap every 500 ms (a sample waits while the main thread is busy; heapTotal stays up after a spike).
+  const heap = [];
+  let sampling = true;
+  const sampleHeap = (async () => { while (sampling) { const t = Date.now(); const h = await send("Runtime.getHeapUsage"); heap.push({ at: t, used: h.usedSize, total: h.totalSize }); await sleep(500); } })();
 
   // 1. lifecycleOnly vs the ordinary list, same Gateway, back to back.
   for (const activeMinutes of [void 0, 2, 60, 1440, 100000]) {
@@ -226,6 +230,8 @@ async function runArm(arm) {
     await sleep(60_000);
   }
   result.touched = touched;
+  sampling = false;
+  await sampleHeap;
   const { profile } = await send("Profiler.stop");
   ws.close();
   fs.writeFileSync(path.join(FIXTURE_DIR, `wsb-${arm}-${process.env.VLAB_CANDIDATE_ID ?? process.pid}.cpuprofile`), JSON.stringify(profile));
@@ -260,7 +266,20 @@ async function runArm(arm) {
     if (last && b.start - last.endUs < 20_000_000) { last.endUs = b.end; last.blocks.push(b); }
     else result.sweeps.push({ startUs: b.start, endUs: b.end, blocks: [b] });
   }
+  const MB = (b) => Math.round(b / 1e6);
+  const heapAround = (startMs, endMs) => {
+    const before = heap.filter((h) => h.at >= startMs - 10_000 && h.at < startMs);
+    const after = heap.filter((h) => h.at >= startMs && h.at <= endMs + 5_000);
+    if (before.length === 0 || after.length === 0) return {};
+    return {
+      heapUsedDeltaMB: MB(Math.max(...after.map((h) => h.used)) - Math.min(...before.map((h) => h.used))),
+      heapTotalDeltaMB: MB(Math.max(...after.map((h) => h.total)) - Math.min(...before.map((h) => h.total))),
+      heapTotalPeakMB: MB(Math.max(...after.map((h) => h.total))),
+    };
+  };
+  result.heap = { samples: heap.length, usedMinMB: MB(Math.min(...heap.map((h) => h.used))), usedMaxMB: MB(Math.max(...heap.map((h) => h.used))), totalMaxMB: MB(Math.max(...heap.map((h) => h.total))) };
   result.sweeps = result.sweeps.map((s) => ({
+    ...heapAround(wall(s.startUs), wall(s.endUs)),
     at: new Date(wall(s.startUs)).toISOString(),
     spanMs: Math.round((s.endUs - s.startUs) / 1000),
     sweepCpuMs: Math.round(s.blocks.reduce((sum, b) => sum + b.sweepUs, 0) / 1000),

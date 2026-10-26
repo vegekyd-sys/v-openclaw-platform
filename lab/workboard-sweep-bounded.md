@@ -139,7 +139,7 @@ V 原 profile 和 VLab before 臂对比：增量 V 2.7 s 对 VLab 1.8–2.8 s，
 
 - 10 分钟全量巡检仍要整读会话库的 list 投影（V 约 1 万行）。要再降，需要让巡检按卡片的会话 key 定向读，并且仍能判断快照是否完整。
 - 每分钟巡检剩下的大头是读 1.2 万张卡的父行（含已归档的 6 千张）。归档卡只用于找 worktree 清理候选，可以单独再收窄。
-- V 现在有 10,047 个 configured 会话，已经超过巡检的 `limit 10000`，所以全量快照的 `complete` 恒为 false，prepared launch 的失败判定不会触发。这是现有行为，本补丁不改。
+- V 的会话库有 10,350 行，但巡检全量 listing 过滤后（排除已归档、cron 等）是 9,949 行（10/26 导出），仍低于 `limit 10000`，所以 `complete` 目前为 true。一旦超过 1 万，`complete` 会变成 false：最旧的会话会掉出全量巡检，prepared launch 的失败判定也不再触发。这是现有行为，本补丁不改。
 - 没有在共享 VLab 上集成验收，也没有上 V。
 
 单测（`workboard-sweep-bounded.test.mjs`，离线）：
