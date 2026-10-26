@@ -471,7 +471,8 @@
         "lab/sessions-search-exact-read.test.mjs",
         "lab/doctor-subprocess.test.mjs",
         "lab/sessions-search-candidate-rows.test.mjs",
-        "tests/v-self-restart-gateway.test.mjs"
+        "tests/v-self-restart-gateway.test.mjs",
+        "lab/workboard-sweep-bounded.test.mjs"
       ]
     }
   ],

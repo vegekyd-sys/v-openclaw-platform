@@ -1,0 +1,977 @@
+{
+ "W": {
+  "id": "candidate-d0db6bc6-cc82-4b2e-9dd9-e463b02e59db",
+  "sourceCommit": "ed447481ce826c7bacca39c5c4332f8af9d4dd7e",
+  "dirty": false,
+  "baseRelease": "sessions-search-20261026",
+  "runtimeSha": "e645d63018565c6c0f451eec2a57c24460ad831edd3d65bbb08c64a1c1045ec3",
+  "timings": {
+   "inspectMs": 13,
+   "baselineMs": 0,
+   "snapshotMs": 3562,
+   "overlayMs": 71,
+   "testMs": 383246
+  },
+  "ok": true,
+  "data": {
+   "cards": {
+    "total": 12056,
+    "unarchived": 6082
+   },
+   "linkedUnarchived": 5590,
+   "linkedWithSession": 5031,
+   "sessions": 10090,
+   "exportAt": 1793005287051
+  },
+  "projection": {
+   "links": 12056,
+   "states": 6082,
+   "linksMs": 459.6,
+   "sweepLinksMs": 373.5,
+   "listMs": 4887.2,
+   "statesMs": 222.6
+  },
+  "scenarios": [
+   {
+    "scenario": "V snapshot: full, then 3 settled full sweeps",
+    "cards": 12056,
+    "before": [
+     {
+      "ms": 5228.1,
+      "maxBlockedMs": 5218.5,
+      "entries": 1,
+      "get": 0,
+      "links": 1,
+      "sweepLinks": 0,
+      "states": 0,
+      "transitions": 0,
+      "syncs": 0,
+      "changes": 0
+     },
+     {
+      "ms": 4998.5,
+      "maxBlockedMs": 4990.2,
+      "entries": 1,
+      "get": 0,
+      "links": 1,
+      "sweepLinks": 0,
+      "states": 0,
+      "transitions": 0,
+      "syncs": 0,
+      "changes": 0
+     },
+     {
+      "ms": 4998.1,
+      "maxBlockedMs": 5001,
+      "entries": 1,
+      "get": 0,
+      "links": 1,
+      "sweepLinks": 0,
+      "states": 0,
+      "transitions": 0,
+      "syncs": 0,
+      "changes": 0
+     },
+     {
+      "ms": 5046.5,
+      "maxBlockedMs": 5050.8,
+      "entries": 1,
+      "get": 0,
+      "links": 1,
+      "sweepLinks": 0,
+      "states": 0,
+      "transitions": 0,
+      "syncs": 0,
+      "changes": 0
+     }
+    ],
+    "after": [
+     {
+      "ms": 644.9,
+      "maxBlockedMs": 647,
+      "entries": 0,
+      "get": 0,
+      "links": 0,
+      "sweepLinks": 1,
+      "states": 1,
+      "transitions": 8,
+      "syncs": 0,
+      "changes": 0
+     },
+     {
+      "ms": 601.1,
+      "maxBlockedMs": 591.2,
+      "entries": 0,
+      "get": 0,
+      "links": 0,
+      "sweepLinks": 1,
+      "states": 1,
+      "transitions": 8,
+      "syncs": 0,
+      "changes": 0
+     },
+     {
+      "ms": 628,
+      "maxBlockedMs": 618.1,
+      "entries": 0,
+      "get": 0,
+      "links": 0,
+      "sweepLinks": 1,
+      "states": 1,
+      "transitions": 8,
+      "syncs": 0,
+      "changes": 0
+     },
+     {
+      "ms": 732.2,
+      "maxBlockedMs": 722.3,
+      "entries": 0,
+      "get": 0,
+      "links": 0,
+      "sweepLinks": 1,
+      "states": 1,
+      "transitions": 8,
+      "syncs": 0,
+      "changes": 0
+     }
+    ]
+   },
+   {
+    "scenario": "perturbed 11: full, then settled",
+    "cards": 12056,
+    "before": [
+     {
+      "ms": 13749.1,
+      "maxBlockedMs": 13739.3,
+      "entries": 2,
+      "get": 994,
+      "links": 1,
+      "sweepLinks": 0,
+      "states": 0,
+      "transitions": 0,
+      "syncs": 497,
+      "changes": 497
+     },
+     {
+      "ms": 4942.7,
+      "maxBlockedMs": 4932.8,
+      "entries": 1,
+      "get": 0,
+      "links": 1,
+      "sweepLinks": 0,
+      "states": 0,
+      "transitions": 0,
+      "syncs": 0,
+      "changes": 0
+     }
+    ],
+    "after": [
+     {
+      "ms": 4435.7,
+      "maxBlockedMs": 4441.7,
+      "entries": 0,
+      "get": 994,
+      "links": 0,
+      "sweepLinks": 1,
+      "states": 1,
+      "transitions": 503,
+      "syncs": 497,
+      "changes": 497
+     },
+     {
+      "ms": 797.6,
+      "maxBlockedMs": 787.7,
+      "entries": 0,
+      "get": 0,
+      "links": 0,
+      "sweepLinks": 1,
+      "states": 1,
+      "transitions": 7,
+      "syncs": 0,
+      "changes": 0
+     }
+    ]
+   },
+   {
+    "scenario": "perturbed 23: full, then settled",
+    "cards": 12056,
+    "before": [
+     {
+      "ms": 13560.9,
+      "maxBlockedMs": 13566.7,
+      "entries": 2,
+      "get": 978,
+      "links": 1,
+      "sweepLinks": 0,
+      "states": 0,
+      "transitions": 0,
+      "syncs": 489,
+      "changes": 489
+     },
+     {
+      "ms": 4925.2,
+      "maxBlockedMs": 4915.4,
+      "entries": 1,
+      "get": 0,
+      "links": 1,
+      "sweepLinks": 0,
+      "states": 0,
+      "transitions": 0,
+      "syncs": 0,
+      "changes": 0
+     }
+    ],
+    "after": [
+     {
+      "ms": 4192.5,
+      "maxBlockedMs": 4182.6,
+      "entries": 0,
+      "get": 978,
+      "links": 0,
+      "sweepLinks": 1,
+      "states": 1,
+      "transitions": 495,
+      "syncs": 489,
+      "changes": 489
+     },
+     {
+      "ms": 616.8,
+      "maxBlockedMs": 606.9,
+      "entries": 0,
+      "get": 0,
+      "links": 0,
+      "sweepLinks": 1,
+      "states": 1,
+      "transitions": 7,
+      "syncs": 0,
+      "changes": 0
+     }
+    ]
+   },
+   {
+    "scenario": "perturbed 37: full, then settled",
+    "cards": 12056,
+    "before": [
+     {
+      "ms": 12813.1,
+      "maxBlockedMs": 12816.7,
+      "entries": 2,
+      "get": 1020,
+      "links": 1,
+      "sweepLinks": 0,
+      "states": 0,
+      "transitions": 0,
+      "syncs": 510,
+      "changes": 510
+     },
+     {
+      "ms": 5037.9,
+      "maxBlockedMs": 5036,
+      "entries": 1,
+      "get": 0,
+      "links": 1,
+      "sweepLinks": 0,
+      "states": 0,
+      "transitions": 0,
+      "syncs": 0,
+      "changes": 0
+     }
+    ],
+    "after": [
+     {
+      "ms": 4187.2,
+      "maxBlockedMs": 4177.3,
+      "entries": 0,
+      "get": 1020,
+      "links": 0,
+      "sweepLinks": 1,
+      "states": 1,
+      "transitions": 516,
+      "syncs": 510,
+      "changes": 510
+     },
+     {
+      "ms": 749.9,
+      "maxBlockedMs": 740,
+      "entries": 0,
+      "get": 0,
+      "links": 0,
+      "sweepLinks": 1,
+      "states": 1,
+      "transitions": 8,
+      "syncs": 0,
+      "changes": 0
+     }
+    ]
+   },
+   {
+    "scenario": "prepared launches: full",
+    "cards": 12056,
+    "prepared": 8,
+    "before": [
+     {
+      "ms": 8724,
+      "maxBlockedMs": 8714.2,
+      "entries": 2,
+      "get": 16,
+      "links": 1,
+      "sweepLinks": 0,
+      "states": 0,
+      "transitions": 0,
+      "syncs": 4,
+      "changes": 4
+     }
+    ],
+    "after": [
+     {
+      "ms": 714.5,
+      "maxBlockedMs": 704.6,
+      "entries": 0,
+      "get": 16,
+      "links": 0,
+      "sweepLinks": 1,
+      "states": 1,
+      "transitions": 9,
+      "syncs": 4,
+      "changes": 4
+     }
+    ]
+   },
+   {
+    "scenario": "partial > 64 matches",
+    "cards": 12056,
+    "before": [
+     {
+      "ms": 4743.6,
+      "maxBlockedMs": 4745.9,
+      "entries": 1,
+      "get": 0,
+      "links": 1,
+      "sweepLinks": 0,
+      "states": 0,
+      "transitions": 0,
+      "syncs": 0,
+      "changes": 0
+     },
+     {
+      "ms": 10102.3,
+      "maxBlockedMs": 10092.5,
+      "entries": 2,
+      "get": 44,
+      "links": 1,
+      "sweepLinks": 0,
+      "states": 0,
+      "transitions": 0,
+      "syncs": 22,
+      "changes": 22
+     }
+    ],
+    "after": [
+     {
+      "ms": 595.7,
+      "maxBlockedMs": 585.8,
+      "entries": 0,
+      "get": 0,
+      "links": 0,
+      "sweepLinks": 1,
+      "states": 1,
+      "transitions": 8,
+      "syncs": 0,
+      "changes": 0
+     },
+     {
+      "ms": 861.5,
+      "maxBlockedMs": 851.5,
+      "entries": 0,
+      "get": 44,
+      "links": 0,
+      "sweepLinks": 1,
+      "states": 1,
+      "transitions": 22,
+      "syncs": 22,
+      "changes": 22
+     }
+    ]
+   },
+   {
+    "scenario": "partial <= 64 matches",
+    "cards": 12056,
+    "before": [
+     {
+      "ms": 5049.2,
+      "maxBlockedMs": 5039.3,
+      "entries": 1,
+      "get": 0,
+      "links": 1,
+      "sweepLinks": 0,
+      "states": 0,
+      "transitions": 0,
+      "syncs": 0,
+      "changes": 0
+     },
+     {
+      "ms": 710.9,
+      "maxBlockedMs": 700.9,
+      "entries": 0,
+      "get": 64,
+      "links": 1,
+      "sweepLinks": 0,
+      "states": 0,
+      "transitions": 0,
+      "syncs": 2,
+      "changes": 2
+     }
+    ],
+    "after": [
+     {
+      "ms": 726.5,
+      "maxBlockedMs": 716.6,
+      "entries": 0,
+      "get": 0,
+      "links": 0,
+      "sweepLinks": 1,
+      "states": 1,
+      "transitions": 8,
+      "syncs": 0,
+      "changes": 0
+     },
+     {
+      "ms": 531,
+      "maxBlockedMs": 521.1,
+      "entries": 0,
+      "get": 64,
+      "links": 0,
+      "sweepLinks": 1,
+      "states": 0,
+      "transitions": 0,
+      "syncs": 2,
+      "changes": 2
+     }
+    ]
+   }
+  ]
+ },
+ "S": {
+  "id": "candidate-6d305b53-c7b4-420b-a985-843fb4a114c3",
+  "sourceCommit": "03848fa16ce5d776fe07039afa3b76b05e2b02f4",
+  "dirty": false,
+  "baseRelease": "sessions-search-20261026",
+  "runtimeSha": "e645d63018565c6c0f451eec2a57c24460ad831edd3d65bbb08c64a1c1045ec3",
+  "timings": {
+   "inspectMs": 13,
+   "baselineMs": 3,
+   "snapshotMs": 56031,
+   "overlayMs": 11,
+   "testMs": 276272
+  },
+  "ok": true,
+  "fixture": {
+   "makaron": {
+    "session_nodes": 9960,
+    "session_windows": 12500,
+    "session_participants": 9636,
+    "session_transcript_index_state": 12427,
+    "session_progress_cards": 4000
+   },
+   "v-codex": {
+    "session_nodes": 61,
+    "session_windows": 61,
+    "session_participants": 109,
+    "session_transcript_index_state": 61,
+    "session_progress_cards": 50
+   },
+   "xiaoai": {
+    "session_nodes": 41,
+    "session_windows": 41,
+    "session_participants": 34,
+    "session_transcript_index_state": 39,
+    "session_progress_cards": 0
+   },
+   "dealclaw": {
+    "session_nodes": 26,
+    "session_windows": 26,
+    "session_participants": 23,
+    "session_transcript_index_state": 26,
+    "session_progress_cards": 4
+   },
+   "short-v": {
+    "session_nodes": 2,
+    "session_windows": 2,
+    "session_participants": 3,
+    "session_transcript_index_state": 2,
+    "session_progress_cards": 0
+   },
+   "subagent_runs": 9436
+  },
+  "cases": [
+   {
+    "case": "full sweep",
+    "rows": 9949,
+    "withStatus": 9508,
+    "before": {
+     "msMedian": 5460.8,
+     "allocatedMB": 804.6
+    },
+    "after": {
+     "msMedian": 2896.3,
+     "allocatedMB": 417.9
+    }
+   },
+   {
+    "case": "activeMinutes 1",
+    "rows": 5,
+    "withStatus": 5,
+    "before": {
+     "msMedian": 2889.4,
+     "allocatedMB": 419.1
+    },
+    "after": {
+     "msMedian": 35,
+     "allocatedMB": 2.5
+    }
+   },
+   {
+    "case": "activeMinutes 2",
+    "rows": 8,
+    "withStatus": 7,
+    "before": {
+     "msMedian": 3047.7,
+     "allocatedMB": 450.8
+    },
+    "after": {
+     "msMedian": 42.4,
+     "allocatedMB": 2.4
+    }
+   },
+   {
+    "case": "activeMinutes 3",
+    "rows": 11,
+    "withStatus": 10,
+    "before": {
+     "msMedian": 3019.5,
+     "allocatedMB": 395.7
+    },
+    "after": {
+     "msMedian": 46.6,
+     "allocatedMB": 3.8
+    }
+   },
+   {
+    "case": "activeMinutes 5",
+    "rows": 13,
+    "withStatus": 12,
+    "before": {
+     "msMedian": 2764.5,
+     "allocatedMB": 398.8
+    },
+    "after": {
+     "msMedian": 64.7,
+     "allocatedMB": 5.2
+    }
+   },
+   {
+    "case": "activeMinutes 10",
+    "rows": 17,
+    "withStatus": 15,
+    "before": {
+     "msMedian": 3114.5,
+     "allocatedMB": 392
+    },
+    "after": {
+     "msMedian": 54.8,
+     "allocatedMB": 5.4
+    }
+   },
+   {
+    "case": "activeMinutes 30",
+    "rows": 29,
+    "withStatus": 27,
+    "before": {
+     "msMedian": 2931.1,
+     "allocatedMB": 401.5
+    },
+    "after": {
+     "msMedian": 70,
+     "allocatedMB": 8.6
+    }
+   },
+   {
+    "case": "activeMinutes 60",
+    "rows": 40,
+    "withStatus": 37,
+    "before": {
+     "msMedian": 2957.9,
+     "allocatedMB": 393.7
+    },
+    "after": {
+     "msMedian": 97.1,
+     "allocatedMB": 11.6
+    }
+   },
+   {
+    "case": "activeMinutes 180",
+    "rows": 72,
+    "withStatus": 64,
+    "before": {
+     "msMedian": 2836.4,
+     "allocatedMB": 398.7
+    },
+    "after": {
+     "msMedian": 134.8,
+     "allocatedMB": 13
+    }
+   },
+   {
+    "case": "activeMinutes 600",
+    "rows": 153,
+    "withStatus": 118,
+    "before": {
+     "msMedian": 2930.5,
+     "allocatedMB": 407.9
+    },
+    "after": {
+     "msMedian": 156.6,
+     "allocatedMB": 20.6
+    }
+   },
+   {
+    "case": "activeMinutes 1440",
+    "rows": 216,
+    "withStatus": 150,
+    "before": {
+     "msMedian": 2998.4,
+     "allocatedMB": 408.2
+    },
+    "after": {
+     "msMedian": 176,
+     "allocatedMB": 25.4
+    }
+   },
+   {
+    "case": "activeMinutes 10080",
+    "rows": 5375,
+    "withStatus": 5183,
+    "before": {
+     "msMedian": 4136.8,
+     "allocatedMB": 613.8
+    },
+    "after": {
+     "msMedian": 1645.8,
+     "allocatedMB": 237.5
+    }
+   },
+   {
+    "case": "activeMinutes 43200",
+    "rows": 9578,
+    "withStatus": 9239,
+    "before": {
+     "msMedian": 4698.1,
+     "allocatedMB": 787.4
+    },
+    "after": {
+     "msMedian": 2830.6,
+     "allocatedMB": 414.7
+    }
+   },
+   {
+    "case": "activeMinutes 2, clock +90 s",
+    "rows": 4,
+    "withStatus": 4,
+    "before": {
+     "msMedian": 3022,
+     "allocatedMB": 418.8
+    },
+    "after": {
+     "msMedian": 35.7,
+     "allocatedMB": 1.9
+    }
+   }
+  ]
+ },
+ "note": "V export 2026-10-26 17:01 CST (read-only; deleted from V). Arms: before = V bytes, after = release files, same process, same data and clock. Timings are VLab (vlab91, 4 vCPU), roughly 1.5-2x V.",
+ "G": {
+  "id": "candidate-ecc4bbef-f777-4339-a0af-5d6fac9141e9",
+  "sourceCommit": "8d6dab2db2a55694c136e92e9ada4add35eb3461",
+  "dirty": false,
+  "baseRelease": "sessions-search-20261026",
+  "runtimeSha": "e645d63018565c6c0f451eec2a57c24460ad831edd3d65bbb08c64a1c1045ec3",
+  "timings": {
+   "inspectMs": 18,
+   "baselineMs": 0,
+   "snapshotMs": 6630,
+   "overlayMs": 44,
+   "testMs": 2147186
+  },
+  "ok": true,
+  "arms": [
+   {
+    "arm": "before",
+    "touched": 104,
+    "disabledPlugins": [
+     "codex"
+    ],
+    "equivalence": [
+     {
+      "activeMinutes": null,
+      "rows": 9949,
+      "plainMs": 20687,
+      "lightMs": 7815
+     },
+     {
+      "activeMinutes": 2,
+      "rows": 5,
+      "plainMs": 4424,
+      "lightMs": 3769
+     },
+     {
+      "activeMinutes": 60,
+      "rows": 5,
+      "plainMs": 3911,
+      "lightMs": 4337
+     },
+     {
+      "activeMinutes": 1440,
+      "rows": 209,
+      "plainMs": 1235,
+      "lightMs": 1162
+     },
+     {
+      "activeMinutes": 100000,
+      "rows": 9861,
+      "plainMs": 11726,
+      "lightMs": 8552
+     }
+    ],
+    "sweeps": [
+     {
+      "at": "2026-10-26T13:02:27.116Z",
+      "spanMs": 15855,
+      "sweepCpuMs": 15224,
+      "busyMs": 15854,
+      "longestBlockMs": 15854
+     },
+     {
+      "at": "2026-10-26T13:03:42.961Z",
+      "spanMs": 2269,
+      "sweepCpuMs": 1671,
+      "busyMs": 2258,
+      "longestBlockMs": 2258
+     },
+     {
+      "at": "2026-10-26T13:04:45.174Z",
+      "spanMs": 2245,
+      "sweepCpuMs": 1584,
+      "busyMs": 2232,
+      "longestBlockMs": 2232
+     },
+     {
+      "at": "2026-10-26T13:05:47.417Z",
+      "spanMs": 2837,
+      "sweepCpuMs": 2122,
+      "busyMs": 2837,
+      "longestBlockMs": 2837
+     },
+     {
+      "at": "2026-10-26T13:06:50.256Z",
+      "spanMs": 2418,
+      "sweepCpuMs": 1842,
+      "busyMs": 2414,
+      "longestBlockMs": 2414
+     },
+     {
+      "at": "2026-10-26T13:07:52.652Z",
+      "spanMs": 2564,
+      "sweepCpuMs": 1956,
+      "busyMs": 2564,
+      "longestBlockMs": 2564
+     },
+     {
+      "at": "2026-10-26T13:08:55.214Z",
+      "spanMs": 1976,
+      "sweepCpuMs": 1583,
+      "busyMs": 1976,
+      "longestBlockMs": 1976
+     },
+     {
+      "at": "2026-10-26T13:09:57.186Z",
+      "spanMs": 2707,
+      "sweepCpuMs": 2047,
+      "busyMs": 2707,
+      "longestBlockMs": 2707
+     },
+     {
+      "at": "2026-10-26T13:10:59.895Z",
+      "spanMs": 26406,
+      "sweepCpuMs": 15079,
+      "busyMs": 26358,
+      "longestBlockMs": 26358
+     },
+     {
+      "at": "2026-10-26T13:12:26.295Z",
+      "spanMs": 6660,
+      "sweepCpuMs": 1415,
+      "busyMs": 1810,
+      "longestBlockMs": 1790
+     },
+     {
+      "at": "2026-10-26T13:13:28.062Z",
+      "spanMs": 2517,
+      "sweepCpuMs": 1706,
+      "busyMs": 2507,
+      "longestBlockMs": 2507
+     },
+     {
+      "at": "2026-10-26T13:14:30.579Z",
+      "spanMs": 1761,
+      "sweepCpuMs": 1489,
+      "busyMs": 1761,
+      "longestBlockMs": 1761
+     },
+     {
+      "at": "2026-10-26T13:15:32.341Z",
+      "spanMs": 2053,
+      "sweepCpuMs": 1381,
+      "busyMs": 2052,
+      "longestBlockMs": 2052
+     }
+    ],
+    "failures": [],
+    "livenessDelayed": 5
+   },
+   {
+    "arm": "after",
+    "touched": 104,
+    "disabledPlugins": [
+     "codex"
+    ],
+    "equivalence": [
+     {
+      "activeMinutes": null,
+      "rows": 9949,
+      "plainMs": 16177,
+      "lightMs": 1634
+     },
+     {
+      "activeMinutes": 2,
+      "rows": 5,
+      "plainMs": 5230,
+      "lightMs": 127
+     },
+     {
+      "activeMinutes": 60,
+      "rows": 5,
+      "plainMs": 5175,
+      "lightMs": 92
+     },
+     {
+      "activeMinutes": 1440,
+      "rows": 209,
+      "plainMs": 2848,
+      "lightMs": 1996
+     },
+     {
+      "activeMinutes": 100000,
+      "rows": 9861,
+      "plainMs": 13140,
+      "lightMs": 16576
+     }
+    ],
+    "sweeps": [
+     {
+      "at": "2026-10-26T13:21:08.336Z",
+      "spanMs": 1168,
+      "sweepCpuMs": 811,
+      "busyMs": 1151,
+      "longestBlockMs": 1151
+     },
+     {
+      "at": "2026-10-26T13:22:09.375Z",
+      "spanMs": 2142,
+      "sweepCpuMs": 859,
+      "busyMs": 2120,
+      "longestBlockMs": 2120
+     },
+     {
+      "at": "2026-10-26T13:23:10.403Z",
+      "spanMs": 1043,
+      "sweepCpuMs": 489,
+      "busyMs": 1030,
+      "longestBlockMs": 1030
+     },
+     {
+      "at": "2026-10-26T13:24:11.022Z",
+      "spanMs": 1061,
+      "sweepCpuMs": 714,
+      "busyMs": 1061,
+      "longestBlockMs": 1061
+     },
+     {
+      "at": "2026-10-26T13:25:11.982Z",
+      "spanMs": 963,
+      "sweepCpuMs": 699,
+      "busyMs": 963,
+      "longestBlockMs": 963
+     },
+     {
+      "at": "2026-10-26T13:26:12.870Z",
+      "spanMs": 1065,
+      "sweepCpuMs": 747,
+      "busyMs": 1065,
+      "longestBlockMs": 1065
+     },
+     {
+      "at": "2026-10-26T13:27:13.809Z",
+      "spanMs": 1850,
+      "sweepCpuMs": 895,
+      "busyMs": 1837,
+      "longestBlockMs": 1837
+     },
+     {
+      "at": "2026-10-26T13:28:14.867Z",
+      "spanMs": 2671,
+      "sweepCpuMs": 1689,
+      "busyMs": 2656,
+      "longestBlockMs": 2656
+     },
+     {
+      "at": "2026-10-26T13:29:16.789Z",
+      "spanMs": 1912,
+      "sweepCpuMs": 920,
+      "busyMs": 1902,
+      "longestBlockMs": 1902
+     },
+     {
+      "at": "2026-10-26T13:30:17.920Z",
+      "spanMs": 1573,
+      "sweepCpuMs": 618,
+      "busyMs": 1566,
+      "longestBlockMs": 1566
+     },
+     {
+      "at": "2026-10-26T13:31:18.646Z",
+      "spanMs": 1887,
+      "sweepCpuMs": 850,
+      "busyMs": 1876,
+      "longestBlockMs": 1876
+     },
+     {
+      "at": "2026-10-26T13:32:19.664Z",
+      "spanMs": 2368,
+      "sweepCpuMs": 751,
+      "busyMs": 2356,
+      "longestBlockMs": 2356
+     },
+     {
+      "at": "2026-10-26T13:33:20.545Z",
+      "spanMs": 695,
+      "sweepCpuMs": 568,
+      "busyMs": 695,
+      "longestBlockMs": 695
+     }
+    ],
+    "failures": [],
+    "livenessDelayed": 6
+   }
+  ]
+ }
+}
