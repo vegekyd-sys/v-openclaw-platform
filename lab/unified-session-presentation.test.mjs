@@ -54,6 +54,25 @@ test('composed runtime artifacts preserve relay and presentation with one target
  assert(runner.includes('v-inter-session-exclusive-v1'));assert(runner.includes('v-task-followup-presentation-v1'));
 });
 
+test('queued execution failure stays failed when native delivery suppresses its error into NO_REPLY',async()=>{
+ const {openFollowupPresentation,deliverFollowupPresentation,settleFollowupPresentation}=await import('./feishu-task-presentation-followup.mjs');
+ const {TaskPresentationManager,PRESENTATION_KEY}=await import('./feishu-task-presentation.mjs');
+ for(const result of [{kind:'failed',code:'run_failed'},{kind:'aborted',code:'aborted_by_user'}]){
+  let now=0,attempts=0;const sent=[];
+  const m=new TaskPresentationManager({now:()=>now,getEntry:()=>({sessionId:'s',delivery:{kind:'external',context:{channel:'feishu',accountId:'a',to:'chat:oc_test'}}})});globalThis[PRESENTATION_KEY]=m;
+  m.registerAccount('a',{open:async()=>({finish:async p=>{attempts++;if(attempts===1)throw Error('429');sent.push(...p);}})});
+  const turn={runId:'queued-failure',operation:{result},sendPolicy:'allow',session:{kind:'session',key:'s'},queued:{messageId:'om_original',originatingChannel:'feishu',originatingAccountId:'a',originatingTo:'oc_test',run:{agentId:'a',sessionId:'s'}}};
+  try{
+   const h=await openFollowupPresentation(turn,{});
+   await assert.rejects(deliverFollowupPresentation({turn,runId:turn.runId,defaults:{}},[{text:'NO_REPLY'}]),/no confirmed native delivery/);
+   assert.equal(h.record.phase,'failed');assert(!h.record.delivered);assert.equal(h.record.executionOutcome.error,result.code);
+   await settleFollowupPresentation(turn.runId,{kind:'consumed'},turn.operation);
+   now=61000;await m.retryPending();assert(h.record.delivered);assert.equal(attempts,2);assert.equal(sent.length,1);assert(sent[0].isError);
+   assert.match(sent[0].text,result.kind==='aborted'?/已取消/:/未完成/);assert(!sent[0].text.includes('没有文字结果'));
+  }finally{await m.close();delete globalThis[PRESENTATION_KEY];}
+ }
+});
+
 test('native progress observer rejects unowned and late progress-card events',async()=>{
  const {patchProgressRendererIdentity}=await import('./patch-task-progress-identity.mjs');
  const source=patchProgressRendererIdentity(fs.readFileSync(CAPTURE+'.feishu/dist/dist/monitor.account-WFdlCDhR.js','utf8'));

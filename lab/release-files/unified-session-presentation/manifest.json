@@ -240,7 +240,7 @@
       "source": "lab/feishu-task-presentation-followup.mjs",
       "target": "openclaw/dist/v-feishu-task-presentation-followup.mjs",
       "before": null,
-      "sha256": "a9bfedcd5a9195f6e33f147ceb1fbf8ad930816de3d84b2fc0eb4f3d9d02e2d8"
+      "sha256": "2e3922a5000f9e817046856bf1c952d569a7faad391e467f641c58d07961e017"
     },
     {
       "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation-runtime.mjs",
