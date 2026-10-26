@@ -20,7 +20,7 @@
 
 启用条件为 Gateway 环境 `V_FEISHU_TASK_PRESENTATION=1`；Worker child 不注册呈现管理器。默认关闭使此候选不会自行在现有服务发送消息。Direct Voice 源码属于单独的 Voice 产物，不随 Gateway 的文件映射部署。
 
-`node lab/build-feishu-task-presentation.mjs` 生成八个 Gateway 文件及 before/after SHA256 清单、独立 Voice 源码 SHA256 清单，以及两个可执行候选 plan。候选探针和临时 native consult export 不属于发布文件；候选必须记录其单独 allowance。
+`node lab/build-feishu-task-presentation.mjs` 生成九个 Gateway 文件及 before/after SHA256 清单、独立 Voice 源码 SHA256 清单，以及两个可执行候选 plan。候选探针和临时 native consult export 不属于发布文件；候选必须记录其单独 allowance。
 
 消息创建采用固定 uuid，journal 记录已确认锚点/卡片和 payload cursor。这里证明的是本地协议与恢复行为，**尚不能据此声明飞书真实平台所有 ACK 丢失/媒体上传窗口都严格 exactly-once**。未完成任务重启后只提示执行状态需要核对，不擅自重新执行模型。
 
@@ -55,3 +55,17 @@ node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo /Users/tianyicai/v-
 ## 最终离线回执摘要
 
 Node v22.23.1；326 files；2559/2559 passed；fail=0，skip=0；耗时 55.836 秒。原始回执保留本机 `/tmp/bound-task-platform-node22-accepted-local-20261026.json`，未作为 runtime 数据入库。
+
+
+## 10/26 连接恢复后的候选记录
+
+Tailscale 已恢复 Running/online，VLab 私有 SSH 已实际连通。全部测试仍使用 loopback Fake Feishu，没有发送真实飞书消息。
+
+- 第一、二轮停在候选探针注册：补齐 `activation.onStartup`、标准 JS 入口与 package manifest，并让准备失败也清理 fake transport。没有把启动失败记作模型验收。
+- Worker `candidate-5e34ec55-ce93-49e5-b402-f12e0bf1607a`：原生入站、三个后台入口、公开过程与结果、完成 journal 重启去重通过。
+- Worker `candidate-acb8b832-db28-451b-bd5a-937b683ee242`：增加真实模型 `sessions_send`，共五个后台任务、七张原生卡片（含两次原生入站基线），重启后不重发，sharedUnchanged=true。测试源码 commit `9cf81de9436d4b35c024b86c9adcc6109efce469`。
+- VDS `candidate-48a8a193-cd3f-4bff-a68a-aa975892c2b7`：三个入口与真实模型 `sessions_send` 均通过，实际页脚为 `Runtime: codex`。其重启计数检查失败：count=14→16 的两个新消息发生在旧 Gateway 停机期间、第二次启动之前，是合法请求方唤醒回合，不能说是 journal 重发。新增全体已受理回合收敛检查后再复测。客户端控制 SSH 曾断开，原始结果从服务器持久化 receipt 补取，没有因此重复派发模型。
+
+新增 core `sessions_send` 的精确 run ownership 查询：目标已由原生呈现承接时，旧 announce 不再重复投递；未取得明确 ownership 时保留旧路径。保留正常 requester 唤醒，不通过关闭后台模型回合来减少消息数。任务来源记录去掉内部 inter-session 路由协议头，`NO_REPLY/REPLY_SKIP/ANNOUNCE_SKIP` 以自然无文字终态收尾。
+
+收尾代码 commit：`e02d1bad`。该版本的 Worker/VDS 最终复测结果见后续最终回执节；本段保留前轮通过、失败与修正的边界。

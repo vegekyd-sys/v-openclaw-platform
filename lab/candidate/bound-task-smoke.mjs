@@ -16,7 +16,11 @@ test('bound Feishu tasks: native baseline, cross-session, direct/native Voice an
  const inspect=()=>c.rpc('candidate.boundTask',{op:'inspect'},30000);
  const waitTerminal=async source=>until(async()=>{const s=await inspect();return s.tasks.find(x=>x.source===source&&x.delivered);},{timeoutMs:180000,label:source+' native visible terminal'});
  const proof={harness:c.harness,allowances,checks:[]};
- const visibleProgress=marker=>c.fake.snapshots.some(({message:m})=>m.msg_type==='interactive'&&JSON.stringify(m.body).includes(marker)&&!JSON.stringify(m.body).includes(marker.replace('_PROGRESS','_FINAL')));
+ const visibleProgress=(task,final)=>c.fake.snapshots.some(({at,message:m})=>at>=task.createdAt&&m.chat_id===task.route.chatId&&m.msg_type==='interactive'&&!JSON.stringify(m.body).includes(final)&&/exec|执行|运行命令/iu.test(JSON.stringify(m.body)));
+ const toolProof=async(key,marker)=>{const h=await c.rpc('chat.history',{sessionKey:key,limit:60});return (h.messages??[]).some(m=>{
+  const blocks=m.content??[];const outputs=(m.role==='toolResult'||m.role==='tool')?m:blocks.filter?.(b=>['toolResult','tool_result'].includes(b.type));
+  return outputs&&JSON.stringify(outputs).includes(marker);
+ });};
 
  try {
   await c.start({timeoutMs:120000});console.log(JSON.stringify({stage:'gateway-ready',harness:c.harness}));assert((await inspect()).accounts.length>0);
@@ -28,14 +32,14 @@ test('bound Feishu tasks: native baseline, cross-session, direct/native Voice an
   assert.equal((await inspect()).tasks.length,0,'native channel ingress owns its existing dispatcher');proof.checks.push('native baseline: no second task/card');
   const target=groupKey(GROUP_B),source=dmKey();
   const result=await c.rpc('candidate.boundTask',{op:'cross',sessionKey:target,sourceSessionKey:source,runId:'bound-cross-'+Date.now(),
-   text:'这是跨会话后台任务。调用 exec 执行 printf BOUND_CROSS_TOOL；确认返回后先在公开 commentary 里只说 BOUND_CROSS_PROGRESS，然后调用 exec 执行 sleep 2，最后只回复 BOUND_CROSS_FINAL。不要向任何真实服务发送消息。'},180000);
-  const cross=await waitTerminal('inter-session');assert(JSON.stringify(c.fake.list(GROUP_B)).includes('BOUND_CROSS_FINAL'));assert(result.result);assert(visibleProgress('BOUND_CROSS_PROGRESS'),'cross-session public process before final');proof.checks.push('cross-session native task request, process and terminal');
+   text:'这是跨会话后台任务。调用 exec 执行命令 printf BOUND_CROSS_TOOL; sleep 2; printf BOUND_CROSS_FINAL。完成后回答实际输出里的最后一个标记，不发送任何外部消息。'},180000);
+  const cross=await waitTerminal('inter-session');assert(JSON.stringify(c.fake.list(GROUP_B)).includes('BOUND_CROSS_FINAL'));assert(result.result);assert(visibleProgress(cross,'BOUND_CROSS_FINAL'),'cross-session native tool process before final');assert(await toolProof(target,'BOUND_CROSS_FINAL'),'cross-session actual tool output');proof.checks.push('cross-session native task request, process and terminal');
   const backend=createBackendDelegation({gateway:{request:(...a)=>c.client.request(...a)},sessionKey:source,ownerId:'candidate-call',timeoutMs:120000});
   c.onEvent=e=>backend.handleEvent(e);
-  const direct=await backend.run({question:'调用 exec 执行 printf BOUND_DIRECT_TOOL；工具确认后先在公开 commentary 里只说 BOUND_DIRECT_PROGRESS，然后调用 exec 执行 sleep 2；最后只回复 BOUND_DIRECT_FINAL。不要发送外部消息。',context:'PRIVATE_DIRECT_CONTEXT_NOT_FOR_CARD',callId:'direct-1',signal:new AbortController().signal});
-  assert(direct.result.includes('BOUND_DIRECT_FINAL'));await waitTerminal('voice-direct');assert(visibleProgress('BOUND_DIRECT_PROGRESS'),'direct Voice public process before final');proof.checks.push('Voice direct backend: same run and actual final');
-  const native=await c.rpc('candidate.boundTask',{op:'native',sessionKey:target,text:'调用 exec 执行 printf BOUND_NATIVE_TOOL，确认后先在公开 commentary 里只说 BOUND_NATIVE_PROGRESS，然后调用 exec 执行 sleep 2，最后只回复 BOUND_NATIVE_FINAL。不要发送任何外部消息。'},180000);
-  assert(native.result.text.includes('BOUND_NATIVE_FINAL'));await waitTerminal('voice-native');assert(visibleProgress('BOUND_NATIVE_PROGRESS'),'native Voice public process before final');proof.checks.push('Voice native consult: actual backend entry and final');
+  const direct=await backend.run({question:'调用 exec 执行命令 printf BOUND_DIRECT_TOOL; sleep 2; printf BOUND_DIRECT_FINAL。完成后回答实际输出里的最后一个标记，不发送外部消息。',context:'PRIVATE_DIRECT_CONTEXT_NOT_FOR_CARD',callId:'direct-1',signal:new AbortController().signal});
+  assert(direct.result.includes('BOUND_DIRECT_FINAL'));const directTask=await waitTerminal('voice-direct');assert(visibleProgress(directTask,'BOUND_DIRECT_FINAL'),'direct Voice native tool process before final');assert(await toolProof(source,'BOUND_DIRECT_FINAL'),'direct Voice actual tool output');proof.checks.push('Voice direct backend: same run and actual final');
+  const native=await c.rpc('candidate.boundTask',{op:'native',sessionKey:target,text:'调用 exec 执行命令 printf BOUND_NATIVE_TOOL; sleep 2; printf BOUND_NATIVE_FINAL。完成后回答实际输出里的最后一个标记，不发送任何外部消息。'},180000);
+  assert(native.result.text.includes('BOUND_NATIVE_FINAL'));const nativeTask=await waitTerminal('voice-native');assert(visibleProgress(nativeTask,'BOUND_NATIVE_FINAL'),'native Voice tool process before final');assert(await toolProof(target,'BOUND_NATIVE_FINAL'),'native Voice actual tool output');proof.checks.push('Voice native consult: actual backend entry and final');
   const publicBodies=JSON.stringify([...c.fake.messages.values(),...c.fake.snapshots]);
   assert(!publicBodies.includes('PRIVATE_DIRECT_CONTEXT_NOT_FOR_CARD'));assert(!publicBodies.includes('PRIVATE_TRANSCRIPT_NOT_FOR_CARD'));
   assert.equal((await inspect()).tasks.length,3);assert.equal(c.fake.unimplemented.length,0,JSON.stringify(c.fake.unimplemented));
