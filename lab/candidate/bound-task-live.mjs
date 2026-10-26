@@ -25,7 +25,9 @@ c.config.plugins.load.paths.push(plugin);c.config.plugins.entries['v-voice-gpt-l
 if(live.openaiAccessFile){process.env.GPT_LIVE_CALL_ACCESS_FIXTURE=live.openaiAccessFile;configureCandidateOpenAIAuth(c.config);}
 fs.writeFileSync(c.configPath,JSON.stringify(c.config,null,2),{mode:0o600});
 if(live.openaiAccessFile){
- execFileSync(process.execPath,[path.join(c.dist,'index.js'),'doctor','--repair','--non-interactive'],{env:c.env,stdio:'pipe',timeout:120000});
+ const {g:openAgentDatabase,a:closeAgentDatabases}=await import(path.join(c.dist,'openclaw-agent-db-CUTe8BX6.js'));
+ const db=path.join(c.stateDir,'agents/makaron/agent/openclaw-agent.sqlite');
+ fs.mkdirSync(path.dirname(db),{recursive:true,mode:0o700});openAgentDatabase({agentId:'makaron',path:db,env:process.env});closeAgentDatabases();
  installCandidateOpenAIAuth();save('auth-fixture.json',{source:'user-approved access-only fixture',refreshCopied:false});
 }
 const consult=path.join(c.dist,'realtime-session-harness-CEO5kVAJ.js');
