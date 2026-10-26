@@ -4,7 +4,7 @@ import {createHash,randomUUID} from 'node:crypto';
 
 export const PRESENTATION_KEY = Symbol.for('openclaw.v.boundTaskPresentation.v1');
 export const PRESENTATION_METHOD = 'v.feishu.taskPresentation';
-const sources = new Set(['inter-session','voice-direct','voice-native']);
+const sources = new Set(['inter-session','voice-direct','voice-native','queued-followup','subagent-announce']);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const clean = value => typeof value === 'string' ? value.trim() : '';
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -36,7 +36,7 @@ export class TaskPresentationManager {
   entry(key,agentId) {return this.getEntry?.({sessionKey:key,agentId,readConsistency:'latest'});}
   current(record) {
     const e=this.entry(record.sessionKey,record.agentId);
-    return e?.sessionId===record.sessionId && JSON.stringify(boundFeishuRoute(e))===JSON.stringify(record.route);
+    return e?.sessionId===record.sessionId && (record.lifecycleRevision===undefined||e?.lifecycleRevision===record.lifecycleRevision) && JSON.stringify(boundFeishuRoute(e))===JSON.stringify(record.route);
   }
   save(record) {
     record.updatedAt=this.now();
@@ -55,8 +55,11 @@ export class TaskPresentationManager {
     if(input.runId&&this.claims.has(input.runId))return null;
     if(!this.accounts.has(route.accountId))return null;
     const id=hash(JSON.stringify([input.agentId,input.sessionKey,entry.sessionId,input.source,input.taskId]));
-    if(this.tasks.has(id)){const h=this.tasks.get(id);return h.record.owner===(owner??null)?h:null;}
-    if(this.opening.has(id)){const h=await this.opening.get(id);return h?.record.owner===(owner??null)?h:null;}
+    if(input.runId&&this.runs.has(input.runId)&&this.runs.get(input.runId).record.id!==id)return null;
+    if(this.tasks.has(id)){const h=this.tasks.get(id);if(h.record.owner!==(owner??null)||!this.current(h.record))return null;
+      if(input.runId&&!h.record.runIds.includes(input.runId)&&!h.bindRun(input.runId))return null;return h;}
+    if(this.opening.has(id)){const h=await this.opening.get(id);if(!h||h.record.owner!==(owner??null)||!this.current(h.record))return null;
+      if(input.runId&&!h.record.runIds.includes(input.runId)&&!h.bindRun(input.runId))return null;return h;}
     const pending=(async()=>{
       const stored=this.directory?path.join(this.directory,id+'.json'):null;
       if(stored&&fs.existsSync(stored)){
@@ -64,12 +67,14 @@ export class TaskPresentationManager {
         if(record.owner!==(owner??null)||!this.current(record))return null;
         const h=new TaskPresentation(this,record);this.tasks.set(id,h);
         for(const runId of record.runIds??[])if(!record.delivered)this.runs.set(runId,h);
+        if(input.runId&&!record.runIds.includes(input.runId)&&!h.bindRun(input.runId))return null;
         return h;
       }
       if(this.closed)return null;
       const record={v:1,id,agentId:input.agentId,sessionKey:input.sessionKey,sessionId:entry.sessionId,route,source:input.source,taskId:input.taskId,
         owner:owner??null,text:safeText(clean(input.text)).slice(0,20000),createdAt:this.now(),updatedAt:this.now(),phase:'queued',runIds:[],lastSeq:0,
-        anchorId:null,sinkState:null,publicSnapshot:'',payloads:[],executionOutcome:null,delivered:false};
+        lifecycleRevision:entry.lifecycleRevision,
+        anchorId:route.kind==='group'&&/^om_[a-zA-Z0-9_-]+$/u.test(input.anchorId??'')?input.anchorId:null,sinkState:null,publicSnapshot:'',payloads:[],executionOutcome:null,delivered:false};
       const handle=new TaskPresentation(this,record);this.tasks.set(id,handle);this.save(record);
       if(input.runId)handle.bindRun(input.runId);
       void handle.enqueue(()=>handle.ensureSink());
@@ -106,7 +111,7 @@ export class TaskPresentationManager {
       const h=this.tasks.get(p.presentationId);
       if(!h||h.record.owner!==owner||h.record.sessionKey!==p.sessionKey||h.record.agentId!==p.agentId)throw Error('presentation ownership mismatch');
       if(p.op==='status'){respond(true,{phase:h.record.phase,delivered:h.record.delivered,error:h.record.error??null});return;}
-      if(!h.record.runIds.includes(p.runId))throw Error('presentation run mismatch');
+      if(!h.record.runIds.includes(p.runId)||h.record.activeRunId&&h.record.activeRunId!==p.runId)throw Error('presentation run mismatch');
       if(p.op==='event'&&(!p.event||JSON.stringify(p.event).length>100000))throw Error('invalid presentation event');
       if(!Number.isSafeInteger(p.sequence)||p.sequence<1)throw Error('invalid presentation sequence');
       if(p.sequence<=h.record.lastSeq){respond(true,{duplicate:true});return;}
@@ -120,9 +125,10 @@ export class TaskPresentationManager {
     if(!this.directory||!fs.existsSync(this.directory))return;
     for(const name of fs.readdirSync(this.directory).filter(n=>/^[a-f0-9]{64}\.json$/u.test(n)).slice(-1024)) {
       let r;try{r=JSON.parse(fs.readFileSync(path.join(this.directory,name),'utf8'));}catch{continue;}
-      if(r.v!==1||r.id+'.json'!==name||r.delivered||this.tasks.has(r.id)||!this.accounts.has(r.route?.accountId))continue;
+      if(r.v!==1||r.id+'.json'!==name||r.delivered&&(!r.deliveryCompletion||r.deliverySettled)||this.tasks.has(r.id)||!this.accounts.has(r.route?.accountId))continue;
       if(!this.current(r)){r.phase='retired';this.save(r);continue;}
       const h=new TaskPresentation(this,r);this.tasks.set(r.id,h);
+      if(r.delivered){await h.settleDelivery();continue;}
       if(r.executionOutcome)await h.finish(r.executionOutcome.result,r.executionOutcome.error);
       else if(r.capturedTerminal&&!r.yielded)await h.finish({payloads:r.payloads});
       else await h.finish(null,'Gateway 重启打断了任务；请核对原执行状态后继续。');
@@ -130,6 +136,7 @@ export class TaskPresentationManager {
   }
   async retryPending(){
     for(const h of this.tasks.values()){
+      if(h.record.delivered&&h.record.deliveryCompletion&&!h.record.deliverySettled){await h.settleDelivery();continue;}
       if(h.record.delivered||h.record.phase==='retired'||!h.record.error||h.retrying||this.now()<(h.record.retryAfter??0))continue;
       h.retrying=true;
       try {this.save(h.record);if(h.record.executionOutcome)await h.finish();else await h.start();}
@@ -152,8 +159,15 @@ class TaskPresentation {
     if(this.sink&&this.factory===f)return this.sink;
     await this.sink?.cleanup?.();this.sink=null;await f.authorize?.(this.record.route);
     this.sink=await f.open(this.record,async state=>{this.record.sinkState=copy(state);this.manager.save(this.record);});this.factory=f;return this.sink;}
-  bindRun(runId){if(!clean(runId)||this.record.delivered)return;const claim=this.manager.claims.get(runId);if(claim)return;
-    if(!this.record.runIds.includes(runId)){this.record.runIds.push(runId);this.manager.save(this.record);}this.manager.runs.set(runId,this);}
+  bindRun(runId,{continuation=false}={}){if(!clean(runId)||this.record.delivered||!this.manager.current(this.record))return false;
+    if(this.manager.claims.has(runId)||this.manager.runs.has(runId)&&this.manager.runs.get(runId)!==this)return false;
+    if(this.record.activeRunId&&this.record.activeRunId!==runId&&this.record.phase!=='waiting'&&!continuation)return false;
+    if(this.record.activeRunId&&this.record.activeRunId!==runId){
+      this.record.payloads=[];this.record.publicSnapshot='';this.record.yielded=false;this.record.capturedTerminal=false;this.record.executionFailed=false;
+    }
+    if(!this.record.runIds.includes(runId))this.record.runIds.push(runId);
+    this.record.activeRunId=runId;this.manager.save(this.record);this.manager.runs.set(runId,this);return true;}
+  ownsRun(runId){return !this.record.delivered&&this.manager.current(this.record)&&this.manager.runs.get(runId)===this&&(!this.record.activeRunId||this.record.activeRunId===runId);}
   start(model){if(!this.record.delivered&&model?.provider&&model?.model){this.record.selectedModel={...this.record.selectedModel,...model,agentRuntime:model.agentRuntime??this.record.selectedModel?.agentRuntime};this.manager.save(this.record);}
     return this.enqueue(async()=>{if(this.record.delivered)return;
     const s=await this.ensureSink();this.record.phase='running';this.manager.save(this.record);await s.start?.(this.record.selectedModel);});}
@@ -161,14 +175,14 @@ class TaskPresentation {
     const text=safeText(payload.text).slice(-100000);if(this.record.publicSnapshot===text)return;this.record.publicSnapshot=text;
     if(this.partialQueued)return this.queue;this.partialQueued=true;
     return this.enqueue(async()=>{this.partialQueued=false;this.manager.save(this.record);const s=await this.ensureSink();await s.partial?.({...payload,text:this.record.publicSnapshot});});}
-  observe(event){if(this.record.delivered||!this.record.runIds.includes(event.runId))return;const d=event.data??{};
+  observe(event){if(!this.ownsRun(event.runId))return;const d=event.data??{};
     const key=event.seq!==undefined?event.runId+':'+event.seq+':'+event.stream:null;if(key&&this.seen.has(key))return;if(key){this.seen.add(key);if(this.seen.size>512)this.seen.delete(this.seen.values().next().value);}
     if(event.stream==='lifecycle'&&d.phase==='start')this.start(d);
     if(event.stream==='item'&&d.kind==='preamble'&&!d.isReasoning&&d.phase!=='analysis'&&clean(d.progressText))this.partial({text:d.progressText,phase:'commentary',kind:'preamble',itemId:d.itemId});
     if(event.stream==='tool'&&d.phase==='start'&&!d.hideFromChannelProgress)this.enqueue(async()=>{const s=await this.ensureSink();await s.tool?.({name:d.name,phase:d.phase});});
   }
   capture(result){if(!result)return;const payloads=(result.payloads??[]).filter(publicPayload).map(p=>({...p,...p.text?{text:safeText(p.text)}:{}}));
-    if(payloads.length)this.record.payloads=copy(payloads);
+    if(Array.isArray(result.payloads))this.record.payloads=copy(payloads);
     this.record.yielded=result.meta?.yielded===true||result.yielded===true;
     this.record.executionFailed=result.meta?.aborted===true||payloads.some(p=>p.isError===true);
     this.record.capturedTerminal=!this.record.yielded;this.manager.save(this.record);}
@@ -184,9 +198,22 @@ class TaskPresentation {
       this.record.phase=error||this.record.executionFailed?'failed':'completed';this.manager.save(this.record);}
     payloads=this.record.executionOutcome.result.payloads;
     return this.enqueue(async()=>{if(this.record.delivered)return;const s=await this.ensureSink();await this.factory.authorize?.(this.record.route);await s.start?.();await s.finish(payloads);
-      this.record.delivered=true;delete this.record.error;delete this.record.retryAfter;this.manager.save(this.record);for(const id of this.record.runIds)if(this.manager.runs.get(id)===this)this.manager.runs.delete(id);await s.cleanup?.();});
+      this.record.delivered=true;delete this.record.error;delete this.record.retryAfter;this.manager.save(this.record);await this.settleDelivery();for(const id of this.record.runIds)if(this.manager.runs.get(id)===this)this.manager.runs.delete(id);await s.cleanup?.();});
   }
   flush(){return this.queue;}
+  captureDelivery(payloads){
+    const completion=globalThis[Symbol.for('openclaw.v.boundTaskDeliveryCompletion.v1')]?.resolve(payloads);
+    if(completion){this.record.deliveryCompletion=copy(completion);this.manager.save(this.record);}
+  }
+  async settleDelivery(){
+    const r=this.record;if(!r.delivered||!r.deliveryCompletion||r.deliverySettled||!this.manager.current(r))return;
+    const complete=globalThis[Symbol.for('openclaw.v.boundTaskDeliveryCompletion.v1')]?.complete;
+    const receipt=r.sinkState?.receipts?.find(x=>x.visibleReplySent===true&&x.messageId);
+    if(!complete||!receipt)return;
+    try{await complete(r.deliveryCompletion,receipt);r.deliverySettled=true;delete r.settlementError;}
+    catch(error){r.settlementError=String(error?.message??error).slice(0,500);}
+    this.manager.save(r);
+  }
 }
 
 /** Gateway registration is owned by the native Feishu plugin, not each Worker. */

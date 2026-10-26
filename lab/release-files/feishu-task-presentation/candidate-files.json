@@ -10,7 +10,7 @@
       "source": "lab/release-files/feishu-task-presentation/monitor.account-WFdlCDhR.js",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
       "before": "535841d0219848a266d146094ee3441bbf48ed7a8aa28f04d111afb330247fef",
-      "sha256": "f40290adb020ab17b921babeadc305d182b96e553acdfa55a6506c4764a634d8"
+      "sha256": "7076f24f3f99a7427f605d1382a9da464901cac0e308c2baf60f1cac9263cd96"
     },
     {
       "source": "lab/release-files/feishu-task-presentation/embedded-agent-DaSvA-Yk.js",
@@ -40,13 +40,13 @@
       "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation.mjs",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-task-presentation.mjs",
       "before": null,
-      "sha256": "76191f1a5f5eb632f938bad1c37f1ebffb06dce2751595b39af6997063519064"
+      "sha256": "78ab5a1170cf1e3b792e74568abe8308042ab5d84a8b593e4d33f070a80f6f6b"
     },
     {
       "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation-runtime.mjs",
       "target": "openclaw/dist/v-feishu-task-presentation-runtime.mjs",
       "before": null,
-      "sha256": "41fbfd972f6be115d0a13b56d24074407f17af7378543ac3510e67d90f5baba4"
+      "sha256": "8dc0efab7754638a0ad7a467e0326cacf9873f3581e4c3bf5f10ac57ff601176"
     },
     {
       "source": "lab/release-files/feishu-task-presentation/v-feishu-voice-actor.mjs",

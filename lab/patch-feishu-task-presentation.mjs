@@ -75,7 +75,8 @@ async function consultRealtimeVoiceAgentWithoutTaskPresentation(params) {`);
 }
 
 export function patchTaskPresentationSessionsSend(source){already(source);
-  const gateway='async function runSessionsSendA2AFlow(params) {\n\tconst runContextId = params.waitRunId ?? "unknown";\n\tconst gatewayCall = params.callGateway ?? callAgentToolGatewayRequest;';
+  const replyOnce=source.includes('v-sessions-send-reply-once-v2');
+  const gateway='async function runSessionsSendA2AFlow(params) {\n'+(replyOnce?'\t// v-sessions-send-reply-once-v2\n':'')+'\tconst runContextId = params.waitRunId ?? "unknown";\n\tconst gatewayCall = params.callGateway ?? callAgentToolGatewayRequest;';
   source=once(source,gateway,gateway+`
   const nativeTaskPresented = async () => {
     if (process.env.V_FEISHU_TASK_PRESENTATION !== "1" || !params.waitRunId) return false;
@@ -84,6 +85,12 @@ export function patchTaskPresentationSessionsSend(source){already(source);
       return receipt?.owned === true;
     } catch { return false; }
   };`);
+  if(replyOnce){
+    // The relay fallback hands a completed result back to the requester. A
+    // target card owns only target delivery; it must never swallow that wake.
+    source=once(source,'\t\tif (sameSessionSourceReply) {','\t\tif (sameSessionSourceReply) {\n      if (await nativeTaskPresented()) return;');
+    return `// ${MARKER}\n`+source;
+  }
   const same='\t\tif (sameSessionSourceReply && canDirectDeliverSameSessionReply) {';
   source=once(source,same,same+'\n      if (await nativeTaskPresented()) return;');
   const announce='\t\tconst announcePrompt = buildAgentToAgentAnnounceContext({';

@@ -224,6 +224,7 @@
         "lab/feishu-task-presentation.test.mjs",
         "lab/feishu-task-presentation-native.test.mjs",
         "lab/feishu-task-presentation-patch.test.mjs",
+        "lab/unified-session-presentation.test.mjs",
         "scripts/configure-v-session-relay.test.mjs",
         "tests/inter-session-plan.test.mjs"
       ]
@@ -1248,7 +1249,40 @@
         "2026.9.1"
       ],
       "disposition": "excluded-candidate",
-      "sourceSha256": "d9a2959917f2693ae9476f49c3b5361644c583df7e5e32af92c670ce3ef9c16c"
+      "sourceSha256": "6a3c07360237b3d0ef25c14a18cc24a90d2c7af7484a0a2e613a077793363b79"
+    },
+    {
+      "id": "patch-feishu-task-followup",
+      "file": "lab/patch-feishu-task-followup.mjs",
+      "component": "core",
+      "reason": "Bind admitted queued followups to the shared native task presentation owner.",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "excluded-candidate",
+      "sourceSha256": "0b7cfbece874058d053a60ee1bc5977e13d47f83758245dc98c8f63fcdffd16f"
+    },
+    {
+      "id": "patch-task-progress-identity",
+      "file": "lab/patch-task-progress-identity.mjs",
+      "component": "core",
+      "reason": "Fence progress-card updates by the admitted run identity.",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "excluded-candidate",
+      "sourceSha256": "a849fc824b05a63d8c136523d340fe201d0964d042f6bf19e52954857a91cfe4"
+    },
+    {
+      "id": "patch-task-command-delivery",
+      "file": "lab/patch-task-command-delivery.mjs",
+      "component": "core",
+      "reason": "Preserve native final ACKs and reconcile delayed announce receipts without replaying work.",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "excluded-candidate",
+      "sourceSha256": "a932b5c469bebf8ea9de08732b9797aaff3a6b1ef4615dd155ec96fc4086a38e"
     }
   ],
   "externalInputs": [

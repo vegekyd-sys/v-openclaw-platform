@@ -79,12 +79,20 @@ export function readSecretsEnv(name, file = SECRETS_ENV) {
   return undefined;
 }
 
-export function freePort() {
-  return new Promise((resolve, reject) => {
+export async function freePort({exclude=[]}={}) {
+  // Avoid the kernel's ephemeral client range: startup opens outbound sockets
+  // between selecting this port and the channel binding it.
+  for(let attempt=0;attempt<100;attempt++){
+  const requested=crypto.randomInt(20000,24000);
+  if(exclude.includes(requested))continue;
+  const port=await new Promise((resolve, reject) => {
     const s = net.createServer();
-    s.once("error", reject);
-    s.listen(0, "127.0.0.1", () => { const { port } = s.address(); s.close(() => resolve(port)); });
+    s.once("error", error=>error.code==='EADDRINUSE'?resolve(null):reject(error));
+    s.listen(requested, "127.0.0.1", () => { const { port } = s.address(); s.close(() => resolve(port)); });
   });
+  if(port)return port;
+  }
+  throw Error('No available private candidate webhook port');
 }
 
 /** Polls `fn` until it returns a truthy value; returns it, or throws after `timeoutMs`. */
@@ -168,7 +176,7 @@ export async function prepareCandidate(opts = {}) {
     delete feishu.accounts;
     notes.push("mock Feishu: loopback API, synthetic app credentials, real platform hosts blocked");
   }
-  const webhook = { port: await freePort(), path: "/candidate/inter-session", token: `isc-${crypto.randomBytes(12).toString("hex")}`, key: crypto.randomBytes(16).toString("hex") };
+  const webhook = { port: await freePort({exclude:[port]}), path: "/candidate/inter-session", token: `isc-${crypto.randomBytes(12).toString("hex")}`, key: crypto.randomBytes(16).toString("hex") };
   addSecret(webhook.token); addSecret(webhook.key);
   Object.assign(feishu, { enabled: true, connectionMode: "webhook", webhookHost: "127.0.0.1", webhookPort: webhook.port, webhookPath: webhook.path, verificationToken: webhook.token, encryptKey: webhook.key });
   const feishuDir = config.plugins.load.paths.find((p) => p.endsWith("/@openclaw/feishu"));
@@ -397,6 +405,7 @@ export class Candidate {
     if (this.pluginMode === "on") need.push(/v-session-relay 2\.0 started/u);
     const seen = new Set();
     await until(async () => {
+      if(this.lines.slice(mark).some(l=>/Webhook server error:.*EADDRINUSE/u.test(l.line)))throw Error('Private candidate webhook port collided during startup');
       for (const l of this.lines.slice(mark)) for (const [i, re] of need.entries()) if (re.test(l.line)) seen.add(i);
       const g = this.gateway;
       if (g.exitCode !== null || g.signalCode) {

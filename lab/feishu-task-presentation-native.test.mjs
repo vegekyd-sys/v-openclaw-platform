@@ -34,6 +34,15 @@ test('native adapter rejects an unacknowledged finalization and preserves retry 
  const f=fixture({delivery:{deliver:async()=>({finalization:Promise.resolve({visibleReplySent:false})})}}),s=await f.open();
  await assert.rejects(s.finish([{text:'result'}]),/did not confirm/);assert.equal(f.record.sinkState.deliveredPayloads,undefined);
 });
+test('a visible progress card or previous payload cannot acknowledge a failed final or attachment',async()=>{
+ for(const failAt of [0,1]){
+  let delivered=0;
+  const f=fixture({getVisibleReplyState:()=>({visibleReplySent:true}),delivery:{deliver:async()=>({visibleReplySent:delivered++!==failAt})}}),s=await f.open();
+  await assert.rejects(s.finish([{text:'text result'},{mediaUrl:'https://example.test/file.pdf'}]),/did not confirm/);
+  assert.equal(f.record.sinkState.deliveredPayloads??0,failAt);
+  assert.equal(f.record.sinkState.receipts?.length??0,failAt);
+ }
+});
 test('account membership failure and anchor API failure cannot open the native renderer',async()=>{
  const f=fixture();f.client.im.chat.get=async()=>({code:403});await assert.rejects(f.account.authorize(f.record.route),/membership/);
  f.client.im.message.create=async()=>({code:429});await assert.rejects(f.open(),/not acknowledged/);assert.equal(f.params(),undefined);

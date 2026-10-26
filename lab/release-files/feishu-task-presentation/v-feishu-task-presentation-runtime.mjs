@@ -25,8 +25,8 @@ export function observeEmbeddedTask(params,execute) {
   const h=globalThis[KEY]?.runs.get(params.runId);
   if(!h)return execute(params);
   void optional(()=>h.start(model(params)));
-  const wrapped={...params,onPartialReply:p=>{void optional(()=>h.partial(p));return params.onPartialReply?.(p);},onAgentEvent:e=>{void optional(()=>h.observe(e));return params.onAgentEvent?.(e);}};
-  return Promise.resolve(execute(wrapped)).then(result=>{void optional(()=>h.capture(result));return result;});
+  const wrapped={...params,onPartialReply:p=>{if(h.ownsRun(params.runId))void optional(()=>h.partial(p));return params.onPartialReply?.(p);},onAgentEvent:e=>{void optional(()=>h.observe(e));return params.onAgentEvent?.(e);}};
+  return Promise.resolve(execute(wrapped)).then(result=>{if(h.ownsRun(params.runId))void optional(()=>h.capture(result));return result;});
 }
 
 export async function presentInterSessionTask(prepared,initialOpts,execute) {
@@ -52,9 +52,9 @@ export async function presentNativeVoiceTask(params,execute,question) {
   const h=await open(m,{source:direct?'voice-direct':'voice-native',agentId:params.agentId??params.voiceActor?.agentId??/^agent:([^:]+):/u.exec(params.sessionKey??'')?.[1],sessionKey:params.sessionKey,
     taskId:identity?.delegationItemId??`${params.runIdPrefix}:${globalThis.crypto.randomUUID()}`,text},{trusted:true,actor:params.voiceActor});
   if(!h)return execute(params);
-  const started=fn=>info=>{void optional(()=>h.bindRun(info.runId));return fn?.(info);};
+  const started=(fn,continuation=false)=>info=>{void optional(()=>h.bindRun(info.runId,{continuation}));return fn?.(info);};
   try {
-    const result=await execute({...params,onRunStarted:started(params.onRunStarted),onResumeRunStarted:started(params.onResumeRunStarted)});
+    const result=await execute({...params,onRunStarted:started(params.onRunStarted),onResumeRunStarted:started(params.onResumeRunStarted,true)});
     void optional(()=>h.finish(result));return result;
   } catch(error){void optional(()=>h.finish(null,error));throw error;}
 }

@@ -230,3 +230,20 @@ test('native inter-session provenance boilerplate is removed from the public tas
 test('inter-session control silence tokens receive a natural terminal instead of exposing protocol words',async t=>{
  for(const text of ['REPLY_SKIP','ANNOUNCE_SKIP']){const f=fixture(t),h=await f.open();await h.finish({text});assert(!JSON.stringify(f.calls).includes(text));assert.equal(h.record.delivered,true);}
 });
+
+test('one admitted run cannot acquire two task owners or steal an active task',async t=>{
+ const f=fixture(t),a=await f.open();
+ assert.equal(await f.open({taskId:'different-task'}),null);
+ assert.equal(await f.open({runId:'different-run'}),null);
+ assert.equal(f.manager.runs.get('run-1'),a);
+ await a.finish({meta:{yielded:true}});
+ const resumed=await f.open({runId:'resume'});assert.equal(resumed,a);assert.equal(a.record.activeRunId,'resume');
+ a.observe({runId:'run-1',stream:'item',data:{kind:'preamble',progressText:'STALE_PREVIOUS_RUN'}});
+ a.observe({runId:'resume',stream:'item',data:{kind:'preamble',progressText:'CURRENT_RUN'}});
+ await a.flush();assert(!JSON.stringify(f.calls).includes('STALE_PREVIOUS_RUN'));assert(JSON.stringify(f.calls).includes('CURRENT_RUN'));
+});
+test('same sessionId with a changed lifecycle revision cannot publish an old task result',async t=>{
+ const f=fixture(t);f.setEntry({...f.entry(),lifecycleRevision:3});const h=await f.open();await h.flush();
+ f.setEntry({...f.entry(),lifecycleRevision:4});await h.finish({text:'STALE_REVISION'});
+ assert.equal(h.record.phase,'retired');assert.equal(h.record.delivered,false);assert(!JSON.stringify(f.calls).includes('STALE_REVISION'));
+});
