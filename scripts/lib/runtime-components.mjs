@@ -28,6 +28,12 @@
 // A component with `blocking: false` is compared and reported but does not
 // decide the parity state. Use it while a component is being brought into
 // line for the first time, then flip it.
+//
+// A runtime component with `absentOk: true` is one a release adds as a whole
+// new directory (the v-session-relay plugin). Until that release, neither host
+// has the directory: parity counts a missing directory as empty (it stays
+// blocking: present on one host only is drift), and promote-to-v captures it
+// only once V has it.
 
 import assert from 'node:assert/strict';
 import { posix } from 'node:path';
@@ -102,6 +108,22 @@ export const COMPONENTS = [
     v: { fixed: `${V_HOME}/extensions/wecom-openclaw-plugin` },
     vlab: { loadPath: /\/extensions\/wecom-openclaw-plugin\/?$/, canonical: () => 'extensions/wecom-openclaw-plugin' },
     capture: { base: 'none', sudo: true, upstream: '@wecom/wecom-openclaw-plugin (version in package.json)' },
+  },
+  {
+    // v-session-relay 2.0 (apps/v-session-relay/plugin; docs/inter-session/design.md
+    // §3.10, §11 WP12): the Gateway ledger behind sessions_send. Our own plugin,
+    // no upstream package, so every file is captured. On V it sits in the
+    // Gateway's auto-discovered extensions directory (like WeCom) and stays
+    // inactive there until scripts/configure-v-session-relay.mjs adds it to
+    // plugins.allow, plugins.entries and plugins.load.paths. VLab's
+    // runtime/extensions is not auto-discovered: only the load path loads it.
+    // Neither host has the directory before lab/inter-session.plan.json ships.
+    id: 'session-relay', kind: 'runtime', label: 'session-relay', suffix: '.session-relay', blocking: true, absentOk: true,
+    target: /^(extensions\/v-session-relay)\/(.+)$/,
+    v: { fixed: `${V_HOME}/extensions/v-session-relay` },
+    vlab: { fixed: 'extensions/v-session-relay' },
+    // Under /home/openclaw/.openclaw: unreadable for the ssh user.
+    capture: { base: 'none', sudo: true },
   },
   {
     // 2026-10-05: V was installed from a newer commit than VLab (V has
@@ -216,8 +238,17 @@ export function captureRuns(name, vDirs) {
     // V's channel plugins live under /home/openclaw/.openclaw, unreadable for the ssh user.
     if (c.capture.sudo) args.push('--sudo');
     return { id: c.id, suffix: c.suffix, release: name + c.suffix, runtime: c.capture.sub ? `${dir}/${c.capture.sub}` : dir,
-      args, out: `release/captured/${name}${c.suffix}`, manifest: `release/captured/${name}${c.suffix}/manifest.json` };
+      args, out: `release/captured/${name}${c.suffix}`, manifest: `release/captured/${name}${c.suffix}/manifest.json`,
+      ...(c.absentOk ? { optional: true } : {}) };
   });
+}
+
+// promote-to-v: the capture runs to do now. An optional run (absentOk: a
+// component whose first release has not reached V) is skipped while V has no
+// directory for it; capturing a missing directory fails, and would fail every
+// promotion before that release.
+export function presentCaptureRuns(runs, existsOnV) {
+  return runs.filter((r) => !r.optional || existsOnV(r.runtime));
 }
 
 // sync-vlab-from-v: the file in git that holds a target's V bytes.
@@ -291,7 +322,8 @@ export function parityPairs({ vDirs, vlabRuntime = VLAB_RUNTIME, vlabGlob, vlabL
     const v = vDirs[c.id];
     assert(v, `${c.id}: V directory not resolved`);
     if (c.vlab.fixed) {
-      pairs.push({ component: c.id, kind: c.kind, blocking: c.blocking, prefix: c.vlab.fixed, v, vlab: `${vlabRuntime}/${c.vlab.fixed}` });
+      pairs.push({ component: c.id, kind: c.kind, blocking: c.blocking, prefix: c.vlab.fixed, v, vlab: `${vlabRuntime}/${c.vlab.fixed}`,
+        ...(c.absentOk ? { optional: true } : {}) });
     } else if (c.vlab.sameProjectAsV) {
       // Same npm project directory name as V's (the generation suffix included).
       const rel = v.slice(v.indexOf('npm/projects/'));

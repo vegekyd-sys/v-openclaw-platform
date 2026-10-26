@@ -1,0 +1,215 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/sessions-send-relay/generated/sessions-spawn-tool-1FQMTkIo.js",
+      "target": "openclaw/dist/sessions-spawn-tool-1FQMTkIo.js",
+      "before": "1a7ab8f9848b1e17a830d7e55f24df01603afd2129bb6807e390f4cc35b17310",
+      "after": "df5ed5cf0de663cb405dabe96c3a2b33a4cb2a1a906b992778fec1c7b348a1dd"
+    },
+    {
+      "source": "lab/release-files/sessions-send-relay/generated/openclaw-tools-BODVdJQD.js",
+      "target": "openclaw/dist/openclaw-tools-BODVdJQD.js",
+      "before": "af27d9ae18e783d376b31ed9e5ad6082a305225bdfadde53e58f0045c7cd6019",
+      "after": "8635f325e0c107c40fdc9d15e967d0dbe2a46eb10f14adb6b31237618bf46469"
+    },
+    {
+      "source": "lab/release-files/inter-session-admission/generated/get-reply-CqW1y05D.js",
+      "target": "openclaw/dist/get-reply-CqW1y05D.js",
+      "before": "9bac6b7c8f8047c0a907c3ef85c2e03da096662d35e5de9790d846e869bf4cc1",
+      "after": "a22a84a9b832d0aed7a0ab00354dde35a332cff377a9eeca6df3130292a4f974"
+    },
+    {
+      "source": "lab/release-files/inter-session-admission/generated/agent-runner.runtime-CAdsMsQt.js",
+      "target": "openclaw/dist/agent-runner.runtime-CAdsMsQt.js",
+      "before": "8c192b9d68e51450cd820352fc610d8ba8ab21cc716b05ea682275e312f95a54",
+      "after": "7ad469dff5b16a7d1be2ad26a4eb06def50014fd4ec9689980cb309bf601b9ab"
+    },
+    {
+      "source": "lab/release-files/inter-session-admission/generated/dispatch-from-config-DOJq_7CI.js",
+      "target": "openclaw/dist/dispatch-from-config-DOJq_7CI.js",
+      "before": "f150902ab3ebf2c9ccb19c4c5eb5158b469554553992a76b1c5e772fe7db39bd",
+      "after": "97e69403f0c37f178c2fc60b57cfb15711009a4e1257ebce12e4dd0d6dba43aa"
+    },
+    {
+      "source": "lab/release-files/task-bridge-extra-sources/generated/task-registry-activity-DSlVVJwD.js",
+      "target": "openclaw/dist/task-registry-activity-DSlVVJwD.js",
+      "before": "8a89045af8dc0b652511ff88bee4d1fe791f2eedfc6c7c3c30b4e17658821697",
+      "after": "2e70d33de6eb5b6bf042de8cfd3ec9d6c34939cedf4ea8c31b19dc0012c7bb6d"
+    },
+    {
+      "source": "lab/release-files/v-experience-session-kind/openclaw/dist/v-experience.js",
+      "target": "openclaw/dist/v-experience.js",
+      "before": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+      "after": "484da30979760dbc5e73d7f9d098c9302703f7859e362a11e6bb5563c8c4013e"
+    },
+    {
+      "source": "lab/release-files/telegram-inter-session-bridge/generated/telegram-ingress-drain-factory-DJM2Jqrc.js",
+      "target": "openclaw/dist/telegram-ingress-drain-factory-DJM2Jqrc.js",
+      "before": "acdf98ee22458f8c6415e0ef7b8cc6cdf3e1edaf951d45a3fd6432ef1ef7b194",
+      "after": "320e82de0e77f10feda3bf65f49e712bc3fecfcfde0d64cf0907517cd2cc0859"
+    },
+    {
+      "source": "lab/release-files/telegram-inter-session-bridge/generated/bot-message-DC6p8sB3.js",
+      "target": "openclaw/dist/bot-message-DC6p8sB3.js",
+      "before": "f37781c45189f3fbff5c18bddd80f6a4d3b816a46e0865530f9d7545894d8c5e",
+      "after": "95064e7117ea50b3f1797dfb3f0326fb5d8506e86e716d424b7a00f512849501"
+    },
+    {
+      "source": "lab/release-files/feishu-inter-session-bridge/generated/monitor.account-WFdlCDhR.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+      "before": "ffdf7072cf7d93cec6d52ad2f72ed2357d872ef310c7e643d169829ef8671bcc",
+      "after": "a8ff41e58c99a36e3ccf2f671f4e00792e792c766092e3cf312473d7ceb45d71"
+    },
+    {
+      "source": "lab/release-files/dingtalk-inter-session-bridge/dist/connection-DCvu-l09.mjs",
+      "target": "npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/connection-DCvu-l09.mjs",
+      "before": "397c42c3f66d0cd7898168de21be1607303723cd797d9174ad4b1d6694d44520",
+      "after": "6df0dd3c1818ff8af7f4e47bd0a9d6d80cfcbc2bdb6f03c03c5a02ed5c7e78a2"
+    },
+    {
+      "source": "lab/release-files/dingtalk-inter-session-bridge/dist/message-handler-BUoLSylZ.mjs",
+      "target": "npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/message-handler-BUoLSylZ.mjs",
+      "before": "d914cbce8951f32e684ab6423d3977d35c62e3a39c5da23e6c42ca804cda0602",
+      "after": "5ecf742f534ea4bde83bdbebd529acc404951a8f940c629f7197ea6cb2639efb"
+    },
+    {
+      "source": "lab/release-files/v-experience-session-kind/dingtalk/dist/v-experience.mjs",
+      "target": "npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/v-experience.mjs",
+      "before": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+      "after": "484da30979760dbc5e73d7f9d098c9302703f7859e362a11e6bb5563c8c4013e"
+    },
+    {
+      "source": "lab/release-files/wecom-inter-session-bridge/dist/src/monitor.js",
+      "target": "extensions/wecom-openclaw-plugin/dist/src/monitor.js",
+      "before": "d4fe3561255428b5446127e2b686319feb5879bae181cc7f38058858f6974f8d",
+      "after": "0c9c1b50277611df5ea23d3e8c3d5ecc23d3aa334ed250a01d933966b37242b2"
+    },
+    {
+      "source": "lab/release-files/v-experience-session-kind/wecom/dist/src/v-experience.mjs",
+      "target": "extensions/wecom-openclaw-plugin/dist/src/v-experience.mjs",
+      "before": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+      "after": "484da30979760dbc5e73d7f9d098c9302703f7859e362a11e6bb5563c8c4013e"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/continuations.js",
+      "target": "extensions/v-session-relay/core/continuations.js",
+      "before": null,
+      "after": "9399c749e8adced4e503c363e14fef9887709bd22b6fac48230f4e2c8ea1287d"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/contracts.js",
+      "target": "extensions/v-session-relay/core/contracts.js",
+      "before": null,
+      "after": "a1588789e1cfe44c3c6e7214f51940ab2d2dca4ba5889019fb4f05097b00156d"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/copy.js",
+      "target": "extensions/v-session-relay/core/copy.js",
+      "before": null,
+      "after": "af1644a85c2e0610457b14a1cfc3734054d4412fa8d99f293f79e9888dfa6064"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/engine.js",
+      "target": "extensions/v-session-relay/core/engine.js",
+      "before": null,
+      "after": "670bdcc702feb57274315f7e229b3c1051a8ef009bf598e724ee463dff27fc9f"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/guard.js",
+      "target": "extensions/v-session-relay/core/guard.js",
+      "before": null,
+      "after": "4edf04d8147e7180de2a305744a64633b2b4795a590b6d0085847c6bbf7521d3"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/host.js",
+      "target": "extensions/v-session-relay/core/host.js",
+      "before": null,
+      "after": "a2c4a8d71011d78ceb7e1a7cc51d08b525aea4e8659dbe41baacaeacfda587d8"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/labels.js",
+      "target": "extensions/v-session-relay/core/labels.js",
+      "before": null,
+      "after": "1a894af3c503a2026c292fa1e0345facb3ee8c4b3ca4ba9e4e0aac3e402d9866"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/ledger.js",
+      "target": "extensions/v-session-relay/core/ledger.js",
+      "before": null,
+      "after": "706c2505efca2e2383605eddf01d1f5dac9d18abe15ee3984fc7ea1de8664818"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/policy.js",
+      "target": "extensions/v-session-relay/core/policy.js",
+      "before": null,
+      "after": "f39e1e193eb3fab2a860f3de5e61a4601770f80b9309abcfe1fb00c8af82b19d"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/queue.js",
+      "target": "extensions/v-session-relay/core/queue.js",
+      "before": null,
+      "after": "49c08634cb8d3294a0286ab7433fb80db53cefc74106f53a30bdcd912b3e7e55"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/recovery.js",
+      "target": "extensions/v-session-relay/core/recovery.js",
+      "before": null,
+      "after": "6414fa7f8e6843769d8d54aeb927dc241bcf3ec793373718f9abe85efc351b51"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/requests.js",
+      "target": "extensions/v-session-relay/core/requests.js",
+      "before": null,
+      "after": "46d8abe4570d9ac3140c038e07eb781a26ebfc5d47bad6f15400e3e685d2d237"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/routes.js",
+      "target": "extensions/v-session-relay/core/routes.js",
+      "before": null,
+      "after": "eadfd0d10c5e281f66e340115aec37f66ecc4a2f9a082bf6b949b0303b8c0c12"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/tasks.js",
+      "target": "extensions/v-session-relay/core/tasks.js",
+      "before": null,
+      "after": "74504ce2922fc669fc2557148908d01550358808999d4df19bd4d9387e2ead77"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/transports/agent.js",
+      "target": "extensions/v-session-relay/core/transports/agent.js",
+      "before": null,
+      "after": "b4c2f48ebe63d8ebf48badbc013e31cf2181a7e0b984365f53cf2642ce53d2a9"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/transports/bridge.js",
+      "target": "extensions/v-session-relay/core/transports/bridge.js",
+      "before": null,
+      "after": "23731930069afc18bec4d9ee99228821c70b8693731a1f70e40ee1ceed63175c"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/visible.js",
+      "target": "extensions/v-session-relay/core/visible.js",
+      "before": null,
+      "after": "849771ebf38632303c9a4d482a59119f6c4a53e8be2f1062023a295535004bdd"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/index.js",
+      "target": "extensions/v-session-relay/index.js",
+      "before": null,
+      "after": "35799d31b67855a9c2a60b0bd99b170b36e7905c03ec3817871962959d11068c"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/openclaw.plugin.json",
+      "target": "extensions/v-session-relay/openclaw.plugin.json",
+      "before": null,
+      "after": "722e4e46259fa4c0285981e378d40614a22df8de8ff3e28dbee56bb6ae818d96"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/package.json",
+      "target": "extensions/v-session-relay/package.json",
+      "before": null,
+      "after": "f1e1c0ff694fd8930832347faff4f2fb63beacc749c2381945e3cd2b42d016b3"
+    }
+  ]
+}

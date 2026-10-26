@@ -21,6 +21,14 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
   let active;
   const log=(row,type,extra={})=>audit({type,voiceSessionId:ownerId,callId:row.callId,runId:row.runId,sessionKey,...extra});
   const retire=row=>{row.retired=true;row.observer.close();};
+  const present=(row,params)=>gateway.request('v.feishu.taskPresentation',{
+    agentId:'makaron',sessionKey,...params,
+  },{timeoutMs:2000});
+  const finishPresentation=(row,result,error)=>{
+    if(!row.presentationId)return;
+    void present(row,{op:'finish',presentationId:row.presentationId,runId:row.runId,
+      sequence:++row.presentationSequence,result,error:error?String(error.message??error):undefined}).catch(()=>{});
+  };
   async function cancelRow(row) {
     retire(row);
     if(row.cancelPromise)return row.cancelPromise;
@@ -113,6 +121,14 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
     let deadline;
     try {
       log(row,'backend.start-requested');
+      // Register the exact existing run before execution. The Gateway owns the
+      // native card; private voice context is never used as its visible brief.
+      try {
+        const p=await present(row,{op:'begin',source:'voice-direct',taskId:row.runId,runId:row.runId,text:question});
+        if(p?.enabled&&p.presentationId){row.presentationId=p.presentationId;row.presentationSequence=0;}
+      } catch { /* Older gateways/presentation failure never cancel the goal. */ }
+      if(row.retired||signal?.aborted)throw Error('任务已取消');
+
       const ack=await gateway.request('chat.send',{agentId:'makaron',sessionKey,message:backendQuestion(question,context),deliver:false,idempotencyKey:row.runId},{timeoutMs:30000});
       if(ack.runId!==row.runId)throw Error('V 后台返回了不同任务身份，不能绑定或取消它');
       log(row,'backend.started',{ack});
@@ -142,8 +158,10 @@ export function createBackendDelegation({gateway,sessionKey,ownerId,audit=()=>{}
       if(row.retired||signal?.aborted)throw Error('任务已取消');
       log(row,'backend.completed',{result});
       const parsed=readBackendResult(result);
+      finishPresentation(row,{text:parsed.text});
       return {backend:'V',runId:row.runId,result:parsed.text,...(parsed.summary?{spokenSummary:parsed.summary}:{})};
     } catch(error) {
+      finishPresentation(row,null,error);
       // A start timeout may still have launched the exact idempotency run.
       if(!row.retired)await cancelRow(row).catch(e=>log(row,'backend.cancel-unconfirmed',{error:e.message}));
       throw error;

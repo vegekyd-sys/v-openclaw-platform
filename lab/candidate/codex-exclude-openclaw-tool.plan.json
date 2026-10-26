@@ -1,0 +1,12 @@
+{
+  "support": [
+    "lab/candidate/codex-exclude-openclaw-tool.mjs",
+    "config/v-codex-exclude-openclaw-tool.json"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/codex-exclude-openclaw-tool.mjs"
+  ],
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity"
+}

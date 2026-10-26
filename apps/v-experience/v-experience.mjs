@@ -257,12 +257,14 @@ function escapeMarkdown(text) {
 
 // -------------------------------------------------------------- background
 
-const KIND_ORDER = ["子 agent", "后台命令", "生图", "生成视频", "生成音乐", "自动化", "后台任务"];
+// v-experience-session-kind-v1: 「会话请求」 is a sessions_send request another session is working on.
+const KIND_ORDER = ["会话请求", "子 agent", "后台命令", "生图", "生成视频", "生成音乐", "自动化", "后台任务"];
 
 /** What a task is, in the words V uses. */
 export function backgroundKind(task) {
   const runtime = task?.runtime;
   const kind = typeof task?.taskKind === "string" ? task.taskKind : "";
+  if (kind === "sessions_send") return "会话请求";
   if (runtime === "subagent" || runtime === "acp") return "子 agent";
   if (runtime === "cron") return "自动化";
   if (kind === "exec") return "后台命令";

@@ -47,6 +47,19 @@ HTTPS. When the Gateway is the broken component, the alert still goes out.
 Every rule latches: it fires once on the way in, stays quiet while the condition
 persists, and sends a recovery message on the way out.
 
+Inter-session collaboration turns (`sessions_send` through the channel inbound
+bridge, `docs/inter-session/design.md`) are not people. Their runIds, synthetic
+message ids and MessageSids start with `v-a2a-` / `v-a2a:` and their Feishu
+`[firsttext-e2e.1]` record says `origin: "inter_session"`. The slow-first-reaction
+and slow-dispatch waits, the per-conversation dispatch failures and the ingress
+stall count leave them out; BUSY attempts (zero output, retried later) are such
+turns too. The core's `message dispatch completed` line names no message, but
+the `message processed … outcome=error` line it writes right after (same
+session, a few ms later) carries the MessageSid, which is `v-a2a:…` for a relay
+turn; the sentinel pairs the two. A failed dispatch writes no
+`[firsttext-e2e.1]` record, so that record cannot be used to recognise it.
+Cut-off replies keep room turns: people in that chat watched the answer stop.
+
 ## Verifying it without breaking production
 
 The rule layer takes its sample from one function, so it can be driven with

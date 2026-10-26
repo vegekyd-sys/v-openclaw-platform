@@ -1,0 +1,286 @@
+{
+  "files": [
+    {
+      "source": "apps/v-session-relay/plugin/core/continuations.js",
+      "target": "extensions/v-session-relay/core/continuations.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/contracts.js",
+      "target": "extensions/v-session-relay/core/contracts.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/copy.js",
+      "target": "extensions/v-session-relay/core/copy.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/engine.js",
+      "target": "extensions/v-session-relay/core/engine.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/guard.js",
+      "target": "extensions/v-session-relay/core/guard.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/host.js",
+      "target": "extensions/v-session-relay/core/host.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/labels.js",
+      "target": "extensions/v-session-relay/core/labels.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/ledger.js",
+      "target": "extensions/v-session-relay/core/ledger.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/policy.js",
+      "target": "extensions/v-session-relay/core/policy.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/queue.js",
+      "target": "extensions/v-session-relay/core/queue.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/recovery.js",
+      "target": "extensions/v-session-relay/core/recovery.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/requests.js",
+      "target": "extensions/v-session-relay/core/requests.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/routes.js",
+      "target": "extensions/v-session-relay/core/routes.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/tasks.js",
+      "target": "extensions/v-session-relay/core/tasks.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/transports/agent.js",
+      "target": "extensions/v-session-relay/core/transports/agent.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/transports/bridge.js",
+      "target": "extensions/v-session-relay/core/transports/bridge.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/visible.js",
+      "target": "extensions/v-session-relay/core/visible.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/index.js",
+      "target": "extensions/v-session-relay/index.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/openclaw.plugin.json",
+      "target": "extensions/v-session-relay/openclaw.plugin.json",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/package.json",
+      "target": "extensions/v-session-relay/package.json",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/bounded-turn-wzJrwKKe.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/bounded-turn-wzJrwKKe.js",
+      "before": "8f36224c274c6d52fcc8ba4c4b43de4aee63a38391c08cdbd4fc740b6379b84c"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/run-attempt-D1hJO4fX.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js",
+      "before": "80875cf3cab593453d4f1c1014c47105d0ce1657e955ed510ff93d754f56457f"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/settled-turn-context-D3SNWtUn.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/settled-turn-context-D3SNWtUn.js",
+      "before": "57105bab9d988d333db1752b75678cd1d00c811bef28c9258adb3aba239ca1c6"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/settled-turn-finalizer-BVJx4yoc.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/settled-turn-finalizer-BVJx4yoc.js",
+      "before": "5aae2e1873a41744fbe05a4c9f1041404c4b06a132ea86ff46300eb10d99f5bd"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/transcript-mirror-DTUxFWa_.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/transcript-mirror-DTUxFWa_.js",
+      "before": "17750f19b8a1a56b3897ad84ea4177e1f5b02d7de5217072136b77f5ef0b805b"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/index.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/index.js",
+      "before": "17f2e4d25ca24f4f7694b2f109e20d1c7411a5ca8583e600373473673dc61706"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/feishu/monitor.account-WFdlCDhR.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+      "before": "535841d0219848a266d146094ee3441bbf48ed7a8aa28f04d111afb330247fef"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation.mjs",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-task-presentation.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/agent-command-DPfawBbr.js",
+      "target": "openclaw/dist/agent-command-DPfawBbr.js",
+      "before": "d63e33079b900243b2f7f6d94a0f8476de0ed12c41a6d83fba5eb1c8ad24577a"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/agent-runner.runtime-CAdsMsQt.js",
+      "target": "openclaw/dist/agent-runner.runtime-CAdsMsQt.js",
+      "before": "8c192b9d68e51450cd820352fc610d8ba8ab21cc716b05ea682275e312f95a54"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/delivery.runtime-CAsclR-9.js",
+      "target": "openclaw/dist/delivery.runtime-CAsclR-9.js",
+      "before": "87623e02f9f3d0750562589b366942db7f677bdab228f90d389accb74b1b5845"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/dispatch-from-config-DOJq_7CI.js",
+      "target": "openclaw/dist/dispatch-from-config-DOJq_7CI.js",
+      "before": "f150902ab3ebf2c9ccb19c4c5eb5158b469554553992a76b1c5e772fe7db39bd"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/embedded-agent-DaSvA-Yk.js",
+      "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
+      "before": "bcb20f5dc47a3bd6f543c5140d51a85e80157d50ec945ca708bd78fb718bf50b"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/get-reply-CqW1y05D.js",
+      "target": "openclaw/dist/get-reply-CqW1y05D.js",
+      "before": "9bac6b7c8f8047c0a907c3ef85c2e03da096662d35e5de9790d846e869bf4cc1"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/gpt-live-consult-continuation.js",
+      "target": "openclaw/dist/gpt-live-consult-continuation.js",
+      "before": "8a9c7292f7d7b84041a9d14681c232e315b03979a9944706040fdc548d392406"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/openclaw-tools-BODVdJQD.js",
+      "target": "openclaw/dist/openclaw-tools-BODVdJQD.js",
+      "before": "c4f575f2f75a7113ce612d54a7c83f09d0e54765be519e4b95789d8a61b405d0"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/progress-card-CciYmFS8.js",
+      "target": "openclaw/dist/progress-card-CciYmFS8.js",
+      "before": "b579f12f0a8051b95b93f41c853bd2ac01504ed115459d30055447d702fc4fa8"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/realtime-session-harness-CEO5kVAJ.js",
+      "target": "openclaw/dist/realtime-session-harness-CEO5kVAJ.js",
+      "before": "74bc94f5d66fbfbd0ffe2994f5c7cac501e656d898ad142851b8bdaf592c49cf"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/session-task-lifecycle.mjs",
+      "target": "openclaw/dist/session-task-lifecycle.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/sessions-spawn-tool-1FQMTkIo.js",
+      "target": "openclaw/dist/sessions-spawn-tool-1FQMTkIo.js",
+      "before": "1a7ab8f9848b1e17a830d7e55f24df01603afd2129bb6807e390f4cc35b17310"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/src-B9mb84px.js",
+      "target": "openclaw/dist/src-B9mb84px.js",
+      "before": "adc5204b576324562d0f42bd77d1f2c944816fdd38b0889b37b384c2eb8d5c61"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/subagent-announce-delivery-Dosep7Zr.js",
+      "target": "openclaw/dist/subagent-announce-delivery-Dosep7Zr.js",
+      "before": "6269e1bd1697177f5eca9aef878509521fa7fcb64d5c9a0c18e44bdcb53a363b"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/task-registry-activity-DSlVVJwD.js",
+      "target": "openclaw/dist/task-registry-activity-DSlVVJwD.js",
+      "before": "8a89045af8dc0b652511ff88bee4d1fe791f2eedfc6c7c3c30b4e17658821697"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/v-experience.js",
+      "target": "openclaw/dist/v-experience.js",
+      "before": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b"
+    },
+    {
+      "source": "lab/feishu-task-presentation-command.mjs",
+      "target": "openclaw/dist/v-feishu-task-presentation-command.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/feishu-task-presentation-core-bridge.mjs",
+      "target": "openclaw/dist/v-feishu-task-presentation-core-bridge.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/feishu-task-presentation-delivery.mjs",
+      "target": "openclaw/dist/v-feishu-task-presentation-delivery.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/feishu-task-presentation-followup.mjs",
+      "target": "openclaw/dist/v-feishu-task-presentation-followup.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation-runtime.mjs",
+      "target": "openclaw/dist/v-feishu-task-presentation-runtime.mjs",
+      "before": null
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/v-feishu-voice-actor.mjs",
+      "target": "openclaw/dist/v-feishu-voice-actor.mjs",
+      "before": "17608d695ff0893a71f94574e2cbb8a1a765246f36b7b51d2932afdf002f6a42"
+    },
+    {
+      "source": "lab/candidate/bound-task-plugin/index.js",
+      "target": "extensions/bound-task-candidate/index.js"
+    },
+    {
+      "source": "lab/candidate/bound-task-plugin/openclaw.plugin.json",
+      "target": "extensions/bound-task-candidate/openclaw.plugin.json"
+    },
+    {
+      "source": "lab/candidate/bound-task-plugin/package.json",
+      "target": "extensions/bound-task-candidate/package.json"
+    }
+  ],
+  "tests": [
+    "lab/candidate/bound-task-smoke.mjs"
+  ],
+  "support": [
+    "lab/candidate/bound-task-support.mjs",
+    "lab/candidate/feishu-fake-open-api.mjs",
+    "lab/candidate/feishu-no-live.cjs",
+    "lab/realtime-direct-tools/backend.mjs",
+    "lab/realtime-direct-tools/tools.mjs",
+    "lab/realtime-direct-tools/lark-readonly.mjs",
+    "lab/gpt-live-consult-progress.mjs",
+    "lab/gpt-live-h5/result-presentation.mjs",
+    "lab/gpt-live-h5/media-references.mjs"
+  ],
+  "user": "lab-db91-parity",
+  "env": {
+    "BOUND_TASK_HARNESS": "worker",
+    "ISC_CODEX_RUNTIME_FILES": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/bounded-turn-wzJrwKKe.js,npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js,npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/settled-turn-context-D3SNWtUn.js,npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/settled-turn-finalizer-BVJx4yoc.js,npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/transcript-mirror-DTUxFWa_.js"
+  },
+  "timeoutSeconds": 600
+}

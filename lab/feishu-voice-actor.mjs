@@ -3,7 +3,7 @@ import {createHmac, timingSafeEqual} from 'node:crypto';
 const ID = /^[A-Za-z0-9_-]{1,128}$/u;
 const METHODS = new Set(['voice.feishu.resolve','sessions.resolve','sessions.describe','chat.history','tools.catalog','tools.invoke','talk.client.create',
   'talk.client.close','talk.client.toolCall','talk.client.steer','voice.product.task.start','voice.product.task.read',
-  'voice.product.task.lookup','voice.product.task.control','voice.product.task.cancel','voice.product.task-result','voice.product.control','send','agent.wait']);
+  'v.feishu.taskPresentation','voice.product.task.lookup','voice.product.task.control','voice.product.task.cancel','voice.product.task-result','voice.product.control','send','agent.wait']);
 const canonical = value => JSON.stringify(value === undefined ? null : value && typeof value === 'object'
   ? Array.isArray(value) ? value.map(v => JSON.parse(canonical(v)))
     : Object.fromEntries(Object.keys(value).filter(k=>value[k]!==undefined).sort().map(k => [k, JSON.parse(canonical(value[k]))])) : value);
@@ -50,7 +50,7 @@ export function actorClient(client,actor) {
 
 export function createVoiceActorMiddleware({resolveAccount,resolvePolicy,now}) {
   const resources = new Map();
-  const resourceKeys = ['runId','taskId','voiceSessionId','clientSecret'];
+  const resourceKeys = ['runId','taskId','voiceSessionId','clientSecret','presentationId'];
   return async function prepare(opts) {
     const {voiceActor,...params} = opts.req.params ?? {};
     if (voiceActor === undefined) return opts;

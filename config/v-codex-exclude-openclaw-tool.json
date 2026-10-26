@@ -1,0 +1,11 @@
+{
+  "plugins": {
+    "entries": {
+      "codex": {
+        "config": {
+          "codexDynamicToolsExclude": ["openclaw"]
+        }
+      }
+    }
+  }
+}

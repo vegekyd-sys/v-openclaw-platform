@@ -22,6 +22,7 @@ export function createGptLiveContinuationRuntimeSource() {
     `import { f as onAgentEventForRun, c as getAgentEventLifecycleGeneration, l as isAgentEventLifecycleGenerationCurrent, m as registerAgentEventLifecycleRotationHandler } from "./agent-events-Con5xUCM.js";\n` +
     `${createGptLiveConsultProgressObserver.toString()}\n${createGptLiveConsultContinuationRegistry.toString()}\n` +
     `const registry = createGptLiveConsultContinuationRegistry({\n` +
+    ` watchRequesterRun: (runId, options) => globalThis[Symbol.for("openclaw.v.sessionRelay.host")]?.engine?.watchRequesterRun(runId, options),\n` +
     ` subscribeRun: onAgentEventForRun, createProgressObserver: createGptLiveConsultProgressObserver,\n` +
     ` resolveSessionIdentity: (sessionKey) => ({ sessionId: loadRequesterSessionEntry(sessionKey).entry?.sessionId, agentId: resolveAgentIdFromSessionKey(sessionKey) }),\n` +
     ` getLifecycleGeneration: getAgentEventLifecycleGeneration, isLifecycleCurrent: isAgentEventLifecycleGenerationCurrent,\n` +

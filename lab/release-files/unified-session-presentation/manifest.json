@@ -1,0 +1,306 @@
+{
+  "capture": "release/captured/v2026.9.1-db91.6-sessions-search-20261026",
+  "scope": "Feishu relay plus task presentation; other channel bridges unchanged",
+  "files": [
+    {
+      "source": "apps/v-session-relay/plugin/core/continuations.js",
+      "target": "extensions/v-session-relay/core/continuations.js",
+      "before": null,
+      "sha256": "9399c749e8adced4e503c363e14fef9887709bd22b6fac48230f4e2c8ea1287d"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/contracts.js",
+      "target": "extensions/v-session-relay/core/contracts.js",
+      "before": null,
+      "sha256": "a1588789e1cfe44c3c6e7214f51940ab2d2dca4ba5889019fb4f05097b00156d"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/copy.js",
+      "target": "extensions/v-session-relay/core/copy.js",
+      "before": null,
+      "sha256": "af1644a85c2e0610457b14a1cfc3734054d4412fa8d99f293f79e9888dfa6064"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/engine.js",
+      "target": "extensions/v-session-relay/core/engine.js",
+      "before": null,
+      "sha256": "670bdcc702feb57274315f7e229b3c1051a8ef009bf598e724ee463dff27fc9f"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/guard.js",
+      "target": "extensions/v-session-relay/core/guard.js",
+      "before": null,
+      "sha256": "4edf04d8147e7180de2a305744a64633b2b4795a590b6d0085847c6bbf7521d3"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/host.js",
+      "target": "extensions/v-session-relay/core/host.js",
+      "before": null,
+      "sha256": "a2c4a8d71011d78ceb7e1a7cc51d08b525aea4e8659dbe41baacaeacfda587d8"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/labels.js",
+      "target": "extensions/v-session-relay/core/labels.js",
+      "before": null,
+      "sha256": "1a894af3c503a2026c292fa1e0345facb3ee8c4b3ca4ba9e4e0aac3e402d9866"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/ledger.js",
+      "target": "extensions/v-session-relay/core/ledger.js",
+      "before": null,
+      "sha256": "706c2505efca2e2383605eddf01d1f5dac9d18abe15ee3984fc7ea1de8664818"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/policy.js",
+      "target": "extensions/v-session-relay/core/policy.js",
+      "before": null,
+      "sha256": "f39e1e193eb3fab2a860f3de5e61a4601770f80b9309abcfe1fb00c8af82b19d"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/queue.js",
+      "target": "extensions/v-session-relay/core/queue.js",
+      "before": null,
+      "sha256": "49c08634cb8d3294a0286ab7433fb80db53cefc74106f53a30bdcd912b3e7e55"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/recovery.js",
+      "target": "extensions/v-session-relay/core/recovery.js",
+      "before": null,
+      "sha256": "6414fa7f8e6843769d8d54aeb927dc241bcf3ec793373718f9abe85efc351b51"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/requests.js",
+      "target": "extensions/v-session-relay/core/requests.js",
+      "before": null,
+      "sha256": "46d8abe4570d9ac3140c038e07eb781a26ebfc5d47bad6f15400e3e685d2d237"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/routes.js",
+      "target": "extensions/v-session-relay/core/routes.js",
+      "before": null,
+      "sha256": "eadfd0d10c5e281f66e340115aec37f66ecc4a2f9a082bf6b949b0303b8c0c12"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/tasks.js",
+      "target": "extensions/v-session-relay/core/tasks.js",
+      "before": null,
+      "sha256": "74504ce2922fc669fc2557148908d01550358808999d4df19bd4d9387e2ead77"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/transports/agent.js",
+      "target": "extensions/v-session-relay/core/transports/agent.js",
+      "before": null,
+      "sha256": "b4c2f48ebe63d8ebf48badbc013e31cf2181a7e0b984365f53cf2642ce53d2a9"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/transports/bridge.js",
+      "target": "extensions/v-session-relay/core/transports/bridge.js",
+      "before": null,
+      "sha256": "23731930069afc18bec4d9ee99228821c70b8693731a1f70e40ee1ceed63175c"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/visible.js",
+      "target": "extensions/v-session-relay/core/visible.js",
+      "before": null,
+      "sha256": "849771ebf38632303c9a4d482a59119f6c4a53e8be2f1062023a295535004bdd"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/index.js",
+      "target": "extensions/v-session-relay/index.js",
+      "before": null,
+      "sha256": "35799d31b67855a9c2a60b0bd99b170b36e7905c03ec3817871962959d11068c"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/openclaw.plugin.json",
+      "target": "extensions/v-session-relay/openclaw.plugin.json",
+      "before": null,
+      "sha256": "722e4e46259fa4c0285981e378d40614a22df8de8ff3e28dbee56bb6ae818d96"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/package.json",
+      "target": "extensions/v-session-relay/package.json",
+      "before": null,
+      "sha256": "f1e1c0ff694fd8930832347faff4f2fb63beacc749c2381945e3cd2b42d016b3"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/bounded-turn-wzJrwKKe.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/bounded-turn-wzJrwKKe.js",
+      "before": "8f36224c274c6d52fcc8ba4c4b43de4aee63a38391c08cdbd4fc740b6379b84c",
+      "sha256": "a2eebda0a3425249ed70cd6cc710dc0c204bdcf41415618125ade6ba02a216a6"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/run-attempt-D1hJO4fX.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js",
+      "before": "80875cf3cab593453d4f1c1014c47105d0ce1657e955ed510ff93d754f56457f",
+      "sha256": "c34d6d777a862db761e22e03fae20e70c595867361052475a5703f67446ce2ce"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/settled-turn-context-D3SNWtUn.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/settled-turn-context-D3SNWtUn.js",
+      "before": "57105bab9d988d333db1752b75678cd1d00c811bef28c9258adb3aba239ca1c6",
+      "sha256": "929c1ea936cce6ac892700114d9c042db856a79ad6d02d89355ef9514d2e08db"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/settled-turn-finalizer-BVJx4yoc.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/settled-turn-finalizer-BVJx4yoc.js",
+      "before": "5aae2e1873a41744fbe05a4c9f1041404c4b06a132ea86ff46300eb10d99f5bd",
+      "sha256": "7506b388b1718c02fe72c69195b49649e4a17cb730fac87720eef7c7a277dd94"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/transcript-mirror-DTUxFWa_.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/transcript-mirror-DTUxFWa_.js",
+      "before": "17750f19b8a1a56b3897ad84ea4177e1f5b02d7de5217072136b77f5ef0b805b",
+      "sha256": "af4c007c0965bf78dee27ea3185044488b419c4ea2905b960c8f0e1c75dd4ae5"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/index.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/index.js",
+      "before": "17f2e4d25ca24f4f7694b2f109e20d1c7411a5ca8583e600373473673dc61706",
+      "sha256": "7803f53a62f3824fd9670f2928038ea9f7060d0ad3bef0663cad31b24329c43c"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/feishu/monitor.account-WFdlCDhR.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+      "before": "535841d0219848a266d146094ee3441bbf48ed7a8aa28f04d111afb330247fef",
+      "sha256": "f1f45455a170908cd5c3eebf66ba52f763d6a17916861452ef88e3af6e881dfb"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation.mjs",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-task-presentation.mjs",
+      "before": null,
+      "sha256": "604b98fa78ecef8c778990eae389031954824b58e650e952801e8957e8470ada"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/agent-command-DPfawBbr.js",
+      "target": "openclaw/dist/agent-command-DPfawBbr.js",
+      "before": "d63e33079b900243b2f7f6d94a0f8476de0ed12c41a6d83fba5eb1c8ad24577a",
+      "sha256": "a7811ac05c817e98de881195e18407af3e485b2b8b242ed3465064ba72c680d1"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/agent-runner.runtime-CAdsMsQt.js",
+      "target": "openclaw/dist/agent-runner.runtime-CAdsMsQt.js",
+      "before": "8c192b9d68e51450cd820352fc610d8ba8ab21cc716b05ea682275e312f95a54",
+      "sha256": "09f1b500f122381a4af008d7bb78f478a0c703602974d50685a40b8238651e50"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/delivery.runtime-CAsclR-9.js",
+      "target": "openclaw/dist/delivery.runtime-CAsclR-9.js",
+      "before": "87623e02f9f3d0750562589b366942db7f677bdab228f90d389accb74b1b5845",
+      "sha256": "3e943055229ccf3e2becae1bb132992f9861a5b2295a9abbb215ac6780aa7b2e"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/dispatch-from-config-DOJq_7CI.js",
+      "target": "openclaw/dist/dispatch-from-config-DOJq_7CI.js",
+      "before": "f150902ab3ebf2c9ccb19c4c5eb5158b469554553992a76b1c5e772fe7db39bd",
+      "sha256": "97e69403f0c37f178c2fc60b57cfb15711009a4e1257ebce12e4dd0d6dba43aa"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/embedded-agent-DaSvA-Yk.js",
+      "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
+      "before": "bcb20f5dc47a3bd6f543c5140d51a85e80157d50ec945ca708bd78fb718bf50b",
+      "sha256": "88a9a95e96af39eea5753ae75b0952fa216c9a83c99d876c24dc2b44c3e3ac86"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/get-reply-CqW1y05D.js",
+      "target": "openclaw/dist/get-reply-CqW1y05D.js",
+      "before": "9bac6b7c8f8047c0a907c3ef85c2e03da096662d35e5de9790d846e869bf4cc1",
+      "sha256": "a22a84a9b832d0aed7a0ab00354dde35a332cff377a9eeca6df3130292a4f974"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/gpt-live-consult-continuation.js",
+      "target": "openclaw/dist/gpt-live-consult-continuation.js",
+      "before": "8a9c7292f7d7b84041a9d14681c232e315b03979a9944706040fdc548d392406",
+      "sha256": "41f572dd09f5934314773310cab6e03a21a750ded5b85c51f1970c8f80d91afa"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/openclaw-tools-BODVdJQD.js",
+      "target": "openclaw/dist/openclaw-tools-BODVdJQD.js",
+      "before": "c4f575f2f75a7113ce612d54a7c83f09d0e54765be519e4b95789d8a61b405d0",
+      "sha256": "4bed21d8039c6d825e70100615329d03c2ede065249ff61a0c503e83d432a754"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/progress-card-CciYmFS8.js",
+      "target": "openclaw/dist/progress-card-CciYmFS8.js",
+      "before": "b579f12f0a8051b95b93f41c853bd2ac01504ed115459d30055447d702fc4fa8",
+      "sha256": "40c4d10a52e8ee4e1984351d7e71c19048a9dcbb1ef4830615c455cf2174bc10"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/realtime-session-harness-CEO5kVAJ.js",
+      "target": "openclaw/dist/realtime-session-harness-CEO5kVAJ.js",
+      "before": "74bc94f5d66fbfbd0ffe2994f5c7cac501e656d898ad142851b8bdaf592c49cf",
+      "sha256": "d8515037de8468ad82330a92f8644382efd4f4b1050d92abaa18a4747ccd4a76"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/session-task-lifecycle.mjs",
+      "target": "openclaw/dist/session-task-lifecycle.mjs",
+      "before": null,
+      "sha256": "ee510a91a78db739adfbf8af3343d924bb09e60188ce01bf6d3cdb20534d51f6"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/sessions-spawn-tool-1FQMTkIo.js",
+      "target": "openclaw/dist/sessions-spawn-tool-1FQMTkIo.js",
+      "before": "1a7ab8f9848b1e17a830d7e55f24df01603afd2129bb6807e390f4cc35b17310",
+      "sha256": "ba127bab652e9f4401437816895d90e5471cc3d7bb8387cbf159f3b9e31f5f32"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/src-B9mb84px.js",
+      "target": "openclaw/dist/src-B9mb84px.js",
+      "before": "adc5204b576324562d0f42bd77d1f2c944816fdd38b0889b37b384c2eb8d5c61",
+      "sha256": "b082258bca1169829a2079a133b60e78c865876b3ede2455a07a29894a942727"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/subagent-announce-delivery-Dosep7Zr.js",
+      "target": "openclaw/dist/subagent-announce-delivery-Dosep7Zr.js",
+      "before": "6269e1bd1697177f5eca9aef878509521fa7fcb64d5c9a0c18e44bdcb53a363b",
+      "sha256": "f8b6fd0fd2803d78e3c8f5570f90f7e2532ddb2f551151deb1c1a06fbad8650d"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/task-registry-activity-DSlVVJwD.js",
+      "target": "openclaw/dist/task-registry-activity-DSlVVJwD.js",
+      "before": "8a89045af8dc0b652511ff88bee4d1fe791f2eedfc6c7c3c30b4e17658821697",
+      "sha256": "2e70d33de6eb5b6bf042de8cfd3ec9d6c34939cedf4ea8c31b19dc0012c7bb6d"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/core/v-experience.js",
+      "target": "openclaw/dist/v-experience.js",
+      "before": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+      "sha256": "484da30979760dbc5e73d7f9d098c9302703f7859e362a11e6bb5563c8c4013e"
+    },
+    {
+      "source": "lab/feishu-task-presentation-command.mjs",
+      "target": "openclaw/dist/v-feishu-task-presentation-command.mjs",
+      "before": null,
+      "sha256": "acc0fcf5da7d409876b07ab10053c45a7ff0ef848cc0b6a8b100a2ef5b2999c2"
+    },
+    {
+      "source": "lab/feishu-task-presentation-core-bridge.mjs",
+      "target": "openclaw/dist/v-feishu-task-presentation-core-bridge.mjs",
+      "before": null,
+      "sha256": "920fd1f966a5014efd3036d7058d766d3da97f199ebc75f19046bffbaf709c09"
+    },
+    {
+      "source": "lab/feishu-task-presentation-delivery.mjs",
+      "target": "openclaw/dist/v-feishu-task-presentation-delivery.mjs",
+      "before": null,
+      "sha256": "8e11035fcaa7b3f8b779fe354ccd39337344d245b99096f6ce1234ddfb321ea5"
+    },
+    {
+      "source": "lab/feishu-task-presentation-followup.mjs",
+      "target": "openclaw/dist/v-feishu-task-presentation-followup.mjs",
+      "before": null,
+      "sha256": "2e3922a5000f9e817046856bf1c952d569a7faad391e467f641c58d07961e017"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation-runtime.mjs",
+      "target": "openclaw/dist/v-feishu-task-presentation-runtime.mjs",
+      "before": null,
+      "sha256": "e48e2604cc84649e399bcb0446673c298cfe0db40f37e359687fc4da9e17f06e"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/v-feishu-voice-actor.mjs",
+      "target": "openclaw/dist/v-feishu-voice-actor.mjs",
+      "before": "17608d695ff0893a71f94574e2cbb8a1a765246f36b7b51d2932afdf002f6a42",
+      "sha256": "9c890ca5e326b958554337de4f0aec94af94a26581da13054d6b50efecfa677e"
+    }
+  ]
+}

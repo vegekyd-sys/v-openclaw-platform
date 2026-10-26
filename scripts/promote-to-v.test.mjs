@@ -142,3 +142,39 @@ test('align refusal after install: own files -> undo, sidecar -> install on V, l
   // Anything else wrong besides it is still classified on its own.
   assert.equal(classifyAlignFailure(p({ target: codex, copy: 'vlab-gateway', kind: 'differs' }, { target: 'openclaw/dist/a.js', kind: 'differs' }), mine).kind, 'undo');
 });
+
+test('a new plugin directory: install creates it (0755) with its files, undo removes the files and the directories it created', () => withFiles(dir => {
+  // V's extensions directory exists; the plugin directory and its subdirectories do not.
+  const ext = path.join(dir, 'extensions');
+  fs.mkdirSync(path.join(ext, 'wecom-openclaw-plugin'), { recursive: true });
+  fs.writeFileSync(path.join(ext, 'wecom-openclaw-plugin', 'index.js'), 'wecom\n');
+  const plugin = path.join(ext, 'v-session-relay');
+  const rel = ['core/contracts.js', 'core/engine.js', 'core/transports/agent.js', 'core/transports/bridge.js', 'index.js', 'package.json'];
+  const files = rel.map((r) => ({ vPath: path.join(plugin, r), before: null, after: hash(`${r}\n`) }));
+  fs.mkdirSync(path.join(dir, 'files'));
+  rel.forEach((r, i) => fs.writeFileSync(path.join(dir, 'files', String(i)), `${r}\n`));
+  fs.writeFileSync(path.join(dir, 'plan.json'), JSON.stringify({ files }));
+  assert.equal(remote('check', dir).status, 0, 'a missing file is the before-state of an added file');
+  let run = remote('install', dir); assert.equal(run.status, 0, run.stderr);
+  for (const r of rel) assert.equal(fs.readFileSync(path.join(plugin, r), 'utf8'), `${r}\n`);
+  for (const d of [plugin, path.join(plugin, 'core'), path.join(plugin, 'core/transports')]) assert.equal(fs.statSync(d).mode & 0o777, 0o755, d);
+  assert.equal(fs.statSync(path.join(plugin, 'index.js')).mode & 0o777, 0o644);
+  const undo = JSON.parse(fs.readFileSync(path.join(dir, 'undo.json')));
+  assert.deepEqual(undo.map((u) => u.createdDirs ?? null), [[plugin, path.join(plugin, 'core')], null, [path.join(plugin, 'core/transports')], null, null, null]);
+  assert.equal(remote('install', dir).status, 3, 'a second install sees the release already there');
+  run = remote('undo', dir); assert.equal(run.status, 0, run.stderr);
+  assert.equal(fs.existsSync(plugin), false, 'the plugin directory is gone again');
+  assert.deepEqual(fs.readdirSync(ext), ['wecom-openclaw-plugin'], 'nothing else in extensions/ was touched');
+}));
+
+test('undo keeps a created directory that something else has put a file into since', () => withFiles(dir => {
+  const plugin = path.join(dir, 'extensions', 'v-session-relay');
+  fs.mkdirSync(path.join(dir, 'extensions'));
+  const files = [{ vPath: path.join(plugin, 'index.js'), before: null, after: hash('i\n') }];
+  fs.mkdirSync(path.join(dir, 'files')); fs.writeFileSync(path.join(dir, 'files', '0'), 'i\n');
+  fs.writeFileSync(path.join(dir, 'plan.json'), JSON.stringify({ files }));
+  assert.equal(remote('install', dir).status, 0);
+  fs.writeFileSync(path.join(plugin, 'notes.txt'), 'someone else\n');
+  const run = remote('undo', dir); assert.equal(run.status, 0, run.stderr);
+  assert.deepEqual(fs.readdirSync(plugin), ['notes.txt']);
+}));
