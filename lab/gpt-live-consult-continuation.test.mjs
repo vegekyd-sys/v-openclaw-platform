@@ -75,12 +75,12 @@ const execute = (source, start, end, deps) => {
   return new Function("deps", `with (deps) { ${source.slice(from, to)}; return ${name}; }`)(deps);
 };
 
-function setup({ generation = 1, delegationGeneration = 1, resolveSessionIdentity } = {}) {
+function setup({ generation = 1, delegationGeneration = 1, resolveSessionIdentity, watchRequesterRun } = {}) {
   const listeners = new Map(); const progress = []; const runs = new Map(); const cleanups = [];
   const cancellations = []; const resumeExecutions = [];
   const caller = new AbortController(); let current = true; let liveGeneration = generation; let rotate;
   const registry = createGptLiveConsultContinuationRegistry({
-    resolveSessionIdentity,
+    resolveSessionIdentity, watchRequesterRun,
     subscribeRun: (runId, callback) => { listeners.set(runId, callback); return () => listeners.delete(runId); },
     createProgressObserver: createGptLiveConsultProgressObserver,
     getLifecycleGeneration: () => liveGeneration,
@@ -1094,4 +1094,28 @@ test("a nonyield harness parent whose child completes keeps every existing compl
   assert.equal(f.ordinaryAnnouncements, 0); assert.equal(f.owner.isCurrent(), true);
   const pendingDelivery = f.complete(); await tick(); f.finishResumed("真正的子会话结果。"); await pendingDelivery;
   assert.equal((await f.owner.wait()).text, "真正的子会话结果。");
+});
+
+
+test("native owner waits for the actual cross-session requester final and retains the same caller controls", async () => {
+  let callbacks, resolve;
+  const completion = new Promise(ok => { resolve = ok; });
+  const f = setup({ watchRequesterRun: (runId, options) => {
+    assert.equal(runId, "parent-a"); callbacks = options; return { promise: completion, close() {} };
+  } });
+  let final;f.owner.wait().then(value => { final = value; });
+  f.owner.finishInitial({ meta: {}, payloads: [{ text: "Request accepted; I will report later" }] });
+  await tick();assert.equal(final, undefined);assert(f.owner.isCurrent());
+  const steer = await f.owner.controlOwnedRun({ mode: "followup", text: "Report the exact exit code", resolveRun: () => undefined });
+  assert.equal(steer.queued, true);
+  const request = callbacks.prepareInput({ sessionKey: f.params.sessionKey, promptText: "Actual result: 9999" });
+  assert.match(request.promptText, /Report the exact exit code/);
+  callbacks.onRunStarted({ runId: "relay-wake-1", sessionKey: f.params.sessionKey });
+  callbacks.onExecutionStarted({ runId: "relay-wake-1" });
+  f.emit("relay-wake-1", "The command really completed.");
+  resolve({ runId: "relay-wake-1", meta: {}, payloads: [{ text: "Actual output 9999, exit code 0" }] });
+  const result = await f.owner.wait();assert.equal(result.text, "Actual output 9999, exit code 0");
+  assert.equal(result.provenance.ownerRunId, "parent-a");assert.equal(result.provenance.runId, "relay-wake-1");
+  assert.equal(result.callerConditions.inputs[0].text, "Report the exact exit code");
+  assert.equal(f.listeners.size, 0);
 });

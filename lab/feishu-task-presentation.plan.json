@@ -36,6 +36,11 @@
       "before": null
     },
     {
+      "source": "lab/release-files/feishu-task-presentation/session-task-lifecycle.mjs",
+      "target": "openclaw/dist/session-task-lifecycle.mjs",
+      "before": null
+    },
+    {
       "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation-runtime.mjs",
       "target": "openclaw/dist/v-feishu-task-presentation-runtime.mjs",
       "before": null

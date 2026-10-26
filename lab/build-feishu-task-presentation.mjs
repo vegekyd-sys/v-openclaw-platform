@@ -23,6 +23,7 @@ export function buildTaskPresentation({write=true}={}){
   ['sessions-spawn-tool-1FQMTkIo.js',patchTaskPresentationSessionsSend,CAPTURE+'/dist/','openclaw/dist/'],
  ]){const before=input(base+name);add(name,target+name,patch(before),sha(before));}
  add('v-feishu-task-presentation.mjs',FEISHU+'v-feishu-task-presentation.mjs',input('lab/feishu-task-presentation.mjs'));
+ add('session-task-lifecycle.mjs','openclaw/dist/session-task-lifecycle.mjs',input('lab/session-task-lifecycle.mjs'));
  add('v-feishu-task-presentation-runtime.mjs','openclaw/dist/v-feishu-task-presentation-runtime.mjs',input('lab/feishu-task-presentation-runtime.mjs'));
  const actor=input(CAPTURE+'/dist/v-feishu-voice-actor.mjs');
  if(!actor.includes("'voice.product.task.lookup'")||!actor.includes("['runId','taskId','voiceSessionId','clientSecret']"))throw Error('Voice actor presentation anchor drift');

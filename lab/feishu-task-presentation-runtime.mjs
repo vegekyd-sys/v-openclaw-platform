@@ -1,3 +1,4 @@
+import { finishSessionTaskRun, executeSessionTaskConsult } from "./session-task-lifecycle.mjs";
 // These wrappers observe the already authorized execution. No second model call.
 const KEY=Symbol.for('openclaw.v.boundTaskPresentation.v1');
 const optional=fn=>{try{return Promise.resolve(fn()).catch(()=>{});}catch{return Promise.resolve();}};
@@ -21,12 +22,15 @@ export function publicNativeVoiceText(value){
   return text||'收到一个语音后台任务。';
 }
 
-export function observeEmbeddedTask(params,execute) {
+export async function observeEmbeddedTask(params,execute) {
   const h=globalThis[KEY]?.runs.get(params.runId);
-  if(!h)return execute(params);
-  void optional(()=>h.start(model(params)));
-  const wrapped={...params,onPartialReply:p=>{if(h.ownsRun(params.runId))void optional(()=>h.partial(p));return params.onPartialReply?.(p);},onAgentEvent:e=>{void optional(()=>h.observe(e));return params.onAgentEvent?.(e);}};
-  return Promise.resolve(execute(wrapped)).then(result=>{if(h.ownsRun(params.runId))void optional(()=>h.capture(result));return result;});
+  if(h)void optional(()=>h.start(model(params)));
+  const wrapped=h?{...params,onPartialReply:p=>{if(h.ownsRun(params.runId))void optional(()=>h.partial(p));return params.onPartialReply?.(p);},onAgentEvent:e=>{void optional(()=>h.observe(e));return params.onAgentEvent?.(e);}}:params;
+  let result;
+  try { result=await execute(wrapped); }
+  catch(error){await finishSessionTaskRun(params.runId,null,error);throw error;}
+  await finishSessionTaskRun(params.runId,result);
+  if(h?.ownsRun(params.runId))void optional(()=>h.capture(result));return result;
 }
 
 export async function presentInterSessionTask(prepared,initialOpts,execute) {
@@ -42,6 +46,7 @@ export async function presentInterSessionTask(prepared,initialOpts,execute) {
 }
 
 export async function presentNativeVoiceTask(params,execute,question) {
+  const run=execute;execute=p=>executeSessionTaskConsult(p,run);
   const m=globalThis[KEY];if(!m)return execute(params);
   const identity=params.continuationContext?.identity;
   // Product tasks carry a composed execution prompt, including private call

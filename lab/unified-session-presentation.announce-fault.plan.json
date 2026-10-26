@@ -27,6 +27,11 @@
   ],
   "files": [
     {
+      "source": "apps/v-session-relay/plugin/core/continuations.js",
+      "target": "extensions/v-session-relay/core/continuations.js",
+      "before": null
+    },
+    {
       "source": "apps/v-session-relay/plugin/core/contracts.js",
       "target": "extensions/v-session-relay/core/contracts.js",
       "before": null
@@ -192,6 +197,11 @@
       "before": "9bac6b7c8f8047c0a907c3ef85c2e03da096662d35e5de9790d846e869bf4cc1"
     },
     {
+      "source": "lab/release-files/unified-session-presentation/core/gpt-live-consult-continuation.js",
+      "target": "openclaw/dist/gpt-live-consult-continuation.js",
+      "before": "8a9c7292f7d7b84041a9d14681c232e315b03979a9944706040fdc548d392406"
+    },
+    {
       "source": "lab/release-files/unified-session-presentation/core/openclaw-tools-BODVdJQD.js",
       "target": "openclaw/dist/openclaw-tools-BODVdJQD.js",
       "before": "c4f575f2f75a7113ce612d54a7c83f09d0e54765be519e4b95789d8a61b405d0"
@@ -205,6 +215,11 @@
       "source": "lab/release-files/feishu-task-presentation/realtime-session-harness-CEO5kVAJ.js",
       "target": "openclaw/dist/realtime-session-harness-CEO5kVAJ.js",
       "before": "74bc94f5d66fbfbd0ffe2994f5c7cac501e656d898ad142851b8bdaf592c49cf"
+    },
+    {
+      "source": "lab/release-files/feishu-task-presentation/session-task-lifecycle.mjs",
+      "target": "openclaw/dist/session-task-lifecycle.mjs",
+      "before": null
     },
     {
       "source": "lab/release-files/unified-session-presentation/core/sessions-spawn-tool-1FQMTkIo.js",
