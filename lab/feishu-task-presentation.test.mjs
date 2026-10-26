@@ -19,6 +19,24 @@ function fixture(t,{directory}={}){
 }
 const flush=async h=>{await h.flush();await new Promise(r=>setTimeout(r,0));await h.flush();};
 
+test('a verified Voice actor can arbitrate its native session run without acquiring another connection handle',async t=>{
+ const f=fixture(t),h=await f.open();await h.flush();
+ const actor={agentId,sessionKey,accountId:'work',chatId:'oc_test',openId:'ou_owner'};let reply;
+ await f.manager.rpc({params:{op:'owns',agentId,sessionKey,runId:'run-1'},client:{connId:'voice',internal:{voiceActor:actor}},respond:(...x)=>reply=x});assert.equal(reply[0],true);assert.equal(reply[1].owned,true);
+ await f.manager.rpc({params:{op:'owns',agentId,sessionKey:'agent:test:feishu:group:oc_other',runId:'run-1'},client:{connId:'voice',internal:{voiceActor:actor}},respond:(...x)=>reply=x});assert.equal(reply[0],false);
+});
+
+test('delivery backoff cannot discard the actual selected model and runtime receipt',async t=>{
+ const f=fixture(t);let now=1000,openedModel;f.manager.now=()=>now;const factory=f.manager.accounts.get('work'),authorize=factory.authorize,open=factory.open;
+ factory.open=(record,...args)=>{openedModel=record.selectedModel;return open(record,...args);};
+ factory.authorize=async()=>{throw Error('sender unavailable');};
+ const h=await f.open();await h.flush();assert(h.record.error);
+ const selected={provider:'deepseek',model:'vds-deepseek-flash',agentRuntime:'codex'};
+ await h.start(selected);assert.deepEqual(h.record.selectedModel,selected);
+ factory.authorize=authorize;now+=61000;await h.finish({text:'original result'});
+ assert.deepEqual(openedModel,selected);assert(h.record.delivered);
+});
+
 test('current Voice product tasks expose only the explicit public brief; older entries use a safe generic brief',async t=>{
  const f=fixture(t);globalThis[PRESENTATION_KEY]=f.manager;t.after(()=>delete globalThis[PRESENTATION_KEY]);
  for(const [taskId,brief] of [['legacy',undefined],['current','查询本周任务']]){

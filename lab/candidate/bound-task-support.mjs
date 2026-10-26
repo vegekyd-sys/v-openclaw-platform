@@ -312,11 +312,12 @@ export class Candidate {
       const timer = setTimeout(() => reject(new Error("gateway connect timeout")), 60_000);
       this.client = new GatewayClient({
         url: `ws://127.0.0.1:${this.port}`, token: this.gatewayToken, deviceIdentity: null, clientName: "cli", mode: "cli",
-        scopes: ["operator.admin", "operator.read", "operator.write"],
-        onEvent:e=>this.onEvent?.(e), onHelloOk: () => { clearTimeout(timer); resolve(); }, onConnectError: (e) => { clearTimeout(timer); reject(e); },
+        scopes: ["operator.admin", "operator.read", "operator.write"],caps:['voice-direct-tools','tool-events'],
+        onEvent:e=>this.onEvent?.(e), onHelloOk: hello => {this.client.supportsMethod=method=>(hello.features?.methods??[]).includes(method);clearTimeout(timer);resolve();}, onConnectError: (e) => { clearTimeout(timer); reject(e); },
       });
       this.client.start();
     });
+    await this.client.request('sessions.subscribe',{}, {timeoutMs:30000});
   }
 
   async rpc(method, params, timeoutMs = 30_000) {

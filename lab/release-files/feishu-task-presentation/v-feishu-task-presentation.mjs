@@ -90,7 +90,10 @@ export class TaskPresentationManager {
       const owner=JSON.stringify([client?.connId??'internal',actor?.accountId??null,actor?.openId??null]);
       if(p.op==='owns'){
         const h=this.runs.get(p.runId)??[...this.tasks.values()].find(h=>h.record.runIds.includes(p.runId));
-        if(actor&&h&&h.record.owner!==owner)throw Error('presentation ownership mismatch');
+        // Native observers belong to the validated session, independently of
+        // the Voice transport. RPC-created presentation handles remain owned
+        // by their exact connection; arbitration never exposes task contents.
+        if(actor&&h&&h.record.owner!==null&&h.record.owner!==owner)throw Error('presentation ownership mismatch');
         const native=this.claims.get(p.runId);
         const nativeAgent=native?.agentId??/^agent:([^:]+):/u.exec(native?.sessionKey??'')?.[1];
         respond(true,{owned:Boolean(h&&h.record.agentId===p.agentId&&h.record.sessionKey===p.sessionKey||native?.sessionKey===p.sessionKey&&nativeAgent===p.agentId)});return;
@@ -151,7 +154,8 @@ class TaskPresentation {
     this.sink=await f.open(this.record,async state=>{this.record.sinkState=copy(state);this.manager.save(this.record);});this.factory=f;return this.sink;}
   bindRun(runId){if(!clean(runId)||this.record.delivered)return;const claim=this.manager.claims.get(runId);if(claim)return;
     if(!this.record.runIds.includes(runId)){this.record.runIds.push(runId);this.manager.save(this.record);}this.manager.runs.set(runId,this);}
-  start(model){return this.enqueue(async()=>{if(this.record.delivered)return;if(model?.provider&&model?.model)this.record.selectedModel={...this.record.selectedModel,...model,agentRuntime:model.agentRuntime??this.record.selectedModel?.agentRuntime};
+  start(model){if(!this.record.delivered&&model?.provider&&model?.model){this.record.selectedModel={...this.record.selectedModel,...model,agentRuntime:model.agentRuntime??this.record.selectedModel?.agentRuntime};this.manager.save(this.record);}
+    return this.enqueue(async()=>{if(this.record.delivered)return;
     const s=await this.ensureSink();this.record.phase='running';this.manager.save(this.record);await s.start?.(this.record.selectedModel);});}
   partial(payload){if(!payload||payload.isReasoning||payload.phase==='analysis'||!clean(payload.text)||this.record.delivered)return;
     const text=safeText(payload.text).slice(-100000);if(this.record.publicSnapshot===text)return;this.record.publicSnapshot=text;
