@@ -175,3 +175,14 @@ test('removing a bound Feishu account stops an already open sink from publishing
  const f=fixture(t),h=await f.open();await h.flush();f.manager.accounts.delete('work');await h.finish({text:'late result'});
  assert.equal(h.record.delivered,false);assert(!f.calls.some(c=>c[0]==='finish'));assert.match(h.record.error,/account unavailable/);
 });
+test('legacy announce queries require the exact accepted agent, session and run even after retirement',async t=>{
+ const f=fixture(t),h=await f.open();const client={connId:'bridge',connect:{scopes:['operator.admin']}};
+ const owned=async extra=>{let r;await f.manager.rpc({params:{op:'owns',agentId,sessionKey,runId:'run-1',...extra},client,respond:(ok,result)=>{assert(ok);r=result.owned;}});return r;};
+ f.manager.claimNative('native-run',{sessionKey});assert.equal(await owned({runId:'native-run'}),true);assert.equal(await owned({runId:'native-run',agentId:'other'}),false);
+ assert.equal(await owned(),true);assert.equal(await owned({runId:'foreign'}),false);assert.equal(await owned({sessionKey:'other'}),false);assert.equal(await owned({agentId:'other'}),false);
+ f.setEntry({...f.entry(),sessionId:'new-session'});await h.finish({text:'late'});assert.equal(h.record.phase,'retired');assert.equal(await owned(),true,'retirement must not enable a legacy send into a newly rebound conversation');
+});
+test('a lifecycle event without a runtime cannot erase the actual selected harness footer',async t=>{
+ const f=fixture(t),h=await f.open();await h.start({provider:'deepseek',model:'flash',agentRuntime:'vlab-worker'});await h.start({provider:'deepseek',model:'flash',agentRuntime:undefined});
+ assert.equal(h.record.selectedModel.agentRuntime,'vlab-worker');assert.equal(f.calls.filter(c=>c[0]==='start').at(-1)[1].agentRuntime,'vlab-worker');
+});

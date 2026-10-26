@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {patchTaskPresentationEntry,patchTaskPresentationMonitor,patchTaskPresentationEmbedded,patchTaskPresentationAgent,patchTaskPresentationConsult} from './patch-feishu-task-presentation.mjs';
+import {patchTaskPresentationEntry,patchTaskPresentationMonitor,patchTaskPresentationEmbedded,patchTaskPresentationAgent,patchTaskPresentationConsult,patchTaskPresentationSessionsSend} from './patch-feishu-task-presentation.mjs';
 export const CAPTURE='release/captured/v2026.9.1-db91.6-sessions-search-20261026';
 export const FEISHU='npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -20,6 +20,7 @@ export function buildTaskPresentation({write=true}={}){
   ['embedded-agent-DaSvA-Yk.js',patchTaskPresentationEmbedded,CAPTURE+'/dist/','openclaw/dist/'],
   ['agent-command-DPfawBbr.js',patchTaskPresentationAgent,CAPTURE+'/dist/','openclaw/dist/'],
   ['realtime-session-harness-CEO5kVAJ.js',patchTaskPresentationConsult,CAPTURE+'/dist/','openclaw/dist/'],
+  ['sessions-spawn-tool-1FQMTkIo.js',patchTaskPresentationSessionsSend,CAPTURE+'/dist/','openclaw/dist/'],
  ]){const before=input(base+name);add(name,target+name,patch(before),sha(before));}
  add('v-feishu-task-presentation.mjs',FEISHU+'v-feishu-task-presentation.mjs',input('lab/feishu-task-presentation.mjs'));
  add('v-feishu-task-presentation-runtime.mjs','openclaw/dist/v-feishu-task-presentation-runtime.mjs',input('lab/feishu-task-presentation-runtime.mjs'));
@@ -33,7 +34,7 @@ export function buildTaskPresentation({write=true}={}){
     'lab/realtime-direct-tools/backend.mjs','lab/realtime-direct-tools/tools.mjs','lab/realtime-direct-tools/lark-readonly.mjs',
     'lab/gpt-live-consult-progress.mjs','lab/gpt-live-h5/result-presentation.mjs','lab/gpt-live-h5/media-references.mjs'];
   for(const harness of ['worker','vds']){
-   const candidate={...plan,files:[...plan.files,...['index.mjs','openclaw.plugin.json'].map(name=>({source:'lab/candidate/bound-task-plugin/'+name,target:'extensions/bound-task-candidate/'+name}))],
+   const candidate={...plan,files:[...plan.files,...['index.js','openclaw.plugin.json','package.json'].map(name=>({source:'lab/candidate/bound-task-plugin/'+name,target:'extensions/bound-task-candidate/'+name}))],
     tests:['lab/candidate/bound-task-smoke.mjs'],support,user:'lab-db91-parity',env:{BOUND_TASK_HARNESS:harness},timeoutSeconds:600};
    fs.writeFileSync(path.join(root,'lab/feishu-task-presentation.'+harness+'.plan.json'),JSON.stringify(candidate,null,2)+'\n');
   }

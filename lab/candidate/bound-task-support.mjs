@@ -92,6 +92,7 @@ export async function prepareCandidate(opts = {}) {
   let fake = null;
   if (platformMode === "mock") {
     fake = await new FakeFeishu({directory: path.join(data, "fake-feishu"), owner: OWNER, dmChat: DM_CHAT, chats: CHAT_NAMES}).start();
+    opts.registerCleanup?.(async()=>{fake.server.closeAllConnections();await fake.close();});
     Object.assign(feishu, {appId: "cli_0000000000000000", appSecret: "isc-mock-not-a-credential", domain: fake.url, resolveSenderNames: false});
     delete feishu.accounts;
     notes.push("mock Feishu: loopback API, synthetic app credentials, real platform hosts blocked");
@@ -107,6 +108,8 @@ export async function prepareCandidate(opts = {}) {
   config.agents.defaults.heartbeat = { ...(config.agents.defaults.heartbeat ?? {}), every: "0m" };
   config.commands = { ...(config.commands ?? {}), ownerAllowFrom: [`feishu:${OWNER}`] };
   config.bindings = [{ agentId: AGENT, match: { channel: "feishu" } }];
+  config.session={...(config.session??{}),agentToAgent:{...(config.session?.agentToAgent??{}),maxPingPongTurns:0}};
+  config.tools={...(config.tools??{}),sessions:{...(config.tools?.sessions??{}),visibility:'all'}};
   if (config.tools?.web?.search) delete config.tools.web.search; // its provider plugin is not loaded here
   if (config.tools?.web?.fetch) delete config.tools.web.fetch;
 
@@ -144,7 +147,7 @@ export async function prepareCandidate(opts = {}) {
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 
   // ---- vds: the shared managed npm plugins (Codex with V's /vds patches) + DeepSeek in codex-home
-  if (harness === "vds") {
+  {
     const sharedNpm = path.join(process.env.VLAB_SHARED_STATE_DIR, "npm");
     if (!fs.existsSync(path.join(stateDir, "npm"))) assert.equal(spawnSync("cp", ["-a", "--reflink=auto", sharedNpm, path.join(stateDir, "npm")]).status, 0, "copy managed npm plugins");
     const codexHome = path.join(makaron.agentDir, "codex-home");
@@ -152,7 +155,7 @@ export async function prepareCandidate(opts = {}) {
     const tomlPath = path.join(codexHome, "config.toml");
     const toml = fs.existsSync(tomlPath) ? fs.readFileSync(tomlPath, "utf8") : "";
     if (!toml.includes("[model_providers.deepseek]")) fs.writeFileSync(tomlPath, `${toml}\n[model_providers.deepseek]\nname = "DeepSeek"\nbase_url = "https://api.deepseek.com/v1"\nwire_api = "responses"\nenv_key = "DEEPSEEK_API_KEY"\n`, { mode: 0o600 });
-    notes.push("vds: shared managed npm copied; DeepSeek provider in codex-home");
+    notes.push("private managed npm copied; DeepSeek provider in codex-home");
   }
 
   // ---- candidate-only allowance (as every Feishu candidate): the relocated Feishu plugin has no
@@ -230,7 +233,7 @@ export class Candidate {
     for (const s of [child.stdout, child.stderr]) {
       s.setEncoding("utf8");
       s.on("data", (chunk) => {
-        for (const line of chunk.split(/\r?\n/u).filter(Boolean)) this.lines.push({ at: Date.now(), boot, line });
+        for (const line of chunk.split(/\r?\n/u).filter(Boolean)) {this.lines.push({ at: Date.now(), boot, line });fs.appendFileSync(path.join(this.data,"gateway-log.jsonl"),JSON.stringify({boot,line:redact(line)})+"\n");}
         if (this.lines.length > 60_000) this.lines.splice(0, this.lines.length - 60_000);
       });
     }

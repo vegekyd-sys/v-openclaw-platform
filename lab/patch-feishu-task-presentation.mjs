@@ -71,3 +71,20 @@ export function patchTaskPresentationConsult(source){already(source);
 async function consultRealtimeVoiceAgentWithoutTaskPresentation(params) {`);
   return `// ${MARKER}\nimport {presentNativeVoiceTask} from "./v-feishu-task-presentation-runtime.mjs";\n`+source;
 }
+
+export function patchTaskPresentationSessionsSend(source){already(source);
+  const gateway='async function runSessionsSendA2AFlow(params) {\n\tconst runContextId = params.waitRunId ?? "unknown";\n\tconst gatewayCall = params.callGateway ?? callAgentToolGatewayRequest;';
+  source=once(source,gateway,gateway+`
+  const nativeTaskPresented = async () => {
+    if (process.env.V_FEISHU_TASK_PRESENTATION !== "1" || !params.waitRunId) return false;
+    try {
+      const receipt = await gatewayCall({method:"v.feishu.taskPresentation",params:{op:"owns",agentId:params.targetAgentId,sessionKey:params.targetSessionKey,runId:params.waitRunId}});
+      return receipt?.owned === true;
+    } catch { return false; }
+  };`);
+  const same='\t\tif (sameSessionSourceReply && canDirectDeliverSameSessionReply) {';
+  source=once(source,same,same+'\n      if (await nativeTaskPresented()) return;');
+  const announce='\t\tconst announcePrompt = buildAgentToAgentAnnounceContext({';
+  source=once(source,announce,'    if (await nativeTaskPresented()) return;\n'+announce);
+  return `// ${MARKER}\n`+source;
+}

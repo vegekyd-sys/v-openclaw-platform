@@ -31,10 +31,16 @@
       "sha256": "d8515037de8468ad82330a92f8644382efd4f4b1050d92abaa18a4747ccd4a76"
     },
     {
+      "source": "lab/release-files/feishu-task-presentation/sessions-spawn-tool-1FQMTkIo.js",
+      "target": "openclaw/dist/sessions-spawn-tool-1FQMTkIo.js",
+      "before": "1a7ab8f9848b1e17a830d7e55f24df01603afd2129bb6807e390f4cc35b17310",
+      "sha256": "d5efbae72f5c757a395d0fcfb7df16599a8bfdefcae3335f7c88b84b8eb73f4f"
+    },
+    {
       "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation.mjs",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-task-presentation.mjs",
       "before": null,
-      "sha256": "92795f20041e4c44e31a9d24c6664d057aaba0182dccf595d0f6268eac1b6da1"
+      "sha256": "f56ebe96beceaf2980187f059e8b559104c761a54048def39a4216dc62ce0776"
     },
     {
       "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation-runtime.mjs",

@@ -26,6 +26,11 @@
       "before": "74bc94f5d66fbfbd0ffe2994f5c7cac501e656d898ad142851b8bdaf592c49cf"
     },
     {
+      "source": "lab/release-files/feishu-task-presentation/sessions-spawn-tool-1FQMTkIo.js",
+      "target": "openclaw/dist/sessions-spawn-tool-1FQMTkIo.js",
+      "before": "1a7ab8f9848b1e17a830d7e55f24df01603afd2129bb6807e390f4cc35b17310"
+    },
+    {
       "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation.mjs",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-task-presentation.mjs",
       "before": null
