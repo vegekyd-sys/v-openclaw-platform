@@ -21,7 +21,13 @@ fs.writeFileSync(c.configPath,JSON.stringify(c.config,null,2),{mode:0o600});
 const consult=path.join(c.dist,'realtime-session-harness-CEO5kVAJ.js');
 const original=fs.readFileSync(consult,'utf8');fs.writeFileSync(consult,original+'\nexport {consultRealtimeVoiceAgent as candidateConsult};\n');
 save('allowance.json',{exportNativeConsult:{before:sha256(original),after:sha256(fs.readFileSync(consult))},loader:c.allowance});
+if(live.outboundOnly){
+ const monitor=path.join(c.runtime,'npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js');
+ const before=fs.readFileSync(monitor,'utf8');fs.writeFileSync(monitor,before+'\nexport {createTaskPresentationAccount,createFeishuClient,createFeishuReplyDispatcher,resolveFeishuRuntimeAccount,resolveVisibleProgressRuntimes};\n');
+ save('outbound-allowance.json',{before:sha256(before),after:sha256(fs.readFileSync(monitor)),purpose:'Export unchanged native sender functions; channel startup disabled'});
+}
 await c.start({timeoutMs:150000});
+if(live.outboundOnly){await c.rpc('candidate.boundTask',{op:'attach-live-sender'});await c.rpc('candidate.boundTask',{op:'seed-live-sessions'});}
 const {createLiveH5Server}=await import(path.join(voice,'lab/gpt-live-h5/server.mjs'));
 const {createDirectVoiceService}=await import(path.join(voice,'lab/realtime-direct-tools/session.mjs'));
 const wsModule=createRequire(path.join(voice,'package.json'))('ws');

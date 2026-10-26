@@ -1,10 +1,30 @@
 // Candidate-only RPCs. This plugin is never in the release plan.
 import path from 'node:path';
+import fs from 'node:fs';
 export default {id:'bound-task-candidate',register(api){
  api.registerGatewayMethod('candidate.boundTask',async({params:p,respond})=>{
   try {
    const dist=path.join(process.env.VLAB_CANDIDATE_RUNTIME,'openclaw/dist');
    const m=globalThis[Symbol.for('openclaw.v.boundTaskPresentation.v1')];
+   if(p.op==='seed-live-sessions'){
+    if(process.env.BOUND_TASK_OUTBOUND_ONLY!=='1')throw Error('Outbound live candidate required');
+    const live=JSON.parse(fs.readFileSync(process.env.BOUND_TASK_LIVE_CONFIG));
+    const storePath=path.join(api.config.agents.entries.makaron.agentDir,'openclaw-agent.sqlite');
+    if(!storePath.startsWith(process.env.OPENCLAW_STATE_DIR+'/'))throw Error('Session fixture escaped private state');
+    const {_:replaceEntry}=await import(path.join(dist,'session-accessor.sqlite-entry-BlklNPKQ.js'));
+    for(const row of live.bindings??[]){
+     if(!row.key.startsWith('agent:makaron:feishu:group:')||row.entry.delivery?.kind!=='external'||!row.entry.sessionId)throw Error('Real external session binding required');
+     const entry=JSON.parse(JSON.stringify(row.entry).replaceAll(process.env.VLAB_SHARED_STATE_DIR,process.env.OPENCLAW_STATE_DIR));
+     await replaceEntry({storePath,sessionKey:row.key},entry);
+    }
+    respond(true,{seeded:live.bindings?.map(r=>r.key)});return;
+   }
+   if(p.op==='attach-live-sender'){
+    if(process.env.BOUND_TASK_OUTBOUND_ONLY!=='1'||process.env.OPENCLAW_SKIP_CHANNELS!=='1')throw Error('Outbound-only candidate mode required');
+    const native=await import(path.join(process.env.VLAB_CANDIDATE_RUNTIME,'npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js'));
+    m.registerAccount('default',native.createTaskPresentationAccount({cfg:api.config,accountId:'default',runtime:{log:()=>{},error:()=>{}},createClient:native.createFeishuClient,createReplyDispatcher:native.createFeishuReplyDispatcher,resolveAccount:(cfg,accountId)=>native.resolveFeishuRuntimeAccount({cfg,accountId}),resolveProgressRuntimes:native.resolveVisibleProgressRuntimes}));
+    respond(true,{attached:true,channelsStarted:false});return;
+   }
    if(p.op==='inspect'){
     await Promise.all([...m.tasks.values()].map(h=>h.flush()));
     respond(true,{accounts:[...m.accounts.keys()],tasks:[...m.tasks.values()].map(h=>h.record),entry:p.sessionKey?api.runtime.agent.session.getSessionEntry({agentId:'makaron',sessionKey:p.sessionKey,readConsistency:'latest'}):null});return;

@@ -79,7 +79,7 @@ export async function prepareCandidate(opts = {}) {
   const notes = [];
   const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
   const live=opts.liveConfig;
-  if(live){assert(process.env.VLAB_CANDIDATE_ID&&live.appId!=='cli_aae2c999c7789bd9','Live tests require an independent bot');assert(/^oc_[a-z0-9]+$/u.test(live.groupChat)&&/^ou_[a-z0-9]+$/u.test(live.owner),'Explicit live test destinations required');}
+  if(live){assert(process.env.VLAB_CANDIDATE_ID&&live.outboundOnly===true&&live.appId===config.channels?.feishu?.appId,'Live acceptance must use the actual VLab bot without a second channel connection');assert(/^oc_[a-z0-9]+$/u.test(live.groupChat)&&/^ou_[a-z0-9]+$/u.test(live.owner),'Explicit live test destinations required');}
   const owner=live?.owner??OWNER;
   const port = Number(config.gateway?.port);
   assert(Number.isInteger(port) && port > 0, "candidate Gateway port is missing");
@@ -204,6 +204,7 @@ export async function prepareCandidate(opts = {}) {
   if(Array.isArray(config.plugins.allow))config.plugins.allow.push('bound-task-candidate');
   fs.writeFileSync(configPath,JSON.stringify(config,null,2),{mode:0o600});
   env.V_FEISHU_TASK_PRESENTATION='1';
+  if(live?.outboundOnly){env.OPENCLAW_SKIP_CHANNELS='1';env.BOUND_TASK_OUTBOUND_ONLY='1';}
   for (const [k, v] of Object.entries(opts.extraEnv ?? {})) env[k] = String(v);
 
   return new Candidate({ runtime, configPath, stateDir, data, dist, config, port, gatewayToken, feishu, webhook, env, ledgerDir, harness, envMode, pluginMode, model, notes, allowance, workspace, shortTmp, fake, platformMode });
@@ -250,7 +251,7 @@ export class Candidate {
     const mark = this.lines.length;
     const startedAt = Date.now();
     this.startGateway(extraEnv);
-    const need = this.platformMode==='live'?[/WebSocket client started|WebSocket.*ready/iu]:[/starting Webhook server on 127\.0\.0\.1/u];
+    const need = this.env.BOUND_TASK_OUTBOUND_ONLY==='1'?[/listening on ws:\/\//u]:this.platformMode==='live'?[/WebSocket client started|WebSocket.*ready/iu]:[/starting Webhook server on 127\.0\.0\.1/u];
 
 
     const seen = new Set();

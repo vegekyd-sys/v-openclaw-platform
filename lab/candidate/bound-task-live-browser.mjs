@@ -9,10 +9,11 @@ process.env.VLAB_CANDIDATE_ID=ready.candidate;process.env.OPENCLAW_STATE_DIR=rea
 const scratch=path.join(ready.state,'bound-live-browser');fs.mkdirSync(scratch,{recursive:true,mode:0o700});
 const pulse=await createPrivatePulseMicrophone(path.join(scratch,'pulse'));
 let stderr='',next=1,ending=false;const pending=new Map(),events=[];
-const chrome=spawn('/usr/bin/google-chrome',['--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--disable-features=AudioServiceSandbox','--remote-debugging-port=0','--user-data-dir='+path.join(scratch,'profile'),'--use-fake-ui-for-media-stream','about:blank'],{env:{...pulse.environment,TMPDIR:scratch},stdio:['ignore','ignore','pipe']});
+const chromeTemp=fs.mkdtempSync('/tmp/v-bound-chrome-');
+const chrome=spawn('/usr/bin/google-chrome',['--headless=new','--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--disable-features=AudioServiceSandbox','--remote-debugging-port=0','--user-data-dir='+path.join(scratch,'profile'),'--use-fake-ui-for-media-stream','about:blank'],{env:{...pulse.environment,TMPDIR:chromeTemp,TMP:chromeTemp,TEMP:chromeTemp},stdio:['ignore','ignore','pipe']});
 chrome.stderr.on('data',b=>stderr=(stderr+String(b)).slice(-15000));
 for(let i=0;i<100&&!stderr.includes('DevTools listening on ');i++)await sleep(100);
-const browserUrl=stderr.match(/DevTools listening on (ws:\/\/[^\s]+)/)?.[1];if(!browserUrl)throw Error('Owned Chrome did not start');
+const browserUrl=stderr.match(/DevTools listening on (ws:\/\/[^\s]+)/)?.[1];if(!browserUrl){chrome.kill('SIGTERM');await pulse.dispose();throw Error('Owned Chrome did not start: '+stderr.slice(-1800));}
 const port=new URL(browserUrl).port;
 const pages=await fetch('http://127.0.0.1:'+port+'/json/list').then(r=>r.json());
 const ws=new WebSocket(pages.find(p=>p.type==='page').webSocketDebuggerUrl);await new Promise(r=>ws.addEventListener('open',r,{once:true}));
