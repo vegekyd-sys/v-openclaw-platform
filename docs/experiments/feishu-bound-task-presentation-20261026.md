@@ -1,6 +1,6 @@
 # 绑定飞书会话的后台任务呈现：本地实现与验收
 
-状态：**本地回归、Worker/VDS 隔离候选验收均通过**。功能默认关闭。没有合入 dev、写入共享 VLab、部署生产或发送真实飞书消息。
+状态：本地回归与 Worker/VDS 隔离候选已通过，后续增加了真实 V Voice × V - Lab 飞书联动验收，见文末。功能默认关闭；未合入 dev，未部署共享 VLab 或生产。
 
 ## 范围与用户体验
 
@@ -93,3 +93,61 @@ Tailscale 已恢复 Running/online，VLab 私有 SSH 已实际连通。全部测
 最终本地回归：Node v22.23.1，关联 **83/83**；全量 **2565/2565**，326 files，零失败、零跳过；catalog audit 通过。发布文件仍默认关闭，适配保持 `excluded-candidate`。
 
 **没有进行**真实飞书投递、真实音频/WebRTC/手机 UI 验收，也未完成与 #482 整体 v2 relay bridge 的联合回归。没有合 dev、部署共享 VLab 或生产。两份最终 receipt 均证明共享 PID/config/runtime 未变；不把隔离候选模拟平台视作生产验收。
+
+
+## 10/26 真实 V Voice × 飞书联动
+
+本节更新前述“未进行真实飞书/音频”的历史边界。真实模型与真实飞书投递均在任务私有候选中执行，使用 **V - Lab** 机器人；起初选错的 Codex 机器人已从自建测试群移除。测试只操作自建验收群、VLab 房间 1 和 Tianyi 与 V - Lab 的真实私聊。候选关闭 channel 接收，仅调用原生 Feishu outbound；没有启动第二条机器人入站连接。
+
+实际 Voice 源码已同步当前 main 的产品任务 API：`voice.product.task.start/read/lookup/cancel`。公开 `publicQuestion` 与私有执行上下文分开传递，平台观察原来的 SDK consult，不再依赖旧版 `chat.send` 路径。Native GPT Live 仍走原生 consult。Voice PR 为 #151；平台 PR 为 #483，两者均保持 Draft。
+
+### 实测发现并修正
+
+1. 发送退避时，原先可能丢失所选模型/runtime 元数据；现在独立保存真实执行回执。
+2. GPT Live 原生 question 已由上游封装成 `realtime_delegation`，还追加了 transcript delta 与内部执行提示。来源记录现在只取显式 input；封装不完整时使用安全的通用请求说明。旧测试来源记录已修正，最终飞书读取中不含该内部封装。
+3. 工作目录附件被原生媒体读取策略拒绝。新呈现入口通过 SDK `getAgentScopedMediaLocalRoots(cfg, agentId)` 传入当前 Agent 的目录，未扩大到任意本地路径。
+4. Voice 的显式进展订阅和自动结果同步会先查询精确 session/run 的原生卡片归属。明确 owned 时停止旧发送，同时保留电话结果；归属查询失败时保留失败证据，不补发重复消息。
+
+### 已覆盖的真实路径
+
+| 场景 | 实际结果 |
+|---|---|
+| 飞书普通入站基线 | V - Lab 原生接收与回复；无需新增后台呈现 |
+| Grok Voice Direct Tools | 合成用户 PCM 经原始 H5 麦克风与真实模型进入 `delegate_to_v`，实际命令计算得到 5535，原生卡片交付 |
+| GPT Live 原生入口 | 原始 H5 WebRTC → 真实 GPT Live → native consult → Worker 实际命令计算得到 9999，飞书来源只包含公开请求 |
+| 普通插话 | 用户询问 2+2，电话回答 4；原后台任务继续 |
+| 明确取消 | 真语音取消原任务，电话仍连接；原生卡片显示取消 |
+| 挂断但继续后台 | 真语音挂断后原任务继续；最新代码的原生卡片在挂断后确认交付，旧发送通道记录 native-owned，没有 delivery-confirmed 双发 |
+| 真 `sessions_send` | Worker 请求方调用原生工具，房间 1 实际选用 `vds-deepseek-flash / codex`，目标只显示该任务的一份原生结果卡片；请求方正常唤醒保持独立回合 |
+| 同一请求重放 | 两次相同提交返回相同 taskId/runId；实际执行计数文件只有一行 |
+| 实际附件 | 飞书文件下载成功，27 字节与执行生成内容完全一致，SHA256 `95b949865881839e98a3ec4293ccebbe980b6255e82cad9cbe9de98a1322d2b1` |
+| 真实私聊 | 绑定 `ou_` 收件人，原生 ACK 记录真实 `oc_` 会话，来源记录及结果均进入正确私聊 |
+| 呈现恢复 | 已捕获的真实结果曾在修复 sender 后交付，未重跑原模型；完成 journal 装入后续新候选，没有重发旧消息 |
+| 隐私边界 | 飞书来源不含 private sentinel、transcript delta 或内部 native 执行策略；普通通话逐句不进入任务卡片 |
+
+使用的是合成用户音频、真实模型/工具和真实平台回执；未伪造模型回复或 tool/RTC 事件。没有进行实体 iPhone、扬声器麦克风或听感验收，也不能据此声明真实飞书所有 ACK 丢失窗口的严格 exactly-once。
+
+最新通过场景的私有候选为 `candidate-42da1efc-62d0-4eec-8b15-7a3412f00d52`，平台输入 commit `e3f8dacf466b5f1a3939bf08b55006476829762f`，Voice commit `26c7bf9b381ffd6eb39fb8389027508499c4ec01`；inputSha256 `b2c68049eb405f75e1629de004249fb5cccdaca285bdc7bac286d0da4c1710a5`。在该输入中，核心发布文件已包含公开请求和附件修复。源分支随后仅补充验收文档。
+
+### 回归结果与仍有的边界
+
+- Node 22.23.1 最新平台全量离线 **2573/2573**，327 个登记文件，零失败、零跳过；公开请求修复后的关联卡片测试 **44/44**。
+- 当前 Voice 代码关联测试 **68/68**。同步 main 后的 Voice 全量为 **956/958**；`ios-web-release` 和 `ui-bundle` 两项已在未修改的 main 复现，均为既有提交产物与源码不同步。本任务没有改写这些无关 UI 产物，不将全量描述为全绿。
+- 上游 dev 的新增测试登记仅同步进任务分支以消除 PR 冲突；没有将任务分支合入 dev。
+- 真实 GPT Live 凭据只按用户明确批准用于本次私有候选，复制 access-only 字段，不复制 refresh token。收尾凭据删除和候选退出回执记录另补于下。
+
+本机原始模型/投递记录保留于 gitignored `tmp/live-acceptance/`。其中包含私有执行上下文，不进入 Git、公共文档或共享记忆。报告中的结果以真实飞书读取、候选任务记录及执行计数核对；旧失败候选不计入通过。
+
+
+可直接核对的真实飞书结果：[GPT Live / 9999](https://applink.feishu.cn/client/chat/open?openChatId=oc_fcf5d85e3f0507b26864c1025f80d1c2&position=38)、[Grok 挂断后的 5535](https://applink.feishu.cn/client/chat/open?openChatId=oc_fcf5d85e3f0507b26864c1025f80d1c2&position=36)、[VDS 目标结果](https://applink.feishu.cn/client/chat/open?openChatId=oc_fe63730f4bc817cd46ccd325ab990a74&position=22)、[私聊结果](https://applink.feishu.cn/client/chat/open?openChatId=oc_8f28eb6bcb3b847471693f066dac61c4&position=1444)、[实际附件](https://applink.feishu.cn/client/chat/open?openChatId=oc_fcf5d85e3f0507b26864c1025f80d1c2&position=30)。
+
+补充电话端核验：浏览器真实显示完整的“真实输出是 9999”答复。补充测试脚本曾对 ASR 的中文数字格式作了过严断言；之后同一问题使用了已完成上下文，没有新建任务，因此“必须再有一个新后台任务”的自动断言也不适用。此补充通话仅作为完整电话结果展示的人工观察，不计作另一次新任务执行通过。原始新任务的执行、run、公开请求和飞书结果由此前成功候选记录佐证。没有用手填模型事件或伪造结果补齐断言。
+
+
+### 收尾回执
+
+私有候选正常结束，official receipt `ok=true`、`sharedUnchanged=true`；共享服务 PID 前后均为 `2353365`，配置与 runtime fingerprint 未变。私有 candidate run 目录（含 access-only auth SQLite）已移除；服务器临时 access token 文件、测试机器人私有配置均已删除，测试 Chrome/Pulse 与自有 Voice 测试进程均已退出。没有复制 refresh token，没有修改本机 Codex 登录或共享服务的 OpenAI auth store。
+
+最终飞书读取再次确认发送者为 V - Lab，验收任务每个来源 anchor 与对应原生卡片各出现一次，不含内部 native envelope 或私有 sentinel。真实输入使用既有测试会话绑定元数据，未复制完整会话历史。原始退出回执及清理证明保留 `tmp/live-acceptance/receipt-and-cleanup.json`。
+
+本轮完成的是隔离候选验收；仍未合入 dev、部署共享 VLab 或上线生产。共享集成和 #482 全体 v2 relay 的联合验收不由本轮私有候选结果替代。
