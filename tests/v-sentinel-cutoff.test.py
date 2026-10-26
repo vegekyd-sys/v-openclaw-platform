@@ -60,6 +60,17 @@ class ScanCutoffs(unittest.TestCase):
         j = "\n".join([STREAMED % (run, run), TOOL_CALL_END % run])
         self.assertEqual(mod.scan_cutoffs(j)[0], [])
 
+    def test_an_inter_session_room_turn_that_breaks_is_still_a_cutoff(self):
+        # docs/inter-session/design.md WP11: relay turns are left out of the wait
+        # and dispatch rules, but people in the room watched this answer stop.
+        run = "v-a2a-req-s_mgk3x1a2f9c1-0"
+        j = "\n".join([STREAMED % (run, run), TOOL_CALL_END % run])
+        hits, cause, _ = mod.scan_cutoffs(j)
+        self.assertEqual(hits, [run])
+        self.assertTrue(cause.startswith("Provider returned an incomplete"))
+        # and the lookback finds its streamed line like any other run's
+        self.assertEqual(mod.scan_cutoffs(TOOL_CALL_END % run, lambda ids: STREAMED % (run, run))[0], [run])
+
     def test_long_turn_streamed_before_the_window_is_found_by_lookback(self):
         # 2026-10-08: streamed at 17:50, failed at 17:53 on an Agent DB lock wait.
         run = "7c307087-15f1-4764-a506-9309e4dbf5fd"

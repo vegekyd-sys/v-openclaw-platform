@@ -1,0 +1,173 @@
+{
+  "support": [
+    "lab/candidate/inter-session-feishu.mjs",
+    "lab/candidate/inter-session-support.mjs",
+    "tests/fixtures/inter-session-v-bytes.json",
+    "lab/candidate/inter-session-workspace.mjs",
+    "lab/candidate/lark-cli-shim/lark-cli",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/inter-session-workspace.manifest.json",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/v-workspace/AGENTS.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/v-workspace/REDLINES.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/v-workspace/SOUL.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/v-workspace/IDENTITY.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/v-workspace/USER.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/v-workspace/TOOLS.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/v-workspace/MEMORY.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/v-workspace/.agents/skills/feishu-task-room-router/SKILL.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/v-workspace/.agents/skills/feishu-task-room-router/scripts/create_task_room.py",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/v-workspace/skills/background-worker-contract/SKILL.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/v-workspace/skills/agent-to-agent-protocol-feishu-a2a-defaults/SKILL.md",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/agents-md.diff",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/task-room-skill.diff",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/a2a-skill.diff",
+    "/Users/tianyicai/v-openclaw-platform/.claude/worktrees/isc-wp9-private/background-worker-contract.diff",
+    "lab/candidate/feishu-fake-open-api.mjs",
+    "lab/candidate/feishu-no-live.cjs"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/sessions-send-relay/generated/sessions-spawn-tool-1FQMTkIo.js",
+      "target": "openclaw/dist/sessions-spawn-tool-1FQMTkIo.js",
+      "before": "1a7ab8f9848b1e17a830d7e55f24df01603afd2129bb6807e390f4cc35b17310"
+    },
+    {
+      "source": "lab/release-files/sessions-send-relay/generated/openclaw-tools-BODVdJQD.js",
+      "target": "openclaw/dist/openclaw-tools-BODVdJQD.js",
+      "before": "af27d9ae18e783d376b31ed9e5ad6082a305225bdfadde53e58f0045c7cd6019"
+    },
+    {
+      "source": "lab/release-files/inter-session-admission/generated/get-reply-CqW1y05D.js",
+      "target": "openclaw/dist/get-reply-CqW1y05D.js",
+      "before": "9bac6b7c8f8047c0a907c3ef85c2e03da096662d35e5de9790d846e869bf4cc1"
+    },
+    {
+      "source": "lab/release-files/inter-session-admission/generated/agent-runner.runtime-CAdsMsQt.js",
+      "target": "openclaw/dist/agent-runner.runtime-CAdsMsQt.js",
+      "before": "8c192b9d68e51450cd820352fc610d8ba8ab21cc716b05ea682275e312f95a54"
+    },
+    {
+      "source": "lab/release-files/inter-session-admission/generated/dispatch-from-config-DOJq_7CI.js",
+      "target": "openclaw/dist/dispatch-from-config-DOJq_7CI.js",
+      "before": "f150902ab3ebf2c9ccb19c4c5eb5158b469554553992a76b1c5e772fe7db39bd"
+    },
+    {
+      "source": "lab/release-files/task-bridge-extra-sources/generated/task-registry-activity-DSlVVJwD.js",
+      "target": "openclaw/dist/task-registry-activity-DSlVVJwD.js",
+      "before": "8a89045af8dc0b652511ff88bee4d1fe791f2eedfc6c7c3c30b4e17658821697"
+    },
+    {
+      "source": "lab/release-files/feishu-inter-session-bridge/generated/monitor.account-WFdlCDhR.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+      "before": "ffdf7072cf7d93cec6d52ad2f72ed2357d872ef310c7e643d169829ef8671bcc"
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/contracts.js",
+      "target": "extensions/v-session-relay/core/contracts.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/copy.js",
+      "target": "extensions/v-session-relay/core/copy.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/engine.js",
+      "target": "extensions/v-session-relay/core/engine.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/guard.js",
+      "target": "extensions/v-session-relay/core/guard.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/host.js",
+      "target": "extensions/v-session-relay/core/host.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/labels.js",
+      "target": "extensions/v-session-relay/core/labels.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/ledger.js",
+      "target": "extensions/v-session-relay/core/ledger.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/policy.js",
+      "target": "extensions/v-session-relay/core/policy.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/queue.js",
+      "target": "extensions/v-session-relay/core/queue.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/recovery.js",
+      "target": "extensions/v-session-relay/core/recovery.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/requests.js",
+      "target": "extensions/v-session-relay/core/requests.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/routes.js",
+      "target": "extensions/v-session-relay/core/routes.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/tasks.js",
+      "target": "extensions/v-session-relay/core/tasks.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/transports/agent.js",
+      "target": "extensions/v-session-relay/core/transports/agent.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/transports/bridge.js",
+      "target": "extensions/v-session-relay/core/transports/bridge.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/core/visible.js",
+      "target": "extensions/v-session-relay/core/visible.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/index.js",
+      "target": "extensions/v-session-relay/index.js",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/openclaw.plugin.json",
+      "target": "extensions/v-session-relay/openclaw.plugin.json",
+      "before": null
+    },
+    {
+      "source": "apps/v-session-relay/plugin/package.json",
+      "target": "extensions/v-session-relay/package.json",
+      "before": null
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/inter-session-feishu.mjs",
+    "run"
+  ],
+  "env": {
+    "ISC_VARIANT": "full",
+    "ISC_ENV": "vlab",
+    "RELAY_HARNESS": "worker",
+    "ISC_SCENARIOS": "F1i,F2,F3",
+    "ISC_FEISHU_MODE": "mock"
+  },
+  "timeoutSeconds": 7200,
+  "user": "lab-db91-parity"
+}

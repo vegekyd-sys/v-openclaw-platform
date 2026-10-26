@@ -9,6 +9,13 @@
 //
 // Nothing here talks to DingTalk. `WebSocketServer` comes from the `ws`
 // package the connector itself depends on.
+//
+// For the sessions_send inbound bridge (docs/inter-session/design.md §10.5):
+// `sessionWebhookCalls()` lists every session-webhook request (a synthetic
+// inter-session turn must make none), `failRoute()` makes an endpoint fail
+// (e.g. AI card creation 403, so the proactive fallback runs), and `sendRaw()`
+// delivers an arbitrary robot callback (e.g. the robot's own message, which
+// the bridge must drop).
 import http from "node:http";
 
 // With `strictGroupIds`, robot group messages are accepted only for a group id
@@ -24,6 +31,7 @@ export function createFakeDingTalkOpenApi({ WebSocketServer, strictGroupIds = fa
   const sockets = new Set();
   const groups = new Set(); // group conversation ids users wrote from
   const rejected = []; // robot group sends refused for their id: {at, openConversationId, msgKey}
+  const failures = new Map(); // "METHOD /path" -> {status, body, times}
   let nextMsg = 1;
   let port;
 
@@ -46,8 +54,9 @@ export function createFakeDingTalkOpenApi({ WebSocketServer, strictGroupIds = fa
       rejected.push({ at: Date.now(), openConversationId: body.openConversationId, msgKey: body.msgKey });
       return { [STATUS]: 400, code: "invalid.openConversationId", message: "openConversationId is invalid", requestid: "candidate" };
     }
-    robotMessages.push({ at: Date.now(), path, userIds: body.userIds, openConversationId: body.openConversationId, robotCode: body.robotCode, msgKey: body.msgKey, msgParam });
-    return { processQueryKey: `candidate-pqk-${robotMessages.length}`, invalidStaffIdList: [], flowControlledStaffIdList: [] };
+    const processQueryKey = `candidate-pqk-${robotMessages.length + 1}`;
+    robotMessages.push({ at: Date.now(), path, userIds: body.userIds, openConversationId: body.openConversationId, robotCode: body.robotCode, msgKey: body.msgKey, msgParam, processQueryKey });
+    return { processQueryKey, invalidStaffIdList: [], flowControlledStaffIdList: [] };
   };
   const routes = {
     "POST /v1.0/gateway/connections/open": () => ({ endpoint: `ws://127.0.0.1:${port}/connect`, ticket: "candidate-ticket" }),
@@ -105,7 +114,15 @@ export function createFakeDingTalkOpenApi({ WebSocketServer, strictGroupIds = fa
     let body = {};
     try { body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {}; } catch { body = { raw: Buffer.concat(chunks).length }; }
     const key = `${req.method} ${url.pathname}`;
-    record(req.method, url.pathname, body);
+    const call = record(req.method, url.pathname, body);
+    const failure = failures.get(key);
+    if (failure && failure.times > 0 && (!failure.when || failure.when(body))) {
+      failure.times -= 1;
+      call.failed = failure.status;
+      res.writeHead(failure.status, { "content-type": "application/json" });
+      res.end(JSON.stringify(failure.body));
+      return;
+    }
     const handler = routes[key];
     // Unknown endpoints (emotion reply/recall, user lookups, media) succeed quietly.
     const result = handler ? handler(body, url.searchParams) : (url.pathname.startsWith("/topapi") || url.pathname.startsWith("/user") ? { errcode: 0, errmsg: "ok", result: {} } : { success: true, result: {} });
@@ -135,6 +152,24 @@ export function createFakeDingTalkOpenApi({ WebSocketServer, strictGroupIds = fa
     robotMessages,
     mediaUploads,
     rejected,
+    /** Every request to a session webhook (`/robot/sendBySession`), failed ones included. */
+    sessionWebhookCalls: () => calls.filter((c) => c.path === "/robot/sendBySession"),
+    /** Robot OpenAPI sends (proactive messages) at or after `at`. */
+    robotMessagesSince: (at = 0) => robotMessages.filter((m) => m.at >= at),
+    /**
+     * The next `times` requests to `key` ("POST /v1.0/card/instances") answer `status` with `body`;
+     * with `when(body)`, only the requests it accepts (e.g. one chat's card deliveries).
+     */
+    failRoute(key, { status = 403, body = { code: "Forbidden.AccessDenied", message: "candidate failure" }, times = 1, when } = {}) {
+      failures.set(key, { status, body, times, when });
+    },
+    /** Delivers a robot callback with exactly this `data` (e.g. a message whose sender is the robot). */
+    sendRaw(data) {
+      const msgId = data?.msgId ?? `raw${Date.now()}${nextMsg++}`;
+      const frame = { specVersion: "1.0", type: "CALLBACK", headers: { topic: "/v1.0/im/bot/messages/get", messageId: `stream-${msgId}`, contentType: "application/json", time: String(Date.now()), appId: "candidate" }, data: JSON.stringify({ ...data, msgId }) };
+      for (const ws of sockets) ws.send(JSON.stringify(frame));
+      return { msgId, at: Date.now() };
+    },
     /** A user taps a control on an interactive card; resolves with the client's ack. */
     pressCard({ outTrackId, userId, params }) {
       const messageId = `card-${Date.now()}-${nextMsg++}`;
@@ -149,13 +184,13 @@ export function createFakeDingTalkOpenApi({ WebSocketServer, strictGroupIds = fa
         }, 100);
       });
     },
-    /** A user writes to the robot (direct chat unless `group`). */
-    sendUserText({ userId, text, group = false, conversationId, senderNick = "Tianyi" }) {
+    /** A user writes to the robot (direct chat unless `group`); groups may carry their own title. */
+    sendUserText({ userId, text, group = false, conversationId, senderNick = "Tianyi", conversationTitle = "VLab candidate group" }) {
       const conv = conversationId ?? (group ? `cidGroup${userId}` : `cidDirect${userId}`);
       if (group) groups.add(conv);
       const msgId = `msg${Date.now()}${nextMsg++}`;
       const data = {
-        conversationId: conv, conversationType: group ? "2" : "1", conversationTitle: group ? "VLab candidate group" : undefined,
+        conversationId: conv, conversationType: group ? "2" : "1", conversationTitle: group ? conversationTitle : undefined,
         msgId, msgtype: "text", text: { content: text },
         senderId: `$:LWCP_v1:$${userId}`, senderStaffId: userId, senderNick,
         chatbotUserId: "$:LWCP_v1:$candidate-bot", chatbotCorpId: "dingcandidate", robotCode: "candidate-robot",

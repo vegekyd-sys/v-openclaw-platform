@@ -1,0 +1,11 @@
+[
+  {
+    "component": "core",
+    "path": "task-registry-activity-DSlVVJwD.js",
+    "source": "lab/release-files/task-bridge-extra-sources/generated/task-registry-activity-DSlVVJwD.js",
+    "target": "openclaw/dist/task-registry-activity-DSlVVJwD.js",
+    "hostPath": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/task-registry-activity-DSlVVJwD.js",
+    "before": "8a89045af8dc0b652511ff88bee4d1fe791f2eedfc6c7c3c30b4e17658821697",
+    "after": "2e70d33de6eb5b6bf042de8cfd3ec9d6c34939cedf4ea8c31b19dc0012c7bb6d"
+  }
+]

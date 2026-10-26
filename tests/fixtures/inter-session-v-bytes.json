@@ -1,0 +1,258 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Bytes every inter-session dist patch (design §3.0, R1 + R2) is generated from and must find on V at stage time (plan `before`).",
+  "capture": "v2026.9.1-db91.6-subagent-index-20261020",
+  "capturedAt": "2026-10-19T18:36:52.762Z",
+  "verifiedOnV": {
+    "at": "2026-10-20T16:50:32+08:00",
+    "method": "ssh v: sha256sum of each hostPath (sudo -n for /home/openclaw), read-only; Gateway ExecStart = /opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/index.js, active since 2026-10-20 02:37:39 CST",
+    "allMatch": true
+  },
+  "files": [
+    {
+      "release": "R1",
+      "component": "core",
+      "workPackages": [
+        "WP2"
+      ],
+      "file": "sessions-spawn-tool-1FQMTkIo.js",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/sessions-spawn-tool-1FQMTkIo.js",
+      "manifest": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/manifest.json",
+      "manifestPath": "./sessions-spawn-tool-1FQMTkIo.js",
+      "hostPath": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/sessions-spawn-tool-1FQMTkIo.js",
+      "sha256": "1a7ab8f9848b1e17a830d7e55f24df01603afd2129bb6807e390f4cc35b17310",
+      "bytes": 168590,
+      "kind": "modified",
+      "hostMtime": "2026-10-04T17:33:40.000Z"
+    },
+    {
+      "release": "R1",
+      "component": "core",
+      "workPackages": [
+        "WP2"
+      ],
+      "file": "openclaw-tools-BODVdJQD.js",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/openclaw-tools-BODVdJQD.js",
+      "manifest": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/manifest.json",
+      "manifestPath": "./openclaw-tools-BODVdJQD.js",
+      "hostPath": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/openclaw-tools-BODVdJQD.js",
+      "sha256": "af27d9ae18e783d376b31ed9e5ad6082a305225bdfadde53e58f0045c7cd6019",
+      "bytes": 777235,
+      "kind": "modified",
+      "hostMtime": "2026-10-10T14:53:08.000Z"
+    },
+    {
+      "release": "R1",
+      "component": "core",
+      "workPackages": [
+        "WP1"
+      ],
+      "file": "get-reply-CqW1y05D.js",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/get-reply-CqW1y05D.js",
+      "manifest": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/manifest.json",
+      "manifestPath": "./get-reply-CqW1y05D.js",
+      "hostPath": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/get-reply-CqW1y05D.js",
+      "sha256": "9bac6b7c8f8047c0a907c3ef85c2e03da096662d35e5de9790d846e869bf4cc1",
+      "bytes": 307436,
+      "kind": "modified",
+      "hostMtime": "2026-10-06T10:14:39.000Z"
+    },
+    {
+      "release": "R1",
+      "component": "core",
+      "workPackages": [
+        "WP1"
+      ],
+      "file": "agent-runner.runtime-CAdsMsQt.js",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/agent-runner.runtime-CAdsMsQt.js",
+      "manifest": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/manifest.json",
+      "manifestPath": "./agent-runner.runtime-CAdsMsQt.js",
+      "hostPath": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/agent-runner.runtime-CAdsMsQt.js",
+      "sha256": "8c192b9d68e51450cd820352fc610d8ba8ab21cc716b05ea682275e312f95a54",
+      "bytes": 376734,
+      "kind": "modified",
+      "hostMtime": "2026-10-15T03:11:23.000Z"
+    },
+    {
+      "release": "R1",
+      "component": "core",
+      "workPackages": [
+        "WP1"
+      ],
+      "file": "dispatch-from-config-DOJq_7CI.js",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/dispatch-from-config-DOJq_7CI.js",
+      "manifest": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/manifest.json",
+      "manifestPath": "./dispatch-from-config-DOJq_7CI.js",
+      "hostPath": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/dispatch-from-config-DOJq_7CI.js",
+      "sha256": "f150902ab3ebf2c9ccb19c4c5eb5158b469554553992a76b1c5e772fe7db39bd",
+      "bytes": 166719,
+      "kind": "modified",
+      "hostMtime": "2026-09-22T14:16:16.000Z",
+      "verifiedOnV": {
+        "at": "2026-10-20T19:25:24+08:00",
+        "method": "ssh v: sha256sum of hostPath, read-only (added with the fix-core literal-text change; not part of the 16:50 check above)",
+        "match": true
+      }
+    },
+    {
+      "release": "R1",
+      "component": "core",
+      "workPackages": [
+        "WP3"
+      ],
+      "file": "task-registry-activity-DSlVVJwD.js",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/task-registry-activity-DSlVVJwD.js",
+      "manifest": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/manifest.json",
+      "manifestPath": "./task-registry-activity-DSlVVJwD.js",
+      "hostPath": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/task-registry-activity-DSlVVJwD.js",
+      "sha256": "8a89045af8dc0b652511ff88bee4d1fe791f2eedfc6c7c3c30b4e17658821697",
+      "bytes": 30024,
+      "kind": "modified",
+      "hostMtime": "2026-10-01T19:11:51.000Z"
+    },
+    {
+      "release": "R1",
+      "component": "feishu",
+      "workPackages": [
+        "WP4"
+      ],
+      "file": "monitor.account-WFdlCDhR.js",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020.feishu/dist/dist/monitor.account-WFdlCDhR.js",
+      "manifest": "release/captured/v2026.9.1-db91.6-subagent-index-20261020.feishu/manifest.json",
+      "manifestPath": "./dist/monitor.account-WFdlCDhR.js",
+      "hostPath": "/opt/openclaw-experiments/worker-visible-progress-v2026.9.1-20260909/feishu/dist/monitor.account-WFdlCDhR.js",
+      "sha256": "ffdf7072cf7d93cec6d52ad2f72ed2357d872ef310c7e643d169829ef8671bcc",
+      "bytes": 388736,
+      "kind": "added",
+      "hostMtime": "2026-10-18T09:01:09.000Z"
+    },
+    {
+      "release": "R2",
+      "component": "core",
+      "workPackages": [
+        "WP6"
+      ],
+      "file": "telegram-ingress-drain-factory-DJM2Jqrc.js",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/telegram-ingress-drain-factory-DJM2Jqrc.js",
+      "manifest": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/manifest.json",
+      "manifestPath": "./telegram-ingress-drain-factory-DJM2Jqrc.js",
+      "hostPath": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/telegram-ingress-drain-factory-DJM2Jqrc.js",
+      "sha256": "acdf98ee22458f8c6415e0ef7b8cc6cdf3e1edaf951d45a3fd6432ef1ef7b194",
+      "bytes": 235118,
+      "kind": "modified",
+      "hostMtime": "2026-10-05T15:10:29.000Z"
+    },
+    {
+      "release": "R2",
+      "component": "core",
+      "workPackages": [
+        "WP6"
+      ],
+      "file": "bot-message-DC6p8sB3.js",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/bot-message-DC6p8sB3.js",
+      "manifest": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/manifest.json",
+      "manifestPath": "./bot-message-DC6p8sB3.js",
+      "hostPath": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/bot-message-DC6p8sB3.js",
+      "sha256": "f37781c45189f3fbff5c18bddd80f6a4d3b816a46e0865530f9d7545894d8c5e",
+      "bytes": 209113,
+      "kind": "modified",
+      "hostMtime": "2026-10-05T15:10:29.000Z"
+    },
+    {
+      "release": "R2",
+      "component": "core",
+      "workPackages": [
+        "WP6"
+      ],
+      "file": "v-experience.js",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/dist/v-experience.js",
+      "manifest": "release/captured/v2026.9.1-db91.6-subagent-index-20261020/manifest.json",
+      "manifestPath": "./v-experience.js",
+      "hostPath": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/v-experience.js",
+      "sha256": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+      "bytes": 74961,
+      "kind": "added",
+      "hostMtime": "2026-10-05T15:10:29.000Z"
+    },
+    {
+      "release": "R2",
+      "component": "dingtalk",
+      "workPackages": [
+        "WP7"
+      ],
+      "file": "connection-DCvu-l09.mjs",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020.dingtalk/dist/dist/connection-DCvu-l09.mjs",
+      "manifest": "release/captured/v2026.9.1-db91.6-subagent-index-20261020.dingtalk/manifest.json",
+      "manifestPath": "./dist/connection-DCvu-l09.mjs",
+      "hostPath": "/home/openclaw/.openclaw/npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/connection-DCvu-l09.mjs",
+      "sha256": "397c42c3f66d0cd7898168de21be1607303723cd797d9174ad4b1d6694d44520",
+      "bytes": 19666,
+      "kind": "added",
+      "hostMtime": "2026-10-05T15:10:29.000Z"
+    },
+    {
+      "release": "R2",
+      "component": "dingtalk",
+      "workPackages": [
+        "WP7"
+      ],
+      "file": "message-handler-BUoLSylZ.mjs",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020.dingtalk/dist/dist/message-handler-BUoLSylZ.mjs",
+      "manifest": "release/captured/v2026.9.1-db91.6-subagent-index-20261020.dingtalk/manifest.json",
+      "manifestPath": "./dist/message-handler-BUoLSylZ.mjs",
+      "hostPath": "/home/openclaw/.openclaw/npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/message-handler-BUoLSylZ.mjs",
+      "sha256": "d914cbce8951f32e684ab6423d3977d35c62e3a39c5da23e6c42ca804cda0602",
+      "bytes": 86939,
+      "kind": "added",
+      "hostMtime": "2026-10-05T15:10:29.000Z"
+    },
+    {
+      "release": "R2",
+      "component": "dingtalk",
+      "workPackages": [
+        "WP7"
+      ],
+      "file": "v-experience.mjs",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020.dingtalk/dist/dist/v-experience.mjs",
+      "manifest": "release/captured/v2026.9.1-db91.6-subagent-index-20261020.dingtalk/manifest.json",
+      "manifestPath": "./dist/v-experience.mjs",
+      "hostPath": "/home/openclaw/.openclaw/npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/v-experience.mjs",
+      "sha256": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+      "bytes": 74961,
+      "kind": "added",
+      "hostMtime": "2026-10-05T15:10:29.000Z"
+    },
+    {
+      "release": "R2",
+      "component": "wecom",
+      "workPackages": [
+        "WP8"
+      ],
+      "file": "monitor.js",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020.wecom/dist/dist/src/monitor.js",
+      "manifest": "release/captured/v2026.9.1-db91.6-subagent-index-20261020.wecom/manifest.json",
+      "manifestPath": "./dist/src/monitor.js",
+      "hostPath": "/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin/dist/src/monitor.js",
+      "sha256": "d4fe3561255428b5446127e2b686319feb5879bae181cc7f38058858f6974f8d",
+      "bytes": 55123,
+      "kind": "added",
+      "hostMtime": "2026-10-05T15:10:29.000Z"
+    },
+    {
+      "release": "R2",
+      "component": "wecom",
+      "workPackages": [
+        "WP8"
+      ],
+      "file": "v-experience.mjs",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020.wecom/dist/dist/src/v-experience.mjs",
+      "manifest": "release/captured/v2026.9.1-db91.6-subagent-index-20261020.wecom/manifest.json",
+      "manifestPath": "./dist/src/v-experience.mjs",
+      "hostPath": "/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin/dist/src/v-experience.mjs",
+      "sha256": "5d939fa7109a68a52ed88d080f491636cce58d4095b2420a96e05cd090284f2b",
+      "bytes": 74961,
+      "kind": "added",
+      "hostMtime": "2026-10-05T15:10:29.000Z"
+    }
+  ]
+}

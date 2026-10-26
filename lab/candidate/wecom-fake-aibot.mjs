@@ -6,12 +6,24 @@
 // robot authenticates, the test pushes user messages, and every streamed
 // reply frame and proactive message is acknowledged and recorded.
 //
+// Like WeCom, it answers a reply (aibot_respond_msg) only to the req_id of a
+// callback it pushed: any other req_id gets errcode 846605 (invalid req_id) and
+// is recorded in `rejectedResponds`. Every reply attempt, accepted or not, is in
+// `respondAttempts`, so a test can assert that no turn tried to answer a req_id
+// WeCom never sent (an inter-session turn has none; design §10.5).
+// `rejectEventReplies: true` also refuses replies to event callbacks (card taps),
+// as WeCom does; it is off by default because V's card-tap path predates it.
+//
 // Nothing here talks to WeCom. `WebSocketServer` comes from the `ws` package
 // the plugin depends on.
 import http from "node:http";
 
-export function createFakeWeComAibot({ WebSocketServer, streamLifetimeMs = 6 * 60 * 1000 }) {
+export const INVALID_REQ_ID_ERRCODE = 846605;
+
+export function createFakeWeComAibot({ WebSocketServer, streamLifetimeMs = 6 * 60 * 1000, rejectEventReplies = false }) {
   const frames = [];
+  const respondAttempts = []; // every aibot_respond_msg: {at, reqId, chatId, msgtype, streamId, finish, rejected}
+  const rejectedResponds = []; // the ones refused with 846605
   const streams = new Map(); // stream id -> {chatId, history, content, finished, createdAt}
   const proactive = []; // {at, chatId, msgtype, text}
   const sockets = new Set();
@@ -26,6 +38,7 @@ export function createFakeWeComAibot({ WebSocketServer, streamLifetimeMs = 6 * 6
   const media = []; // finished uploads
   const cardUpdates = []; // aibot_respond_update_msg frames
   const eventsAt = new Map(); // event req_id -> when it was pushed
+  const eventReqIds = new Set(); // req_ids of event callbacks (card taps)
 
   wss.on("connection", (ws) => {
     sockets.add(ws);
@@ -40,6 +53,14 @@ export function createFakeWeComAibot({ WebSocketServer, streamLifetimeMs = 6 * 6
         case "ping": ack(ws, reqId); return;
         case "aibot_respond_msg": {
           const body = frame.body ?? {};
+          const attempt = { at: Date.now(), reqId, chatId: callbacks.get(reqId) ?? null, msgtype: body.msgtype, streamId: body.stream?.id ?? null, finish: body.stream ? Boolean(body.stream.finish) : null, rejected: false };
+          respondAttempts.push(attempt);
+          if (!callbacks.has(reqId) || (rejectEventReplies && eventReqIds.has(reqId))) {
+            attempt.rejected = true;
+            rejectedResponds.push(attempt);
+            ws.send(JSON.stringify({ headers: { req_id: reqId }, errcode: INVALID_REQ_ID_ERRCODE, errmsg: `invalid req_id: ${reqId}` }));
+            return;
+          }
           if (body.msgtype === "stream") {
             const s = body.stream ?? {};
             let st = streams.get(s.id);
@@ -52,14 +73,14 @@ export function createFakeWeComAibot({ WebSocketServer, streamLifetimeMs = 6 * 6
             st.finished = Boolean(s.finish);
             st.history.push({ at: Date.now(), content: st.content, finish: st.finished });
           } else {
-            proactive.push({ at: Date.now(), chatId: callbacks.get(reqId), msgtype: body.msgtype, text: body.markdown?.content ?? body.text?.content ?? JSON.stringify(body).slice(0, 500), passive: true });
+            proactive.push({ at: Date.now(), reqId, chatId: callbacks.get(reqId), msgtype: body.msgtype, text: body.markdown?.content ?? body.text?.content ?? JSON.stringify(body).slice(0, 500), passive: true });
           }
           ack(ws, reqId);
           return;
         }
         case "aibot_send_msg": {
           const body = frame.body ?? {};
-          proactive.push({ at: Date.now(), chatId: body.chatid, msgtype: body.msgtype, text: body.markdown?.content ?? body.text?.content ?? JSON.stringify(body).slice(0, 500), ...(body.template_card ? { templateCard: body.template_card } : {}), ...(body.image ? { mediaId: body.image.media_id } : {}) });
+          proactive.push({ at: Date.now(), reqId, chatId: body.chatid, msgtype: body.msgtype, text: body.markdown?.content ?? body.text?.content ?? JSON.stringify(body).slice(0, 500), ...(body.template_card ? { templateCard: body.template_card } : {}), ...(body.image ? { mediaId: body.image.media_id } : {}) });
           ack(ws, reqId);
           return;
         }
@@ -100,6 +121,10 @@ export function createFakeWeComAibot({ WebSocketServer, streamLifetimeMs = 6 * 6
     close: () => new Promise((resolve) => { for (const ws of sockets) ws.terminate(); wss.close(); server.closeAllConnections?.(); server.close(() => resolve()); }),
     authenticated: () => authenticated,
     frames,
+    respondAttempts,
+    rejectedResponds,
+    /** Reply attempts to a req_id this fake never pushed (e.g. an inter-session turn's synthetic one). */
+    respondsToUnknownReqIds: () => respondAttempts.filter((a) => a.chatId === null),
     streams: () => [...streams.values()],
     proactive,
     media,
@@ -109,6 +134,7 @@ export function createFakeWeComAibot({ WebSocketServer, streamLifetimeMs = 6 * 6
       const chatId = group ? `group-${userId}` : userId;
       const reqId = `aibot_event_callback_${Date.now()}_${nextId++}`;
       callbacks.set(reqId, chatId);
+      eventReqIds.add(reqId);
       eventsAt.set(reqId, Date.now());
       const body = {
         msgid: `evt-${Date.now()}-${nextId++}`, aibotid: "candidate-bot", chattype: group ? "group" : "single",
@@ -118,9 +144,9 @@ export function createFakeWeComAibot({ WebSocketServer, streamLifetimeMs = 6 * 6
       for (const ws of sockets) ws.send(JSON.stringify({ cmd: "aibot_event_callback", headers: { req_id: reqId }, body }));
       return { chatId, reqId, at: Date.now() };
     },
-    /** A user writes to the robot (direct chat unless `group`). */
-    sendUserText({ userId, text, group = false }) {
-      const chatId = group ? `group-${userId}` : userId;
+    /** A user writes to the robot (direct chat unless `group`; a group may be named by `chatId`). */
+    sendUserText({ userId, text, group = false, chatId: groupChatId }) {
+      const chatId = group ? (groupChatId ?? `group-${userId}`) : userId;
       const reqId = `aibot_msg_callback_${Date.now()}_${nextId++}`;
       callbacks.set(reqId, chatId);
       const body = {

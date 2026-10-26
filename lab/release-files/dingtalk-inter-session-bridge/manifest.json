@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "marker": "v-dingtalk-inter-session-bridge-v1",
+  "component": "dingtalk",
+  "package": "@dingtalk-real-ai/dingtalk-connector@0.8.26",
+  "stacksOn": [
+    "v-experience-dingtalk-v1"
+  ],
+  "capture": "v2026.9.1-db91.6-subagent-index-20261020",
+  "generator": "apps/v-experience/dingtalk/patch-inter-session.mjs",
+  "files": [
+    {
+      "component": "dingtalk",
+      "path": "dist/connection-DCvu-l09.mjs",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020.dingtalk/dist/dist/connection-DCvu-l09.mjs",
+      "generated": "lab/release-files/dingtalk-inter-session-bridge/dist/connection-DCvu-l09.mjs",
+      "hostPath": "/home/openclaw/.openclaw/npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/connection-DCvu-l09.mjs",
+      "before": "397c42c3f66d0cd7898168de21be1607303723cd797d9174ad4b1d6694d44520",
+      "after": "6df0dd3c1818ff8af7f4e47bd0a9d6d80cfcbc2bdb6f03c03c5a02ed5c7e78a2"
+    },
+    {
+      "component": "dingtalk",
+      "path": "dist/message-handler-BUoLSylZ.mjs",
+      "captured": "release/captured/v2026.9.1-db91.6-subagent-index-20261020.dingtalk/dist/dist/message-handler-BUoLSylZ.mjs",
+      "generated": "lab/release-files/dingtalk-inter-session-bridge/dist/message-handler-BUoLSylZ.mjs",
+      "hostPath": "/home/openclaw/.openclaw/npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/message-handler-BUoLSylZ.mjs",
+      "before": "d914cbce8951f32e684ab6423d3977d35c62e3a39c5da23e6c42ca804cda0602",
+      "after": "5ecf742f534ea4bde83bdbebd529acc404951a8f940c629f7197ea6cb2639efb"
+    }
+  ]
+}

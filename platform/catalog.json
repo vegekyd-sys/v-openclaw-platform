@@ -161,9 +161,22 @@
         "tests/patch-feishu-progress-stream.test.mjs",
         "tests/patch-feishu-task-status.test.mjs",
         "tests/patch-memory-search-vector-budget.test.mjs",
+        "tests/patch-feishu-inter-session-bridge.test.mjs",
         "tests/patch-openclaw-media-completion-relay.test.mjs",
         "tests/media-completion-worker-relay-91.test.mjs",
         "tests/patch-openclaw91-sessions-send-owner.test.mjs",
+        "tests/sessions-send-reply-once.test.mjs",
+        "tests/sessions-send-relay.test.mjs",
+        "tests/v-session-relay.test.mjs",
+        "tests/inter-session-v-bytes.test.mjs",
+        "tests/inter-session-admission.test.mjs",
+        "tests/inter-session-literal-text.test.mjs",
+        "tests/task-bridge-extra-sources.test.mjs",
+        "tests/v-experience-session-kind.test.mjs",
+        "tests/patch-telegram-inter-session-bridge.test.mjs",
+        "tests/patch-dingtalk-inter-session-bridge.test.mjs",
+        "tests/patch-wecom-inter-session-bridge.test.mjs",
+        "tests/mcp-after-tool-call.test.mjs",
         "tests/patch-openclaw-session-hotset.test.mjs",
         "tests/prune-openclaw-session-hotset.test.mjs",
         "tests/patch-openclaw91-dingtalk-peer-case.test.mjs",
@@ -210,7 +223,9 @@
         "scripts/lib/parity-config.test.mjs",
         "lab/feishu-task-presentation.test.mjs",
         "lab/feishu-task-presentation-native.test.mjs",
-        "lab/feishu-task-presentation-patch.test.mjs"
+        "lab/feishu-task-presentation-patch.test.mjs",
+        "scripts/configure-v-session-relay.test.mjs",
+        "tests/inter-session-plan.test.mjs"
       ]
     },
     {
@@ -239,6 +254,9 @@
         "lab/candidate/candidate.test.mjs",
         "lab/candidate/deepseek-budget-image.test.mjs",
         "lab/candidate/completions-overflow-signal.test.mjs",
+        "lab/candidate/inter-session-workspace.test.mjs",
+        "lab/candidate/lark-cli-shim.test.mjs",
+        "lab/candidate/inter-session-feishu.test.mjs",
         "lab/release-files/codex-plugins-off/config.test.mjs",
         "lab/release-files/web-search-parallel/config.test.mjs",
         "lab/release-files/web-search-deepseek/config.test.mjs",
@@ -449,7 +467,8 @@
         "lab/sessions-resolve-exact-read.test.mjs",
         "lab/sessions-search-exact-read.test.mjs",
         "lab/doctor-subprocess.test.mjs",
-        "lab/sessions-search-candidate-rows.test.mjs"
+        "lab/sessions-search-candidate-rows.test.mjs",
+        "tests/v-self-restart-gateway.test.mjs"
       ]
     }
   ],

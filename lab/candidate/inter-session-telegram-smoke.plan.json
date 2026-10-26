@@ -1,0 +1,21 @@
+{
+  "support": [
+    "lab/candidate/inter-session-telegram-smoke.mjs",
+    "lab/candidate/telegram-fake-bot-api.mjs",
+    "apps/v-session-relay/plugin/core/contracts.js",
+    "tests/fixtures/inter-session-v-bytes.json"
+  ],
+  "files": [
+    { "source": "lab/release-files/telegram-inter-session-bridge/generated/telegram-ingress-drain-factory-DJM2Jqrc.js", "target": "openclaw/dist/telegram-ingress-drain-factory-DJM2Jqrc.js", "before": "acdf98ee22458f8c6415e0ef7b8cc6cdf3e1edaf951d45a3fd6432ef1ef7b194" },
+    { "source": "lab/release-files/telegram-inter-session-bridge/generated/bot-message-DC6p8sB3.js", "target": "openclaw/dist/bot-message-DC6p8sB3.js", "before": "f37781c45189f3fbff5c18bddd80f6a4d3b816a46e0865530f9d7545894d8c5e" }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/inter-session-telegram-smoke.mjs"
+  ],
+  "env": {
+    "ISC_TG_SCENARIOS": "dm,group,command,busy,gated,mismatch,probes"
+  },
+  "timeoutSeconds": 1800,
+  "user": "lab-db91-parity"
+}
