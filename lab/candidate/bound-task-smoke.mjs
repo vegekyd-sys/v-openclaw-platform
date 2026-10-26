@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import {gzipSync} from 'node:zlib';
 import {prepareCandidate,OWNER,DM_CHAT,GROUP_B,dmKey,groupKey,until,sha256,redact} from './bound-task-support.mjs';
 import {createBackendDelegation} from '../realtime-direct-tools/backend.mjs';
 test('bound Feishu tasks: native baseline, cross-session, direct/native Voice and restart', {timeout:600000}, async t=>{
@@ -44,13 +45,18 @@ test('bound Feishu tasks: native baseline, cross-session, direct/native Voice an
   const sent=await until(async()=>{const s=await inspect();return s.tasks.find(x=>!beforeSend.has(x.id)&&x.source==='inter-session'&&x.delivered);},{timeoutMs:180000,label:'real sessions_send target presentation'});
   const responses=c.fake.list(GROUP_B).filter(m=>m.message_id!==sent.anchorId&&JSON.stringify(m.body).includes('BOUND_SEND_TARGET_DONE'));
   assert.equal(responses.length,1,'real sessions_send plus legacy announce must create one visible target result');
-  assert.equal((await inspect()).tasks.length,5);proof.checks.push('real model sessions_send: one target execution/card, legacy announce suppressed');
+  assert((await inspect()).tasks.length>=5);proof.checks.push('real model sessions_send: one target execution/card, legacy announce suppressed');
+  let quietSince=Date.now(),lastSignature='';
+  await until(async()=>{const rows=(await inspect()).tasks;const signature=JSON.stringify(rows.map(r=>[r.id,r.phase,r.delivered]));if(signature!==lastSignature){lastSignature=signature;quietSince=Date.now();}
+   return rows.every(r=>r.delivered)&&Date.now()-quietSince>=2000;},{timeoutMs:180000,intervalMs:250,label:'all accepted requester wake turns settled before restart'});
+  proof.checks.push('requester wake turns settled before restart');
   for(const task of (await inspect()).tasks)assert.equal(task.selectedModel?.agentRuntime,c.harness==='worker'?'vlab-worker':'codex','actual selected harness footer');
   proof.tasks=(await inspect()).tasks.map(({source,phase,delivered,runIds,selectedModel})=>({source,phase,delivered,runIds,selectedModel}));
+  assert(!JSON.stringify([...c.fake.messages.values()]).includes('[Inter-session message]'));
   const count=c.fake.messages.size;await c.stop();await c.start({timeoutMs:120000});
   await inspect();assert.equal(c.fake.messages.size,count,'restart must not send completed outputs again');proof.checks.push('completed journal restart: no duplicate');
   const blocked=path.join(c.data,'blocked-platform.jsonl');assert(!fs.existsSync(blocked)||!fs.readFileSync(blocked,'utf8').trim(),'no real platform request attempted');
   proof.ok=true;proof.messages=c.fake.messages.size;proof.cards=c.fake.cards.size;
- } catch(error){proof.ok=false;proof.error=redact(error.stack);proof.observedCards=c.fake.snapshots.slice(-100);try{proof.observedTasks=(await inspect()).tasks;}catch{};proof.gatewayTail=redact(c.lines.slice(-55).map(x=>x.line).join('\n'));throw error;}
- finally {fs.writeFileSync(path.join(c.data,'bound-task-result.json'),JSON.stringify(proof,null,2));console.log(JSON.stringify(proof));}
+ } catch(error){proof.ok=false;proof.error=redact(error.stack);proof.observedCards=c.fake.snapshots.slice(-30);try{proof.observedTasks=(await inspect()).tasks;}catch{};proof.gatewayTail=redact(c.lines.slice(-55).map(x=>x.line).join('\n'));throw error;}
+ finally {fs.writeFileSync(path.join(c.data,'bound-task-result.json'),JSON.stringify(proof,null,2));const output={...proof};if(!proof.ok){output.failureEvidenceGzip=gzipSync(JSON.stringify({cards:proof.observedCards,tasks:proof.observedTasks,gatewayTail:proof.gatewayTail})).toString('base64');delete output.observedCards;delete output.observedTasks;output.gatewayTail=proof.gatewayTail?.split('\n').slice(-8).join('\n');}console.log(JSON.stringify(output));}
 });

@@ -40,13 +40,13 @@
       "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation.mjs",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-task-presentation.mjs",
       "before": null,
-      "sha256": "f56ebe96beceaf2980187f059e8b559104c761a54048def39a4216dc62ce0776"
+      "sha256": "3abfe24367d1972a1e182ab1d1fb5699972e424b707f4f0e76e35a10d45a5ec5"
     },
     {
       "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation-runtime.mjs",
       "target": "openclaw/dist/v-feishu-task-presentation-runtime.mjs",
       "before": null,
-      "sha256": "abc51613d7e54f2d24c00055b0b1b10e695259626bc07a64f8edd621141c9b33"
+      "sha256": "28f13f022067419ad79f34444d46d43086eb692f5f1e79d17f0303b1250e5650"
     },
     {
       "source": "lab/release-files/feishu-task-presentation/v-feishu-voice-actor.mjs",

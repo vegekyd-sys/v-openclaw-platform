@@ -174,7 +174,7 @@ class TaskPresentation {
     const text=typeof result?.text==='string'?result.text:typeof result?.result==='string'?result.result:undefined;
     let payloads=text!==undefined?[{text:safeText(text)},...this.record.payloads.filter(p=>p.mediaUrl||p.mediaUrls?.length).map(p=>({...p,text:undefined}))]:this.record.payloads;
     if(error){const detail=String(error?.message??error);const reason=/取消|cancel|abort/iu.test(detail)?'任务已取消。':/超时|timeout/iu.test(detail)?'任务超时，尚未完成。':/重启/iu.test(detail)?'Gateway 重启后无法确认原执行状态，请回到原会话核对。':'任务未完成，请回到原会话查看错误。';payloads=[{text:'⚠️ '+reason,isError:true}];}
-    if(!payloads.length||payloads.every(p=>!p.mediaUrl&&!p.mediaUrls?.length&&(!clean(p.text)||clean(p.text)==='NO_REPLY')))payloads=[{text:'任务已结束，本轮没有文字结果。'}];
+    if(!payloads.length||payloads.every(p=>!p.mediaUrl&&!p.mediaUrls?.length&&(!clean(p.text)||['NO_REPLY','REPLY_SKIP','ANNOUNCE_SKIP'].includes(clean(p.text)))))payloads=[{text:'任务已结束，本轮没有文字结果。'}];
     // First terminal is canonical. Retries replay its exact payload rather than a late caller's result.
     if(!this.record.executionOutcome){this.record.executionOutcome={result:{payloads:copy(payloads)},error:error?String(error?.message??error):null};
       this.record.phase=error||this.record.executionFailed?'failed':'completed';this.manager.save(this.record);}
