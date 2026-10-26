@@ -13,7 +13,7 @@ const evidence=process.env.BOUND_TASK_EVIDENCE_DIR;assert(path.isAbsolute(eviden
 const save=(name,data)=>fs.writeFileSync(path.join(evidence,name),JSON.stringify(data,null,2),{mode:0o600});
 const voice=path.join(c.runtime,'bound-voice');fs.mkdirSync(voice,{mode:0o700});
 execFileSync('tar',['-xzf','tmp/bound-voice-source.tgz','--no-same-owner','-C',voice]);
-fs.mkdirSync(path.join(voice,'node_modules'),{recursive:true});fs.symlinkSync(path.join(c.runtime,'openclaw/node_modules/ws'),path.join(voice,'node_modules/ws'));
+execFileSync('npm',['ci','--omit=dev','--ignore-scripts'],{cwd:voice,env:{...c.env,npm_config_cache:path.join(c.data,'voice-npm-cache')},stdio:'pipe',timeout:120000});
 const plugin=path.join(voice,'plugins/v-voice-gpt-live');fs.mkdirSync(path.join(plugin,'node_modules'),{recursive:true});fs.symlinkSync(path.join(c.runtime,'openclaw'),path.join(plugin,'node_modules/openclaw'));
 // Load the real Voice plugin from the exact submitted Voice source archive.
 c.config.plugins.load.paths.push(plugin);c.config.plugins.entries['v-voice-gpt-live']={enabled:true};c.config.plugins.allow?.push('v-voice-gpt-live');
