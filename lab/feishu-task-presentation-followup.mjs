@@ -2,6 +2,7 @@
 // It never schedules a model, replays a user message, or resolves source policy.
 const KEY=Symbol.for('openclaw.v.boundTaskPresentation.v1');
 const bare=x=>String(x??'').replace(/^(?:chat|user):/u,'');
+const failureOf=operation=>['aborted','failed'].includes(operation?.result?.kind)?operation.result.code??'execution failed':undefined;
 export async function openFollowupPresentation(turn,defaults){
  const m=globalThis[KEY],q=turn.queued,r=q.run;
  if(!m||turn.sendPolicy!=='allow'||q.currentInboundEventKind==='room_event'||defaults.opts?.isHeartbeat||
@@ -35,7 +36,10 @@ export async function deliverFollowupPresentation(params,payloads){
  h.captureDelivery(payloads);
  // Called only after native source policy, payload suppression, and drop
  // disposition. A failed delivery stays owned and retryable, never reruns work.
- await h.finish({payloads});
+ // Native failure replies can be suppressed into NO_REPLY. The execution
+ // outcome is still authoritative: never turn a failed queued run into a
+ // successful empty result before the finally handler can observe it.
+ await h.finish({payloads},failureOf(params.turn?.operation));
  if(h.record.phase==='waiting')return true;
  if(!h.record.delivered)throw Error('Queued reply has no confirmed native delivery');
  await params.defaults.opts?.onObservedReplyDelivery?.();
@@ -44,6 +48,6 @@ export async function deliverFollowupPresentation(params,payloads){
 export async function settleFollowupPresentation(runId,disposition,operation){
  const h=globalThis[KEY]?.runs.get(runId);
  if(!h||h.record.source!=='queued-followup'||disposition?.kind!=='consumed'||h.record.delivered||h.record.executionOutcome||h.record.yielded)return;
- const failure=operation?.result?.kind==='aborted'||operation?.result?.kind==='failed';
- await h.finish(failure?null:{payloads:[{text:'本轮没有可展示的自动回复。'}]},failure?operation.result.code??'execution failed':undefined);
+ const failure=failureOf(operation);
+ await h.finish(failure?null:{payloads:[{text:'本轮没有可展示的自动回复。'}]},failure);
 }
