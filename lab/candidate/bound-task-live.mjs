@@ -9,6 +9,10 @@ const privateConfig=process.env.BOUND_TASK_LIVE_CONFIG;
 assert(privateConfig&&process.env.VLAB_CANDIDATE_ID,'Explicit private live-test configuration required');
 const live=JSON.parse(fs.readFileSync(privateConfig));
 const c=await prepareCandidate({harness:process.env.BOUND_TASK_HARNESS??'worker',maxWorkers:2,liveConfig:live});
+if(live.recoverTasks){
+ const rows=JSON.parse(fs.readFileSync(live.recoverTasks));fs.mkdirSync(c.ledgerDir,{recursive:true,mode:0o700});
+ for(const row of rows){assert(/^[a-f0-9]{64}$/.test(row.id)&&row.executionOutcome,'Only captured terminal results may be recovered');fs.writeFileSync(path.join(c.ledgerDir,row.id+'.json'),JSON.stringify(row),{mode:0o600});}
+}
 const evidence=process.env.BOUND_TASK_EVIDENCE_DIR;assert(path.isAbsolute(evidence));fs.mkdirSync(evidence,{recursive:true,mode:0o700});
 const save=(name,data)=>fs.writeFileSync(path.join(evidence,name),JSON.stringify(data,null,2),{mode:0o600});
 const voice=path.join(c.runtime,'bound-voice');fs.mkdirSync(voice,{mode:0o700});
