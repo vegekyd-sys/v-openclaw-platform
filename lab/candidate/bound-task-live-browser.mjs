@@ -31,7 +31,7 @@ const server=http.createServer(async(req,res)=>{
    const r=await evaluate(`(()=>{const e=${p.text?`[...document.querySelectorAll('button')].find(e=>(e.getAttribute('aria-label')||e.innerText).trim()===${JSON.stringify(p.text)})`:`document.getElementById(${JSON.stringify(p.id)})`};if(!e||e.disabled||e.hidden)throw Error('Original control unavailable');e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
    await cdp('Input.dispatchMouseEvent',{type:'mousePressed',...r,button:'left',clickCount:1});await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',...r,button:'left',clickCount:1});result={clicked:p.id};
   }else if(p.op==='play'){
-   if(!['direct','chat','cancel','native'].includes(p.clip))throw Error('Unknown synthetic user clip');
+   if(!['direct','chat','cancel','native','backend','hangup'].includes(p.clip))throw Error('Unknown synthetic user clip');
    result=await pulse.play(path.join(process.env.BOUND_TASK_USER_CLIPS,p.clip+'.wav'),p.clip).done;
   }else if(p.op==='screenshot'){
    const img=await cdp('Page.captureScreenshot',{format:'png'});fs.writeFileSync(root+'/voice-screen.png',Buffer.from(img.data,'base64'));result={saved:true};
