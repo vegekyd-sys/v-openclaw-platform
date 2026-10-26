@@ -5,14 +5,14 @@ import {createBackendDelegation,visibleText} from './backend.mjs';
 
 function fixture(handler=()=>new Promise(()=>{})){
   const calls=[],progress=[],audit=[],sessionKey='agent:makaron:feishu:group:personal-test';
-  const gateway={request:async(method,args)=>{calls.push({method,args});if(method==='chat.send')return {runId:args.idempotencyKey,status:'started'};return handler(method,args);}};
+  const gateway={request:async(method,args)=>{calls.push({method,args});if(method==='v.feishu.taskPresentation')return {enabled:false};if(method==='chat.send')return {runId:args.idempotencyKey,status:'started'};return handler(method,args);}};
   const backend=createBackendDelegation({gateway,sessionKey,ownerId:'call-owner',onProgress:p=>progress.push(p),audit:e=>audit.push(e)});
   return {backend,calls,progress,audit,sessionKey,start:()=>backend.run({question:'先查记忆，再上网核对，比较后给出结论',context:'上海；不要替我预订',callId:'native-function-1',signal:new AbortController().signal}),
     event:(runId,state,message)=>backend.handleEvent({event:'chat',payload:{runId,sessionKey,state,message}})};
 }
 test('one complete goal uses configured V session; unrelated run cannot complete it',async()=>{
   const f=fixture(),promise=f.start();await delay(0);const row=f.backend.snapshot();
-  const request=f.calls[0];assert.equal(request.method,'chat.send');assert.equal(request.args.sessionKey,f.sessionKey);assert.equal(request.args.deliver,false);assert.equal(request.args.model,undefined);
+  const request=f.calls.find(c=>c.method==='chat.send');assert.equal(request.args.sessionKey,f.sessionKey);assert.equal(request.args.deliver,false);assert.equal(request.args.model,undefined);
   assert.match(request.args.message,/上海；不要替我预订/);assert.match(request.args.message,/全部步骤|完整目标/);
   f.event('foreign-run','final',{content:[{type:'text',text:'外来答案'}]});assert.equal(f.backend.snapshot().runId,row.runId);
   f.event(row.runId,'final',{content:[{type:'text',text:'两步已完成，实际结论'}]});const result=await promise;
@@ -84,6 +84,32 @@ test('executing native final list survives aborted outer callbacks and proves on
 test('one normal V run returns both actual summary and full Markdown; raw canonical output remains audited',async()=>{
  const f=fixture(),pending=f.start();await delay(0);const {runId}=f.backend.snapshot();
  const summary='推荐先核对身份和招生政策，暂不定案。',text='## 完整方案\n'+'具体事实、时间和限制。'.repeat(80),raw=`【语音摘要】\n${summary}\n【完整方案】\n${text}`;
- assert(f.calls[0].args.message.includes('【语音摘要】'));f.event(runId,'final',{text:raw});const result=await pending;
+ assert(f.calls.find(c=>c.method==='chat.send').args.message.includes('【语音摘要】'));f.event(runId,'final',{text:raw});const result=await pending;
  assert.equal(result.result,text);assert.equal(result.spokenSummary,summary);assert.equal(f.audit.find(x=>x.type==='backend.completed').result,raw);assert.equal(f.calls.filter(x=>x.method==='chat.send').length,1);
+});
+test('bound native presentation receives only the public task and exact canonical final, with one execution',async()=>{
+ const calls=[],key='agent:makaron:feishu:group:oc_fixture';let backend;
+ const gateway={request:async(method,args)=>{calls.push({method,args});
+  if(method==='v.feishu.taskPresentation')return args.op==='begin'?{enabled:true,presentationId:'owned-presentation'}:{accepted:true};
+  if(method==='chat.send')return {runId:args.idempotencyKey,status:'started'};return new Promise(()=>{});}};
+ backend=createBackendDelegation({gateway,sessionKey:key,ownerId:'one'});
+ const pending=backend.run({question:'公开任务',context:'PRIVATE_CONTEXT',callId:'a',signal:new AbortController().signal});await delay(0);
+ const runId=backend.snapshot().runId;backend.handleEvent({event:'chat',payload:{runId,sessionKey:key,state:'final',message:{text:'【语音摘要】\n简短播报\n【完整方案】\n完整正文'}}});
+ const result=await pending;await delay(0);
+ const begin=calls.find(c=>c.args.op==='begin'),finish=calls.find(c=>c.args.op==='finish');
+ assert.equal(begin.args.text,'公开任务');assert(!JSON.stringify(begin).includes('PRIVATE_CONTEXT'));assert.equal(begin.args.runId,runId);
+ assert.equal(finish.args.result.text,'完整正文');assert.equal(result.result,'完整正文');assert.equal(finish.args.presentationId,'owned-presentation');
+ assert.equal(calls.filter(c=>c.method==='chat.send').length,1);
+});
+test('missing or failed presentation RPC leaves the same backend result and model invocation',async()=>{
+ const calls=[],key='agent:makaron:feishu:group:oc_fixture';
+ const backend=createBackendDelegation({gateway:{request:async(method,args)=>{calls.push({method,args});if(method==='v.feishu.taskPresentation')throw Error('gateway method unavailable');if(method==='chat.send')return {runId:args.idempotencyKey,status:'started'};return new Promise(()=>{});}},sessionKey:key,ownerId:'one'});
+ const pending=backend.run({question:'目标',callId:'a',signal:new AbortController().signal});await delay(0);const runId=backend.snapshot().runId;
+ backend.handleEvent({event:'chat',payload:{runId,sessionKey:key,state:'final',message:{text:'真实结果'}}});assert.equal((await pending).result,'真实结果');assert.equal(calls.filter(c=>c.method==='chat.send').length,1);
+});
+test('cancellation during presentation registration cannot launch a retired model task',async()=>{
+ const calls=[],controller=new AbortController();let resolveBegin;
+ const backend=createBackendDelegation({gateway:{request:async(method,args)=>{calls.push({method,args});if(method==='v.feishu.taskPresentation'&&args.op==='begin')return new Promise(r=>resolveBegin=r);if(method==='agent.wait')return {status:'error',aborted:true};if(method==='chat.abort')return {ok:true};return {accepted:true};}},sessionKey:'agent:makaron:test',ownerId:'one'});
+ const pending=backend.run({question:'目标',callId:'a',signal:controller.signal}),rejection=assert.rejects(pending,/取消/);await delay(0);controller.abort();await delay(0);resolveBegin({enabled:true,presentationId:'p'});await rejection;
+ assert.equal(calls.filter(c=>c.method==='chat.send').length,0);
 });

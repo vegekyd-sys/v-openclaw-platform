@@ -1,0 +1,12 @@
+[
+  {
+    "component": "wecom",
+    "path": "dist/src/monitor.js",
+    "target": "extensions/wecom-openclaw-plugin/dist/src/monitor.js",
+    "hostPath": "/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin/dist/src/monitor.js",
+    "marker": "v-wecom-inter-session-bridge-v1",
+    "generator": "apps/v-experience/wecom/patch-inter-session.mjs",
+    "before": "d4fe3561255428b5446127e2b686319feb5879bae181cc7f38058858f6974f8d",
+    "after": "0c9c1b50277611df5ea23d3e8c3d5ecc23d3aa334ed250a01d933966b37242b2"
+  }
+]

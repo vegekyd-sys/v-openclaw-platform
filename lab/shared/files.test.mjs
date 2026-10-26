@@ -85,3 +85,29 @@ test('all-Native idle fence accepts only the exact missing Worker RPC error',asy
  await assert.rejects(acquireIdleFence(transport,'failed',{now:()=>0}),/Gateway connect deadline/);
  assert.deepEqual(failed,['vlab.workers.status']);
 });
+test('a release that adds a plugin directory: deploy creates it like its parent, rollback removes it and restores the exact fingerprint',t=>{
+ const root=fixture(t),payload=tmp(t);fs.mkdirSync(payload+'/before');fs.mkdirSync(payload+'/after');
+ fs.mkdirSync(root+'/extensions/wecom-openclaw-plugin/dist',{recursive:true});fs.writeFileSync(root+'/extensions/wecom-openclaw-plugin/dist/m.js','w');
+ fs.chmodSync(root+'/extensions',0o700);
+ const old=fingerprint(root);
+ const added=['extensions/v-session-relay/index.js','extensions/v-session-relay/core/transports/agent.js','extensions/v-session-relay/openclaw.plugin.json'];
+ const files=[{target:'openclaw/dist/a.mjs',before:sha('export const a=1;'),after:sha('export const a=2;')},...added.map(p=>({target:p,before:null,after:sha(p)}))];
+ fs.writeFileSync(payload+'/before/0','export const a=1;');fs.writeFileSync(payload+'/after/0','export const a=2;');
+ added.forEach((p,i)=>fs.writeFileSync(payload+'/after/'+(i+1),p));
+ validateFiles(root,files.map((f,i)=>({...f,content:fs.readFileSync(payload+'/after/'+i).toString('base64')})));
+ assertVersion(root,files,'before');installFiles(root,files,payload,'after');assertVersion(root,files,'after');
+ for(const d of ['extensions/v-session-relay','extensions/v-session-relay/core','extensions/v-session-relay/core/transports'])
+  assert.equal(fs.statSync(root+'/'+d).mode&0o777,0o700,d);
+ assert.equal(fs.statSync(root+'/extensions/v-session-relay/index.js').mode&0o777,0o644);
+ installFiles(root,files,payload,'before');assertVersion(root,files,'before');
+ assert.deepEqual(fingerprint(root),old);
+ assert.equal(fs.existsSync(root+'/extensions/v-session-relay'),false);
+ assert.deepEqual(fs.readdirSync(root+'/extensions'),['wecom-openclaw-plugin']);
+ // A directory that holds something else stays; the top-level directory always stays.
+ installFiles(root,files,payload,'after');fs.writeFileSync(root+'/extensions/v-session-relay/core/keep.js','k');
+ installFiles(root,files,payload,'before');
+ assert.deepEqual(fs.readdirSync(root+'/extensions/v-session-relay'),['core']);assert.deepEqual(fs.readdirSync(root+'/extensions/v-session-relay/core'),['keep.js']);
+ const solo=[{target:'extensions/x.js',before:null,after:sha('x')}];
+ fs.mkdirSync(payload+'/s/after',{recursive:true});fs.writeFileSync(payload+'/s/after/0','x');
+ installFiles(root,solo,payload+'/s','after');installFiles(root,solo,payload+'/s','before');assert(fs.existsSync(root+'/extensions'));
+});

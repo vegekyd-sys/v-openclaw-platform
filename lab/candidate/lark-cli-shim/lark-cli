@@ -1,0 +1,244 @@
+#!/usr/bin/env node
+// lark-cli shim for inter-session candidate runs (docs/inter-session/design.md §10.4).
+//
+// Put this first on PATH as `lark-cli` (lab/candidate/inter-session-workspace.mjs prepareLarkShim
+// does that). It only answers `lark-cli im +chat-create`, and only from a pool of pre-created
+// chats: it never opens a network connection, never reads credentials and never creates a chat.
+//   INTER_SESSION_ROOM_POOL  comma-separated oc_… chat ids, handed out in rotation
+//   VLAB_CANDIDATE_DATA      run directory; calls are logged to $VLAB_CANDIDATE_DATA/lark-shim.log
+// Exit codes: 0 ok (also --help, --dry-run) · 2 usage or shim misconfiguration ·
+//             3 any other subcommand · 4 the production app id is reachable (env, lark-cli config,
+//             or an OpenClaw config that lark-cli config bind reads).
+// Written without import/require so it runs whether node loads it as CommonJS or as ESM.
+'use strict';
+const fs = process.getBuiltinModule('node:fs');
+const path = process.getBuiltinModule('node:path');
+const os = process.getBuiltinModule('node:os');
+
+const PROD_APP_ID = 'cli_a9365919fc3a1bd6';
+const POOL_ENV = 'INTER_SESSION_ROOM_POOL';
+const CHAT_ID_RE = /^oc_[0-9a-f]{8,64}$/;
+const argv = process.argv.slice(2);
+const startedAt = new Date().toISOString();
+
+function dataDir() { return process.env.VLAB_CANDIDATE_DATA || null; }
+
+function log(entry) {
+  const dir = dataDir();
+  if (!dir) return false;
+  try {
+    fs.appendFileSync(path.join(dir, 'lark-shim.log'), JSON.stringify({at: startedAt, pid: process.pid, ppid: process.ppid,
+      cwd: process.cwd(), argv, network: 'none', ...entry}) + '\n', {mode: 0o600});
+    return true;
+  } catch { return false; }
+}
+
+function finish(code, entry, {stdout, stderr} = {}) {
+  log({exit: code, ...entry});
+  // Synchronous writes: process.exit right after an async pipe write can drop output on macOS.
+  if (stdout !== undefined) fs.writeSync(1, stdout.endsWith('\n') ? stdout : stdout + '\n');
+  if (stderr !== undefined) fs.writeSync(2, stderr.endsWith('\n') ? stderr : stderr + '\n');
+  process.exit(code);
+}
+
+function errorEnvelope(identity, subtype, message, hint) {
+  return JSON.stringify({ok: false, identity, error: {type: 'shim', subtype, message, ...(hint ? {hint} : {})}}, null, 2);
+}
+
+// ---- 1. production app id: checked before anything else --------------------------------------
+
+function scanConfigDir(dir, found, seen, depth) {
+  if (depth > 6) return;
+  let real;
+  try { real = fs.realpathSync(dir); } catch { return; }
+  if (seen.has(real)) return;
+  seen.add(real);
+  let names;
+  try { names = fs.readdirSync(real); } catch { return; }
+  for (const name of names) {
+    const p = path.join(real, name);
+    let st;
+    try { st = fs.statSync(p); } catch { continue; }
+    if (st.isDirectory()) scanConfigDir(p, found, seen, depth + 1);
+    else if (st.isFile() && st.size <= 4 * 1024 * 1024) {
+      try { if (fs.readFileSync(p).includes(PROD_APP_ID)) found.push(p); } catch {}
+    }
+  }
+}
+
+function scanConfigFile(file, found, seen) {
+  let real, st;
+  try { real = fs.realpathSync(file); st = fs.statSync(real); } catch { return; }
+  if (st.isDirectory()) return scanConfigDir(real, found, seen, 0);
+  if (seen.has(real) || !st.isFile() || st.size > 4 * 1024 * 1024) return;
+  seen.add(real);
+  try { if (fs.readFileSync(real).includes(PROD_APP_ID)) found.push(real); } catch {}
+}
+
+function productionAppIdSources() {
+  const sources = [];
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.includes(PROD_APP_ID) || String(value).includes(PROD_APP_ID)) sources.push('env:' + key);
+  }
+  const env = process.env;
+  const home = env.HOME || os.homedir();
+  const dirs = [path.join(home, '.lark-cli')];
+  if (env.LARKSUITE_CLI_CONFIG_DIR) dirs.push(env.LARKSUITE_CLI_CONFIG_DIR);
+  // lark-cli 1.0.89 `config bind` also takes app credentials from the OpenClaw config
+  // ("configure channels.feishu.appId in openclaw.json"; source detected from OPENCLAW_HOME or
+  // LARK_CHANNEL) and from LARK_CHANNEL_CONFIG. Those files count as lark-cli configs here.
+  const files = [env.LARK_CHANNEL_CONFIG, env.OPENCLAW_CONFIG_PATH,
+    env.OPENCLAW_STATE_DIR && path.join(env.OPENCLAW_STATE_DIR, 'openclaw.json'),
+    env.OPENCLAW_HOME && path.join(env.OPENCLAW_HOME, '.openclaw', 'openclaw.json'),
+    path.join(home, '.openclaw', 'openclaw.json')].filter(Boolean);
+  const found = [], seen = new Set();
+  for (const dir of dirs) scanConfigDir(dir, found, seen, 0);
+  for (const file of files) scanConfigFile(file, found, seen);
+  for (const f of new Set(found)) sources.push('file:' + f);
+  return sources;
+}
+
+const prod = productionAppIdSources();
+if (prod.length) {
+  finish(4, {result: 'refused', reason: 'production_app_id', sources: prod}, {stderr: errorEnvelope(null, 'production_app_id',
+    'lark-cli shim refused: the production Feishu app id is reachable from this environment (' + prod.join(', ') + ').',
+    'Run the candidate with a private HOME that has no .lark-cli config, and keep production app settings out of its env.')});
+}
+
+// ---- 2. only `im +chat-create` -------------------------------------------------------------------
+
+const positional = [];
+for (const a of argv) { if (a.startsWith('-')) break; positional.push(a); }
+if (positional[0] !== 'im' || positional[1] !== '+chat-create' || positional.length !== 2) {
+  finish(3, {result: 'refused', reason: 'unsupported_command', command: positional.join(' ')}, {stderr: errorEnvelope(null, 'unsupported_command',
+    'lark-cli shim only supports `im +chat-create` in candidate runs; got `' + (positional.join(' ') || '(none)') + '`. Nothing was sent.',
+    'This candidate has no real lark-cli. Messages to rooms go through sessions_send.')});
+}
+
+const STRING_FLAGS = new Set(['as', 'bots', 'chat-mode', 'description', 'format', 'jq', 'name', 'owner', 'type', 'users', 'profile']);
+const BOOL_FLAGS = new Set(['dry-run', 'json', 'set-bot-manager', 'help']);
+const SHORT = {q: 'jq', h: 'help'};
+const flags = {};
+for (let i = 2; i < argv.length; i++) {
+  const raw = argv[i];
+  let name, value;
+  if (raw.startsWith('--')) { [name, value] = raw.slice(2).split(/=(.*)/s, 2); }
+  else if (/^-[a-z]$/.test(raw)) name = SHORT[raw[1]];
+  if (!name || (!STRING_FLAGS.has(name) && !BOOL_FLAGS.has(name)))
+    finish(2, {result: 'usage', reason: 'unknown_flag', flag: raw}, {stderr: errorEnvelope(null, 'invalid_flag', 'unknown flag: ' + raw)});
+  if (BOOL_FLAGS.has(name)) { flags[name] = value === undefined ? true : value !== 'false'; continue; }
+  if (value === undefined) {
+    if (i + 1 >= argv.length) finish(2, {result: 'usage', reason: 'missing_value', flag: raw}, {stderr: errorEnvelope(null, 'invalid_flag', 'flag needs an argument: ' + raw)});
+    value = argv[++i];
+  }
+  flags[name] = value;
+}
+const identity = flags.as ?? 'user';
+
+if (flags.help) {
+  finish(0, {result: 'help'}, {stdout: [
+    'lark-cli shim (candidate run): only `im +chat-create` is available, answered from a pool of pre-created chats.',
+    '',
+    'Usage:',
+    '  lark-cli im +chat-create [flags]',
+    '',
+    'Flags:',
+    '      --as string            identity type: bot | user',
+    '      --bots string          comma-separated bot app IDs (cli_xxx) to invite, max 5',
+    '      --chat-mode string     group | topic (default "group")',
+    '      --description string   group description (max 100 chars)',
+    '      --dry-run              print request without executing',
+    '      --format string        json (default) | pretty',
+    '  -q, --jq string            simple path such as .data.chat_id',
+    '      --name string          group name (max 60 chars)',
+    '      --owner string         owner open_id (ou_xxx)',
+    '      --type string          private | public (default "private")',
+    '      --users string         comma-separated user open_ids (ou_xxx), max 50',
+  ].join('\n')});
+}
+
+// ---- 3. validation (mirrors the real flag limits) ------------------------------------------------
+
+function usage(message) { finish(2, {result: 'usage', reason: message, identity}, {stderr: errorEnvelope(identity, 'validation', message)}); }
+const list = s => (s ?? '').split(',').map(x => x.trim()).filter(Boolean);
+const users = list(flags.users), bots = list(flags.bots);
+const chatType = flags.type ?? 'private', chatMode = flags['chat-mode'] ?? 'group';
+const name = flags.name ?? '';
+if (!['user', 'bot'].includes(identity)) usage('--as must be user or bot');
+if (!['private', 'public'].includes(chatType)) usage('--type must be private or public');
+if (!['group', 'topic'].includes(chatMode)) usage('--chat-mode must be group or topic');
+if ([...name].length > 60) usage('--name is longer than 60 characters');
+if (chatType === 'public' && [...name].length < 2) usage('public groups need a --name of at least 2 characters');
+if ([...(flags.description ?? '')].length > 100) usage('--description is longer than 100 characters');
+if (users.length > 50 || !users.every(u => /^ou_[0-9a-z]+$/.test(u))) usage('--users must list at most 50 ou_ open_ids');
+if (bots.length > 5 || !bots.every(b => /^cli_[0-9a-z]+$/.test(b))) usage('--bots must list at most 5 cli_ app ids');
+if (flags.owner !== undefined && !/^ou_[0-9a-z]+$/.test(flags.owner)) usage('--owner must be an ou_ open_id');
+const format = flags.json ? 'json' : (flags.format ?? 'json');
+if (!['json', 'pretty'].includes(format)) usage('the shim only prints json or pretty');
+if (flags.jq !== undefined && !/^\.(?:[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)?$/.test(flags.jq)) usage('the shim only supports --jq paths like .data.chat_id');
+const warnings = [];
+if ((flags.bots ?? '').includes(PROD_APP_ID)) warnings.push('production_app_id_in_args');
+
+const request = {method: 'POST', url: '/open-apis/im/v1/chats', params: {user_id_type: 'open_id', set_bot_manager: Boolean(flags['set-bot-manager'])},
+  body: {name: name || undefined, description: flags.description, chat_mode: chatMode, chat_type: chatType, owner_id: flags.owner, user_id_list: users, bot_id_list: bots}};
+const parsed = {identity, name, description: flags.description ?? null, type: chatType, chatMode, users, bots, owner: flags.owner ?? null};
+
+function render(envelope) {
+  if (flags.jq !== undefined) {
+    let v = envelope;
+    for (const key of flags.jq.split('.').filter(Boolean)) v = v === null || v === undefined ? null : v[key];
+    return JSON.stringify(v === undefined ? null : v);
+  }
+  return JSON.stringify(envelope, null, 2);
+}
+
+if (flags['dry-run']) {
+  finish(0, {result: 'dry_run', identity, parsed, warnings}, {stdout: render({ok: true, identity, dry_run: true, request})});
+}
+
+// ---- 4. hand out the next pooled chat ----------------------------------------------------------
+
+const dir = dataDir();
+if (!dir) finish(2, {result: 'misconfigured'}, {stderr: errorEnvelope(identity, 'shim_config', 'VLAB_CANDIDATE_DATA is not set; the shim has nowhere to log.')});
+const pool = list(process.env[POOL_ENV]);
+if (!pool.length || !pool.every(id => CHAT_ID_RE.test(id)))
+  finish(2, {result: 'misconfigured', reason: 'pool'}, {stderr: errorEnvelope(identity, 'shim_config', POOL_ENV + ' must list pre-created oc_… chat ids (comma-separated).')});
+
+const sleeper = new Int32Array(new SharedArrayBuffer(4));
+function withLock(fn) {
+  const lock = path.join(dir, 'lark-shim.lock');
+  // The critical section is one small read and one rename, so a lock older than 5 s belongs to a
+  // killed shim. The wait deadline is longer than that, so a waiting call always recovers.
+  const deadline = Date.now() + 15000;
+  for (;;) {
+    try { fs.mkdirSync(lock); break; } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      try { if (Date.now() - fs.statSync(lock).mtimeMs > 5000) fs.rmdirSync(lock); } catch {}
+      if (Date.now() > deadline) throw new Error('lark-shim lock timeout');
+      Atomics.wait(sleeper, 0, 0, 20);
+    }
+  }
+  try { return fn(); } finally { try { fs.rmdirSync(lock); } catch {} }
+}
+
+let issued;
+try {
+  issued = withLock(() => {
+    const statePath = path.join(dir, 'lark-shim.state.json');
+    let state = {next: 0};
+    try { state = JSON.parse(fs.readFileSync(statePath, 'utf8')); } catch {}
+    const n = Number.isInteger(state.next) && state.next >= 0 ? state.next : 0;
+    const tmp = statePath + '.' + process.pid;
+    fs.writeFileSync(tmp, JSON.stringify({next: n + 1}) + '\n', {mode: 0o600});
+    fs.renameSync(tmp, statePath);
+    return {index: n % pool.length, sequence: n, reused: n >= pool.length};
+  });
+} catch (e) {
+  finish(2, {result: 'misconfigured', reason: String(e && e.message)}, {stderr: errorEnvelope(identity, 'shim_state', String(e && e.message))});
+}
+
+const chatId = pool[issued.index];
+if (issued.reused) warnings.push('pool_reused');
+const envelope = {ok: true, identity, data: {chat_id: chatId, name: name || '(no subject)', chat_type: chatType, owner_id: flags.owner ?? '', external: false}};
+finish(0, {result: 'created', identity, chatId, poolIndex: issued.index, sequence: issued.sequence, reused: issued.reused, parsed, warnings},
+  {stdout: render(envelope)});
