@@ -33,8 +33,13 @@ export async function presentInterSessionTask(prepared,initialOpts,execute) {
 export async function presentNativeVoiceTask(params,execute,question) {
   const m=globalThis[KEY];if(!m)return execute(params);
   const identity=params.continuationContext?.identity;
-  const h=await open(m,{source:'voice-native',agentId:params.agentId??params.voiceActor?.agentId??/^agent:([^:]+):/u.exec(params.sessionKey??'')?.[1],sessionKey:params.sessionKey,
-    taskId:identity?.delegationItemId??`${params.runIdPrefix}:${globalThis.crypto.randomUUID()}`,text:question},{trusted:true,actor:params.voiceActor});
+  // Product tasks carry a composed execution prompt, including private call
+  // context. Only their separately supplied public brief may become an anchor.
+  // Old Voice releases have no brief and must fall back without exposing args.
+  const direct=params.runIdPrefix==='voice-product-task';
+  const text=direct?(params.taskPresentation?.text??'收到一个语音后台任务。'):question;
+  const h=await open(m,{source:direct?'voice-direct':'voice-native',agentId:params.agentId??params.voiceActor?.agentId??/^agent:([^:]+):/u.exec(params.sessionKey??'')?.[1],sessionKey:params.sessionKey,
+    taskId:identity?.delegationItemId??`${params.runIdPrefix}:${globalThis.crypto.randomUUID()}`,text},{trusted:true,actor:params.voiceActor});
   if(!h)return execute(params);
   const started=fn=>info=>{void optional(()=>h.bindRun(info.runId));return fn?.(info);};
   try {

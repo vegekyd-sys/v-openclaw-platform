@@ -19,6 +19,17 @@ function fixture(t,{directory}={}){
 }
 const flush=async h=>{await h.flush();await new Promise(r=>setTimeout(r,0));await h.flush();};
 
+test('current Voice product tasks expose only the explicit public brief; older entries use a safe generic brief',async t=>{
+ const f=fixture(t);globalThis[PRESENTATION_KEY]=f.manager;t.after(()=>delete globalThis[PRESENTATION_KEY]);
+ for(const [taskId,brief] of [['legacy',undefined],['current','查询本周任务']]){
+  const params={agentId,sessionKey,runIdPrefix:'voice-product-task',continuationContext:{identity:{delegationItemId:taskId}},...(brief?{taskPresentation:{text:brief}}:{})};
+  await presentNativeVoiceTask(params,async p=>{p.onRunStarted({runId:taskId});return {text:'完成'};},'PRIVATE_CALL_CONTEXT');
+ }
+ const rows=[...f.manager.tasks.values()].map(h=>h.record);
+ assert(rows.every(r=>r.source==='voice-direct'));assert(!JSON.stringify(rows).includes('PRIVATE_CALL_CONTEXT'));
+ assert(JSON.stringify(rows).includes('查询本周任务'));assert(JSON.stringify(rows).includes('收到一个语音后台任务。'));
+});
+
 test('only explicit bound external Feishu sessions publish, with exact actor/account',()=>{
   const e={sessionId:'s',delivery:{kind:'external',context:{channel:'feishu',accountId:'work',to:'chat:oc_test'}}};
   assert.equal(boundFeishuRoute({}),null);assert.equal(boundFeishuRoute({...e,archivedAt:1}),null);

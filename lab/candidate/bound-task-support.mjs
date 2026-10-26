@@ -78,13 +78,15 @@ export async function prepareCandidate(opts = {}) {
   const dist = path.join(runtime, "openclaw", "dist");
   const notes = [];
   const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  const live=opts.liveConfig;
+  if(live){assert(process.env.VLAB_CANDIDATE_ID&&live.appId!=='cli_aae2c999c7789bd9','Live tests require an independent bot');assert(/^oc_[a-z0-9]+$/u.test(live.groupChat)&&/^ou_[a-z0-9]+$/u.test(live.owner),'Explicit live test destinations required');}
+  const owner=live?.owner??OWNER;
   const port = Number(config.gateway?.port);
   assert(Number.isInteger(port) && port > 0, "candidate Gateway port is missing");
   const gatewayToken = config.gateway?.auth?.token;
   addSecret(gatewayToken);
 
-  // This candidate has no live Feishu mode.
-  const platformMode = "mock";
+  const platformMode = live?'live':'mock';
   // ---- Feishu: loopback webhook inbound
   const feishu = config.channels?.feishu;
   assert(feishu && typeof feishu.appId === "string" && typeof feishu.appSecret === "string", "VLab Feishu app credentials are not plain strings");
@@ -100,13 +102,15 @@ export async function prepareCandidate(opts = {}) {
   const webhook = { port: await freePort(), path: "/candidate/inter-session", token: `isc-${crypto.randomBytes(12).toString("hex")}`, key: crypto.randomBytes(16).toString("hex") };
   addSecret(webhook.token); addSecret(webhook.key);
   Object.assign(feishu, { enabled: true, connectionMode: "webhook", webhookHost: "127.0.0.1", webhookPort: webhook.port, webhookPath: webhook.path, verificationToken: webhook.token, encryptKey: webhook.key });
+  if(live){delete feishu.accounts;Object.assign(feishu,{appId:live.appId,appSecret:live.appSecret,domain:'feishu',connectionMode:'websocket',resolveSenderNames:false});addSecret(live.appSecret);}
   const feishuDir = config.plugins.load.paths.find((p) => p.endsWith("/@openclaw/feishu"));
   assert(feishuDir?.startsWith(runtime), "Feishu plugin must come from this private runtime");
   Object.assign(feishu,{dmPolicy:'open',allowFrom:['*'],groupPolicy:'open',groupAllowFrom:['*'],requireMention:false});
+  if(live)Object.assign(feishu,{dmPolicy:'allowlist',allowFrom:[owner],groupPolicy:'allowlist',groupAllowFrom:[owner],groups:{[live.groupChat]:{requireMention:false}}});
   config.channels = { feishu };
   config.cron = { ...(config.cron ?? {}), enabled: false };
   config.agents.defaults.heartbeat = { ...(config.agents.defaults.heartbeat ?? {}), every: "0m" };
-  config.commands = { ...(config.commands ?? {}), ownerAllowFrom: [`feishu:${OWNER}`] };
+  config.commands = { ...(config.commands ?? {}), ownerAllowFrom: [`feishu:${owner}`] };
   config.bindings = [{ agentId: AGENT, match: { channel: "feishu" } }];
   config.session={...(config.session??{}),agentToAgent:{...(config.session?.agentToAgent??{}),maxPingPongTurns:0}};
   config.tools={...(config.tools??{}),sessions:{...(config.tools?.sessions??{}),visibility:'all'}};
@@ -246,7 +250,7 @@ export class Candidate {
     const mark = this.lines.length;
     const startedAt = Date.now();
     this.startGateway(extraEnv);
-    const need = [/starting Webhook server on 127\.0\.0\.1/u];
+    const need = this.platformMode==='live'?[/WebSocket client started|WebSocket.*ready/iu]:[/starting Webhook server on 127\.0\.0\.1/u];
 
 
     const seen = new Set();

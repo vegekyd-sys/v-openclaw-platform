@@ -46,7 +46,7 @@
       "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation-runtime.mjs",
       "target": "openclaw/dist/v-feishu-task-presentation-runtime.mjs",
       "before": null,
-      "sha256": "28f13f022067419ad79f34444d46d43086eb692f5f1e79d17f0303b1250e5650"
+      "sha256": "f18b2df22ff56195c5d0da77e4d208d709d7b01930c15c0558fac72c1af22a8b"
     },
     {
       "source": "lab/release-files/feishu-task-presentation/v-feishu-voice-actor.mjs",
