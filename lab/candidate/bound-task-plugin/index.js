@@ -14,7 +14,7 @@ export default {id:'bound-task-candidate',register(api){
     const {_:replaceEntry}=await import(path.join(dist,'session-accessor.sqlite-entry-BlklNPKQ.js'));
     for(const row of live.bindings??[]){
      if(!row.key.startsWith('agent:makaron:feishu:group:')||row.entry.delivery?.kind!=='external'||!row.entry.sessionId)throw Error('Real external session binding required');
-     const entry=JSON.parse(JSON.stringify(row.entry).replaceAll(process.env.VLAB_SHARED_STATE_DIR,process.env.OPENCLAW_STATE_DIR));
+     const entry=JSON.parse(JSON.stringify(row.entry).replaceAll(live.bindingSourceState??process.env.VLAB_SHARED_STATE_DIR,process.env.OPENCLAW_STATE_DIR).replaceAll(process.env.VLAB_SHARED_STATE_DIR,process.env.OPENCLAW_STATE_DIR));
      await replaceEntry({storePath,sessionKey:row.key},entry);
     }
     respond(true,{seeded:live.bindings?.map(r=>r.key)});return;
