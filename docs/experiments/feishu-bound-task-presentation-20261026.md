@@ -1,6 +1,6 @@
 # 绑定飞书会话的后台任务呈现：本地实现与验收
 
-状态：**本地实现完成；本地验收通过；Worker/VDS 私有 Gateway 候选尚未执行**。功能默认关闭。没有合入 dev、写入共享 VLab、部署生产或发送真实飞书消息。
+状态：**本地回归、Worker/VDS 隔离候选验收均通过**。功能默认关闭。没有合入 dev、写入共享 VLab、部署生产或发送真实飞书消息。
 
 ## 范围与用户体验
 
@@ -28,7 +28,7 @@
 
 使用从 Node 官方站下载并校验 SHA256 的 **Node v22.23.1**，与 VLab 运行时版本一致。
 
-- 关联测试：77/77 通过，零失败、零跳过。
+- 关联测试：83/83 通过，零失败、零跳过。
 - 平台全量离线测试：见下方最终回执摘要，326 个登记测试文件，零跳过。
 - catalog audit 通过；新增适配登记为 `excluded-candidate`，不标记为可发布。
 - 生成产物可重建、语法检查通过，输入锚点漂移/重复补丁被拒绝。
@@ -39,16 +39,16 @@
 
 本机默认 Node v24.1.0 曾在既有 `scripts/node-async-context-frame.test.mjs` 的子进程参数测试失败（该 Node 不接受 `--experimental-async-context-frame`）；未修改该无关测试，改用服务实际版本 Node 22 重跑全量通过。
 
-## 尚未执行的候选与限制
+## 候选执行与验收边界
 
 ```
 node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo /Users/tianyicai/v-worktrees/feishu-bound-session-visibility --owner 01a15e2e-bebb-7960-b90e-b822eb9b29de --plan /Users/tianyicai/v-worktrees/feishu-bound-session-visibility/lab/feishu-task-presentation.worker.plan.json
 node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo /Users/tianyicai/v-worktrees/feishu-bound-session-visibility --owner 01a15e2e-bebb-7960-b90e-b822eb9b29de --plan /Users/tianyicai/v-worktrees/feishu-bound-session-visibility/lab/feishu-task-presentation.vds.plan.json
 ```
 
-计划使用独立 Gateway、真实配置中的 Worker/VDS 模型、loopback Fake Feishu；检查普通原生入站无额外卡片、跨会话目标 runner、Direct Voice、原生 consult 的公开过程和结果、重启不重复。真实飞书域名由 Node preload 阻断，CLI 发送入口也封锁，账号使用合成身份，其他 channels/cron/heartbeat 关闭。语法和文件依赖检查已通过，**上述两条 plan 尚未运行**。
+计划使用独立 Gateway、真实配置中的 Worker/VDS 模型、loopback Fake Feishu；检查普通原生入站无额外卡片、跨会话目标 runner、Direct Voice、原生 consult 的公开过程和结果、重启不重复。真实飞书域名由 Node preload 阻断，CLI 发送入口也封锁，账号使用合成身份，其他 channels/cron/heartbeat 关闭。语法和文件依赖检查已通过；上述 plan 已实际执行，前轮和最终回执见后续章节。
 
-10/26 本机 Tailscale 网络扩展故障阻止连接 VLab：新版 `1.104.1` 为 `activated waiting to upgrade`，旧版 `1.98.10` 为 `terminating for uninstall`。已尝试恢复连接、重新激活、重启 App、通过官方 Debug 菜单重建 VPN 配置；系统仍报 NEVPN/NEConfiguration `permission denied`。系统授权窗口受工具安全限制，需用户完成本机授权后复查；不能宣称网络已修复。
+历史阻塞（连接现已恢复）：10/26 本机 Tailscale 网络扩展故障曾阻止连接 VLab：新版 `1.104.1` 为 `activated waiting to upgrade`，旧版 `1.98.10` 为 `terminating for uninstall`。已尝试恢复连接、重新激活、重启 App、通过官方 Debug 菜单重建 VPN 配置；系统仍报 NEVPN/NEConfiguration `permission denied`。系统授权窗口受工具安全限制，需用户完成本机授权后复查；不能宣称网络已修复。
 
 候选暂不包含真实飞书、真实音频/WebRTC/手机 UI 验收，也没有完成与 Draft PR #482 的完整 v2 relay bridge 联合回归。#482 尚未合入且有历史冲突；本补丁以当前 dev 捕获为基线，不能拿它替换旧分支整个 monitor 后直接发布。即便私有候选通过，是否合入 dev 与共享/生产验证仍需用户决定。
 
@@ -68,4 +68,28 @@ Tailscale 已恢复 Running/online，VLab 私有 SSH 已实际连通。全部测
 
 新增 core `sessions_send` 的精确 run ownership 查询：目标已由原生呈现承接时，旧 announce 不再重复投递；未取得明确 ownership 时保留旧路径。保留正常 requester 唤醒，不通过关闭后台模型回合来减少消息数。任务来源记录去掉内部 inter-session 路由协议头，`NO_REPLY/REPLY_SKIP/ANNOUNCE_SKIP` 以自然无文字终态收尾。
 
-收尾代码 commit：`e02d1bad`。该版本的 Worker/VDS 最终复测结果见后续最终回执节；本段保留前轮通过、失败与修正的边界。
+收尾代码 commit：`1fae6a49`。该版本的 Worker/VDS 最终复测结果见后续最终回执节；本段保留前轮通过、失败与修正的边界。
+
+
+私聊候选核对中确认：`ou_` 是收件人，Native dispatcher 的 conversation chat 使用消息 ACK 中的 `oc_`。代码已持久化 `conversationChatId` 并交给原生回调，投递目标仍是原绑定用户。测试也按实际 DM chat 匹配卡片、接受 VDS 的原生 Bash 工具进展。一次 VDS 模型未给出指令要求的最终标记，原样保留为失败；最终验收改用实际工具输出佐证，而非只要求模型复述任意进展标记。
+
+
+## 最终候选验收：通过
+
+两份回执都来自干净 commit `1fae6a49bac245123ffab657dadd27f9b42eb5d3`（dirty=false），同一运行时基线 `sessions-search-20261026`。使用真实 DeepSeek 模型及原生 Worker/Codex harness，飞书仅替换为 loopback transport。各自的 7 项场景全部通过：普通原生入站无额外呈现、跨会话公开过程/结果、Direct Voice、原生 consult、真实模型 sessions_send 无旧 announce 双发、请求方唤醒完成后收敛、重启不重发。工具结果以原生历史的 toolResult 验证，卡片过程按实际工具状态匹配。
+
+| Harness | Receipt | 后台任务 | 原生卡片（含两张入站基线） | 消息总数 | testMs | sharedUnchanged |
+|---|---|---:|---:|---:|---:|---|
+| worker | `candidate-c696bd45-6b98-4af7-ba7e-7920d17bb303` | 6 | 8 | 16 | 167490 | true |
+| vds | `candidate-a9006eb4-659c-469f-8bd3-1252eee0569d` | 6 | 8 | 16 | 173441 | true |
+
+这些耗时包含启动、测试及重启，不能直接解释为模型响应延迟。
+
+- worker inputSha256：`4558593367394a744ea73de76e5fe51e7d7f68902ab5b89c559c69b6a36471c5`；runtimeSha：`e645d63018565c6c0f451eec2a57c24460ad831edd3d65bbb08c64a1c1045ec3`。
+  原始回执：`tmp/candidate/candidate-c696bd45-6b98-4af7-ba7e-7920d17bb303.json`（本机 gitignored）；服务器持久化 receipt 同 ID。
+- vds inputSha256：`f838434a52f071d41b7d39b9b8997c8bcf180e061f9c993aae03e8007efd0f29`；runtimeSha：`e645d63018565c6c0f451eec2a57c24460ad831edd3d65bbb08c64a1c1045ec3`。
+  原始回执：`tmp/candidate/candidate-a9006eb4-659c-469f-8bd3-1252eee0569d.json`（本机 gitignored）；服务器持久化 receipt 同 ID。
+
+最终本地回归：Node v22.23.1，关联 **83/83**；全量 **2565/2565**，326 files，零失败、零跳过；catalog audit 通过。发布文件仍默认关闭，适配保持 `excluded-candidate`。
+
+**没有进行**真实飞书投递、真实音频/WebRTC/手机 UI 验收，也未完成与 #482 整体 v2 relay bridge 的联合回归。没有合 dev、部署共享 VLab 或生产。两份最终 receipt 均证明共享 PID/config/runtime 未变；不把隔离候选模拟平台视作生产验收。
