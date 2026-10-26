@@ -130,6 +130,23 @@ after 每分钟巡检剩下的：`listLifecycleSweepLinks` 0.33–0.48 s，单�
 两臂都没有 workboard lifecycle sync/recovery failed、TypeError、ReferenceError 或 unexpected property。
 私有状态缺 codex 插件，两臂都把它关掉了。VLab 同时有别人的 candidate 在跑，绝对数字有噪声，两臂是先后连着跑的。
 
+### Part G2：同一 Gateway 测试加堆采样（candidate-405f7208，commit ecc40cc1，tree 干净；数据为 V 10/27 03:40 导出，即 Codex 重启之后）
+
+harness 每 0.5 s 用 CDP 读一次 V8 堆。每轮巡检取开始前 10 s 的最小值作基线，开始到结束后 5 s 的最大值作峰值。
+
+| | 每分钟增量巡检 | 10 分钟全量巡检 |
+|---|---|---|
+| before 巡检 CPU | 1.42–1.93 s | 10.5 s（主线程连续占用 21.1 s） |
+| after 巡检 CPU | 0.60–0.90 s | 2.2 s（连续占用 2.8 s） |
+| before 堆增量 used / total | 22–145 / 49–138 MB | **+1,350 / +1,331 MB** |
+| after 堆增量 used / total | 1–37 / 0–46 MB | **+3 / +57 MB** |
+
+before 全量那一轮的 +1.35 GB，与 V 上看到的每 10 分钟 heapTotal 涨约 1.2 GB 对得上（V 上 20:10、20:20 两次，`/tmp/gw-prof/mem-2006.jsonl`）。
+before 臂启动后的第一轮全量占用 31 s，其中 `readCards → entries → loadCardChildRows` 占 17.7 s。
+
+两臂在启动约 5 分钟后都有一次约 19 s、堆 +2.6 GB 的占用。那是 VLab 配置开着的 dreaming 做的 lifecycle scrub（`scrubDreamingNarrativeArtifacts`），与巡检无关；V 上 dreaming 已关闭。
+这次的探测只跑 activeMinutes 2 / 60，因为 V 字节下的全量探测太慢，撞上了客户端超时；全量等价已在 Part G 验证过。两臂都没有 workboard 失败行。
+
 ### 推到 V
 
 V 原 profile 和 VLab before 臂对比：增量 V 2.7 s 对 VLab 1.8–2.8 s，全量 V 9 s 对 VLab 15–26 s，说明 V 比 VLab 快约 1.5–2 倍。
