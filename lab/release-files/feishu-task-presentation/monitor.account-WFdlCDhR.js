@@ -9118,13 +9118,15 @@ function createTaskPresentationAccount({cfg,accountId,runtime,createClient,creat
         const response=await client.im.message.create({params:{receive_id_type:route.kind==='group'?'chat_id':'open_id'},
           data:{receive_id:route.chatId,msg_type:'text',uuid:record.id.slice(0,32),content:JSON.stringify({text:title+'\n'+record.text})}});
         if(response?.code!==0||!response.data?.message_id)throw Error('Feishu task anchor was not acknowledged');
-        record.anchorId=response.data.message_id;await persist({...state,anchorId:record.anchorId});
+        record.anchorId=response.data.message_id;
+        const conversationChatId=/^oc_[A-Za-z0-9]+$/u.test(response.data.chat_id??'')?response.data.chat_id:undefined;
+        await persist({...state,anchorId:record.anchorId,...conversationChatId?{conversationChatId}:{}});
       }
       let begun=false,selectedModel=record.selectedModel;
       const taskState={state,uuid:'bt_'+record.id.slice(0,28),checkpoint:async stream=>{
         await persist({...state,stream});taskState.state=state;
       }};
-      const native=createReplyDispatcher({cfg,agentId:record.agentId,sessionKey:record.sessionKey,chatId:route.chatId,
+      const native=createReplyDispatcher({cfg,agentId:record.agentId,sessionKey:record.sessionKey,chatId:state.conversationChatId??route.chatId,
         sendTarget:route.to,accountId,replyToMessageId:record.anchorId,replyInThread:false,
         rootId:route.threadId,runtime,messageCreateTimeMs:record.createdAt,boundTaskPresentation:taskState});
       const flush=async()=>{await native.flushTaskPresentation?.();await persist({...state,...native.snapshotTaskPresentation?.()});taskState.state=state;};

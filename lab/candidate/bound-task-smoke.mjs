@@ -16,7 +16,7 @@ test('bound Feishu tasks: native baseline, cross-session, direct/native Voice an
  const inspect=()=>c.rpc('candidate.boundTask',{op:'inspect'},30000);
  const waitTerminal=async source=>until(async()=>{const s=await inspect();return s.tasks.find(x=>x.source===source&&x.delivered);},{timeoutMs:180000,label:source+' native visible terminal'});
  const proof={harness:c.harness,allowances,checks:[]};
- const visibleProgress=(task,final)=>c.fake.snapshots.some(({at,message:m})=>at>=task.createdAt&&m.chat_id===task.route.chatId&&m.msg_type==='interactive'&&!JSON.stringify(m.body).includes(final)&&/exec|执行|运行命令/iu.test(JSON.stringify(m.body)));
+ const visibleProgress=(task,final)=>c.fake.snapshots.some(({at,message:m})=>at>=task.createdAt&&m.chat_id===(task.route.kind==='direct'?DM_CHAT:task.route.chatId)&&m.msg_type==='interactive'&&!JSON.stringify(m.body).includes(final)&&/exec|bash|执行|运行命令/iu.test(JSON.stringify(m.body)));
  const toolProof=async(key,marker)=>{const h=await c.rpc('chat.history',{sessionKey:key,limit:60});return (h.messages??[]).some(m=>{
   const blocks=m.content??[];const outputs=(m.role==='toolResult'||m.role==='tool')?m:blocks.filter?.(b=>['toolResult','tool_result'].includes(b.type));
   return outputs&&JSON.stringify(outputs).includes(marker);

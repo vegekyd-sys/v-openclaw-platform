@@ -74,3 +74,8 @@ test('classified public process uses the native item hook for the selected runti
  await s.partial({kind:'preamble',itemId:'one',phase:'commentary',text:'工具已返回的事实'});
  assert.equal(items.length,1);assert.equal(items[0].progressText,'工具已返回的事实');assert(!f.calls.some(c=>c[0]==='partial'));
 });
+test('a direct user receive target uses the acknowledged oc chat for native conversation callbacks',async()=>{
+ const f=fixture();Object.assign(f.record.route,{kind:'direct',chatId:'ou_user',to:'user:ou_user'});
+ f.client.im.message.create=async()=>({code:0,data:{message_id:'om_dm',chat_id:'oc_actualdm'}});
+ await f.open();assert.equal(f.params().chatId,'oc_actualdm');assert.equal(f.params().sendTarget,'user:ou_user');assert.equal(f.saved[0].conversationChatId,'oc_actualdm');
+});
