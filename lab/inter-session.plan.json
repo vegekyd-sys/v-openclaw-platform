@@ -92,6 +92,12 @@
       "after": "484da30979760dbc5e73d7f9d098c9302703f7859e362a11e6bb5563c8c4013e"
     },
     {
+      "source": "apps/v-session-relay/plugin/core/continuations.js",
+      "target": "extensions/v-session-relay/core/continuations.js",
+      "before": null,
+      "after": "9399c749e8adced4e503c363e14fef9887709bd22b6fac48230f4e2c8ea1287d"
+    },
+    {
       "source": "apps/v-session-relay/plugin/core/contracts.js",
       "target": "extensions/v-session-relay/core/contracts.js",
       "before": null,
@@ -107,7 +113,7 @@
       "source": "apps/v-session-relay/plugin/core/engine.js",
       "target": "extensions/v-session-relay/core/engine.js",
       "before": null,
-      "after": "1b8a9157a050c0b40657c5805fc178b754c1b1e11113a3c30d137ef6bd2d7fc5"
+      "after": "670bdcc702feb57274315f7e229b3c1051a8ef009bf598e724ee463dff27fc9f"
     },
     {
       "source": "apps/v-session-relay/plugin/core/guard.js",

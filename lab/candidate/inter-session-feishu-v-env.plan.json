@@ -61,6 +61,11 @@
       "before": "ffdf7072cf7d93cec6d52ad2f72ed2357d872ef310c7e643d169829ef8671bcc"
     },
     {
+      "source": "apps/v-session-relay/plugin/core/continuations.js",
+      "target": "extensions/v-session-relay/core/continuations.js",
+      "before": null
+    },
+    {
       "source": "apps/v-session-relay/plugin/core/contracts.js",
       "target": "extensions/v-session-relay/core/contracts.js",
       "before": null
