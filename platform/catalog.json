@@ -178,7 +178,8 @@
         "scripts/astra-codex-cli-policy.test.mjs",
         "scripts/astra-model-policy.test.mjs",
         "scripts/patch-openclaw91-astra.test.mjs",
-        "scripts/configure-v-deepseek-output-budget.test.mjs"
+        "scripts/configure-v-deepseek-output-budget.test.mjs",
+        "scripts/configure-v-announce-timeout.test.mjs"
       ]
     },
     {
