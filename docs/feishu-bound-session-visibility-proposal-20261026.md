@@ -1,6 +1,6 @@
 # 绑定飞书 session 的后台模型任务统一展示方案
 
-日期：2026-10-26。状态：方案与代码入口调查，尚未实现或部署。
+日期：2026-10-26。状态：第 1–8 节保留最初方案与入口调查；第 9 节是用户要求的一次统一接入修订。此前 #483 已完成隔离候选验收，但尚未合入/部署；本修订尚未实现。
 
 设计 worktree 基线：`4adc5e3145d0696bb02c4a6bcb532f30ea1766fb`。既有跨 session 候选已独立保存为 [Draft PR #482](https://github.com/vegekyd-sys/v-openclaw-platform/pull/482)，未合入；新方案不把该 PR 的历史验收当作本功能验收。
 
@@ -133,3 +133,71 @@ Gateway 保持一个受控任务呈现注册表和持久化投递记录，保存
 - `docs/feishu-voice-confirm-20261025-release.md`：已发布身份确认路径的边界，不得因新呈现层替换整份旧渠道产物而覆盖。
 
 本轮只提交方案文档。原任务最新提交 `fdc4ff46dbbca618376271f77eae315684f31b06` 已推送并建 Draft PR #482；没有合 dev、上线、写共享实例或发真实飞书测试消息。
+
+
+## 9. 统一接入修订：按任务/回合管理呈现，不按消息入口增加发送流程
+
+用户最新要求：跨会话、`sessions_send`、两类 Voice 后台、子 agent announce、飞书排队 followup 一并纳入整体设计。此节更新原方案中按入口逐个补 wrapper 的实现方向。2026-10-26 群 `oc_1f2843b2` 的排查已交接到本工作项；现有 #483 仅覆盖 sessions_send 和两条 Voice，不能声称已覆盖 announce/followup。#485 的 6 小时超时已上线，本修订不重做或更改该配置。
+
+### 9.1 判断
+
+逐入口修复可以短期见效，但不是长期边界。9.1 的飞书 dispatcher 属于入站处理；真实执行可能经队列、子 agent、announce、yield/resume 继续，其寿命超过原 dispatcher。加大超时、只打开 deliver、复制 chat.history 都不能解决“谁持有呈现、何时结束、是否已真实送达”。
+
+保留 #483 已验过的 native renderer、绑定验证、journal/cursor 与回执处理，将其收敛到统一呈现归属。复用现有任务注册、admitted run/generation、source reply policy 和执行事件，不另造一套业务任务状态或模型调度器。源码确认 `source-reply-delivery-runtime` 当前只管理自动/消息工具等投递策略及其投影，不能误称它已提供卡片所有权或流式 renderer 生命周期。
+
+目标是统一契约和呈现实现，并不承诺所有来源只改一个函数。9.1 有 agent command 与自动回复/队列两条执行主干；需要在稳定的准入/执行/投递边界接入。入口适配只提供可信身份和公开描述，禁止持有独立的发送、轮询、去重和重试状态机。
+
+### 9.2 三种身份与一份持久化呈现记录
+
+- 任务身份：用户交办的逻辑任务，优先复用现有 taskId、父子任务关系与调用幂等键。
+- 执行身份：每次实际 admitted runId、sessionId 与 lifecycle generation；一个逻辑任务可经历多个回合或执行尝试。
+- 呈现身份：绑定目标及原生卡片，由当前呈现 owner 独占；同一任务的续跑不因换 runId 自动创建新卡。
+
+新增持久化仅保存呈现 owner/generation、来源/回复锚点、card/message ID、已确认发送游标及最终投递回执。任务运行状态继续取现有执行所有者；不能仅凭子 agent 数量归零就显示父任务全部结束。
+
+服务端契约最少包含：既有 taskId/parentTaskId（可用时）、来源 requestId、明确的用户可见策略、独立 publicRequest、已验证的 agent/session/account/recipient 绑定。执行 prompt、transcript、私有上下文与公开请求分开。绑定在受理时冻结，实际发送前复核会话代际；不凭 sessionKey 拼出发布权限。
+
+### 9.3 一条呈现链路
+
+```mermaid
+flowchart LR
+  A[飞书入站与排队] --> C[现有任务准入与执行]
+  B[sessions_send / Voice 后台 / 子 agent 回传] --> C
+  C --> D[统一呈现归属与生命周期投影]
+  D --> E[既有公开进展与 progress_card]
+  D --> F[原生飞书 renderer]
+  E --> F
+  F --> G[平台实际 ACK 与发送游标]
+  G --> C
+```
+
+受理/排队/开始/等待/续跑/完成/失败/取消映射为一份视图。执行结束和投递成功是两个事实，不能混为一个状态；网络失败只重试投递，不能重跑模型。announce 的真实最终呈现回执必须回到原有任务交付结算，否则可能卡片已可见而 task_runs 仍报 visible reply missing。
+
+公开文本、工具阶段、清单与最终文件共用 renderer。`progress_card` 必须能确认执行归属，缺少归属时不根据会话名把迟到的更新塞进另一张卡。正常飞书已有 renderer 时注册为当前 owner；原入站 dispatcher 结束后，所有权可以按任务身份释放/接续，不能让旧的 closed renderer 再认领 followup。
+
+### 9.4 用户看到什么
+
+| 入口/变化 | 归属与表现 |
+|---|---|
+| 正常飞书消息 | 使用现有回复卡，不再镜像第二份 |
+| 飞书消息排队 | 为该请求显示排队状态；真正开始后同一呈现进入运行并显示正文与清单 |
+| 跨 session / sessions_send | 在目标绑定聊天显示公开任务及原生回复，发送方已有任务可关联目标任务；请求方唤醒按真实任务关系接续 |
+| 两类 Voice 后台 | 复用受理的 taskId，飞书显示请求、过程、结果；普通电话逐句不展示；普通挂断不结束后台任务 |
+| 子 agent / announce | 子 agent 完成后父任务仍可能继续运行；有明确父任务关联则接续原呈现，不能把 announce 当成无关新任务 |
+| 明确的新追问 | 属于新的用户请求，拥有自己的排队/运行呈现，不混进之前任务的结果 |
+| 没有文字 final | 显示明确的结束/失败/未产生可展示结果状态，按实际执行事实定措辞，不编造成功或再启动模型补答 |
+
+仅当确实拿得到受信任的父任务/原卡片关联时才复用原卡；不能猜测“这个 session 最近一张卡就是它的卡”。缺少关联的兼容入口使用明确标注来源的独立呈现，记录关联缺口，不能错更新另一个用户请求。内部 housekeeping、静默内部动作及没有发布授权的会话不因绑定飞书就全部广播。
+
+### 9.5 交付与验收
+
+整体交付纳入同一组契约测试与候选矩阵，不按入口分别交付发送实现：
+
+1. 先统一任务/运行/呈现身份、owner 转移和真实终态回执；将 #483 现有入口迁移到该契约，保留已验过的 native renderer。
+2. 接入自动回复/队列及 agent command 两条公共执行主干；入口仅传来源、公开请求和绑定。统一支持 announce、排队 followup，而非各自增加 sendText 或不同卡片类型。
+3. 本地回归同时覆盖普通飞书、sessions_send、两条 Voice、子 agent 回传、排队追问、无 final、yield/resume、取消、重启恢复、rebind、重复回调和发送失败。
+4. VLab 私有 candidate 用 `/vds = deepseek/vds-deepseek-flash` 实际执行工具与原生子 agent。占住父会话回传回合后注入追问，断言排队、followup 的公开文字与 progressCard 都在最终结果之前进入原生卡片的 API transport；同时检查发送/更新 ACK、卡片身份、最终 task delivery 状态与没有旧路径双发。仅 chat.history 或 progress_card revision 增加不算通过。
+5. candidate 无现成飞书渠道时明确配置独立测试 transport/机器人，不从配置健康推导消息已发。模拟 transport 与真实飞书证据分开报告，不向故障生产群试发或中止当前任务。
+6. 完成后提交 PR、精确产物/候选回执及 Monitor 交接说明；不自行合 dev 或上线。Monitor 目标是用户指定的 Claude 会话 `local_7e0f8065-b83c-4405-811d-a1330adf75d8`，不能因 Codex 中另有相似标题就给错误会话发上线指令。
+
+当前工作分支 `codex/feishu-queued-followup-progress` 已从隔离 worktree 接上 #483 代码基线，尚未添加新的运行时补丁。先以本统一设计约束后续实现，避免把本轮再做成两个孤立补丁。
