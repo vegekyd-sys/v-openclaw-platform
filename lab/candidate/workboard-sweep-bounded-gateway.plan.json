@@ -48,7 +48,7 @@
   ],
   "timeoutSeconds": 0,
   "env": {
-    "FIXTURE_DIR": "/var/tmp/wsb-20261026",
+    "FIXTURE_DIR": "/var/tmp/wsb-20261027",
     "SWEEP_MINUTES": "13",
     "TOUCH": "8"
   },
