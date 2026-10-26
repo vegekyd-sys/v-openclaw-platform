@@ -6,6 +6,7 @@
 //
 // Methods prefixed with `_` are internal but shared with recovery.js and the tests.
 
+import { RequesterContinuations } from "./continuations.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import {
@@ -86,6 +87,7 @@ export class Engine {
     cleanContext,
   }) {
     this.ledger = ledger;
+    this.continuations = new RequesterContinuations(this);
     this.config = config;
     this.limits = config.limits;
     this.routes = routes;
@@ -155,6 +157,7 @@ export class Engine {
 
   async stop() {
     this.stopped = true;
+    this.continuations.stop();
     clearInterval(this.sweepTimer);
     for (const t of [...this.pumpTimers.values(), ...this.inlineTimers.values(), ...this.bgTimers.values(), ...this.postRetryTimers.values()]) clearTimeout(t);
     this.pumpTimers.clear(); this.inlineTimers.clear(); this.bgTimers.clear(); this.postRetryTimers.clear();
@@ -163,6 +166,15 @@ export class Engine {
     for (const set of this.waiters.values()) for (const fn of set) fn();
     this.waiters.clear();
     await this.ledger.flush();
+  }
+
+  watchRequesterRun(runId, options) { return this.continuations.watch(runId, options); }
+
+  async finishExternalRun(runId, status) {
+    // Request/wake runs have their own outcome owner. SDK callers and ordinary
+    // root runs must also close their dispatch batch, even without global events.
+    const run = await this.ledger.getRun(runId);
+    if (!run || run.role === "root") await this._onRunEnded(runId, status);
   }
 
   _alive() { return this.started && !this.stopped && !this.ledger.dead; }
@@ -1223,6 +1235,7 @@ export class Engine {
     for (const id of b.members) {
       await this._updateSend(id, (d) => { if (!isSettled(d)) return false; d.phase = "skipped"; return undefined; }, { note: `wake skipped: ${why}` });
     }
+    this.continuations.changed(this.ledger.getBatch(b.batchId));
     if (b.servesSendId) await this._evaluate(b.servesSendId);
   }
 
@@ -1281,7 +1294,8 @@ export class Engine {
     const principal = this.ledger.getChain(b.chainId)?.principal ?? members[0]?.principal ?? null;
     const fromLabel = members.length === 1 ? members[0].target.label : `${members.length} 个会话`;
     const identity = this.routes.senderFor({ route: side.route, principal, chainId: b.chainId, fromLabel });
-    const req = wakeStartRequest({ batch: b, members, attempt, route: side.route, anchorMessageId: b.wake.handbackMessageId === "posted" ? null : b.wake.handbackMessageId, identity, ownerName: this.config.ownerName, principal, continuation, runTimeoutMs: this.limits.runTimeoutMs });
+    let req = wakeStartRequest({ batch: b, members, attempt, route: side.route, anchorMessageId: b.wake.handbackMessageId === "posted" ? null : b.wake.handbackMessageId, identity, ownerName: this.config.ownerName, principal, continuation, runTimeoutMs: this.limits.runTimeoutMs });
+    req = this.continuations.prepare(b, req);
     const outcome = await this._start(side, req, principal);
     if (outcome.status === "busy") {
       await this.ledger.updateBatch(b.batchId, (d) => { d.phase = "ready"; d.wake.attempt += 1; }, { from: ["waking"] });
@@ -1310,6 +1324,7 @@ export class Engine {
     const runId = outcome.runId;
     await this.ledger.updateBatch(b.batchId, (d) => { d.phase = "woken"; d.wake.startedAt = this.now(); d.wake.runId = runId; }, { from: ["waking"] });
     if (runId !== presetRunId) await this.ledger.putRun({ ...runInfo, runId });
+    this.continuations.started(this.ledger.getBatch(b.batchId));
     for (const m of members) {
       await this._updateSend(m.sendId, (d) => { if (d.phase !== "result_ready" && d.phase !== "failure_ready") return false; d.phase = "handed_back"; return undefined; });
     }
@@ -1323,8 +1338,9 @@ export class Engine {
 
   async _onWakeEnd(batchId, runId, outcome, transport) {
     const ro = normalizeRunOutcome(outcome);
-    const b = await this.ledger.updateBatch(batchId, (d) => { d.wake.endedAt = this.now(); d.wake.status = ro.status; });
+    const b = await this.ledger.updateBatch(batchId, (d) => { d.wake.endedAt = this.now(); d.wake.status = ro.status; d.wake.result = { finals: ro.finals, error: ro.error ?? null }; });
     await this._onRunEnded(runId, ro.status);
+    if (b) this.continuations.changed(this.ledger.getBatch(batchId));
     if (!b?.servesSendId) return;
     const s = this.ledger.getSend(b.servesSendId);
     if (!s || s.phase !== "awaiting_children") return;

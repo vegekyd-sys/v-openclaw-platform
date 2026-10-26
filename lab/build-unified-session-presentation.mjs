@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import {createGptLiveContinuationRuntimeSource} from './patch-gpt-live-consult-continuation.mjs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
@@ -16,6 +17,10 @@ const sha=b=>createHash('sha256').update(b).digest('hex');
 export async function buildUnifiedPresentation({write=true}={}){
  const dir='lab/release-files/unified-session-presentation',byTarget=new Map();
  for(const f of buildTaskPresentation({write:false}).files)byTarget.set(f.target,{...f});
+ const continuationName='gpt-live-consult-continuation.js',continuationSource=dir+'/core/'+continuationName;
+ const continuationBefore=fs.readFileSync(path.join(root,CAPTURE,'dist',continuationName),'utf8'),continuationAfter=createGptLiveContinuationRuntimeSource();
+ if(write){fs.mkdirSync(path.dirname(path.join(root,continuationSource)),{recursive:true});fs.writeFileSync(path.join(root,continuationSource),continuationAfter);}
+ byTarget.set('openclaw/dist/'+continuationName,{source:continuationSource,target:'openclaw/dist/'+continuationName,before:sha(continuationBefore),sha256:sha(continuationAfter)});
  const commandTarget='openclaw/dist/agent-command-DPfawBbr.js';
  const command=byTarget.get(commandTarget),commandSource=dir+'/core/agent-command-DPfawBbr.js';
  const commandBytes=fs.readFileSync(path.join(root,command.source),'utf8').replaceAll('presentInterSessionTask','presentUnifiedAgentTask').replace('from "./v-feishu-task-presentation-runtime.mjs"','from "./v-feishu-task-presentation-command.mjs"');
@@ -70,6 +75,7 @@ export async function buildUnifiedPresentation({write=true}={}){
    savePlan('core.'+harness,{...base,files:plan.files,env:{...base.env,RELAY_HARNESS:harness,V_FEISHU_TASK_PRESENTATION:'1',ISC_FEISHU_MODE:'mock',RUN_TAG:'UNIFIED',ISC_SCENARIOS:'F1i,F2,F3b-rpc,F3c,F5,F7,F10,F13,F15'}});
    const voice=JSON.parse(fs.readFileSync(path.join(root,'lab/feishu-task-presentation.'+harness+'.plan.json'),'utf8'));
    savePlan('voice.'+harness,{...voice,env:{...voice.env,ISC_CODEX_RUNTIME_FILES:base.env.ISC_CODEX_RUNTIME_FILES},files:[...plan.files,...voice.files.filter(f=>f.target.startsWith('extensions/bound-task-candidate/'))]});
+   savePlan('relay-consult.'+harness,{...voice,tests:['lab/candidate/relay-consult-smoke.mjs'],env:{...voice.env,BOUND_TASK_RELAY:'1',ISC_CODEX_RUNTIME_FILES:base.env.ISC_CODEX_RUNTIME_FILES},files:[...plan.files,...voice.files.filter(f=>f.target.startsWith('extensions/bound-task-candidate/'))]});
   }
   for(const [name,env] of [['joint',{ISC_ANNOUNCE_FOLLOWUP:'1'}],['announce-fault',{ISC_ANNOUNCE_EMPTY_RETRY:'1'}],['finalizer-fault',{ISC_FINALIZER_SUPPRESSED:'1',ISC_ANNOUNCE_FOLLOWUP:'1'}]])
    savePlan(name,{...base,files:plan.files,support:[...base.support,'lab/candidate/unified-announce.mjs'],command:['/opt/vlab/node-v22.23.1-linux-x64/bin/node','lab/candidate/unified-announce.mjs'],timeoutSeconds:720,

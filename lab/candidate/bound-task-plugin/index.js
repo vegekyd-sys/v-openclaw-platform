@@ -1,5 +1,6 @@
 // Candidate-only RPCs. This plugin is never in the release plan.
 import path from 'node:path';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 export default {id:'bound-task-candidate',register(api){
  api.registerGatewayMethod('candidate.boundTask',async({params:p,respond})=>{
@@ -45,7 +46,8 @@ export default {id:'bound-task-candidate',register(api){
     const {candidateConsult}=await import(path.join(dist,'realtime-session-harness-CEO5kVAJ.js'));
     const model=api.config.agents.entries.makaron.model.primary.split('/');
     const result=await candidateConsult({cfg:api.config,agentRuntime:api.runtime.agent,agentId:'makaron',sessionKey:p.sessionKey,
-     runIdPrefix:'candidate-native',surface:'phone',userLabel:'用户',assistantLabel:'V',questionSourceLabel:'后台任务',
+     ...(p.continuation?{continuationContext:{identity:{delegationItemId:'candidate-'+crypto.randomUUID(),delegationGeneration:1},ownerConnId:'candidate-conn',voiceSessionId:crypto.randomUUID(),ownerGeneration:'candidate-generation',isCurrent:()=>true}}:{}),
+     runIdPrefix:p.direct?'voice-product-task':'candidate-native',taskPresentation:p.direct?{text:p.text}:undefined,surface:'phone',userLabel:'用户',assistantLabel:'V',questionSourceLabel:'后台任务',
      args:{question:p.text},transcript:[{role:'user',text:'PRIVATE_TRANSCRIPT_NOT_FOR_CARD'}],
      provider:model[0],model:model.slice(1).join('/'),thinkLevel:'off',senderIsOwner:true,timeoutMs:120000,
      logger:api.logger});

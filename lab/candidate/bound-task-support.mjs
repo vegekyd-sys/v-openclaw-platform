@@ -122,6 +122,11 @@ export async function prepareCandidate(opts = {}) {
   config.plugins.entries = Object.fromEntries(Object.entries(config.plugins.entries ?? {}).filter(([id]) => keep.has(id)));
   if (Array.isArray(config.plugins.allow)) config.plugins.allow = config.plugins.allow.filter((id) => keep.has(id));
   config.plugins.load.paths = config.plugins.load.paths.filter((p) => p.endsWith("/@openclaw/feishu") || p.includes("deepseek-provider") || p.endsWith("/production-worker"));
+  if (process.env.BOUND_TASK_RELAY === '1') {
+    config.plugins.entries['v-session-relay'] = { enabled: true, config: { workerGuard: true } };
+    if (Array.isArray(config.plugins.allow)) config.plugins.allow.push('v-session-relay');
+    config.plugins.load.paths.push(path.join(runtime, 'extensions/v-session-relay'));
+  }
   const ledgerDir = path.join(stateDir, LEDGER_SUBDIR);
   // Select the already configured harness; never install a provider or alter shared config.
   const model=HARNESS_MODELS[harness],ds=config.models?.providers?.deepseek;

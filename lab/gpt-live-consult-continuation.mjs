@@ -198,7 +198,7 @@ export function createGptLiveConsultContinuationRegistry(deps) {
       }
       return binding;
     };
-    const finishResult = (result, binding) => {
+    const finishResult = (result, binding, relaySettled = false) => {
       assertCurrent();
       if (result?.meta?.aborted === true) {
         cancel(error("Voice requester run was aborted"), "aborted_result");
@@ -253,6 +253,41 @@ export function createGptLiveConsultContinuationRegistry(deps) {
       }
       if (result?.meta?.error || !result || !Array.isArray(result.payloads)) throw new Error("Voice requester continuation ended without a successful final result");
       if (binding.role === "child") { binding.completed = true; return; }
+      const relay = !relaySettled && deps.watchRequesterRun?.(binding.runId, {
+        sessionKey: binding.sessionKey, sessionId: binding.sessionId, signal: controller.signal,
+        onRunStarted: ({ runId, sessionKey }) => {
+          assertCurrent();
+          attachRun({ runId, sessionKey, sessionId: binding.sessionId, agentId: binding.agentId, role: "parent",
+            registration: owner._registerResume?.({ runId, sessionId: binding.sessionId, timeoutMs: params.timeoutMs }) });
+        },
+        prepareInput: (request) => {
+          assertCurrent();
+          const prepared = owner._prepareResumeInput({ sessionKey: request.sessionKey, message: request.promptText });
+          binding.relayInputSequences = prepared.sequences;
+          return { ...request, promptText: prepared.agentParams.message };
+        },
+        onExecutionStarted: ({ runId }) => {
+          assertCurrent();
+          const steeringConsumed = owner._consumeResumeInput(binding.relayInputSequences ?? []);
+          binding.relayInputSequences = [];
+          if (steeringConsumed) owner._notifyResumeExecutionStarted?.({ runId, steeringConsumed });
+        },
+      });
+      if (relay) {
+        binding.yielded = true;
+        binding.pendingBatch = { owner, parent: binding };
+        cleanups.add(relay.close);
+        relay.promise.then((final) => {
+          if (!isCurrent()) return;
+          try {
+            const resumed = bindings.get(final.runId);
+            if (!resumed) throw Error("Relay final arrived without its accepted requester run");
+            // The relay has already followed any further requester batches.
+            finishResult(final, resumed, true);
+          } catch (failure) { owner.abort(failure); }
+        }, failure => owner.abort(failure));
+        return;
+      }
       const runningChildren = [...bindings.values()].filter((child) => child.role === "child" && child.completed !== true && child.isTerminal?.() !== true);
       if (runningChildren.length) {
         // A requester that delegated with sessions_spawn and ended its turn

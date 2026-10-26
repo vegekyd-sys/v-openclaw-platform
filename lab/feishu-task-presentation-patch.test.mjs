@@ -20,7 +20,7 @@ test('monitor patch refuses a changed anchor and double application',()=>{
 test('Worker and VDS plans isolate candidate-only probes and include all source dependencies',()=>{
  for(const harness of ['worker','vds']){
   const plan=JSON.parse(fs.readFileSync(`lab/feishu-task-presentation.${harness}.plan.json`));
-  assert.equal(plan.env.BOUND_TASK_HARNESS,harness);assert.equal(plan.user,'lab-db91-parity');assert.equal(plan.files.length,12);
+  assert.equal(plan.env.BOUND_TASK_HARNESS,harness);assert.equal(plan.user,'lab-db91-parity');assert.equal(plan.files.length,13);assert(plan.files.some(f=>f.target==='openclaw/dist/session-task-lifecycle.mjs'));
   for(const file of [...plan.tests,...plan.support,...plan.files.map(f=>f.source)])assert(fs.existsSync(file),file);
   const release=JSON.parse(fs.readFileSync('lab/feishu-task-presentation.plan.json'));
   assert(!release.files.some(f=>f.target.includes('bound-task-candidate')));assert(!release.files.some(f=>f.target.includes('/dist/dist/')));
