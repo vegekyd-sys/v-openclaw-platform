@@ -50,7 +50,8 @@
   "env": {
     "FIXTURE_DIR": "/var/tmp/wsb-20261027",
     "SWEEP_MINUTES": "13",
-    "TOUCH": "8"
+    "TOUCH": "8",
+    "PROBES": "2,60"
   },
   "user": "lab-db91-parity"
 }

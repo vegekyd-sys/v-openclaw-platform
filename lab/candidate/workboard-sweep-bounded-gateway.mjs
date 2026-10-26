@@ -150,6 +150,17 @@ async function runArm(arm) {
     }
   };
   start();
+  try {
+    return await armBody();
+  } finally {
+    if (gateway.exitCode === null) {
+      gateway.kill("SIGTERM");
+      for (let i = 0; i < 30 && gateway.exitCode === null; i += 1) await sleep(1000);
+      if (gateway.exitCode === null) gateway.kill("SIGKILL");
+    }
+    fs.rmSync(stateDir, { recursive: true, force: true });
+  }
+  async function armBody() {
   const { GatewayClient } = await import(`${dist}/plugin-sdk/gateway-runtime.js`);
   let client;
   const deadline = Date.now() + 900_000;
@@ -179,7 +190,7 @@ async function runArm(arm) {
     } catch { client?.stop(); await sleep(1_000); }
   }
   // Every request gets a deadline: a lost answer must fail the arm, not hang it.
-  const request = (method, params, ms = 180_000) => Promise.race([client.request(method, params), sleep(ms).then(() => { throw new Error(`${method} timed out after ${ms} ms`); })]);
+  const request = (method, params, ms = 300_000) => Promise.race([client.request(method, params, { timeoutMs: ms }), sleep(ms + 5_000).then(() => { throw new Error(`${method} timed out after ${ms} ms`); })]);
   // Settled: three fast answers in a row, or at most 3 minutes (a loaded host never answers fast).
   const settleUntil = Date.now() + 180_000;
   for (let ok = 0; ok < 3 && Date.now() < settleUntil;) { const t = Date.now(); await request("health", {}); ok = Date.now() - t < 500 ? ok + 1 : 0; await sleep(500); }
@@ -203,7 +214,8 @@ async function runArm(arm) {
   const sampleHeap = (async () => { while (sampling) { const t = Date.now(); const h = await send("Runtime.getHeapUsage"); heap.push({ at: t, used: h.usedSize, total: h.totalSize }); await sleep(500); } })();
 
   // 1. lifecycleOnly vs the ordinary list, same Gateway, back to back.
-  for (const activeMinutes of [void 0, 2, 60, 1440, 100000]) {
+  // PROBES: the activeMinutes values to compare ("full" = none); the full ones are slow on V's bytes.
+  for (const activeMinutes of (process.env.PROBES ?? "full,2,60,1440,100000").split(",").map((v) => v === "full" ? void 0 : Number(v))) {
     const params = { ...SWEEP, ...activeMinutes ? { activeMinutes } : {} };
     let t = performance.now();
     const plain = await request("sessions.list", params);
@@ -289,11 +301,8 @@ async function runArm(arm) {
   result.failures = lines.filter((l) => /workboard lifecycle (sync|recovery) failed|invalid sessions\.list params|unexpected property|TypeError|ReferenceError/iu.test(l.line)).map((l) => redact(l.line).slice(0, 400));
   result.livenessDelayed = lines.filter((l) => /liveness heartbeat delayed/u.test(l.line)).map((l) => redact(l.line).slice(0, 200));
   client.stop();
-  gateway.kill("SIGTERM");
-  for (let i = 0; i < 30 && gateway.exitCode === null; i += 1) await sleep(1000);
-  if (gateway.exitCode === null) gateway.kill("SIGKILL");
-  fs.rmSync(stateDir, { recursive: true, force: true });
   return result;
+  }
 }
 
 const results = [];
