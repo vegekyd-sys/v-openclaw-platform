@@ -122,6 +122,31 @@
       "before": null
     },
     {
+      "source": "lab/release-files/unified-session-presentation/codex/bounded-turn-wzJrwKKe.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/bounded-turn-wzJrwKKe.js",
+      "before": "8f36224c274c6d52fcc8ba4c4b43de4aee63a38391c08cdbd4fc740b6379b84c"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/run-attempt-D1hJO4fX.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js",
+      "before": "80875cf3cab593453d4f1c1014c47105d0ce1657e955ed510ff93d754f56457f"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/settled-turn-context-D3SNWtUn.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/settled-turn-context-D3SNWtUn.js",
+      "before": "57105bab9d988d333db1752b75678cd1d00c811bef28c9258adb3aba239ca1c6"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/settled-turn-finalizer-BVJx4yoc.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/settled-turn-finalizer-BVJx4yoc.js",
+      "before": "5aae2e1873a41744fbe05a4c9f1041404c4b06a132ea86ff46300eb10d99f5bd"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/transcript-mirror-DTUxFWa_.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/transcript-mirror-DTUxFWa_.js",
+      "before": "17750f19b8a1a56b3897ad84ea4177e1f5b02d7de5217072136b77f5ef0b805b"
+    },
+    {
       "source": "lab/release-files/feishu-task-presentation/index.js",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/index.js",
       "before": "17f2e4d25ca24f4f7694b2f109e20d1c7411a5ca8583e600373473673dc61706"
@@ -247,6 +272,7 @@
     "RELAY_HARNESS": "vds",
     "ISC_SCENARIOS": "F1i,F1,F2,F3,F7,F13",
     "ISC_FEISHU_MODE": "mock",
+    "ISC_CODEX_RUNTIME_FILES": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/bounded-turn-wzJrwKKe.js,npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js,npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/settled-turn-context-D3SNWtUn.js,npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/settled-turn-finalizer-BVJx4yoc.js,npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/transcript-mirror-DTUxFWa_.js",
     "V_FEISHU_TASK_PRESENTATION": "1",
     "RUN_TAG": "UNIFIED",
     "ISC_ANNOUNCE_EMPTY_RETRY": "1"

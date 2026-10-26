@@ -5,7 +5,7 @@
       "source": "lab/release-files/sessions-send-relay/generated/sessions-spawn-tool-1FQMTkIo.js",
       "target": "openclaw/dist/sessions-spawn-tool-1FQMTkIo.js",
       "before": "1a7ab8f9848b1e17a830d7e55f24df01603afd2129bb6807e390f4cc35b17310",
-      "after": "b3c380d976a43f9bc12be753a48ae712f643a140f5b9b3aef2a2f81caafcd0ff"
+      "after": "df5ed5cf0de663cb405dabe96c3a2b33a4cb2a1a906b992778fec1c7b348a1dd"
     },
     {
       "source": "lab/release-files/sessions-send-relay/generated/openclaw-tools-BODVdJQD.js",

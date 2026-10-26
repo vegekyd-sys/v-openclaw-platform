@@ -117,6 +117,36 @@
       "sha256": "f1e1c0ff694fd8930832347faff4f2fb63beacc749c2381945e3cd2b42d016b3"
     },
     {
+      "source": "lab/release-files/unified-session-presentation/codex/bounded-turn-wzJrwKKe.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/bounded-turn-wzJrwKKe.js",
+      "before": "8f36224c274c6d52fcc8ba4c4b43de4aee63a38391c08cdbd4fc740b6379b84c",
+      "sha256": "a2eebda0a3425249ed70cd6cc710dc0c204bdcf41415618125ade6ba02a216a6"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/run-attempt-D1hJO4fX.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js",
+      "before": "80875cf3cab593453d4f1c1014c47105d0ce1657e955ed510ff93d754f56457f",
+      "sha256": "c34d6d777a862db761e22e03fae20e70c595867361052475a5703f67446ce2ce"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/settled-turn-context-D3SNWtUn.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/settled-turn-context-D3SNWtUn.js",
+      "before": "57105bab9d988d333db1752b75678cd1d00c811bef28c9258adb3aba239ca1c6",
+      "sha256": "929c1ea936cce6ac892700114d9c042db856a79ad6d02d89355ef9514d2e08db"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/settled-turn-finalizer-BVJx4yoc.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/settled-turn-finalizer-BVJx4yoc.js",
+      "before": "5aae2e1873a41744fbe05a4c9f1041404c4b06a132ea86ff46300eb10d99f5bd",
+      "sha256": "7506b388b1718c02fe72c69195b49649e4a17cb730fac87720eef7c7a277dd94"
+    },
+    {
+      "source": "lab/release-files/unified-session-presentation/codex/transcript-mirror-DTUxFWa_.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/transcript-mirror-DTUxFWa_.js",
+      "before": "17750f19b8a1a56b3897ad84ea4177e1f5b02d7de5217072136b77f5ef0b805b",
+      "sha256": "af4c007c0965bf78dee27ea3185044488b419c4ea2905b960c8f0e1c75dd4ae5"
+    },
+    {
       "source": "lab/release-files/feishu-task-presentation/index.js",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/index.js",
       "before": "17f2e4d25ca24f4f7694b2f109e20d1c7411a5ca8583e600373473673dc61706",
@@ -192,7 +222,7 @@
       "source": "lab/release-files/unified-session-presentation/core/sessions-spawn-tool-1FQMTkIo.js",
       "target": "openclaw/dist/sessions-spawn-tool-1FQMTkIo.js",
       "before": "1a7ab8f9848b1e17a830d7e55f24df01603afd2129bb6807e390f4cc35b17310",
-      "sha256": "ea8cae0f7997b95049147e3d28d2aad986460ea30ecd2dc94971ab4e618eedc2"
+      "sha256": "ba127bab652e9f4401437816895d90e5471cc3d7bb8387cbf159f3b9e31f5f32"
     },
     {
       "source": "lab/release-files/unified-session-presentation/core/src-B9mb84px.js",

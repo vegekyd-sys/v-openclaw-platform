@@ -259,6 +259,21 @@ export async function prepareCandidate(opts = {}) {
   if (harness === "vds" || process.env.ISC_TASKROOM_MIXED === '1') {
     const sharedNpm = path.join(process.env.VLAB_SHARED_STATE_DIR, "npm");
     if (!fs.existsSync(path.join(stateDir, "npm"))) assert.equal(spawnSync("cp", ["-a", "--reflink=auto", sharedNpm, path.join(stateDir, "npm")]).status, 0, "copy managed npm plugins");
+    // Managed Codex resolves from private state, while candidate plans overlay runtime.
+    // Carry only explicitly selected code files across, and attest the loaded bytes.
+    for (const rel of (process.env.ISC_CODEX_RUNTIME_FILES ?? '').split(',').filter(Boolean)) {
+      assert(/^npm\/projects\/openclaw-codex-[\w-]+\/node_modules\/@openclaw\/codex\/dist\/[\w.-]+\.js$/u.test(rel), 'invalid Codex candidate code overlay');
+      const from=path.join(runtime,rel),projects=path.join(stateDir,'npm/projects');
+      assert(fs.existsSync(from), 'Codex runtime overlay missing');
+      const destinations=fs.readdirSync(projects).filter(n=>n.startsWith('openclaw-codex-')).map(n=>path.join(projects,n,'node_modules/@openclaw/codex/dist',path.basename(rel))).filter(p=>fs.existsSync(p));
+      assert(destinations.length>0,'managed Codex destination missing');
+      for(const to of destinations){
+        const before=sha256(fs.readFileSync(to));
+        fs.copyFileSync(from,to);
+        assert.equal(sha256(fs.readFileSync(to)),sha256(fs.readFileSync(from)));
+        notes.push(`managed Codex overlay: ${path.basename(rel)} ${before} -> ${sha256(fs.readFileSync(to))}`);
+      }
+    }
     const codexHome = path.join(makaron.agentDir, "codex-home");
     fs.mkdirSync(codexHome, { recursive: true, mode: 0o700 });
     const tomlPath = path.join(codexHome, "config.toml");

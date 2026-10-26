@@ -225,6 +225,7 @@
         "lab/feishu-task-presentation-native.test.mjs",
         "lab/feishu-task-presentation-patch.test.mjs",
         "lab/unified-session-presentation.test.mjs",
+        "lab/codex-suppressed-prompt-finalization.test.mjs",
         "scripts/configure-v-session-relay.test.mjs",
         "tests/inter-session-plan.test.mjs"
       ]
