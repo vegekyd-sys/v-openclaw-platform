@@ -11,8 +11,19 @@ export function patchProgressEventIdentity(s){
 }
 export function patchProgressRendererIdentity(s){
  s=once(s,'each(event.card ?? null);','each(event.card ?? null, event);');
- return once(s,'vProgressSubscribe(params.sessionKey, (card) => {',`vProgressSubscribe(params.sessionKey, (card, event) => {
+ s=once(s,'vProgressSubscribe(params.sessionKey, (card) => {',`vProgressSubscribe(params.sessionKey, (card, event) => {
       // Unknown and stale run updates must never enter another task's card.
       const ownerRunId = params.boundTaskPresentation?.runId?.() ?? vFirsttextE2e.runId;
       if (params.boundTaskPresentation ? !event?.runId || event.runId !== ownerRunId : event?.runId && event.runId !== ownerRunId) return;`);
+ return patchBufferedProgressRenderer(s);
+}
+
+export function patchBufferedProgressRenderer(s){
+ s=once(s,'vProgressUnsubscribe = vProgressSubscribe(params.sessionKey, (card, event) => {','const applyProgress = (card, event) => {');
+ return once(s,'\t\t});\n\t};\n\tconst vProgressDetach = () => {',`\t\t};
+        vProgressUnsubscribe = vProgressSubscribe(params.sessionKey, applyProgress);
+        const earlyProgress = params.boundTaskPresentation?.progressEvent?.();
+        if (earlyProgress) applyProgress(earlyProgress.card ?? null, earlyProgress);
+\t};
+\tconst vProgressDetach = () => {`);
 }

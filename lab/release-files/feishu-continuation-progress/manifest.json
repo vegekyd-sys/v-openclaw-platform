@@ -1,0 +1,53 @@
+{
+  "capture": "release/captured/v2026.9.1-db91.6-unified-session-20261027",
+  "files": [
+    {
+      "source": "lab/release-files/feishu-continuation-progress/isolated-agent-BxeXdw5A.js",
+      "target": "openclaw/dist/isolated-agent-BxeXdw5A.js",
+      "before": "84227fa12d6b62a98f24bc9a712e9b08e5ea907b14ed951a4fc1de9caf674c1c",
+      "sha256": "2613b14741ab4cf2a03c0c4e6be90a0594ee406009324876aae1d634734f8698"
+    },
+    {
+      "source": "lab/release-files/feishu-continuation-progress/run-delivery.runtime-falxHVAy.js",
+      "target": "openclaw/dist/run-delivery.runtime-falxHVAy.js",
+      "before": "9f2b2bdb038cad77516346cb18f599057f363694843e2bde4cfc376b6ee6e74a",
+      "sha256": "6afb1b4a740dcb2c9fb374c7a3408246c7beed495b0171a68b73e665c0c52bf7"
+    },
+    {
+      "source": "lab/release-files/feishu-continuation-progress/v-feishu-task-presentation-cron.mjs",
+      "target": "openclaw/dist/v-feishu-task-presentation-cron.mjs",
+      "before": null,
+      "sha256": "80071002e00f987b87d29f237d5450cd98af5afdfce34f33f62b0b8e325c05ee"
+    },
+    {
+      "source": "lab/release-files/feishu-continuation-progress/v-feishu-task-presentation-runtime.mjs",
+      "target": "openclaw/dist/v-feishu-task-presentation-runtime.mjs",
+      "before": "e48e2604cc84649e399bcb0446673c298cfe0db40f37e359687fc4da9e17f06e",
+      "sha256": "d98433695dc87517208487540e96b7b62614a858411139eac807417b22f140b7"
+    },
+    {
+      "source": "lab/release-files/feishu-continuation-progress/v-feishu-task-presentation-followup.mjs",
+      "target": "openclaw/dist/v-feishu-task-presentation-followup.mjs",
+      "before": "2e3922a5000f9e817046856bf1c952d569a7faad391e467f641c58d07961e017",
+      "sha256": "824905696977aa8418145791c78eb00d7bd33da401a3127a522a0e53a6e98529"
+    },
+    {
+      "source": "lab/release-files/feishu-continuation-progress/v-feishu-task-presentation-delivery.mjs",
+      "target": "openclaw/dist/v-feishu-task-presentation-delivery.mjs",
+      "before": "8e11035fcaa7b3f8b779fe354ccd39337344d245b99096f6ce1234ddfb321ea5",
+      "sha256": "47b4e136a66e7eaf2478d4c68e4d3c87e0193f6f83c2bd2174058d3a6107a4eb"
+    },
+    {
+      "source": "lab/release-files/feishu-continuation-progress/v-feishu-task-presentation.mjs",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-task-presentation.mjs",
+      "before": "604b98fa78ecef8c778990eae389031954824b58e650e952801e8957e8470ada",
+      "sha256": "d3f49b00811b026835f1f5a90afaf0d8f004a25a4fa3c3599e9c3d8facd6fdcb"
+    },
+    {
+      "source": "lab/release-files/feishu-continuation-progress/monitor.account-WFdlCDhR.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+      "before": "6e12af1840f8ac6cd6519e3e80bb8ac1559271227c1d2c5283cf129b9d966344",
+      "sha256": "1925d3f2d4f3550189e76b27bac09a40b25bbdd7b124e839c6605926b677366b"
+    }
+  ]
+}

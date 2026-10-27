@@ -14,7 +14,7 @@ export function createTaskPresentationAccount({cfg,accountId,runtime,createClien
       let state=record.sinkState??{};
       const persist=async next=>{state=JSON.parse(JSON.stringify(next));record.sinkState=state;await checkpoint(state);};
       if(!record.anchorId){
-        const title=record.source==='queued-followup'?'⏳ 排队请求':record.source==='subagent-announce'?'↩️ 子任务回报':record.source==='inter-session'?'📨 跨会话任务':'📞 语音交办';
+        const title=record.source==='cron-continuation'?'↩️ 自动续接':record.source==='queued-followup'?'⏳ 排队请求':record.source==='subagent-announce'?'↩️ 子任务回报':record.source==='inter-session'?'📨 跨会话任务':'📞 语音交办';
         const response=await client.im.message.create({params:{receive_id_type:route.kind==='group'?'chat_id':'open_id'},
           data:{receive_id:route.chatId,msg_type:'text',uuid:record.id.slice(0,32),content:JSON.stringify({text:title+'\n'+record.text})}});
         if(response?.code!==0||!response.data?.message_id)throw Error('Feishu task anchor was not acknowledged');
@@ -23,7 +23,7 @@ export function createTaskPresentationAccount({cfg,accountId,runtime,createClien
         await persist({...state,anchorId:record.anchorId,...conversationChatId?{conversationChatId}:{}});
       }
       let begun=false,selectedModel=record.selectedModel;
-      const taskState={state,runId:()=>record.activeRunId??record.runIds.at(-1),uuid:'bt_'+record.id.slice(0,28),checkpoint:async stream=>{
+      const taskState={state,source:record.source,progressEvent:()=>record.latestProgressEvent,runId:()=>record.activeRunId??record.runIds.at(-1),uuid:'bt_'+record.id.slice(0,28),checkpoint:async stream=>{
         await persist({...state,stream});taskState.state=state;
       }};
       const native=createReplyDispatcher({cfg,agentId:record.agentId,sessionKey:record.sessionKey,chatId:state.conversationChatId??route.chatId,
@@ -40,6 +40,8 @@ export function createTaskPresentationAccount({cfg,accountId,runtime,createClien
       return {
         start,
         async partial(payload){await start();
+          if(payload.kind==='status'&&native.setTaskPresentationStatus){native.setTaskPresentationStatus(payload.text);await flush();return;}
+          native.setTaskPresentationStatus?.('');
           if(payload.kind==='preamble'&&resolveProgressRuntimes(account.config).includes(selectedModel?.agentRuntime)&&native.replyOptions.onItemEvent)
             native.replyOptions.onItemEvent({kind:'preamble',phase:'end',itemId:payload.itemId,progressText:payload.text});
           else native.replyOptions.onPartialReply?.(payload);
@@ -73,6 +75,7 @@ export function createTaskPresentationAccount({cfg,accountId,runtime,createClien
           }
           await native.dispatcherOptions.onIdle?.();await flush();
         },
+        async suppress(){native.dispatcherOptions.onSkip?.(undefined,{kind:'final',reason:'silent'});await native.dispatcherOptions.onIdle?.();await flush();},
         async cleanup(){await native.dispatcherOptions.onCleanup?.();},
       };
     },

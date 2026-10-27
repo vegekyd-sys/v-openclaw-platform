@@ -37,6 +37,7 @@ export function patchTaskPresentationMonitor(source){already(source);
         } : {},`);
   const returned='\t\tgetVisibleReplyState: () => ({\n\t\t\tvisibleReplySent,';
   source=once(source,returned,`    flushTaskPresentation: async () => { await streamingStartPromise; await partialUpdateQueue; await streaming?.queue; },
+    setTaskPresentationStatus: text => updateStreamingStatusLine(text, {startIfNeeded:Boolean(text)}),
     snapshotTaskPresentation: () => ({stream: streaming?.state ? {...streaming.state} : params.boundTaskPresentation?.state?.stream}),
 ${returned}`);
   const runStart='\t\t\tonAgentRunStart: (runId) => {\n\t\t\t\tif (typeof runId === "string"';
