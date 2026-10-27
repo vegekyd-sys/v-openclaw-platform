@@ -7,14 +7,15 @@ import http from "node:http";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { DatabaseSync } from 'node:sqlite';
 import { FakeFeishu } from "./feishu-fake-open-api.mjs";
 
 // Synthetic candidate identities; never connected to a real Feishu account.
 export const OWNER='ou_00000000000000000000000000000002', AGENT='makaron';
 export const DM_CHAT='oc_00000000000000000000000000000002', GROUP_B='oc_00000000000000000000000000000003';
 export const TENANT_KEY='candidate', CHAT_NAMES={[DM_CHAT]:'Candidate DM',[GROUP_B]:'Candidate group'};
-const HARNESS_MODELS={worker:'deepseek/deepseek-flash',vds:'deepseek/vds-deepseek-flash'};
-const RUNTIME_OF={worker:'vlab-worker',vds:'codex'};
+const HARNESS_MODELS={worker:'deepseek/deepseek-flash',vds:'deepseek/vds-deepseek-flash',native:'openai/gpt-6.1-sol'};
+const RUNTIME_OF={worker:'vlab-worker',vds:'codex',native:'codex'};
 const STEER_ENV={}, SECRETS_ENV='/srv/vlab-production-mirror/labs/instances/db91-parity/secrets.env';
 const LEDGER_SUBDIR='feishu-task-presentation';
 export const groupKey=id=>`agent:${AGENT}:feishu:group:${id}`;
@@ -133,6 +134,23 @@ export async function prepareCandidate(opts = {}) {
   const allow=config.agents.defaults.modelPolicy?.allow;
   if(Array.isArray(allow)&&!allow.includes(model))allow.push(model);
   const makaron=config.agents.entries[AGENT];
+  if(harness==='native'){
+    // Copy only the already authorized OpenAI profile, entirely server-side.
+    // Native SQLite access stays read-only; the SDK creates a private store.
+    let auth;
+    if(process.env.BOUND_TASK_OPENAI_AUTH_FILE)auth=JSON.parse(fs.readFileSync(process.env.BOUND_TASK_OPENAI_AUTH_FILE,'utf8'));
+    else{
+      const db=new DatabaseSync(path.join(process.env.VLAB_SHARED_STATE_DIR,'state','openclaw.sqlite'),{readOnly:true});
+      try{auth=JSON.parse(db.prepare("select value_json from config_machine_state where state_key='authProfiles.store'").get().value_json);}finally{db.close();}
+    }
+    auth.profiles=Object.fromEntries(Object.entries(auth.profiles).filter(([,v])=>v.provider==='openai'));
+    assert(Object.keys(auth.profiles).length,'shared OpenAI test authorization unavailable');
+    for(const v of Object.values(auth.profiles))for(const value of Object.values(v))if(typeof value==='string')addSecret(value);
+    config.auth??={};config.auth.order={...config.auth.order,openai:Object.keys(auth.profiles)};
+    const {y:saveAuthProfileStore}=await import(path.join(dist,'store-CZzbMlii.js'));
+    assert.equal(typeof saveAuthProfileStore,'function','native auth store SDK export');
+    saveAuthProfileStore(auth,makaron.agentDir);
+  }
   makaron.model={...(makaron.model??{}),primary:model,fallbacks:[]};
   const runtimeId = makaron.models[model]?.agentRuntime?.id ?? config.agents.defaults.models?.[model]?.agentRuntime?.id ?? ds?.agentRuntime?.id ?? null;
   if (runtimeId !== RUNTIME_OF[harness]) notes.push(`${harness}: ${model} is configured for runtime ${runtimeId}, expected ${RUNTIME_OF[harness]}`);

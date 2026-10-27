@@ -16,7 +16,7 @@ test('real cron current continuation: original Feishu group receives start, proc
   assert.equal((await inspect()).tasks.length,0);proof.checks.push('native human ingress still owns its card');
   const job=await c.rpc('cron.add',{name:'Candidate automatic continuation',agentId:'makaron',sessionKey,enabled:false,deleteAfterRun:false,
    schedule:{kind:'at',at:new Date(Date.now()+3600000).toISOString()},sessionTarget:'current',wakeMode:'now',
-   payload:{kind:'agentTurn',message:'这是隔离候选测试。先用一句简短的公开进度说明你开始检查。然后调用 exec 执行命令 printf CRON_PROCESS_OK; sleep 4; printf CRON_RESULT_OK。完成后只回答 CRON_RESULT_OK。不要使用任何发消息工具。',toolsAllow:['exec'],timeoutSeconds:120},
+   payload:{kind:'agentTurn',message:'这是隔离候选测试。先用一句简短的公开进度说明你开始检查。然后调用 exec 执行命令 printf CRON_PROCESS_OK; sleep 4; printf CRON_RESULT_OK。必须实际调用 exec 并等待命令结束；开始检查这句进度不能作为最终结果。只有看到真实输出 CRON_RESULT_OK 后才最终回答 CRON_RESULT_OK。不要使用任何发消息工具。',toolsAllow:['exec'],timeoutSeconds:120},
    delivery:{mode:'announce',channel:'feishu',accountId:'default',to:GROUP_B}});
   const id=job.id??job.job?.id;assert(id,JSON.stringify(job));console.log(JSON.stringify({stage:'cron-created',id}));
   const receipt=await c.rpc('cron.run',{id,mode:'force'},30000);assert(receipt.ok!==false,JSON.stringify(receipt));

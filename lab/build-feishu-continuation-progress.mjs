@@ -19,6 +19,10 @@ export function buildCronPresentation({write=true}={}){
   const before=read('lab/fixtures/feishu-continuation-progress/'+name);add(name,'openclaw/dist/'+name,patch(before),before);
  }
  add('v-feishu-task-presentation-cron.mjs','openclaw/dist/v-feishu-task-presentation-cron.mjs',read('lab/feishu-task-presentation-cron.mjs').replace("'./feishu-task-presentation-delivery.mjs'","'./v-feishu-task-presentation-delivery.mjs'"));
+ for(const name of ['runtime','followup']){
+  const source=read('lab/feishu-task-presentation-'+name+'.mjs');
+  add('v-feishu-task-presentation-'+name+'.mjs','openclaw/dist/v-feishu-task-presentation-'+name+'.mjs',source,read(capture+'/dist/v-feishu-task-presentation-'+name+'.mjs'));
+ }
  add('v-feishu-task-presentation.mjs',feishu+'v-feishu-task-presentation.mjs',read('lab/feishu-task-presentation.mjs'),read(capture+'.feishu/dist/dist/v-feishu-task-presentation.mjs'));
  // Shared VLab additionally fixed the p2p entry-event envelope. Preserve the
  // observed bytes; before hashes deliberately reject a concurrent deployment.
@@ -28,10 +32,10 @@ export function buildCronPresentation({write=true}={}){
  let patchedMonitor=monitor.replace(title,"const title=record.source==='cron-continuation'?'↩️ 自动续接':record.source==='queued-followup'?");
  const state='const taskState={state,runId:',attach='vTaskStatusAttach(params.sessionKey, session,';
  for(const anchor of [state,attach])if(patchedMonitor.split(anchor).length!==2)throw Error('Cron renderer anchor drift: '+anchor);
- patchedMonitor=patchedMonitor.replace(state,'const taskState={state,source:record.source,runId:').replace(attach,"if (params.boundTaskPresentation?.source !== 'cron-continuation') vTaskStatusAttach(params.sessionKey, session,");
+ patchedMonitor=patchedMonitor.replace(state,'const taskState={state,source:record.source,runId:').replace(attach,"if (!['cron-continuation','subagent-announce','queued-followup'].includes(params.boundTaskPresentation?.source)) vTaskStatusAttach(params.sessionKey, session,");
  // The conversation-wide background summary is a single slot and can say
- // 'ended' when another turn settles. A cron card's own streaming lifecycle
- // already shows its execution state; never attach that unrelated summary.
+ // 'ended' when another turn settles. Each continuation card owns its own
+ // execution state; ordinary, inter-session and Voice summaries stay intact.
  add('monitor.account-WFdlCDhR.js',feishu+'monitor.account-WFdlCDhR.js',patchedMonitor,monitor);
  const plan={files:files.map(({sha256,...f})=>f)};
  if(write){
@@ -41,6 +45,13 @@ export function buildCronPresentation({write=true}={}){
   for(const harness of ['vds','worker'])fs.writeFileSync(path.join(root,`lab/feishu-continuation-progress.${harness}.plan.json`),JSON.stringify({...base,
    files:[...plan.files,...base.files.filter(f=>f.target.startsWith('extensions/bound-task-candidate/'))],
    tests:['lab/candidate/feishu-continuation-progress.mjs'],env:{...base.env,BOUND_TASK_HARNESS:harness},timeoutSeconds:600},null,2)+'\n');
+  for(const [name,test,env] of [
+   ['feishu-native-continuation','feishu-native-continuation',{ISC_ANNOUNCE_FOLLOWUP:'1'}],
+   ['feishu-resume-recovery','feishu-resume-recovery',{}],
+   ['feishu-resume-recovery.vds','feishu-resume-recovery',{BOUND_TASK_HARNESS:'vds'}],
+  ])fs.writeFileSync(path.join(root,'lab/'+name+'.plan.json'),JSON.stringify({...base,
+   files:[...plan.files,...base.files.filter(f=>f.target.startsWith('extensions/bound-task-candidate/'))],
+   tests:['lab/candidate/'+test+'.mjs'],env,timeoutSeconds:720},null,2)+'\n');
  }
  return {files,plan};
 }

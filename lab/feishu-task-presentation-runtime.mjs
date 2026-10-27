@@ -23,9 +23,13 @@ export function publicNativeVoiceText(value){
 }
 
 export async function observeEmbeddedTask(params,execute) {
-  const h=globalThis[KEY]?.runs.get(params.runId);
-  if(h)void optional(()=>h.start(model(params)));
-  const wrapped=h?{...params,onPartialReply:p=>{if(h.ownsRun(params.runId))void optional(()=>h.partial(p));return params.onPartialReply?.(p);},onAgentEvent:e=>{void optional(()=>h.observe(e));return params.onAgentEvent?.(e);}}:params;
+  const m=globalThis[KEY],h=m?.executionHandle?m.executionHandle(params):m?.runs.get(params.runId);
+  if(h)h.selectModel?.(model(params));
+  const wrapped=h?{...params,
+    onExecutionStarted:info=>{void optional(()=>{if(h.resumeExecution?.(params)??h.ownsRun(params.runId))return h.start(model(params));});return params.onExecutionStarted?.(info);},
+    onPartialReply:p=>{if(h.ownsRun(params.runId))void optional(()=>h.partial(p));return params.onPartialReply?.(p);},
+    onAgentEvent:e=>{void optional(()=>m.onAgentEvent({...e,runId:e.runId??params.runId,sessionKey:e.sessionKey??params.sessionKey}));return params.onAgentEvent?.(e);}
+  }:params;
   let result;
   try { result=await execute(wrapped); }
   catch(error){await finishSessionTaskRun(params.runId,null,error);throw error;}

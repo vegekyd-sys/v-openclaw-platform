@@ -148,6 +148,47 @@ test('completed deliveries survive a manager restart without another visible out
   const g=fixture(t,{directory});await g.manager.recover();const replay=await g.open();await replay.finish({text:'replay'});
   assert.equal(g.calls.length,0);assert.equal(replay.record.delivered,true);
 });
+test('restart is an interrupted observation; admitted execution reclaims the same run and card',async t=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'v-resume-task-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+ const f=fixture(t,{directory}),old=await f.open({source:'subagent-announce'});await old.start();await old.partial({text:'before restart'});await f.manager.close();
+ const g=fixture(t,{directory});await g.manager.recover();const h=g.manager.tasks.get(old.record.id);
+ assert.equal(h.record.phase,'interrupted');assert.equal(h.record.delivered,false);assert.equal(h.record.executionOutcome,null);
+ assert(!g.calls.some(c=>c[0]==='finish'),'restart notice cannot settle execution');
+ const queued=await g.open({source:'queued-followup',taskId:'question',runId:'queued'});await queued.flush();assert.equal(queued.record.phase,'queued');
+ globalThis[PRESENTATION_KEY]=g.manager;t.after(()=>delete globalThis[PRESENTATION_KEY]);let calls=0,callbacks=0;
+ const result=await observeEmbeddedTask({agentId,sessionKey,sessionId:'session-1',runId:'run-1',provider:'openai',model:'gpt-6.1-sol',onExecutionStarted:()=>callbacks++},async p=>{
+  calls++;assert.equal(h.record.phase,'interrupted');p.onExecutionStarted({});
+  p.onAgentEvent({stream:'item',data:{kind:'preamble',progressText:'RESUMED_PUBLIC'}});
+  p.onAgentEvent({runId:'foreign',stream:'item',data:{kind:'preamble',progressText:'WRONG_RUN'}});
+  p.onAgentEvent({sessionKey:'foreign',stream:'item',data:{kind:'preamble',progressText:'WRONG_SESSION'}});
+  await h.flush();assert.equal(h.record.phase,'running');assert.equal(h.record.publicSnapshot,'RESUMED_PUBLIC');
+  assert(!g.calls.some(c=>c[0]==='finish'));return {payloads:[{text:'REAL_FINAL'}]};
+ });
+ await h.finish(result);assert.equal(calls,1);assert.equal(callbacks,1);assert.equal(h.record.delivered,true);assert.equal(h.record.interruptions.length,1);
+ assert.equal(h.record.anchorId,old.record.anchorId);assert.equal(queued.record.phase,'queued');assert.equal(g.calls.filter(c=>c[0]==='finish').length,1);
+ assert(!JSON.stringify(g.calls).includes('WRONG_'));
+});
+test('only a legacy restart notice can be reclaimed; a real successful or failed terminal stays final',async t=>{
+ for(const kind of ['legacy','success','failure']){
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'v-legacy-task-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+  const f=fixture(t,{directory}),old=await f.open({source:'subagent-announce'});await old.finish(kind==='success'?{text:'DONE'}:null,kind==='legacy'?'Gateway 重启打断了任务；请核对原执行状态后继续。':kind==='failure'?'execution failed':undefined);await f.manager.close();
+  const r=JSON.parse(fs.readFileSync(path.join(directory,old.record.id+'.json')));r.sinkState={stream:{cardId:'preserved-card',messageId:'preserved-message'},deliveredPayloads:1,receipts:[{messageId:'old-notice'}]};fs.writeFileSync(path.join(directory,r.id+'.json'),JSON.stringify(r));
+  const g=fixture(t,{directory});await g.manager.recover();const h=await g.open({source:'subagent-announce'});assert(!g.calls.length,'startup must not republish old terminal notices');
+  assert.equal(h.resumeExecution({agentId,sessionKey:'foreign',sessionId:'session-1',runId:'run-1'}),false);
+  const resumed=h.resumeExecution({agentId,sessionKey,sessionId:'session-1',runId:'run-1'});assert.equal(resumed,kind==='legacy');
+  if(resumed){assert.equal(h.record.sinkState.stream.cardId,'preserved-card');assert.equal(h.record.sinkState.deliveredPayloads,0);assert.deepEqual(h.record.sinkState.receipts,[]);await h.finish({text:'RESUMED_FINAL'});assert(JSON.stringify(g.calls).includes('RESUMED_FINAL'));}
+  else assert(!g.calls.length);
+ }
+});
+test('execution identity mismatch and a failed presentation lookup preserve execution unchanged',async t=>{
+ const f=fixture(t);await f.open();globalThis[PRESENTATION_KEY]=f.manager;t.after(()=>delete globalThis[PRESENTATION_KEY]);
+ for(const unavailable of [false,true]){
+  if(unavailable)f.manager.getEntry=()=>{throw Error('store temporarily unavailable');};
+  const params={agentId,sessionKey:unavailable?sessionKey:'foreign',sessionId:'session-1',runId:'run-1'};
+  let calls=0;const result=await observeEmbeddedTask(params,async actual=>{calls++;assert.equal(actual,params);return {payloads:[{text:'original result'}]};});
+  assert.equal(calls,1);assert.equal(result.payloads[0].text,'original result');
+ }
+});
 test('undelivered terminal recovers the stored exact output without any model call',async t=>{
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'v-bound-task-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
   const f=fixture(t,{directory}),h=await f.open();await h.flush();h.sink.finish=async()=>{throw Error('429');};await h.finish({text:'actual result'});await f.manager.close();

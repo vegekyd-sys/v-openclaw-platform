@@ -10,6 +10,10 @@ const clean = value => typeof value === 'string' ? value.trim() : '';
 const copy = value => JSON.parse(JSON.stringify(value));
 const publicPayload = p => p && !p.isReasoning && p.phase !== 'analysis' && p.phase !== 'commentary';
 const safeText = text => String(text ?? '').replace(/\b(?:sk-[\w-]{20,}|gh[oprs]_[\w]{20,}|github_pat_[\w]{20,})\b/gu,'‹已隐去›').replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/gu,'‹已隐去›');
+// Older releases persisted an observation interruption as an execution failure.
+// Only this exact, locally authored notice is eligible for recovery migration.
+const legacyInterruption = r => r.executionOutcome?.error === 'Gateway 重启打断了任务；请核对原执行状态后继续。';
+const QUEUED_TEXT='⏳ 请求已排队，等待当前任务结束后继续处理。';
 
 /** Only an explicit external binding is eligible. A key alone is not publish authority. */
 export function boundFeishuRoute(entry, actor) {
@@ -79,6 +83,7 @@ export class TaskPresentationManager {
       const handle=new TaskPresentation(this,record);this.tasks.set(id,handle);this.save(record);
       if(input.runId)handle.bindRun(input.runId);
       void handle.enqueue(()=>handle.ensureSink());
+      if(['queued-followup','subagent-announce'].includes(input.source))void handle.partial({text:QUEUED_TEXT,phase:'commentary'});
       return handle;
     })().catch(error=>{this.logger.warn?.('Feishu task presentation unavailable: '+String(error?.message??error));return null;}).finally(()=>this.opening.delete(id));
     this.opening.set(id,pending);return pending;
@@ -87,6 +92,13 @@ export class TaskPresentationManager {
     const h=this.runs.get(event?.runId);if(!h||event.sessionKey&&event.sessionKey!==(h.record.executionSessionKey??h.record.sessionKey))return;
     h.observe(event);
   } catch(error){this.logger.warn?.('Feishu task observer unavailable: '+String(error?.message??error));}}
+  executionHandle(params) {
+    try {
+    const h=this.runs.get(params.runId)??[...this.tasks.values()].find(h=>h.record.activeRunId===params.runId&&(h.record.interruptedAt||legacyInterruption(h.record)));
+    if(!h||!this.current(h.record)||params.sessionKey&&params.sessionKey!==(h.record.executionSessionKey??h.record.sessionKey)||params.sessionId&&params.sessionId!==h.record.sessionId&&h.record.source!=='cron-continuation'||params.agentId&&params.agentId!==h.record.agentId)return null;
+    return h;
+    } catch{return null;}
+  }
   async rpc({params:p,client,respond}) {
     try {
       const actor=client?.internal?.voiceActor,admin=client?.connect?.scopes?.includes('operator.admin');
@@ -126,13 +138,16 @@ export class TaskPresentationManager {
     if(!this.directory||!fs.existsSync(this.directory))return;
     for(const name of fs.readdirSync(this.directory).filter(n=>/^[a-f0-9]{64}\.json$/u.test(n)).slice(-1024)) {
       let r;try{r=JSON.parse(fs.readFileSync(path.join(this.directory,name),'utf8'));}catch{continue;}
-      if(r.v!==1||r.id+'.json'!==name||r.delivered&&(!r.deliveryCompletion||r.deliverySettled)||this.tasks.has(r.id)||!this.accounts.has(r.route?.accountId))continue;
+      if(r.v!==1||r.id+'.json'!==name||r.delivered&&!legacyInterruption(r)&&(!r.deliveryCompletion||r.deliverySettled)||this.tasks.has(r.id)||!this.accounts.has(r.route?.accountId))continue;
       if(!this.current(r)){r.phase='retired';this.save(r);continue;}
       const h=new TaskPresentation(this,r);this.tasks.set(r.id,h);
+      // Do not rewrite an old visible notice or replay execution on startup.
+      // A subsequently admitted execution of this exact run may reclaim it.
+      if(legacyInterruption(r))continue;
       if(r.delivered){await h.settleDelivery();continue;}
       if(r.executionOutcome)await h.finish(r.executionOutcome.result,r.executionOutcome.error);
       else if(r.capturedTerminal&&!r.yielded&&r.source!=='cron-continuation')await h.finish({payloads:r.payloads});
-      else await h.finish(null,'Gateway 重启打断了任务；请核对原执行状态后继续。');
+      else await h.interrupt();
     }
   }
   async retryPending(){
@@ -140,7 +155,7 @@ export class TaskPresentationManager {
       if(h.record.delivered&&h.record.deliveryCompletion&&!h.record.deliverySettled){await h.settleDelivery();continue;}
       if(h.record.delivered||h.record.phase==='retired'||!h.record.error||h.retrying||this.now()<(h.record.retryAfter??0))continue;
       h.retrying=true;
-      try {this.save(h.record);if(h.record.executionOutcome)await h.finish();else await h.start();}
+      try {this.save(h.record);if(h.record.executionOutcome)await h.finish();else if(h.record.interruptedAt)await h.interrupt();else await h.start();}
       finally {h.retrying=false;}
     }
   }
@@ -174,7 +189,34 @@ class TaskPresentation {
     if(!this.record.runIds.includes(runId))this.record.runIds.push(runId);
     this.record.activeRunId=runId;this.manager.save(this.record);this.manager.runs.set(runId,this);return true;}
   ownsRun(runId){return !this.record.delivered&&this.manager.current(this.record)&&this.manager.runs.get(runId)===this&&(!this.record.activeRunId||this.record.activeRunId===runId);}
-  start(model){if(!this.record.delivered&&model?.provider&&model?.model){this.record.selectedModel={...this.record.selectedModel,...model,agentRuntime:model.agentRuntime??this.record.selectedModel?.agentRuntime};this.manager.save(this.record);}
+  selectModel(model){if(!this.record.delivered&&model?.provider&&model?.model){this.record.selectedModel={...this.record.selectedModel,...model,agentRuntime:model.agentRuntime??this.record.selectedModel?.agentRuntime};this.manager.save(this.record);}}
+  async interrupt(){
+    this.record.interruptedAt??=this.manager.now();this.record.phase='interrupted';this.manager.save(this.record);
+    // An interrupted observer has no authority to settle the task ledger.
+    return this.partial({text:'⚠️ Gateway 已重启，等待原任务恢复或核对执行状态。',phase:'commentary'});
+  }
+  resumeExecution(params){
+    if(this.manager.executionHandle(params)!==this||this.manager.claims.has(params.runId))return false;
+    if(this.record.interruptedAt||legacyInterruption(this.record)){
+      this.record.interruptions=[...(this.record.interruptions??[]),{at:this.record.interruptedAt??this.record.updatedAt,resumedAt:this.manager.now(),runId:params.runId}].slice(-16);
+      delete this.record.interruptedAt;
+      const legacy=legacyInterruption(this.record);
+      this.record.delivered=false;this.record.executionOutcome=null;this.record.payloads=[];this.record.publicSnapshot='';
+      this.record.capturedTerminal=false;this.record.executionFailed=false;this.record.yielded=false;this.seen.clear();
+      delete this.record.error;delete this.record.retryAfter;
+      if(legacy){this.record.deliverySettled=false;delete this.record.deliveryCompletion;
+        // Retain the native card identity, but the interruption notice is not
+        // a receipt for the resumed execution's eventual final payload.
+        this.record.sinkState={...this.record.sinkState,deliveredPayloads:0,receipts:[]};
+        const old=this.sink;this.sink=null;void Promise.resolve(old?.cleanup?.()).catch(()=>{});
+      }
+      this.manager.runs.set(params.runId,this);this.manager.save(this.record);
+      void this.partial({text:'已恢复执行，正在继续处理原任务。',phase:'commentary'});
+    }
+    return this.ownsRun(params.runId);
+  }
+  start(model){this.selectModel(model);
+    if(this.record.publicSnapshot===QUEUED_TEXT)void this.partial({text:'正在继续处理请求。',phase:'commentary'});
     return this.enqueue(async()=>{if(this.record.delivered)return;
     const s=await this.ensureSink();this.record.phase='running';this.manager.save(this.record);await s.start?.(this.record.selectedModel);});}
   partial(payload){if(!payload||payload.isReasoning||payload.phase==='analysis'||!clean(payload.text)||this.record.delivered)return;
