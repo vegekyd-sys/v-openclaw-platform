@@ -34,4 +34,4 @@ Gateway 既有 phone-tabs 0600 配置中，本应用账号可选 `privateConvers
 
 按用户要求已通过 vlab.mjs rollback 撤回 dm-phone-direct-20261027-v1，恢复 unified-session-20261027-v3（runtime SHA cb2f9e4eb91871822dcd7c34ef9286cc97f196d616950edb80745b11fda15de5）。Gateway 已就绪，integration lease 已释放。本轮 phone-tabs 配置按备份原字节恢复；独立 Voice 和临时隧道均在 idle 后停止。代码继续保存在 PR 中，不占共享集成槽。
 
-撤出回读：pending=null、lease=null、aligned=true；Gateway PID 799462。飞书本轮临时回调已移除，私聊测试菜单关闭配置已保存；创建关闭菜单的 1.0.14 版本时飞书后台连续返回 Failed to fetch / 创建版本失败，尚未确认发布生效。此后台配置待发布不占共享 VLab 集成槽；后续发布者需核对关闭菜单配置。
+撤出回读：pending=null、lease=null、aligned=true；Gateway PID 799462。飞书本轮临时回调已移除；关闭私聊测试菜单的 1.0.14 版本已回读确认为已发布。创建接口曾返回网络错误，列表回读发现版本已创建，随后确认发布完成。
