@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>V 回顾（样例）</title>
+<style>
+  :root { --ink:#1f2329; --sub:#646a73; --faint:#8f959e; --line:#eff0f1; --accent:#3370ff; --warn:#d46b08; --bg:#fff; --soft:#f5f6f7; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.6 -apple-system,"PingFang SC","Helvetica Neue",sans-serif; }
+  main { max-width:560px; margin:0 auto; padding:16px 16px 96px; }
+  .meta { display:flex; justify-content:space-between; align-items:center; color:var(--faint); font-size:12px; }
+  .meta button { border:0; background:none; color:var(--accent); font-size:12px; padding:4px 0; }
+  .tag { display:inline-block; font-size:11px; color:var(--sub); background:var(--soft); border-radius:4px; padding:0 6px; margin-left:6px; }
+  h1 { font-size:19px; line-height:1.45; margin:10px 0 18px; font-weight:600; }
+  h2 { font-size:13px; color:var(--sub); font-weight:600; margin:22px 0 6px; letter-spacing:.02em; }
+  ul { list-style:none; margin:0; padding:0; }
+  li { padding:5px 0; }
+  .need { background:#f0f4ff; border-radius:8px; padding:10px 12px; }
+  .need li { padding:3px 0; }
+  .need b { color:var(--accent); }
+  .done { color:var(--faint); }
+  .risk { color:var(--warn); }
+  details { margin-top:22px; color:var(--sub); font-size:14px; }
+  summary { color:var(--sub); font-size:13px; font-weight:600; cursor:pointer; }
+  details li { display:flex; gap:10px; }
+  details time { color:var(--faint); flex:none; width:42px; }
+  footer { position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--line); padding:10px 16px calc(10px + env(safe-area-inset-bottom)); }
+  footer div { max-width:560px; margin:0 auto; display:flex; gap:10px; }
+  footer button { flex:1; height:40px; border-radius:8px; font-size:15px; border:1px solid #dee0e3; background:#fff; color:var(--ink); }
+  footer button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+</style>
+</head>
+<body>
+<main>
+  <div class="meta"><span>私聊 · 截至 14:32 · 基于最近 42 条消息<span class="tag">样例</span></span><button>刷新</button></div>
+  <h1>在给夜班交付页换大陆 CDN。测速做完了，等你选一家。</h1>
+
+  <h2>需要你</h2>
+  <ul class="need">
+    <li>选 CDN：<b>腾讯云 COS</b>（快 2.3 倍，月约 ¥40）还是 <b>七牛</b>（快 1.9 倍，有免费额度）</li>
+  </ul>
+
+  <h2>进展</h2>
+  <ul>
+    <li>▶️ 正在把样片压到 6 Mbps，看画质能不能接受</li>
+    <li class="done">☑️ 腾讯云 COS、七牛各测 3 次</li>
+    <li class="done">☑️ 找到慢的原因：Cloudflare 在大陆没有节点，码率 11–27 Mbps</li>
+  </ul>
+
+  <h2>V 接下来</h2>
+  <ul>
+    <li>你选定后，改 cdn-upload 技能的上传目标，重传最近 3 个交付页</li>
+  </ul>
+
+  <h2>风险</h2>
+  <ul><li class="risk">⚠️ 七牛免费额度每月 10 GB，夜班跑一晚就会用完</li></ul>
+
+  <details>
+    <summary>时间线（5 段）</summary>
+    <ul>
+      <li><time>14:20</time><span>V 测完两家 CDN，给出对比</span></li>
+      <li><time>13:05</time><span>你问能不能换成大陆能快速打开的 CDN</span></li>
+      <li><time>12:40</time><span>V 定位到下载慢的原因</span></li>
+      <li><time>昨天</time><span>修好交付页在 iOS 上不能播放</span></li>
+      <li><time>昨天</time><span>清掉 3 个重复的交付清单</span></li>
+    </ul>
+  </details>
+</main>
+<footer><div><button>回到聊天</button><button class="primary">继续</button></div></footer>
+</body>
+</html>
