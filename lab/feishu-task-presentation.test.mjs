@@ -148,6 +148,47 @@ test('completed deliveries survive a manager restart without another visible out
   const g=fixture(t,{directory});await g.manager.recover();const replay=await g.open();await replay.finish({text:'replay'});
   assert.equal(g.calls.length,0);assert.equal(replay.record.delivered,true);
 });
+test('restart is an interrupted observation; admitted execution reclaims the same run and card',async t=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'v-resume-task-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+ const f=fixture(t,{directory}),old=await f.open({source:'subagent-announce'});await old.start();await old.partial({text:'before restart'});await f.manager.close();
+ const g=fixture(t,{directory});await g.manager.recover();const h=g.manager.tasks.get(old.record.id);
+ assert.equal(h.record.phase,'interrupted');assert.equal(h.record.delivered,false);assert.equal(h.record.executionOutcome,null);
+ assert(!g.calls.some(c=>c[0]==='finish'),'restart notice cannot settle execution');
+ const queued=await g.open({source:'queued-followup',taskId:'question',runId:'queued'});await queued.flush();assert.equal(queued.record.phase,'queued');
+ globalThis[PRESENTATION_KEY]=g.manager;t.after(()=>delete globalThis[PRESENTATION_KEY]);let calls=0,callbacks=0;
+ const result=await observeEmbeddedTask({agentId,sessionKey,sessionId:'session-1',runId:'run-1',provider:'openai',model:'gpt-6.1-sol',onExecutionStarted:()=>callbacks++},async p=>{
+  calls++;assert.equal(h.record.phase,'interrupted');p.onExecutionStarted({});
+  p.onAgentEvent({stream:'item',data:{kind:'preamble',progressText:'RESUMED_PUBLIC'}});
+  p.onAgentEvent({runId:'foreign',stream:'item',data:{kind:'preamble',progressText:'WRONG_RUN'}});
+  p.onAgentEvent({sessionKey:'foreign',stream:'item',data:{kind:'preamble',progressText:'WRONG_SESSION'}});
+  await h.flush();assert.equal(h.record.phase,'running');assert.equal(h.record.publicSnapshot,'RESUMED_PUBLIC');
+  assert(!g.calls.some(c=>c[0]==='finish'));return {payloads:[{text:'REAL_FINAL'}]};
+ });
+ await h.finish(result);assert.equal(calls,1);assert.equal(callbacks,1);assert.equal(h.record.delivered,true);assert.equal(h.record.interruptions.length,1);
+ assert.equal(h.record.anchorId,old.record.anchorId);assert.equal(queued.record.phase,'queued');assert.equal(g.calls.filter(c=>c[0]==='finish').length,1);
+ assert(!JSON.stringify(g.calls).includes('WRONG_'));
+});
+test('only a legacy restart notice can be reclaimed; a real successful or failed terminal stays final',async t=>{
+ for(const kind of ['legacy','success','failure']){
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'v-legacy-task-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+  const f=fixture(t,{directory}),old=await f.open({source:'subagent-announce'});await old.finish(kind==='success'?{text:'DONE'}:null,kind==='legacy'?'Gateway 重启打断了任务；请核对原执行状态后继续。':kind==='failure'?'execution failed':undefined);await f.manager.close();
+  const r=JSON.parse(fs.readFileSync(path.join(directory,old.record.id+'.json')));r.sinkState={stream:{cardId:'preserved-card',messageId:'preserved-message'},deliveredPayloads:1,receipts:[{messageId:'old-notice'}]};fs.writeFileSync(path.join(directory,r.id+'.json'),JSON.stringify(r));
+  const g=fixture(t,{directory});await g.manager.recover();const h=await g.open({source:'subagent-announce'});assert(!g.calls.length,'startup must not republish old terminal notices');
+  assert.equal(h.resumeExecution({agentId,sessionKey:'foreign',sessionId:'session-1',runId:'run-1'}),false);
+  const resumed=h.resumeExecution({agentId,sessionKey,sessionId:'session-1',runId:'run-1'});assert.equal(resumed,kind==='legacy');
+  if(resumed){assert.equal(h.record.sinkState.stream.cardId,'preserved-card');assert.equal(h.record.sinkState.deliveredPayloads,0);assert.deepEqual(h.record.sinkState.receipts,[]);await h.finish({text:'RESUMED_FINAL'});assert(JSON.stringify(g.calls).includes('RESUMED_FINAL'));}
+  else assert(!g.calls.length);
+ }
+});
+test('execution identity mismatch and a failed presentation lookup preserve execution unchanged',async t=>{
+ const f=fixture(t);await f.open();globalThis[PRESENTATION_KEY]=f.manager;t.after(()=>delete globalThis[PRESENTATION_KEY]);
+ for(const unavailable of [false,true]){
+  if(unavailable)f.manager.getEntry=()=>{throw Error('store temporarily unavailable');};
+  const params={agentId,sessionKey:unavailable?sessionKey:'foreign',sessionId:'session-1',runId:'run-1'};
+  let calls=0;const result=await observeEmbeddedTask(params,async actual=>{calls++;assert.equal(actual,params);return {payloads:[{text:'original result'}]};});
+  assert.equal(calls,1);assert.equal(result.payloads[0].text,'original result');
+ }
+});
 test('undelivered terminal recovers the stored exact output without any model call',async t=>{
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'v-bound-task-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
   const f=fixture(t,{directory}),h=await f.open();await h.flush();h.sink.finish=async()=>{throw Error('429');};await h.finish({text:'actual result'});await f.manager.close();
@@ -246,4 +287,53 @@ test('same sessionId with a changed lifecycle revision cannot publish an old tas
  const f=fixture(t);f.setEntry({...f.entry(),lifecycleRevision:3});const h=await f.open();await h.flush();
  f.setEntry({...f.entry(),lifecycleRevision:4});await h.finish({text:'STALE_REVISION'});
  assert.equal(h.record.phase,'retired');assert.equal(h.record.delivered,false);assert(!JSON.stringify(f.calls).includes('STALE_REVISION'));
+});
+
+test('repeated silent subagent notifications publish neither anchors nor empty cards',async t=>{
+ const f=fixture(t);globalThis[PRESENTATION_KEY]=f.manager;t.after(()=>delete globalThis[PRESENTATION_KEY]);
+ const {deliverPresentedBatch,reconcilePresentedResult}=await import('./feishu-task-presentation-delivery.mjs');
+ for(const [i,payloads] of [[],[{text:'NO_REPLY'}],[{text:'REPLY_SKIP'}],[{text:'ANNOUNCE_SKIP'}]].entries()){
+  const runId='silent-'+i,h=await f.open({source:'subagent-announce',taskId:runId,runId});await h.start();for(const text of ['N','NO','NO_','NO_REPLY','RE','REPLY_SKIP','ANNOUNCE_SKIP'])await h.partial({text});await h.flush();
+  assert.equal(f.sent.size,0,'admission/model selection cannot create a completion card');
+  const batch={channel:'feishu',accountId:'work',to:'chat:oc_test',payloads};
+  const r=await deliverPresentedBatch({runId},batch,()=>assert.fail('must retain ownership'));
+  assert.equal(r.status,'suppressed');assert.equal(r.reason,'intentional_silence');assert.deepEqual(r.results,[]);
+  assert(h.record.suppressed);assert.equal(h.record.phase,'completed');assert.equal(h.record.sinkState,null);
+  assert.equal((await deliverPresentedBatch({runId},batch,()=>assert.fail())).status,'suppressed');
+  const cached=reconcilePresentedResult(runId,{deliverySucceeded:false});assert.equal(cached.deliveryStatus.status,'suppressed');assert.equal(cached.deliveryStatus.resultCount,0);assert.equal(cached.deliveryStatus.reason,'intentional_silence');
+ }
+ assert.equal(f.calls.length,0);assert.equal(f.sent.size,0);
+});
+test('silent completion closes an existing preview, while failures and attachments remain visible',async t=>{
+ const f=fixture(t),h=await f.open({source:'subagent-announce'});await h.partial({text:'实际进度',phase:'commentary'});await h.flush();
+ let closed=0;h.sink.suppress=async()=>closed++;await h.finish({payloads:[{text:'NO_REPLY'}]});assert.equal(closed,1);assert(!f.calls.some(c=>c[0]==='finish'));
+ for(const [id,result,error] of [['error',{payloads:[{text:'NO_REPLY'}]},Error('tool timeout')],['aborted',{payloads:[],meta:{aborted:true}}],['media',{payloads:[{text:'NO_REPLY'},{mediaUrl:'https://example.test/file.pdf'}]}],['real',{payloads:[{text:'NO_REPLY'},{text:'真实结果'}]}]]){
+  const r=await f.open({source:'subagent-announce',taskId:id,runId:id});await r.finish(result,error);assert(!r.record.suppressed);assert(r.record.delivered);
+ }
+ const finals=f.calls.filter(c=>c[0]==='finish');assert.equal(finals.length,4);assert.match(finals[0][1][0].text,/超时/);assert.match(finals[1][1][0].text,/未完成/);assert(finals[2][1][0].mediaUrl);assert.equal(finals[3][1][0].text,'真实结果');
+});
+test('silent terminal survives a manager restart without new output',async t=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'silent-presentation-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+ const f=fixture(t,{directory}),h=await f.open({source:'subagent-announce'});await h.finish({payloads:[]});await f.manager.close();
+ const g=fixture(t,{directory});await g.manager.recover();const replay=await g.open({source:'subagent-announce'});await replay.start();await replay.finish({text:'NO_REPLY'});assert.equal(g.calls.length,0);assert(replay.record.suppressed);
+});
+
+test('normalization cannot erase a failed subagent execution into silence',async t=>{
+ const f=fixture(t),h=await f.open({source:'subagent-announce'});globalThis[PRESENTATION_KEY]=f.manager;t.after(()=>delete globalThis[PRESENTATION_KEY]);
+ const {deliverPresentedBatch}=await import('./feishu-task-presentation-delivery.mjs');
+ h.capture({payloads:[{text:'NO_REPLY'}],meta:{aborted:true}});
+ await deliverPresentedBatch({runId:'run-1'},{channel:'feishu',accountId:'work',to:'chat:oc_test',payloads:[]},()=>assert.fail());
+ assert.equal(h.record.phase,'failed');assert(!h.record.suppressed);assert.match(f.calls.find(c=>c[0]==='finish')[1][0].text,/未完成/);
+});
+
+test('plan events arriving before lazy card creation are retained for their exact run',async t=>{
+ const f=fixture(t),h=await f.open({source:'subagent-announce'});await h.start();assert.equal(f.sent.size,0);
+ const listeners=globalThis[Symbol.for('openclaw.v.progressCardChangedListeners')];
+ const emit=e=>{for(const listener of listeners)listener(e);};
+ emit({sessionKey,runId:'run-1',card:{revision:1,markdown:'EARLY_PLAN'}});
+ assert.equal(h.record.latestProgressEvent.card.markdown,'EARLY_PLAN');assert.equal(f.sent.size,0,'retaining an event is not a speculative card');
+ emit({sessionKey:'foreign',runId:'run-1',card:{revision:2,markdown:'WRONG_SESSION'}});emit({sessionKey,runId:'foreign',card:{revision:3,markdown:'WRONG_RUN'}});
+ assert.equal(h.record.latestProgressEvent.card.revision,1);
+ await h.finish({meta:{yielded:true}});assert(h.bindRun('resume-plan'));assert.equal(h.record.latestProgressEvent,undefined);
+ await f.manager.close();assert(!listeners.has(f.manager.progressListener));
 });

@@ -1,5 +1,6 @@
 import {constants} from 'node:fs';
 import {open} from 'node:fs/promises';
+import {createPrivateConversationWriter} from './feishu-private-conversations.mjs';
 
 const chatId = value => typeof value === 'string' && /^oc_[A-Za-z0-9]+$/u.test(value);
 const openId = value => typeof value === 'string' && /^ou_[A-Za-z0-9]+$/u.test(value);
@@ -193,7 +194,7 @@ export async function ensurePhoneTab({api, chat, url, allowGroup=false,accountAl
 // or trigger Feishu's event-redelivery timer. Work is coalesced per conversation,
 // bounded across conversations, and never creates an agent/model turn.
 export function createPhoneTabHandler({account, getSettings, api, log = () => {},
-  now = Date.now, signal, concurrency = 2, maxPending = 128, cacheMs = 60000, retryMs = 30000}) {
+  now = Date.now, signal, concurrency = 2, maxPending = 128, cacheMs = 60000, retryMs = 30000, recordPrivateConversation}) {
   const pending = new Map(), cache = new Map(), queue = [];
   let active = 0, closed = signal?.aborted === true;
   const report = result => {
@@ -201,8 +202,17 @@ export function createPhoneTabHandler({account, getSettings, api, log = () => {}
     try { log(JSON.stringify({type:'voice.phone-tab',status:result.status,
       ...(typeof result.created === 'boolean' ? {created:result.created} : {})})); } catch {}
   };
-  const execute = async ({identity}) => {
+  const execute = async ({identity,privateEntry}) => {
     const settings = await getSettings();
+    if(privateEntry&&recordPrivateConversation&&settings?.privateConversationsFile&&settings.appId===account.appId){
+      try {
+        const path='/open-apis/im/v1/chats/'+identity.chat;
+        if((await api('GET',path))?.chat_mode==='p2p'){
+          const members=await api('GET',path+'/members?member_id_type=open_id&page_size=100');
+          if(members?.items?.some(r=>r.member_id===identity.operator))await recordPrivateConversation({appId:account.appId,openId:identity.operator,chatId:identity.chat},settings);
+        }
+      }catch{report({status:'private_directory_unavailable'});}
+    }
     if (!settings || settings.appId !== account.appId || settings.conversations!==true&&!settings.allowedOpenIds?.includes(identity.operator)) return {status:'ignored_audience'};
     const target=new URL(publicPhoneUrl(settings.url));
     if(settings.conversations===true)target.href=conversationPhoneUrl(target.href,account.accountId,identity.chat);
@@ -237,8 +247,9 @@ export function createPhoneTabHandler({account, getSettings, api, log = () => {}
     const key = identity.chat;
     if (pending.has(key)) return pending.get(key);
     if (pending.size >= maxPending) {report({status:'queue_full'});return Promise.resolve({status:'queue_full'});}
+    const privateEntry=data.header?.event_type==='im.chat.access_event.bot_p2p_chat_entered_v1'||data.header?.event_type==='im.message.receive_v1'&&(data.event??data).message?.chat_type==='p2p';
     const deferred = Promise.withResolvers();
-    pending.set(key, deferred.promise); queue.push({identity,key,resolve:deferred.resolve});pump();
+    pending.set(key, deferred.promise); queue.push({identity,privateEntry,key,resolve:deferred.resolve});pump();
     return deferred.promise;
   };
   const stop = () => {
@@ -250,8 +261,14 @@ export function createPhoneTabHandler({account, getSettings, api, log = () => {}
 }
 
 export function createRuntimePhoneTabHandler({account, createClient, runtime, abortSignal}) {
-  let client;
+  let client,writer,file;
   return createPhoneTabHandler({account, signal:abortSignal,
+    recordPrivateConversation:(row,settings)=>{
+      const next=settings.privateConversationsFile;
+      if(typeof next!=='string'||!next.startsWith('/')||next.length>1024)throw Error('invalid_private_directory');
+      if(file!==next){file=next;writer=createPrivateConversationWriter({file});}
+      return writer(row);
+    },
     getSettings:() => readPhoneTabSettings(process.env.OPENCLAW_FEISHU_PHONE_TABS_FILE, account),
     log:runtime?.log,
     api:async (method, url, data) => {
