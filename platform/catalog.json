@@ -474,7 +474,8 @@
         "lab/sessions-search-candidate-rows.test.mjs",
         "lab/gateway-freeze-lookups.test.mjs",
         "tests/v-self-restart-gateway.test.mjs",
-        "lab/workboard-sweep-bounded.test.mjs"
+        "lab/workboard-sweep-bounded.test.mjs",
+        "lab/openclaw-tool-safe-deny.test.mjs"
       ]
     }
   ],
