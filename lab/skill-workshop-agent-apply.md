@@ -50,7 +50,18 @@ V 10/26 全天 91 次：87 次 `Worker native attempt is no longer active`，3 �
 
 ## 验证
 
-见 PR 描述（VLab candidate，baseline 用 V 字节、fixed 用 release 文件，同一脚本 `lab/candidate/skill-workshop-agent-apply.mjs`）。
+VLab candidate，同一脚本 `lab/candidate/skill-workshop-agent-apply.mjs`，两臂并行（10/27 17:3x）。私有 Gateway + 1 个 worker，渠道/cron 关闭；V 的路由：deepseek-flash 在 worker 跑，/vds（Codex + DeepSeek）在 Gateway 跑。工作区放 3 个没有 Workshop 认领的 skill：A 手写（worker 回合改）、B 手写（/vds 回合改）、C composite。脚本先核对 4 个目标文件是 V 字节（baseline）或补丁版（fixed）。
+
+| | baseline（V 字节，candidate-d2d250fa） | fixed（release 文件，candidate-266741ae） |
+|---|---|---|
+| A：worker 回合 update + apply | 提案 pending；apply 报 `does not own this skill path` | `Applied`，actor=agent，SKILL.md 已更新 |
+| B：/vds 回合 update + apply | 同上 | `Applied`，actor=agent，SKILL.md 已更新 |
+| C：composite | `does not own this skill path` | 仍被拒，报错提示改 parts/ 并跑 install-composites；SKILL.md 未动 |
+| worker 回合后的复盘 | 356 ms 报 `Worker native attempt is no longer active`（与 V 相同） | 在 worker 内发起模型调用，`model-call-ended`，`decision=continue_normal`，无失败 |
+
+离线：`lab/skill-workshop-agent-apply.test.mjs` 6/6（release 文件 = 补丁作用于 V 字节、幂等、非 V 字节拒绝、桥对本地复盘放行且对未知 run 仍报错）。
+
+未覆盖：这次复盘判定无需提案，没有走到「复盘在 worker 进程内调用 skill_workshop」那一步；该路径的条件（proposalOnly 时不走子进程）只有静态检查。/vds 复盘的认证档修复没有在 candidate 里触发（需要 Codex 回合 ≥10 次模型迭代且前台用 OpenAI 认证档）。
 
 ## 未处理
 
