@@ -1,0 +1,21 @@
+{
+  "support": [
+    "lab/candidate/run-session-exact-read.mjs",
+    "lab/patch-run-session-exact-read.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/run-session-exact-read.mjs"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/run-session-exact-read/server-session-key-ZtX3Ble7.js",
+      "target": "openclaw/dist/server-session-key-ZtX3Ble7.js",
+      "before": "30a0e1f9884da81e4c4a3d22fd69a025552c8b8419597c940cfe46e35b3cb5ae",
+      "after": "17414923ff9849230ceb9ca0397e73c673e869af1b08828f3591353d9d64dfdb"
+    }
+  ],
+  "databases": [],
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 600
+}
