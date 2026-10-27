@@ -1,0 +1,11 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/run-session-lookup-exact/server-session-key-ZtX3Ble7.js",
+      "target": "openclaw/dist/server-session-key-ZtX3Ble7.js",
+      "before": "30a0e1f9884da81e4c4a3d22fd69a025552c8b8419597c940cfe46e35b3cb5ae",
+      "after": "08592ee6f82fb1dbbad03e9253eaf191e331e8f7b29f2f9cf9a0a3cb0108a422"
+    }
+  ]
+}

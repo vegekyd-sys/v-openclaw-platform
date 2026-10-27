@@ -69,7 +69,12 @@ function resolveSessionKeyForRun(runId, opts = {}) {
 		if (expiresAt !== void 0 && now !== void 0 && expiresAt > now) return;
 		resolvedSessionKeyByRunId.delete(cacheKey);
 	}
-	const { store } = loadCombinedSessionStoreForGatewayCore(cfg, { agentId: requestedAgentId });
+	// run-session-lookup-exact: read only the rows whose current session id is the run id (indexed).
+	const exactRunLookup = typeof runId === "string" && runId.length > 0 && process.env.OPENCLAW_V_RUN_SESSION_LOOKUP_EXACT !== "0";
+	const { store } = loadCombinedSessionStoreForGatewayCore(cfg, {
+		agentId: requestedAgentId,
+		...exactRunLookup ? { match: { sessionIds: [runId] } } : {}
+	});
 	const matches = Object.entries(store).filter((entry) => entry[1]?.sessionId === runId && sessionKeyMatchesAgent(entry[0], requestedAgentId, cfg));
 	const storeKey = resolvePreferredSessionKeyForSessionIdMatches(matches, runId);
 	if (storeKey) {
