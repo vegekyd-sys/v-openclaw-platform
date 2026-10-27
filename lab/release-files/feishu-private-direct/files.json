@@ -1,0 +1,17 @@
+{
+  "baselineMonitorSha256": "f1f45455a170908cd5c3eebf66ba52f763d6a17916861452ef88e3af6e881dfb",
+  "files": [
+    {
+      "name": "monitor.account-WFdlCDhR.js",
+      "sha256": "6e12af1840f8ac6cd6519e3e80bb8ac1559271227c1d2c5283cf129b9d966344"
+    },
+    {
+      "name": "v-feishu-phone-tabs.mjs",
+      "sha256": "9544191e8d456488457b44c141bfa3794650f894e26bcc131cd61b4769a250b9"
+    },
+    {
+      "name": "feishu-private-conversations.mjs",
+      "sha256": "012454219d94e8aeff08a2957770b2d68796e01cecfadc0a861157f559c644f0"
+    }
+  ]
+}
