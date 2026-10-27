@@ -1,0 +1,26 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/voice-device-context-20261025/realtime-voice.js",
+      "target": "openclaw/dist/plugin-sdk/realtime-voice.js",
+      "before": "0140ae09dd6218cc41ca28606ca3c906426c84dd069ba0e903f3c32b5bddc626"
+    },
+    {
+      "source": "lab/release-files/voice-device-context-20261025/talk-DkFuKRod.js",
+      "target": "openclaw/dist/talk-DkFuKRod.js",
+      "before": "f01a6e7b16cea92da439d1bacda8b6f0159acbc55e9157d130893a3e204fff3c"
+    },
+    {
+      "source": "lab/voice-device-context.mjs",
+      "target": "openclaw/dist/voice-device-context.mjs",
+      "before": null
+    }
+  ],
+  "tests": [
+    "lab/candidate/voice-device-context.mjs"
+  ],
+  "support": [
+    "lab/voice-device-context.mjs"
+  ],
+  "timeoutSeconds": 120
+}
