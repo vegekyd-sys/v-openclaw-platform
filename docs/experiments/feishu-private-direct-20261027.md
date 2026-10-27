@@ -27,4 +27,9 @@ Gateway 既有 phone-tabs 0600 配置中，本应用账号可选 `privateConvers
 - 真正新私聊仍待用户稍后登录符合条件的账号；不能用清空已有映射代替。
 - 外部账号须验证实际 SDK 能力及既有身份状态；不得以内部账号通过推断外部首次通过，也不得重新引入私聊独立确认路线。
 
-当前只做 VLab 候选，不合并 Voice main 或发布生产。共享 VLab 保留本候选等待后续真人验收；未完成外部账号与真正新私聊验证前，不标记整体通过或执行生产推广。
+用户要求撤出共享 VLab，为其他 session 释放集成槽。本候选不继续常驻共享环境；代码、构建脚本与上述未完成验收项保留在平台 PR #495 和 Voice PR #166，供后续发版集成。不得把已有内部私聊结果写成外部账号或真正新私聊通过，也不得随其他版本未经补验上线。
+
+
+## 撤出共享 VLab（2026-10-27）
+
+按用户要求已通过 vlab.mjs rollback 撤回 dm-phone-direct-20261027-v1，恢复 unified-session-20261027-v3（runtime SHA cb2f9e4eb91871822dcd7c34ef9286cc97f196d616950edb80745b11fda15de5）。Gateway 已就绪，integration lease 已释放。本轮 phone-tabs 配置按备份原字节恢复；独立 Voice 和临时隧道均在 idle 后停止。代码继续保存在 PR 中，不占共享集成槽。
