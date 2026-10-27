@@ -376,6 +376,7 @@
         "lab/feishu-empty-card-discard.test.mjs",
         "lab/feishu-ingress-catchup.test.mjs",
         "lab/feishu-phone-tabs.test.mjs",
+        "lab/feishu-private-conversations.test.mjs",
         "lab/feishu-voice-actor.test.mjs",
         "lab/feishu-voice-confirm.test.mjs",
         "lab/feishu-webhook-challenge.test.mjs",
