@@ -35,3 +35,19 @@ Gateway 既有 phone-tabs 0600 配置中，本应用账号可选 `privateConvers
 按用户要求已通过 vlab.mjs rollback 撤回 dm-phone-direct-20261027-v1，恢复 unified-session-20261027-v3（runtime SHA cb2f9e4eb91871822dcd7c34ef9286cc97f196d616950edb80745b11fda15de5）。Gateway 已就绪，integration lease 已释放。本轮 phone-tabs 配置按备份原字节恢复；独立 Voice 和临时隧道均在 idle 后停止。代码继续保存在 PR 中，不占共享集成槽。
 
 撤出回读：pending=null、lease=null、aligned=true；Gateway PID 799462。飞书本轮临时回调已移除；关闭私聊测试菜单的 1.0.14 版本已回读确认为已发布。创建接口曾返回网络错误，列表回读发现版本已创建，随后确认发布完成。
+
+
+## 不占共享 VLab 的补验（2026-10-28）
+
+- 使用独立 candidate 的 runtime、state、进程与端口，不获取 integration lease，不 stage/deploy，不重新启用共享 V - Lab 菜单。
+- 原生菜单属于飞书应用，真人菜单对照要使用独立 appId。仅隔离 Voice 进程而复用共享机器人的凭据，会争抢渠道或改动共享菜单，不能作为本方案。
+- `lab/candidate/feishu-private-direct-isolated.mjs --sdk-check` 只核对 candidate 内 SDK 可用性；不连接飞书长连接、不启动 Gateway。真人模式必须通过服务器 0600 私有配置显式提供专用应用，并拒绝共享配置中默认及次账号 appId。
+- 真人模式只订阅进入私聊与首次创建事件，原生进入事件复用产品的 p2p/member 核验和目录写入。首次创建旧事件仅计数，不能冒充产品路径通过；API 仅允许 GET 聊天信息与成员，不发送消息、不写群或页签、不调用模型；15 分钟自动收尾。
+- 最小只读权限可使用 `im:chat:read` 与 `im:chat.members:read`，不需要读取消息正文或 user_id。官方进入私聊事件文档标注订阅无额外权限；身份验证仍沿用 Voice 当前实现。新应用及访问权限待用户明确授权，不从其他任务借用凭据。
+- 与专用新应用的首次会话可用本机已有账号建立，是真正的新 DM；随后再次进入验证已有 DM。不用删除共享机器人的旧映射模拟新私聊。
+- 分别记录内部/外部账号的菜单可见性、首次原生事件类型、映射和 SDK 身份结果；出现菜单但 SDK 失败不能标记直达成功。
+- 官方外部共享说明明确外部用户的 `user_access_token` 无法获取；该约束需要实测 SDK 结果，并与菜单可见性分开定位。不能通过信任网页 open_id、猜会话、静默 Public 或重新发中转卡绕过。
+
+参考：[机器人菜单](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/bot-v3/bot-customized-menu)、[进入私聊事件](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat-access_event/events/bot_p2p_chat_entered)、[外部共享约束](https://open.feishu.cn/document/develop-robots/add-bot-to-external-group)。本轮脚本/夹具通过不代表原生菜单、外部 SDK 或真人首次 DM 已通过。
+
+本轮准备证据：25 项本地定向回归通过。独立 candidate-ae8d793d-a4ff-4345-9402-dea04af9ced6 成功加载实际 runtime 的飞书 SDK，未启动 WebSocket 或 Gateway；sharedUnchanged=true、integrationLeaseRequired=false。它只证明独立执行入口可用，不是外部菜单/免登或新 DM 真人通过。专用测试应用的建立与访问权限已向用户询问，尚待回复。

@@ -5,6 +5,27 @@ import {tmpdir} from 'node:os';
 import {createPrivateConversationWriter,readPrivateConversations} from './feishu-private-conversations.mjs';
 import {createPhoneTabHandler} from './feishu-phone-tabs.mjs';
 import {patchPrivateConversationContext} from './patch-feishu-phone-tabs.mjs';
+import {validateIndependentApp,createNativeProbe} from './candidate/feishu-private-direct-isolated.mjs';
+
+test('independent native probe rejects shared default and secondary bot credentials',()=>{
+  const app={appId:'cli_test',appSecret:'test-secret-value'};
+  validateIndependentApp(app,{channels:{feishu:{appId:'cli_shared'}}});
+  assert.throws(()=>validateIndependentApp(app,{channels:{feishu:{appId:app.appId}}}));
+  assert.throws(()=>validateIndependentApp(app,{channels:{feishu:{accounts:{other:{appId:app.appId}}}}}));
+});
+
+test('isolated first-native-event probe verifies membership without tab, message or group writes',async()=>{
+  const calls=[],records=[],app={appId:'cli_test'};
+  const probe=createNativeProbe({app,file:'/fixture/private.json',record:row=>records.push(row),request:async args=>{
+    calls.push(args);assert.equal(args.method,'GET');
+    return {code:0,data:args.url.includes('/members?')?{items:[{member_id:'ou_new'}]}:{chat_mode:'p2p'}};
+  }});
+  await probe.handlers.p2p_chat_create({});
+  assert.equal(records.length,0,'First-created observation does not masquerade as the product entered path');
+  await probe.handlers['im.chat.access_event.bot_p2p_chat_entered_v1']({chat_id:'oc_new',operator_id:{open_id:'ou_new'}});
+  assert.equal(records.length,1);assert.equal(calls.length,2);assert.equal(probe.stats.verifiedMappings,1);
+  await probe.stop();
+});
 
 test('independent actor/app writers serialize without losing existing and first-time DMs',async t=>{
   const dir=await mkdtemp(tmpdir()+'/v-dm-directory-');t.after(()=>rm(dir,{recursive:true,force:true}));

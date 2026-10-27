@@ -5,6 +5,7 @@
     "lab/feishu-phone-tabs.test.mjs"
   ],
   "support": [
+    "lab/candidate/feishu-private-direct-isolated.mjs",
     "lab/feishu-phone-tabs.mjs",
     "lab/feishu-private-conversations.mjs",
     "lab/patch-feishu-phone-tabs.mjs",
