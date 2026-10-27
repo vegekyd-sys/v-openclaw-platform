@@ -1,0 +1,16 @@
+{
+  "tests": [
+    "lab/candidate/feishu-private-direct.mjs",
+    "lab/feishu-private-conversations.test.mjs",
+    "lab/feishu-phone-tabs.test.mjs"
+  ],
+  "support": [
+    "lab/candidate/feishu-private-direct-isolated.mjs",
+    "lab/feishu-phone-tabs.mjs",
+    "lab/feishu-private-conversations.mjs",
+    "lab/patch-feishu-phone-tabs.mjs",
+    "lab/release-files/feishu-auto-phone-tab/monitor.account-WFdlCDhR.js",
+    "lab/release-files/feishu-ingress-catchup/monitor.account-WFdlCDhR.js"
+  ],
+  "timeoutSeconds": 0
+}
