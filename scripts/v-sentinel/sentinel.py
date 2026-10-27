@@ -57,6 +57,27 @@ CRASH_PATTERNS = (
     ("refused shared state schema mutation", "状态库结构修改被拒，库可能已损坏"),
 )
 DISK_MIN_MB = 15360
+# Earlier lines for the root and the data disk (2026-10-27). After the 10-21
+# resize the root went from 172 GB free to 53 GB in six days, 43 GB of it on
+# 10-27 alone (a 7.3 GB WAV in /tmp, one 7.4 GB Feishu zip downloaded twice at
+# the same time, the agent database at about 1 GB a day). At that pace the
+# 15 GB line above gives a few hours. (label, state key, mount, free-space floor MB)
+DISKS = (
+    ("根分区", "disk_low_root", "/", 60 * 1024),
+    ("数据盘", "disk_low_data", "/srv/openclaw-data/disk1", 20 * 1024),
+)
+# Hours to full at the rate free space fell over the last DISK_RATE_WINDOW_S.
+# One sample kept every DISK_HIST_STEP_S; no estimate until DISK_RATE_MIN_SPAN_S of history.
+DISK_RATE_WINDOW_S = 6 * 3600
+DISK_RATE_MIN_SPAN_S = 3600
+DISK_HIST_STEP_S = 600
+DISK_FULL_WITHIN_H = 24
+# Single big files appearing where agents keep scratch files. ~290k files, about
+# 1 s of stat calls on V, so every BIG_FILE_EVERY_S, not every tick.
+BIG_FILE_ROOTS = ("/tmp", "/var/tmp",
+                  "/home/openclaw/makaron-openclaw/.openclaw-local/workspace/tmp")
+BIG_FILE_MIN_GB = 4
+BIG_FILE_EVERY_S = 1800
 # Both config files the Gateway and its Workers read. On 2026-10-09 a plugin
 # directory listed in plugins.load.paths was deleted: the Worker file is
 # re-validated on every request, so 48 turns failed in 22 minutes; the main
@@ -529,6 +550,44 @@ def measure_session_budgets():
     return out
 
 
+def disk_space(mount):
+    """[avail MB, size MB] of the filesystem mounted exactly at mount, else None.
+    An unmounted data disk would otherwise report the root filesystem under it."""
+    cols = sh("df -BM --output=avail,size,target %s | tail -1" % mount).split()
+    if len(cols) != 3 or cols[2] != mount:
+        return None
+    try:
+        return [int(re.sub(r"\D", "", c)) for c in cols[:2]]
+    except ValueError:
+        return None
+
+
+def hours_to_full(hist):
+    """Hours until free space reaches 0 at the rate it fell across hist
+    [[epoch, avail MB], ...] (oldest first); None if not falling or too short."""
+    if len(hist) < 2:
+        return None
+    (t0, a0), (t1, a1) = hist[0], hist[-1]
+    if t1 - t0 < DISK_RATE_MIN_SPAN_S or a1 >= a0:
+        return None
+    return a1 / ((a0 - a1) / (t1 - t0)) / 3600
+
+
+def find_big_new_files():
+    """[(dev:inode, bytes, owner, path)] of files over BIG_FILE_MIN_GB under
+    BIG_FILE_ROOTS changed in the last two scan intervals. Keyed by inode so a
+    download renamed from .x.tmp to x is one file."""
+    out = []
+    cmd = ("ionice -c3 nice -n19 find %s -xdev -type f -size +%dG -mmin -%d "
+           "-printf '%%D:%%i\\t%%s\\t%%u\\t%%p\\n' 2>/dev/null"
+           % (" ".join(BIG_FILE_ROOTS), BIG_FILE_MIN_GB, 2 * BIG_FILE_EVERY_S // 60))
+    for line in sh(cmd, timeout=90).splitlines():
+        parts = line.split("\t", 3)
+        if len(parts) == 4 and parts[1].isdigit():
+            out.append((parts[0], int(parts[1]), parts[2], parts[3]))
+    return out
+
+
 def sample(cursor=None):
     out = {}
     out["pool"] = len(re.findall(r"worker/worker\.mjs",
@@ -571,8 +630,8 @@ def sample(cursor=None):
     out["budget_exhausted"] = j.count("session history disk budget exhausted")
     out["cfg_missing"] = {name: missing_plugin_paths(path) for name, path in CONFIG_FILES}
     out["crash_lines"], out["journal_cursor"] = scan_crashes(cursor)
-    df = sh("df -BM --output=avail / | tail -1")
-    out["disk_mb"] = int(re.sub(r"\D", "", df) or 0)
+    out["disks"] = {mount: disk_space(mount) for _, _, mount, _ in DISKS}
+    out["disk_mb"] = (out["disks"].get("/") or [0])[0]
     fr = sh("free -m | awk '/^Mem:/{print $7}'").strip()
     out["mem_mb"] = int(fr or 0)
     return out
@@ -671,6 +730,54 @@ def main():
     latch("disk", s["disk_mb"] and s["disk_mb"] < DISK_MIN_MB,
           "根分区只剩 %.1f GB。" % (s["disk_mb"] / 1024),
           "磁盘空间已恢复（%.1f GB）。" % (s["disk_mb"] / 1024))
+
+    # Free-space floor and time-to-full for each disk. The history keeps one
+    # point per DISK_HIST_STEP_S so a 6 h window is ~36 points per disk.
+    hist = st.setdefault("disk_hist", {})
+    disks = s.pop("disks", {})
+    s["disk_full_h"] = {}
+    for label, key, mount, floor_mb in DISKS:
+        d = disks.get(mount)
+        if not d:
+            continue
+        avail, size = d
+        h = [p for p in hist.get(mount, []) if now_s - p[0] <= DISK_RATE_WINDOW_S]
+        if not h or now_s - h[-1][0] >= DISK_HIST_STEP_S:
+            h.append([now_s, avail])
+        hist[mount] = h
+        cur = h if h[-1][0] == now_s else h + [[now_s, avail]]
+        hours = hours_to_full(cur)
+        s["disk_full_h"][mount] = round(hours, 1) if hours is not None else None
+        used_pct = round(100 * (size - avail) / size) if size else 0
+        span_h = (now_s - cur[0][0]) / 3600
+        pace = ("按过去 %.0f 小时的速度（每小时少 %.1f GB），约 %.0f 小时后写满。"
+                % (span_h, avail / hours / 1024, hours) if hours is not None else "")
+        latch(key, avail < floor_mb,
+              "%s %s 只剩 %.1f GB（共 %.0f GB，已用 %d%%）。%s"
+              "先看 /tmp、workspace/tmp 和 agents 会话库，清理清单见 docs/v-disk-governance.md。"
+              % (label, mount, avail / 1024, size / 1024, used_pct, pace),
+              "%s可用空间回到 %.1f GB。" % (label, avail / 1024))
+        latch(key + "_rate", hours is not None and hours < DISK_FULL_WITHIN_H,
+              "%s %s %s现在剩 %.1f GB。" % (label, mount, pace, avail / 1024),
+              "%s不再按当前速度在 %d 小时内写满。" % (label, DISK_FULL_WITHIN_H), need=2)
+
+    # Single huge new files in scratch places: on 2026-10-27 V turned a 5-hour
+    # recording into a 7.3 GB 192 kHz WAV in /tmp and fetched one Feishu zip
+    # twice in parallel. Each file is reported once.
+    if now_s - st.get("bigfile_scanned_at", 0) >= BIG_FILE_EVERY_S:
+        st["bigfile_scanned_at"] = now_s
+        seen_big = st.setdefault("bigfiles_seen", {})
+        fresh_big = [f for f in find_big_new_files() if f[0] not in seen_big]
+        for f in fresh_big:
+            seen_big[f[0]] = now_s
+        for k in [k for k, t in seen_big.items() if now_s - t > 86400]:
+            del seen_big[k]
+        if fresh_big:
+            alerts.append("临时目录里新出现 %d 个超过 %d GB 的文件（根分区剩 %.1f GB）：\n%s\n"
+                          "多半是 agent 的中间产物，用完应删除；若是用户文件请移到正式目录。"
+                          % (len(fresh_big), BIG_FILE_MIN_GB, s["disk_mb"] / 1024,
+                             "\n".join("%.1f GB  %s  %s" % (b / 1e9, u, p)
+                                       for _, b, u, p in fresh_big[:10])))
 
     latch("mem", s["mem_mb"] and s["mem_mb"] < MEM_MIN_MB,
           "主机可用内存只剩 %.1f GB。" % (s["mem_mb"] / 1024),
