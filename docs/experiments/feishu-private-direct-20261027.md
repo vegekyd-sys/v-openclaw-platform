@@ -51,3 +51,14 @@ Gateway 既有 phone-tabs 0600 配置中，本应用账号可选 `privateConvers
 参考：[机器人菜单](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/bot-v3/bot-customized-menu)、[进入私聊事件](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/chat-access_event/events/bot_p2p_chat_entered)、[外部共享约束](https://open.feishu.cn/document/develop-robots/add-bot-to-external-group)。本轮脚本/夹具通过不代表原生菜单、外部 SDK 或真人首次 DM 已通过。
 
 本轮准备证据：25 项本地定向回归通过。独立 candidate-ae8d793d-a4ff-4345-9402-dea04af9ced6 成功加载实际 runtime 的飞书 SDK，未启动 WebSocket 或 Gateway；sharedUnchanged=true、integrationLeaseRequired=false。它只证明独立执行入口可用，不是外部菜单/免登或新 DM 真人通过。专用测试应用的建立与访问权限已向用户询问，尚待回复。
+
+
+### 用户进一步澄清：允许改飞书 V - Lab 菜单，禁止占共享运行环境
+
+用户明确允许复用 V - Lab 的共享菜单；因此不再要求新建测试应用或新增权限。此前的专用应用方案仅保留为备选工具。本轮发布飞书应用 1.0.15：默认输入框，可切换菜单，URL 指向独立 Voice 服务。没有修改群菜单、事件订阅或应用可用范围，没有启动第二个机器人长连接。
+
+独立服务运行 Voice `a8129cc5823b209eed28f283f5b13a16a33f8d6d`，241 个文件逐个核验，files SHA `176674920078c850182d8f915f7de6da0f8e1c78f060971f9d6daa4f3b7f5a90`；状态和定位文件都在本任务私有目录，不修改共享 Gateway/runtime/state 配置。共享 Gateway PID 804492，未重启，未获取 lease。当前独立定位目录的两条记录为上轮真人已有 DM 的复制品，明确不是新 DM 自动映射证据；共享录入开关仍关闭。
+
+手动使用同一 AppLink 诊断时捕获 SDK 2700002（授权过程失败）；该动作不能冒充外部底部菜单成功。为继续定位，只增加了通用 H5 SDK 的有界数字内层错误码采集，绝不保存/发送 SDK 原始错误字符串或凭据。19 项身份/直达定向回归通过，UI/原生壳生成检查完成；仅部署到独立候选。飞书客户端存在并行通话测试，待确认可短暂切换账号后完成内部/外部对照；具体原因尚未断言。
+
+本轮不创建专用应用；V - Lab 真正新 DM 仍需尚未建立过该机器人会话的账号，或独立候选中明确标注的真实事件重放。后者只证明事件处理，不能标记真人原生直达全程通过。
