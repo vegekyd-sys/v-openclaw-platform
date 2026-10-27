@@ -109,3 +109,31 @@ test('a direct user receive target uses the acknowledged oc chat for native conv
  f.client.im.message.create=async()=>({code:0,data:{message_id:'om_dm',chat_id:'oc_actualdm'}});
  await f.open();assert.equal(f.params().chatId,'oc_actualdm');assert.equal(f.params().sendTarget,'user:ou_user');assert.equal(f.saved[0].conversationChatId,'oc_actualdm');
 });
+
+test('silent native close uses the skip lifecycle without a fabricated final receipt',async()=>{
+ const f=fixture();f.native.dispatcherOptions.onSkip=(p,info)=>f.calls.push(['skip',info]);const s=await f.open();await s.partial({text:'已有真实进度'});await s.suppress();
+ assert(f.calls.some(c=>c[0]==='skip'&&c[1].reason==='silent'));assert(f.calls.some(c=>c[0]==='idle'));assert(!f.calls.some(c=>c[0]==='deliver'));assert(!f.record.sinkState?.receipts?.length);
+});
+
+test('queue and admission status never retire the native commentary stream',async()=>{
+ const f=fixture({},['codex']);f.native.setTaskPresentationStatus=text=>f.calls.push(['status',text]);f.native.replyOptions.onItemEvent=p=>f.calls.push(['item',p]);
+ const s=await f.open();await s.partial({text:'请求已排队',kind:'status',phase:'commentary'});await s.start({provider:'openai',model:'gpt',agentRuntime:'codex'});await s.partial({text:'正在处理',kind:'status',phase:'commentary'});await s.partial({text:'实际公开进度',kind:'preamble',itemId:'real'});
+ assert.deepEqual(f.calls.filter(c=>c[0]==='status').map(c=>c[1]),['请求已排队','正在处理','']);assert(!f.calls.some(c=>c[0]==='partial'));assert.equal(f.calls.find(c=>c[0]==='item')[1].progressText,'实际公开进度');
+});
+
+test('native renderer replays an early matching plan and rejects another run snapshot',()=>{
+ const source=fs.readFileSync('lab/release-files/feishu-continuation-progress/monitor.account-WFdlCDhR.js','utf8');
+ const begin=source.indexOf('const vProgressAttach = () => {'),end=source.indexOf('const vProgressDetach = () => {',begin);assert(begin>=0&&end>begin);
+ const run=new Function('early',`
+ const seen=[];let subscription, vProgressUnsubscribe=null, vProgressText='';
+ const params={sessionKey:'s',runtime:{log(){}},boundTaskPresentation:{runId:()=> 'owned',progressEvent:()=>early}};
+ const account={accountId:'a'};const previewStreamingEnabled=true, vProgressDispatcherId=1, streaming={isActive:()=>true}, streamingStartPromise=null, idleRequestedForReply=false, reasoningText='',streamText='';
+ const vProgressSubscribe=(key,handler)=>{subscription=handler;return()=>{}};
+ const renderFeishuProgressMarkdown=card=>card?.markdown??'';
+ const startStreaming=()=>{};const buildCombinedStreamText=()=>vProgressText;const flushStreamingCardUpdate=text=>seen.push(text);
+ ${source.slice(begin,end)}
+ vProgressAttach();subscription({markdown:'FOREIGN_LATE'},{runId:'other'});return seen;
+ `);
+ assert.deepEqual(run({sessionKey:'s',runId:'owned',card:{markdown:'EARLY_REAL_PLAN'}}),['EARLY_REAL_PLAN']);
+ assert.deepEqual(run({sessionKey:'s',runId:'other',card:{markdown:'FOREIGN_EARLY'}}),[]);
+});

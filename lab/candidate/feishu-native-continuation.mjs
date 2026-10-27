@@ -54,12 +54,15 @@ const records=()=>{const d=path.join(c.stateDir,'feishu-task-presentation');retu
 const rows=()=>{const f=path.join(c.stateDir,'state','openclaw.sqlite');if(!fs.existsSync(f))return[];const db=new DatabaseSync(f,{readOnly:true});try{return db.prepare("select run_id as runId,status,delivery_status as deliveryStatus,error from task_runs where task_kind='codex-native'").all();}finally{db.close();}};
 try{
  await c.start();await c.ensureSession(groupKey(GROUP_B));
- await c.humanInGroup(GROUP_B,{text:`这是自动化功能验收。用 Codex 原生 spawn_agent（不是 sessions_spawn）派一个子 agent 执行 sleep 20; sha256sum ${input} 并返回哈希前16位；你不要代做。派出后立即 sessions_yield，不用 wait_agent；第一轮只做派发与让出，不执行父回合命令。收到子 agent 的回报后，先公开说明 ANN_PUBLIC_PROGRESS，调用 progress_card，plan 设为 [{"step":"ANN_PLAN_UPDATE","status":"in_progress"}]，再执行 echo executed >> ${executions}; touch ${busy}; sleep ${joint?35:8}; cat ${tokenFile}，等待真实命令结束，最后正常回复 ANN_FINAL <哈希前16位> <读取的 token>。不要调用 message 工具。`});
+ await c.humanInGroup(GROUP_B,{text:`这是自动化功能验收。后续若收到 SILENT_ACCEPTANCE_ 开头的内部通知，它们是已处理的重复通知，必须只回复 NO_REPLY，不发进度、不执行工具。现在用 Codex 原生 spawn_agent（不是 sessions_spawn）派一个子 agent 执行 sleep 20; sha256sum ${input} 并返回哈希前16位；你不要代做。派出后立即 sessions_yield，不用 wait_agent；第一轮只做派发与让出，不执行父回合命令。收到子 agent 的回报后，先公开说明 ANN_PUBLIC_PROGRESS，必须实际调用 progress_card 并等它成功返回，不能用口头描述代替；plan 设为 [{"step":"ANN_PLAN_UPDATE","status":"in_progress"}]，再执行 echo executed >> ${executions}; touch ${busy}; sleep ${joint?35:8}; cat ${tokenFile}，等待真实命令结束，最后正常回复 ANN_FINAL <哈希前16位> <读取的 token>。不要调用 message 工具。`});
  let queued;
  if(joint){
   await until(()=>fs.existsSync(busy),{timeoutMs:180000,label:'announce parent is actually executing'});
   assert(records().some(r=>r.source==='subagent-announce'&&!r.delivered));
   queued=await c.humanInGroup(GROUP_B,{text:'这是新的独立追问。先公开说明 JOINT_QUEUE_PUBLIC_PROGRESS，调用 progress_card，plan 设为 [{"step":"JOINT_QUEUE_PLAN_UPDATE","status":"in_progress"}]，再执行 sleep 8; printf JOINT_QUEUE_FINAL，最后只回复实际命令输出。不用 message 工具。'});
+  const waiting=await until(()=>records().find(r=>r.source==='queued-followup'&&r.anchorId===queued.messageId),{timeoutMs:15000,label:'live followup queued'});
+  assert.equal(waiting.phase,'queued');await until(()=>c.fake.list(GROUP_B).some(m=>m.msg_type==='interactive'&&JSON.stringify(m).includes('请求已排队')),{timeoutMs:10000,label:'queued card acknowledged while parent runs'});assert.equal(records().find(r=>r.id===waiting.id).phase,'queued');
+  proof.checks.push('human followup visibly queued before actual admission');
  }
  const row=await until(()=>records().find(r=>r.source==='subagent-announce'&&r.delivered),{timeoutMs:240000,label:'announce native final ACK'});
  await until(()=>rows().some(r=>r.deliveryStatus==='delivered'),{timeoutMs:90000,label:'native task delivery ledger acknowledgement'});
@@ -91,11 +94,26 @@ try{
   assert.equal(follow.anchorId,queued.messageId);assert.notEqual(follow.activeRunId,row.activeRunId);assert.notEqual(follow.sinkState.stream.messageId,row.sinkState.stream.messageId);
   const followSnaps=c.fake.snapshots.filter(x=>x.message?.message_id===follow.sinkState.stream.messageId);
   assert(followSnaps.some(s=>!JSON.stringify(s).includes('JOINT_QUEUE_FINAL')&&JSON.stringify(s).includes('JOINT_QUEUE_PLAN_UPDATE')),'followup progress_card before final');
+  assert(followSnaps.some(s=>!JSON.stringify(s).includes('JOINT_QUEUE_FINAL')&&JSON.stringify(s).includes('JOINT_QUEUE_PUBLIC_PROGRESS')),'queued status cannot retire native public commentary');
   assert(!JSON.stringify(snaps).includes('JOINT_QUEUE_PLAN_UPDATE'),'followup plan must not enter announce card');
   assert(!JSON.stringify(followSnaps).includes('ANN_PLAN_UPDATE'),'old announce plan must not enter followup card');
   assert.equal(c.fake.list(GROUP_B).filter(m=>m.msg_type==='interactive'&&JSON.stringify(m).includes('JOINT_QUEUE_FINAL')).length,1);
   proof.followup=follow;proof.queueMode=c.config.messages.queue.mode;proof.checks.push('production steer mode with live announce lane','independent followup and original user anchor','both progress cards visible before final without mixing');
  }
+ const silentBefore=c.fake.list(GROUP_B).length,quiet=[];
+ for(let i=0;i<3;i++){
+  const runId='candidate-silent-'+i;
+  const response=await c.rpc('candidate.boundTask',{op:'resume',sessionKey:groupKey(GROUP_B),sourceSessionKey:groupKey(GROUP_B),runId,text:`SILENT_ACCEPTANCE_${i}: already handled duplicate; follow the user's earlier test instruction, output only NO_REPLY without progress or tools.`},120000);
+  const record=await until(()=>records().find(r=>r.activeRunId===runId&&r.delivered),{timeoutMs:15000,label:'silent completion settles'});
+  assert(record.suppressed,JSON.stringify(record.executionOutcome));assert.equal(record.sinkState,null);assert.equal(response.result.deliveryStatus.status,'suppressed');
+  assert.equal(response.result.deliveryStatus.resultCount,0);quiet.push({runId,suppressed:true,deliveryStatus:response.result.deliveryStatus});
+ }
+ assert.equal(c.fake.list(GROUP_B).length,silentBefore,'three actual model NO_REPLY completions must create no anchors or cards');
+ assert(!JSON.stringify(c.fake.list(GROUP_B)).includes('本轮没有文字结果'));proof.silent=quiet;proof.checks.push('three actual native silent completions without new messages or fabricated receipts');
  assert.equal(c.fake.unimplemented.length,0);proof.checks.push('native spawn_agent then sessions_yield','actual child hash and parent tool token','native progress before final','one result card','task_runs deliveryStatus=delivered');proof.record=row;proof.taskRows=rows();proof.ok=true;
-}catch(e){proof.error=redact(e.stack);proof.records=records();proof.taskRows=rows();proof.finalizerDiagnostics=redact(c.lines.filter(x=>/finalization|evidence verification|candidate-finalizer-prompt/.test(x.line)).map(x=>x.line).join('\n'));proof.gatewayTail=redact(c.lines.slice(-100).map(x=>x.line).join('\n'));process.exitCode=1;}
+}catch(e){
+ try{const history=await c.rpc('chat.history',{sessionKey:groupKey(GROUP_B),limit:80});
+ proof.historyProbe=(history.messages??[]).map(m=>({role:m.role,toolName:m.toolName,content:(Array.isArray(m.content)?m.content:[]).flatMap(p=>p.type==='toolCall'?[{type:p.type,name:p.name,plan:p.arguments?.plan??p.input?.plan}]:p.type==='text'&&/ANN_|JOINT_|NO_REPLY/.test(p.text??'')?[{type:p.type,text:p.text.slice(0,240)}]:[])})).filter(m=>m.toolName||m.content.length);
+ }catch{}
+ proof.error=redact(e.stack);proof.records=records();proof.taskRows=rows();proof.finalizerDiagnostics=redact(c.lines.filter(x=>/finalization|evidence verification|candidate-finalizer-prompt/.test(x.line)).map(x=>x.line).join('\n'));proof.gatewayTail=redact(c.lines.slice(-100).map(x=>x.line).join('\n'));process.exitCode=1;}
 finally{await c.stop();for(const f of cleanups)await f();console.log(JSON.stringify(proof));}

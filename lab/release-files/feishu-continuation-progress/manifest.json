@@ -32,16 +32,22 @@
       "sha256": "824905696977aa8418145791c78eb00d7bd33da401a3127a522a0e53a6e98529"
     },
     {
+      "source": "lab/release-files/feishu-continuation-progress/v-feishu-task-presentation-delivery.mjs",
+      "target": "openclaw/dist/v-feishu-task-presentation-delivery.mjs",
+      "before": "8e11035fcaa7b3f8b779fe354ccd39337344d245b99096f6ce1234ddfb321ea5",
+      "sha256": "47b4e136a66e7eaf2478d4c68e4d3c87e0193f6f83c2bd2174058d3a6107a4eb"
+    },
+    {
       "source": "lab/release-files/feishu-continuation-progress/v-feishu-task-presentation.mjs",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-task-presentation.mjs",
       "before": "604b98fa78ecef8c778990eae389031954824b58e650e952801e8957e8470ada",
-      "sha256": "244814c96028c5b29580f94239def287f0c5130251de2f34530f65c8219cc41f"
+      "sha256": "d3f49b00811b026835f1f5a90afaf0d8f004a25a4fa3c3599e9c3d8facd6fdcb"
     },
     {
       "source": "lab/release-files/feishu-continuation-progress/monitor.account-WFdlCDhR.js",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
       "before": "6e12af1840f8ac6cd6519e3e80bb8ac1559271227c1d2c5283cf129b9d966344",
-      "sha256": "5af4c54a068ed8cc89113181cd49e249cbb6cab8c81df19f77542168b40f786e"
+      "sha256": "1925d3f2d4f3550189e76b27bac09a40b25bbdd7b124e839c6605926b677366b"
     }
   ]
 }

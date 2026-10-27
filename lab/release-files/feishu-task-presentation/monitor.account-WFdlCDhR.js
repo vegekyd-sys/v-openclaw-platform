@@ -3907,6 +3907,7 @@ function createFeishuReplyDispatcher(params) {
 			return record;
 		},
     flushTaskPresentation: async () => { await streamingStartPromise; await partialUpdateQueue; await streaming?.queue; },
+    setTaskPresentationStatus: text => updateStreamingStatusLine(text, {startIfNeeded:Boolean(text)}),
     snapshotTaskPresentation: () => ({stream: streaming?.state ? {...streaming.state} : params.boundTaskPresentation?.state?.stream}),
 		getVisibleReplyState: () => ({
 			visibleReplySent,
@@ -9128,7 +9129,7 @@ function createTaskPresentationAccount({cfg,accountId,runtime,createClient,creat
         await persist({...state,anchorId:record.anchorId,...conversationChatId?{conversationChatId}:{}});
       }
       let begun=false,selectedModel=record.selectedModel;
-      const taskState={state,source:record.source,runId:()=>record.activeRunId??record.runIds.at(-1),uuid:'bt_'+record.id.slice(0,28),checkpoint:async stream=>{
+      const taskState={state,source:record.source,progressEvent:()=>record.latestProgressEvent,runId:()=>record.activeRunId??record.runIds.at(-1),uuid:'bt_'+record.id.slice(0,28),checkpoint:async stream=>{
         await persist({...state,stream});taskState.state=state;
       }};
       const native=createReplyDispatcher({cfg,agentId:record.agentId,sessionKey:record.sessionKey,chatId:state.conversationChatId??route.chatId,
@@ -9145,6 +9146,8 @@ function createTaskPresentationAccount({cfg,accountId,runtime,createClient,creat
       return {
         start,
         async partial(payload){await start();
+          if(payload.kind==='status'&&native.setTaskPresentationStatus){native.setTaskPresentationStatus(payload.text);await flush();return;}
+          native.setTaskPresentationStatus?.('');
           if(payload.kind==='preamble'&&resolveProgressRuntimes(account.config).includes(selectedModel?.agentRuntime)&&native.replyOptions.onItemEvent)
             native.replyOptions.onItemEvent({kind:'preamble',phase:'end',itemId:payload.itemId,progressText:payload.text});
           else native.replyOptions.onPartialReply?.(payload);
@@ -9178,6 +9181,7 @@ function createTaskPresentationAccount({cfg,accountId,runtime,createClient,creat
           }
           await native.dispatcherOptions.onIdle?.();await flush();
         },
+        async suppress(){native.dispatcherOptions.onSkip?.(undefined,{kind:'final',reason:'silent'});await native.dispatcherOptions.onIdle?.();await flush();},
         async cleanup(){await native.dispatcherOptions.onCleanup?.();},
       };
     },

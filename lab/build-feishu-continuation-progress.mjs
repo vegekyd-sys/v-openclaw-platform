@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
+import {patchBufferedProgressRenderer} from './patch-task-progress-identity.mjs';
+import {createTaskPresentationAccount} from './feishu-task-presentation-native.mjs';
 import {patchCronExecution,patchCronDelivery} from './patch-feishu-continuation-progress.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const capture='release/captured/v2026.9.1-db91.6-unified-session-20261027';
@@ -19,7 +21,7 @@ export function buildCronPresentation({write=true}={}){
   const before=read('lab/fixtures/feishu-continuation-progress/'+name);add(name,'openclaw/dist/'+name,patch(before),before);
  }
  add('v-feishu-task-presentation-cron.mjs','openclaw/dist/v-feishu-task-presentation-cron.mjs',read('lab/feishu-task-presentation-cron.mjs').replace("'./feishu-task-presentation-delivery.mjs'","'./v-feishu-task-presentation-delivery.mjs'"));
- for(const name of ['runtime','followup']){
+ for(const name of ['runtime','followup','delivery']){
   const source=read('lab/feishu-task-presentation-'+name+'.mjs');
   add('v-feishu-task-presentation-'+name+'.mjs','openclaw/dist/v-feishu-task-presentation-'+name+'.mjs',source,read(capture+'/dist/v-feishu-task-presentation-'+name+'.mjs'));
  }
@@ -36,6 +38,13 @@ export function buildCronPresentation({write=true}={}){
  // The conversation-wide background summary is a single slot and can say
  // 'ended' when another turn settles. Each continuation card owns its own
  // execution state; ordinary, inter-session and Voice summaries stay intact.
+ const statusAnchor='    snapshotTaskPresentation: () =>';
+ if(patchedMonitor.split(statusAnchor).length!==2)throw Error('Native status hook anchor drift');
+ patchedMonitor=patchedMonitor.replace(statusAnchor,'    setTaskPresentationStatus: text => updateStreamingStatusLine(text, {startIfNeeded:Boolean(text)}),\n'+statusAnchor);
+ patchedMonitor=patchBufferedProgressRenderer(patchedMonitor);
+ const nativeStart=patchedMonitor.indexOf('function createTaskPresentationAccount(');
+ if(nativeStart<0||patchedMonitor.slice(nativeStart).includes('\nexport ',1))throw Error('Native adapter tail drift');
+ patchedMonitor=patchedMonitor.slice(0,nativeStart)+createTaskPresentationAccount.toString()+'\n';
  add('monitor.account-WFdlCDhR.js',feishu+'monitor.account-WFdlCDhR.js',patchedMonitor,monitor);
  const plan={files:files.map(({sha256,...f})=>f)};
  if(write){

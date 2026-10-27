@@ -63,7 +63,7 @@ test('timeout, cancellation, silence and verified direct message close without r
  }
 });
 test('runtime patch composition is deterministic, parsed and rejects anchor drift',()=>{
- const built=buildCronPresentation({write:false});assert.equal(built.files.length,7);
+ const built=buildCronPresentation({write:false});assert.equal(built.files.length,8);
  for(const file of built.files){const source=fs.readFileSync(file.source,'utf8');assert.equal(createHash('sha256').update(source).digest('hex'),file.sha256,file.source);const check=spawnSync(process.execPath,['--check','--input-type=module'],{input:source,encoding:'utf8'});assert.equal(check.status,0,check.stderr);}
  const monitor=fs.readFileSync(built.files.find(f=>f.target.endsWith('monitor.account-WFdlCDhR.js')).source,'utf8');assert(monitor.includes('v-feishu-private-conversation-context-v1'));assert(monitor.includes('event:data.event??data'));
  for(const [name,patch] of [['isolated-agent-BxeXdw5A.js',patchCronExecution],['run-delivery.runtime-falxHVAy.js',patchCronDelivery]]){
