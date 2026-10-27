@@ -16,6 +16,6 @@
     "SAMPLE": "60",
     "STREAM_EVENTS": "15",
     "STREAM_RUNS": "2",
-    "STREAM_RATE": "20"
+    "STREAM_RATE": "8"
   }
 }

@@ -178,6 +178,7 @@ const synthetic = {};
 openOpenClawAgentDatabase({ agentId: "makaron" });
 
 // ---- 1. equivalence ----
+const STREAM_ONLY = process.env.STREAM_ONLY === "1";
 const rows = (() => {
   const db = new DatabaseSync(agentDb("makaron"), { readOnly: true });
   try { return db.prepare("SELECT session_key, current_session_id, archived_at FROM session_nodes WHERE current_session_id IS NOT NULL ORDER BY session_key").all(); } finally { db.close(); }
@@ -200,7 +201,7 @@ const call = (arm, runId, opts) => {
   arms[arm].reset();
   try { return { key: arms[arm].resolve(runId, opts) ?? null }; } catch (error) { return { threw: String(error?.message ?? error) }; }
 };
-{
+if (!STREAM_ONLY) {
   const t = performance.now();
   const summary = {};
   const diffs = [];
@@ -212,6 +213,7 @@ const call = (arm, runId, opts) => {
       summary[label] ??= { n: 0, resolved: 0, missing: 0, threw: 0 };
       summary[label].n++;
       summary[label][a.threw ? "threw" : a.key ? "resolved" : "missing"]++;
+      if (a.threw) summary[label].error ??= a.threw.slice(0, 200);
       if (JSON.stringify(a) !== JSON.stringify(b)) diffs.push({ label, runId, base: a, patched: b });
     }
   }
@@ -236,7 +238,7 @@ const call = (arm, runId, opts) => {
 }
 
 // ---- 2. cost per call ----
-{
+if (!STREAM_ONLY) {
   const hit = nightshift.at(-1).current_session_id;
   for (const [label, runId] of [["hit (night shift session id)", hit], ["miss (unknown run id)", randomUUID()], ["miss (workboard run id)", `workboard:${randomUUID()}:1`]]) {
     for (const arm of ["base", "patched"]) {
@@ -297,10 +299,13 @@ async function stream(armName, scenario) {
   let lagSum = 0;
   let last = performance.now();
   const tick = setInterval(() => { const now = performance.now(); const lag = Math.max(0, now - last - 10); lagMax = Math.max(lagMax, lag); lagSum += lag; last = now; }, 10);
-  // a fixed number of events per run, one round every 1000 / STREAM_RATE ms (the same events for both arms)
+  // A fixed number of events per run (the same events for both arms). Each round waits for the previous
+  // round's handlers and then 1000 / STREAM_RATE ms, longer than server-chat's live text pacing (75 ms),
+  // so neither arm coalesces deltas and the handler output must be identical.
   const started = performance.now();
   let emitted = 0;
   for (let round = 0; round < STREAM_EVENTS; round++) {
+    await Promise.all(pending);
     await new Promise((resolve) => setTimeout(resolve, 1000 / STREAM_RATE));
     for (const runId of runs) {
       scenario.emit(runId, realKey, round);
@@ -324,6 +329,7 @@ async function stream(armName, scenario) {
     timerLagMaxMs: Math.round(lagMax),
     timerLagTotalMs: Math.round(lagSum),
     sent: sent.length,
+    sentSample: sent.slice(0, 12).map(([kind, args]) => [kind, JSON.stringify(args).replace(/"runId":"[^"]*"/g, '"runId":"<run>"').slice(0, 400)]),
     sentDigest: sha(JSON.stringify(sent.map(([kind, args]) => [kind, args.map((a) => (a && typeof a === "object" && "runId" in a ? { ...a, runId: "<run>" } : a))]))),
   };
 }
