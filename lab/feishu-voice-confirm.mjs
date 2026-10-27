@@ -2,12 +2,13 @@ import {createHmac} from 'node:crypto';
 import {readPhoneTabSettings} from './feishu-phone-tabs.mjs';
 
 export const VOICE_CONFIRM_ACTION='v.voice.confirm.v1';
+export const PRIVATE_VOICE_CONFIRM_ACTION='v.voice.confirm.private.v1';
 const id=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,128}$/u.test(value);
 // Called only inside the native SDK's authenticated card.action.trigger ingress.
 // Never register this parser as a public HTTP endpoint.
 export function voiceConfirmationIdentity(data,account) {
   const event=data?.event??data,value=event?.action?.value;
-  if(value?.action!==VOICE_CONFIRM_ACTION)return null;
+  if(![VOICE_CONFIRM_ACTION,PRIVATE_VOICE_CONFIRM_ACTION].includes(value?.action))return null;
   if(data?.header?.app_id&&data.header.app_id!==account.appId)throw Error('invalid_confirmation');
   const operator=event.operator,context=event.context;
   if(!/^[A-Za-z0-9_-]{43}$/u.test(value.request??'')||!id(operator?.tenant_key)||
@@ -33,7 +34,13 @@ export async function confirmVoiceCard(data,{account,settings,fetchImpl=fetch,no
   } catch {return {toast:{type:'error',content:'暂时未能确认，请稍后再点一次。'}};}
 }
 export async function runtimeVoiceCardConfirmation(data,{account}) {
-  if((data?.event??data)?.action?.value?.action!==VOICE_CONFIRM_ACTION)return null;
-  try {return await confirmVoiceCard(data,{account,settings:await readPhoneTabSettings(process.env.OPENCLAW_FEISHU_PHONE_TABS_FILE,account)});}
+  const action=(data?.event??data)?.action?.value?.action;
+  if(![VOICE_CONFIRM_ACTION,PRIVATE_VOICE_CONFIRM_ACTION].includes(action))return null;
+  try {
+    let settings=await readPhoneTabSettings(process.env.OPENCLAW_FEISHU_PHONE_TABS_FILE,account);
+    if(action===PRIVATE_VOICE_CONFIRM_ACTION)settings=settings?.privateMenu?.enabled===true?
+      {...settings,url:settings.privateMenu.url,cardConfirmation:true}:null;
+    return await confirmVoiceCard(data,{account,settings});
+  }
   catch{return {toast:{type:'error',content:'电话身份确认暂不可用。'}};}
 }
