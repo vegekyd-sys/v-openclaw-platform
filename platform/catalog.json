@@ -221,6 +221,7 @@
         "scripts/lib/runtime-components.test.mjs",
         "tests/install-secret-entry-host.test.mjs",
         "scripts/lib/parity-config.test.mjs",
+        "lab/feishu-task-presentation-cron.test.mjs",
         "lab/feishu-task-presentation.test.mjs",
         "lab/feishu-task-presentation-native.test.mjs",
         "lab/feishu-task-presentation-patch.test.mjs",
@@ -1251,7 +1252,7 @@
         "2026.9.1"
       ],
       "disposition": "excluded-candidate",
-      "sourceSha256": "5247ec9a10deda44b47d596384c8dc21d6b6f288f63e01bed233a400cd499f18"
+      "sourceSha256": "58f9c8348f36b6acba2376422f391d37ac0ddf6a37f85f7988a522c61d40b216"
     },
     {
       "id": "patch-feishu-task-followup",
@@ -1273,7 +1274,7 @@
         "2026.9.1"
       ],
       "disposition": "excluded-candidate",
-      "sourceSha256": "a849fc824b05a63d8c136523d340fe201d0964d042f6bf19e52954857a91cfe4"
+      "sourceSha256": "05de7c031bc2d2d685f2c3fc66f7b209d133804743ebaa9849952f5fb2ab0499"
     },
     {
       "id": "patch-task-command-delivery",
@@ -1285,6 +1286,17 @@
       ],
       "disposition": "excluded-candidate",
       "sourceSha256": "a932b5c469bebf8ea9de08732b9797aaff3a6b1ef4615dd155ec96fc4086a38e"
+    },
+    {
+      "id": "patch-feishu-continuation-progress",
+      "file": "lab/patch-feishu-continuation-progress.mjs",
+      "component": "openclaw-core",
+      "reason": "Bind current-session cron execution and final delivery to the source Feishu task presentation; private model candidates passed, shared integration pending.",
+      "hostVersions": [
+        "2026.9.1"
+      ],
+      "disposition": "excluded-candidate",
+      "sourceSha256": "30b8b810dae50b0871e0752a8f9442147ef50fb734b7aefd2dc36883950f0477"
     }
   ],
   "externalInputs": [
