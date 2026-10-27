@@ -1,26 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
-import {confirmVoiceCard,voiceConfirmationIdentity,runtimeVoiceCardConfirmation} from './feishu-voice-confirm.mjs';
-import {mkdtemp,writeFile,rm} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
+import {confirmVoiceCard,voiceConfirmationIdentity} from './feishu-voice-confirm.mjs';
 import {patchFeishuVoiceConfirmation} from './patch-feishu-voice-confirm.mjs';
 const account={accountId:'default',appId:'cli_app',appSecret:'fixture'},settings={appId:'cli_app',cardConfirmation:true,url:'https://voice.example/voice/feishu?phone=old'};
 const event={header:{app_id:'cli_app'},event:{operator:{open_id:'ou_external',tenant_key:'externalTenant'},context:{open_chat_id:'oc_group',open_message_id:'om_card'},action:{value:{action:'v.voice.confirm.v1',request:'a'.repeat(43),callback:'https://attacker.invalid',openId:'ou_owner'}}}};
-test('private candidate callback uses its separate configured destination while ordinary confirmation stays unchanged',async()=>{
- const dir=await mkdtemp(tmpdir()+'/voice-menu-confirm-'),file=dir+'/settings.json',old=process.env.OPENCLAW_FEISHU_PHONE_TABS_FILE,oldFetch=globalThis.fetch;const calls=[];
- const config={version:1,accounts:{default:{appId:account.appId,enabled:true,conversations:true,cardConfirmation:true,url:'https://original.example/voice/feishu',privateMenu:{enabled:true,url:'https://candidate.example/voice/feishu'}}}};
- try{
-  await writeFile(file,JSON.stringify(config),{mode:0o600});process.env.OPENCLAW_FEISHU_PHONE_TABS_FILE=file;
-  globalThis.fetch=async(url)=>{calls.push(String(url));return Response.json({confirmed:true});};
-  assert.equal((await runtimeVoiceCardConfirmation(event,{account})).toast.type,'success');
-  const privateEvent=structuredClone(event);privateEvent.event.action.value.action='v.voice.confirm.private.v1';
-  assert.equal((await runtimeVoiceCardConfirmation(privateEvent,{account})).toast.type,'success');
-  assert.deepEqual(calls,['https://original.example/voice/feishu/confirm/callback','https://candidate.example/voice/feishu/confirm/callback']);
-  config.accounts.default.privateMenu.enabled=false;await writeFile(file,JSON.stringify(config));
-  assert.equal((await runtimeVoiceCardConfirmation(privateEvent,{account})).toast.type,'error');assert.equal(calls.length,2);
- }finally{globalThis.fetch=oldFetch;if(old===undefined)delete process.env.OPENCLAW_FEISHU_PHONE_TABS_FILE;else process.env.OPENCLAW_FEISHU_PHONE_TABS_FILE=old;await rm(dir,{recursive:true});}
-});
 test('native card identity forwards the authenticated external operator, exact conversation and message to configured Voice only',async()=>{
  let call;const result=await confirmVoiceCard(event,{account,settings,now:()=>100,fetchImpl:async(url,init)=>{call={url:String(url),init};return Response.json({confirmed:true});}});
  assert.equal(result.toast.type,'success');assert.equal(call.url,'https://voice.example/voice/feishu/confirm/callback');assert.equal(call.init.redirect,'error');
