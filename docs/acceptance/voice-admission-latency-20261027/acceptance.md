@@ -6,20 +6,20 @@
 
 Voice 线上为 `b4ed555`。服务器内的三次真实只读 Gateway 成员准入为 652、686、4969ms；工具/上下文并行环境准备为 792、775、629ms。长等待不等同于飞书 HTTP 全部耗时；Gateway 自身排队/同步工作仍可能影响尾部。
 
-随后直接使用生产安装的飞书客户端及真实 chat/member API，对比生产安装 policy 源码与本候选，交替顺序 baseline→candidate、candidate→baseline、baseline→candidate。后续 ingress/routing 依赖使用 fixture；因此这是 HTTP 准入读取段的 A/B，不是候选 Gateway 完整集成验收。没有模型连接、音频、消息发送或生产文件改动。
+随后每次 policy 请求都按生产行为新建安装的飞书客户端，使用真实 chat/member API，对比生产安装 policy 源码与本候选，交替顺序 baseline→candidate、candidate→baseline、baseline→candidate。后续 ingress/routing 依赖使用 fixture；因此这是 HTTP 准入读取段的 A/B，不是候选 Gateway 完整集成验收。没有模型连接、音频、消息发送或生产文件改动。
 
 | 读取场景 | 生产源码 | 候选 |
 | --- | ---: | ---: |
-| 三次完整两项读取 | 665 / 513 / 556ms | 265 / 262 / 235ms |
-| 中位数 | 556ms | 262ms |
-| 同时两个请求：时间 / 实际 GET 数 | 536ms / 4 | 259ms / 2 |
+| 三次完整两项读取 | 739 / 521 / 502ms | 309 / 269 / 280ms |
+| 中位数 | 521ms | 280ms |
+| 同时两个请求：时间 / 实际 GET 数 | 962ms / 4 | 280ms / 2 |
 
-仅这段中位数减少约 53%，样本少，不作为 P95 或电话整体收益。见 [live-readonly-ab.json](live-readonly-ab.json)。生产 policy SHA256 `88e361a38810e9a609e3073759a8daafc3a084462f871b7a281784bde7482bf6`。
+仅这段中位数减少约 46%，样本少，不作为 P95 或电话整体收益。见 [live-readonly-ab.json](live-readonly-ab.json)。生产 policy SHA256 `88e361a38810e9a609e3073759a8daafc3a084462f871b7a281784bde7482bf6`。
 
 ## 实现与权限
 
 - chat mode 与首个成员页并行，二者成功后才能继续准入；成员翻页仍逐页、完整校验。
-- 相同账号、应用、凭据和 URL 的 GET 只在请求尚未返回时共用 promise；成功和失败均立即删除，不保留 TTL/跨通话授权缓存。
+- 相同账号、应用、凭据、域名和 URL 的 GET 只在请求尚未返回时共用 promise；成功和失败均立即删除，不保留 TTL/跨通话授权缓存。
 - 不共用 policy/admission 结果。每个 actor 独立检查成员，继续执行当前 account/config、群/DM ingress、路由、senderIsOwner 和工具授权。没有成员权限时仍拒绝。
 - 账号/凭据/会话隔离、失败重试、成员撤销、malformed 分页，以及两个 actor 共用网络读取但得到不同准入结果，均有确定性回归。
 

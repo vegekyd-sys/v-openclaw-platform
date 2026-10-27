@@ -3,21 +3,22 @@
   "outcomeCode": 0,
   "tests": 12,
   "failed": 0,
-  "timing": {
+  "localPolicyActorAndCatalogTests": 29,
+  "timings": {
     "inspectMs": 22,
-    "baselineMs": 2,
-    "snapshotMs": 49029,
-    "overlayMs": 4,
-    "testMs": 659
+    "baselineMs": 4,
+    "snapshotMs": 45365,
+    "overlayMs": 2,
+    "testMs": 734
   },
-  "candidatePolicySha256": "f6975d2663e780d31263ce456bdc0f5e47b42de649c80cd305d67ee44066ea6b",
+  "candidatePolicySha256": "c895aef35096e30105caa670256b2947d956afab5b0d55321c968150e7a451ce",
   "productionPolicySha256": "88e361a38810e9a609e3073759a8daafc3a084462f871b7a281784bde7482bf6",
   "actualOverlayTarget": "openclaw/dist/v-feishu-voice-policy.mjs",
   "sharedGatewayChanged": false,
   "productionChanged": false,
   "liveAudioTested": false,
-  "id": "candidate-cb38ee53-fbda-488b-a8cc-7c6699243c33",
-  "inputSha256": "d0068b88151ac4c969aca23b8d3310cb98e6821db45062e68cb29e059d6d9d3a",
+  "id": "candidate-a1a58d54-3653-4ef6-a89e-42e65df1e0f0",
+  "inputSha256": "43f6c4ff05d21c89cbfbc9faec0e5cb4842d29fd5c0443edff2d9ad12cc37c9b",
   "runtimeSha": "798e355b3c58bb5f3d637f0db30f0870e6d8e95a3e2bcadfd9e97e9219f810b8",
   "sharedUnchanged": true,
   "patchCount": 1

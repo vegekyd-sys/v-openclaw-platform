@@ -43,11 +43,11 @@ test('settled reads are discarded: revocation and current ingress apply on the n
  member=true;allow=false;assert.equal((await f.policy(f.input)).admitted,false);assert.equal(calls,6);
 });
 
-test('account, application, secret and conversation boundaries never share reads',async()=>{
+test('account, application, secret, domain and conversation boundaries never share reads',async()=>{
  const gate=deferred();let calls=0;
  const f=fixture(async(_method,path)=>{calls++;await gate.promise;return path.includes('/members?')?{items:[{member_id:actor.openId}]}:{chat_mode:'p2p'};});
- const inputs=[f.input,...['accountId','appId','appSecret'].map(key=>({...f.input,account:{...account,[key]:'different'}})),{...f.input,actor:{...actor,chatId:'oc_other'}}];
- const work=inputs.map(input=>f.policy(input));await Promise.resolve();assert.equal(calls,10);gate.resolve();
+ const inputs=[f.input,...['accountId','appId','appSecret','domain'].map(key=>({...f.input,account:{...account,[key]:'different'}})),{...f.input,actor:{...actor,chatId:'oc_other'}}];
+ const work=inputs.map(input=>f.policy(input));await Promise.resolve();assert.equal(calls,12);gate.resolve();
  assert((await Promise.all(work)).every(v=>v.admitted));
 });
 

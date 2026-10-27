@@ -5,7 +5,7 @@ export function createFeishuVoicePolicy(d) {
   // settled response. Each actor still runs the complete current ingress policy.
   const pendingReads=new Map();
   const read=(account,api,path)=>{
-    const key=JSON.stringify([account.accountId,account.appId,account.appSecret,path]);
+    const key=JSON.stringify([account.accountId,account.appId,account.appSecret,account.domain,path]);
     if(pendingReads.has(key))return pendingReads.get(key);
     const work=Promise.resolve().then(()=>api('GET',path));
     pendingReads.set(key,work);
