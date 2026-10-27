@@ -11,6 +11,58 @@
 
 ---
 
+## v2026.9.1-db91.6-release-batch-20261027
+
+上线：2026-10-27 22:01 CST（21:58 v-self-restart 一次，同时 --set tools.deny）  ·  tag `v2026.9.1-db91.6-release-batch-20261027`
+
+**摘要**：今天 V 两次冻结的根因修复，加上同批的四项改动，一次重启上线：
+- #500：server-chat 处理 run 事件和 host-thaw 重启阻塞检查，原来每次都整读 makaron 全部会话（约 1 万行，每次 10–13 s、2.7 GB），现在改为按 id 走索引读（毫秒级）。16:4x 冻结 6 分钟、18:28 冻结 89 s 的两条路径都在其中。
+- #487：workboard 生命周期巡检不再每分钟整读会话和卡片。
+- #501：飞书自动续接（current-session cron、子 agent 回报）的启动、进度和结果显示在原群同一张卡上；排队追问有状态提示；静默的内部回报不再生成空卡。
+- #484：所有 makaron 路由都去掉 openclaw 工具。配置 `agents.entries.makaron.tools.deny=["openclaw"]` 在重启时用 `--set` 写入主配置，Worker 配置自动推导；一行 core 补丁保住 Codex 的原生工具面。
+- #495：飞书私聊电话直达的代码随 #501 一起上线（#501 的 monitor.account 以 #495 的字节为基础），但功能未启用：配置未改，Voice #166 未部署，新私聊未经真人验收，后续由 Codex 线完成。
+
+验收：
+- 重启：101 s 就绪，worker 5/5、stream 2/2，加载错误 0；两份配置的 deny 都是 `["openclaw"]`。
+- 用 lark-cli 发真实飞书消息：
+  - `/vcodex` 群：
+    - 工具 101 个，没有 openclaw，有 gateway_exec；
+    - 子 agent 续接在同一张卡上依次显示计划、后台行、续接进度和结果；
+    - 续接回合运行中的追问显示「⏳ 请求已排队」，随后单独回复，没有串卡；
+    - 三个子 agent 的静默回报，群内新增消息为 0；
+    - current-session cron 先出现「↩️ 自动续接已受理」，再给出结果卡。
+  - worker 群：cron 同样通过，工具 109 个，没有 openclaw。
+- 重启后 22 分钟：host-thaw 0、workboard 失败 0、运行时错误 0，liveness 只延迟过一次 8.6 s（22:07）。
+- 漂移 0 findings（9,251 个文件），VLab ALIGNED。共享 VLab 先验收：release-batch-20261027-v1，artifact d32688a6。
+
+相对上一版 `v2026.9.1-db91.6-unified-session-20261027`：19 个文件变化。
+
+**经 VLab 发版 `release-batch-20261027-v1`**（monitor-v-production，dev `8cfce5af`）
+> 验收：2026-10-27 21:38-21:46 shared VLab, code d32688a6 + temporary deny openclaw config (removed again before accept; V gets it via v-self-restart --set). Real Feishu lark-cli V-Lab group: /vds tools 124 no openclaw, gateway_exec present (#484); /vds spawn_agent->yield->continuation PARENT_DONE SUB_OK_19573 in one card, no empty cards (#501); vlab-worker sessions_search ok, tools 129 no openclaw. Since…
+- `core` extensions/workboard/index.js  610d45fe → 448d3ae8
+- `core` isolated-agent-BxeXdw5A.js  84227fa1 → 2613b147
+- `core` run-delivery.runtime-falxHVAy.js  9f2b2bdb → 6afb1b4a
+- `core` runtime-api-1CCazqtv.js  3bc03ce6 → 62ecf47e
+- `core` selection-BC0YSSFq.js  5a0c1a19 → b55b5352
+- `core` server-session-key-ZtX3Ble7.js  30a0e1f9 → 6310b72b
+- `core` session-utils-list-BUP03AzS.js  a6e3d70f → a6d40fb5
+- `core` sessions-read-C6mAMxyQ.js  eb18ffa5 → 5c84c606
+- `core` sqlite-store-CH-caj1l.js  12c1f546 → d06ee044
+- `core` task-registry.maintenance-C4nMaDY9.js  b6fe747f → cd4a70c3
+- `core` v-feishu-task-presentation-delivery.mjs  8e11035f → 47b4e136
+- `core` v-feishu-task-presentation-followup.mjs  2e3922a5 → 82490569
+- `core` v-feishu-task-presentation-runtime.mjs  e48e2604 → d9843369
+- `core` v-session-entries-matching.mjs  d2d2c2cd → 3e5671e2
+- `core` v-feishu-task-presentation-cron.mjs  — → 80071002
+- `feishu` dist/monitor.account-WFdlCDhR.js  f1f45455 → 1925d3f2
+- `feishu` dist/v-feishu-phone-tabs.mjs  6c3b8c2a → 9544191e
+- `feishu` dist/v-feishu-task-presentation.mjs  604b98fa → d3f49b00
+- `feishu` dist/feishu-private-conversations.mjs  — → 01245421
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #502 release batch 2026-10-27：#500 #487 #501 #484 #495 合入 dev
+- #500 perf(gateway): 两条冻结 V 的整读查找改为索引读（server-chat run 查找 + 重启阻塞检查）
+
 ## v2026.9.1-db91.6-unified-session-20261027
 
 上线：2026-10-27 03:32 CST；v-self-restart、生产 9 项功能验收及最终 align 已完成  ·  tag `v2026.9.1-db91.6-unified-session-20261027`
