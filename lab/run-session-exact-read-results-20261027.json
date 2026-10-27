@@ -1,0 +1,248 @@
+{
+  "candidate": "candidate-81a30888-4354-4e4a-be1b-372b999d3f6d",
+  "ok": true,
+  "baseRelease": "dm-phone-direct-20261027-v1",
+  "runtimeSha": "798e355b3c58bb5f3d637f0db30f0870e6d8e95a3e2bcadfd9e97e9219f810b8",
+  "inputSha256": "0d8d809dd958bec9efffe52d52e6de8fdd099370270dd3c962cb4ced39ad37fd",
+  "runnerSha256": "fe1a7ec8c7e1081835538b0ee582b985712bc022c6633d3027f439eaab4b8f07",
+  "sharedUnchanged": true,
+  "storageOverride": {
+    "root": "/var/tmp/vlab-run-session-exact-20261027",
+    "reason": "shared candidate data disk insufficient; only ROOT constant relocated, no shared runtime or controller edits"
+  },
+  "snapshotBytes": 7142522880,
+  "timings": {
+    "inspectMs": 45,
+    "baselineMs": 0,
+    "snapshotMs": 48850,
+    "overlayMs": 2,
+    "testMs": 149498
+  },
+  "summary": {
+    "existing": {
+      "count": 12,
+      "found": 12,
+      "beforeMs": {
+        "min": 1573.6909349999914,
+        "median": 2238.6928235000014,
+        "max": 28386.03503
+      },
+      "afterMs": {
+        "min": 4.39837899999111,
+        "median": 12.350561500003096,
+        "max": 44.38361900000018
+      },
+      "beforeGapMs": {
+        "min": 1573.8146969999943,
+        "median": 2245.557800500006,
+        "max": 28388.807132999995
+      },
+      "afterGapMs": {
+        "min": 4.480234000016935,
+        "median": 14.170773500001815,
+        "max": 48.989798999988125
+      }
+    },
+    "missing": {
+      "count": 8,
+      "found": 0,
+      "beforeMs": {
+        "min": 1501.0877169999876,
+        "median": 1603.7786739999865,
+        "max": 2389.406586999976
+      },
+      "afterMs": {
+        "min": 2.912597000016831,
+        "median": 3.8400799999944866,
+        "max": 7.180962000013096
+      },
+      "beforeGapMs": {
+        "min": 1502.2997259999975,
+        "median": 1604.5367899999983,
+        "max": 2390.789317000017
+      },
+      "afterGapMs": {
+        "min": 4.081774999998743,
+        "median": 5.578168499996536,
+        "max": 10.94562000001315
+      }
+    }
+  },
+  "measurement": {
+    "runtimeHash": "17414923ff9849230ceb9ca0397e73c673e869af1b08828f3591353d9d64dfdb",
+    "beforeHash": "30a0e1f9884da81e4c4a3d22fd69a025552c8b8419597c940cfe46e35b3cb5ae",
+    "rows": 3945,
+    "queryPlan": [
+      "SEARCH session_nodes USING INDEX idx_agent_session_nodes_current_session_id (current_session_id=?)"
+    ],
+    "parity": 20,
+    "mismatch": 0,
+    "results": [
+      {
+        "kind": "existing",
+        "beforeMs": 28386.03503,
+        "afterMs": 21.74740500000189,
+        "beforeGapMs": 28388.807132999995,
+        "afterGapMs": 23.843689000001177,
+        "found": true
+      },
+      {
+        "kind": "existing",
+        "beforeMs": 8254.424106000006,
+        "afterMs": 9.774892999994336,
+        "beforeGapMs": 8254.728610999999,
+        "afterGapMs": 12.239165999999386,
+        "found": true
+      },
+      {
+        "kind": "existing",
+        "beforeMs": 2028.1746080000012,
+        "afterMs": 18.036005999994813,
+        "beforeGapMs": 2029.539764999994,
+        "afterGapMs": 19.238767999995616,
+        "found": true
+      },
+      {
+        "kind": "existing",
+        "beforeMs": 2212.977310000002,
+        "afterMs": 14.926230000011856,
+        "beforeGapMs": 2215.807482000004,
+        "afterGapMs": 16.102381000004243,
+        "found": true
+      },
+      {
+        "kind": "existing",
+        "beforeMs": 2148.015459000002,
+        "afterMs": 5.861883000005037,
+        "beforeGapMs": 2149.2833129999926,
+        "afterGapMs": 5.938257999994676,
+        "found": true
+      },
+      {
+        "kind": "existing",
+        "beforeMs": 2329.306891,
+        "afterMs": 6.701379999998608,
+        "beforeGapMs": 2329.442295999994,
+        "afterGapMs": 7.8777419999969425,
+        "found": true
+      },
+      {
+        "kind": "existing",
+        "beforeMs": 2264.4083370000008,
+        "afterMs": 44.38361900000018,
+        "beforeGapMs": 2275.3081190000084,
+        "afterGapMs": 48.989798999988125,
+        "found": true
+      },
+      {
+        "kind": "existing",
+        "beforeMs": 2965.015606999994,
+        "afterMs": 6.355719999992289,
+        "beforeGapMs": 2965.124370000005,
+        "afterGapMs": 8.774666999990586,
+        "found": true
+      },
+      {
+        "kind": "existing",
+        "beforeMs": 2740.348801,
+        "afterMs": 19.653882999991765,
+        "beforeGapMs": 2746.751250999994,
+        "afterGapMs": 19.717852000001585,
+        "found": true
+      },
+      {
+        "kind": "existing",
+        "beforeMs": 2151.9239769999986,
+        "afterMs": 15.983521999994991,
+        "beforeGapMs": 2153.1691770000034,
+        "afterGapMs": 18.78091199998744,
+        "found": true
+      },
+      {
+        "kind": "existing",
+        "beforeMs": 1688.180766000005,
+        "afterMs": 6.279316000000108,
+        "beforeGapMs": 1689.7168939999829,
+        "afterGapMs": 12.105370999983279,
+        "found": true
+      },
+      {
+        "kind": "existing",
+        "beforeMs": 1573.6909349999914,
+        "afterMs": 4.39837899999111,
+        "beforeGapMs": 1573.8146969999943,
+        "afterGapMs": 4.480234000016935,
+        "found": true
+      },
+      {
+        "kind": "missing",
+        "beforeMs": 1672.7055589999945,
+        "afterMs": 3.485542999987956,
+        "beforeGapMs": 1674.0744640000048,
+        "afterGapMs": 5.746444999997038,
+        "found": false
+      },
+      {
+        "kind": "missing",
+        "beforeMs": 1501.0877169999876,
+        "afterMs": 2.912597000016831,
+        "beforeGapMs": 1502.2997259999975,
+        "afterGapMs": 4.081774999998743,
+        "found": false
+      },
+      {
+        "kind": "missing",
+        "beforeMs": 1728.6768749999756,
+        "afterMs": 3.1477479999884963,
+        "beforeGapMs": 1729.9430160000047,
+        "afterGapMs": 4.558148999989498,
+        "found": false
+      },
+      {
+        "kind": "missing",
+        "beforeMs": 2389.406586999976,
+        "afterMs": 7.180962000013096,
+        "beforeGapMs": 2390.789317000017,
+        "afterGapMs": 8.399252000002889,
+        "found": false
+      },
+      {
+        "kind": "missing",
+        "beforeMs": 1504.940540999989,
+        "afterMs": 4.55859099997906,
+        "beforeGapMs": 1506.1791289999965,
+        "afterGapMs": 7.158147999987705,
+        "found": false
+      },
+      {
+        "kind": "missing",
+        "beforeMs": 1518.667798999988,
+        "afterMs": 5.590370999998413,
+        "beforeGapMs": 1519.9070010000141,
+        "afterGapMs": 10.94562000001315,
+        "found": false
+      },
+      {
+        "kind": "missing",
+        "beforeMs": 1682.4249439999985,
+        "afterMs": 3.147447999974247,
+        "beforeGapMs": 1682.5410219999903,
+        "afterGapMs": 4.341492999985348,
+        "found": false
+      },
+      {
+        "kind": "missing",
+        "beforeMs": 1534.8517889999785,
+        "afterMs": 4.194617000001017,
+        "beforeGapMs": 1534.9991159999918,
+        "afterGapMs": 5.409891999996034,
+        "found": false
+      }
+    ],
+    "unmapped64": {
+      "ms": 172.01235500001349,
+      "maxGapMs": 173.5987670000177
+    }
+  },
+  "acceptance": "resolver parity and synchronous cost on a private VLab snapshot; not shared integration or production visible-reply acceptance"
+}
