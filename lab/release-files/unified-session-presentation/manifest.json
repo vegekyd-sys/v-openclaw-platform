@@ -162,13 +162,13 @@
       "source": "lab/release-files/unified-session-presentation/feishu/monitor.account-WFdlCDhR.js",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
       "before": "535841d0219848a266d146094ee3441bbf48ed7a8aa28f04d111afb330247fef",
-      "sha256": "f1f45455a170908cd5c3eebf66ba52f763d6a17916861452ef88e3af6e881dfb"
+      "sha256": "47912d6fa699c3ee6c4b929700777bda975d76c934065d82b7b6fc441f09cd5e"
     },
     {
       "source": "lab/release-files/feishu-task-presentation/v-feishu-task-presentation.mjs",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-task-presentation.mjs",
       "before": null,
-      "sha256": "604b98fa78ecef8c778990eae389031954824b58e650e952801e8957e8470ada"
+      "sha256": "9b8b4ebd42fff7d82b384ece9d22f7417f47341527fc00a282f197f81a812a19"
     },
     {
       "source": "lab/release-files/unified-session-presentation/core/agent-command-DPfawBbr.js",

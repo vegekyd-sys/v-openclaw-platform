@@ -30,6 +30,16 @@ test('native adapter restores acknowledged anchor, CardKit identity and payload 
  assert.equal(f.calls.filter(c=>c[0]==='anchor').length,0);assert.equal(f.calls.filter(c=>c[0]==='deliver').length,1);
  assert.equal(f.params().boundTaskPresentation.state.deliveredPayloads,2);
 });
+test('cron native card identifies its own lifecycle instead of the conversation background summary',async()=>{
+ const f=fixture();f.record.source='cron-continuation';await f.open();
+ assert.equal(f.params().boundTaskPresentation.source,'cron-continuation');
+ assert.match(f.calls.find(c=>c[0]==='anchor')[1].data.content,/自动续接/);
+ const monitor=fs.readFileSync('lab/release-files/feishu-continuation-progress/monitor.account-WFdlCDhR.js','utf8');
+ const line=monitor.split('\n').find(s=>s.includes('vTaskStatusAttach(params.sessionKey, session,'));
+ let attached=0;const run=new Function('params','session','vTaskStatusAttach',line);
+ for(const source of ['cron-continuation','voice-direct',undefined]){run({sessionKey:'source',runtime:{},boundTaskPresentation:source?{source}:undefined},{},()=>attached++);}
+ assert.equal(attached,2,'ordinary and Voice cards retain their background summary; cron owns its own lifecycle');
+});
 test('a failed idle close and finalization are both observed without an unhandled rejection',async()=>{
  const f=fixture({delivery:{deliver:async()=>({finalization:Promise.reject(Error('final ACK rejected'))})},
   dispatcherOptions:{onIdle:async()=>{throw Error('idle close rejected');}}});

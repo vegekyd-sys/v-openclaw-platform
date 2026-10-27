@@ -1,0 +1,206 @@
+{
+  "scope": "Private candidate Gateway with real model and synthetic Feishu API; no live business messages sent",
+  "unitTests": 69,
+  "modelBudgetUsd": 5,
+  "billedCostUsd": null,
+  "candidates": [
+    {
+      "id": "candidate-5231aa51-7024-497a-a6bd-04cd405a2680",
+      "ok": true,
+      "inputSha256": "382d56ad5b50c1bead38222cc64cfe6ca37e6c33d541e11ee3288acf0187ef30",
+      "baseRelease": "dm-phone-direct-20261027-v1",
+      "sharedUnchanged": true,
+      "sourceBaseCommit": "b4c99cb9b994b8e806d272952c43bca93c412569",
+      "files": [
+        {
+          "source": "lab/release-files/feishu-continuation-progress/isolated-agent-BxeXdw5A.js",
+          "target": "openclaw/dist/isolated-agent-BxeXdw5A.js",
+          "before": "84227fa12d6b62a98f24bc9a712e9b08e5ea907b14ed951a4fc1de9caf674c1c",
+          "after": "2613b14741ab4cf2a03c0c4e6be90a0594ee406009324876aae1d634734f8698"
+        },
+        {
+          "source": "lab/release-files/feishu-continuation-progress/run-delivery.runtime-falxHVAy.js",
+          "target": "openclaw/dist/run-delivery.runtime-falxHVAy.js",
+          "before": "9f2b2bdb038cad77516346cb18f599057f363694843e2bde4cfc376b6ee6e74a",
+          "after": "6afb1b4a740dcb2c9fb374c7a3408246c7beed495b0171a68b73e665c0c52bf7"
+        },
+        {
+          "source": "lab/release-files/feishu-continuation-progress/v-feishu-task-presentation-cron.mjs",
+          "target": "openclaw/dist/v-feishu-task-presentation-cron.mjs",
+          "before": null,
+          "after": "80071002e00f987b87d29f237d5450cd98af5afdfce34f33f62b0b8e325c05ee"
+        },
+        {
+          "source": "lab/release-files/feishu-continuation-progress/v-feishu-task-presentation.mjs",
+          "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-task-presentation.mjs",
+          "before": "604b98fa78ecef8c778990eae389031954824b58e650e952801e8957e8470ada",
+          "after": "9b8b4ebd42fff7d82b384ece9d22f7417f47341527fc00a282f197f81a812a19"
+        },
+        {
+          "source": "lab/release-files/feishu-continuation-progress/monitor.account-WFdlCDhR.js",
+          "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+          "before": "6e12af1840f8ac6cd6519e3e80bb8ac1559271227c1d2c5283cf129b9d966344",
+          "after": "2b79970a5adaea149a79e90402e19cac36290c067be726e176a806497adc72c8"
+        }
+      ],
+      "timings": {
+        "inspectMs": 26,
+        "baselineMs": 1,
+        "snapshotMs": 38224,
+        "overlayMs": 17,
+        "testMs": 80042
+      },
+      "totalClientMs": 158601,
+      "proof": {
+        "harness": "worker",
+        "checks": [
+          "native human ingress still owns its card",
+          "real cron.add/run path",
+          "detached execution attached to original group",
+          "start and actual tool progress precede final",
+          "one native final with scheduler delivered receipt",
+          "existing inter-session presentation unchanged"
+        ],
+        "task": {
+          "id": "9421a1e533c8ce201c41170552b439cf4351b5d79815bb4a317856a917ea395b",
+          "phase": "completed",
+          "delivered": true,
+          "runIds": [
+            "0b596a6a-7402-4be2-8af0-649205f4411d"
+          ],
+          "selectedModel": {
+            "provider": "deepseek",
+            "model": "deepseek-flash",
+            "agentRuntime": "vlab-worker",
+            "lifecycleGeneration": "0079559b-e378-43db-9862-12de061d75b5"
+          }
+        },
+        "run": {
+          "status": "ok",
+          "delivered": true,
+          "delivery": {
+            "intended": {
+              "channel": "feishu",
+              "to": "oc_00000000000000000000000000000003",
+              "accountId": "default",
+              "source": "explicit"
+            },
+            "resolved": {
+              "ok": true,
+              "channel": "feishu",
+              "to": "oc_00000000000000000000000000000003",
+              "accountId": "default",
+              "source": "explicit"
+            },
+            "fallbackUsed": true,
+            "delivered": true
+          }
+        },
+        "visible": {
+          "progressSnapshots": 4,
+          "finalCards": 1,
+          "finalMessageId": "om_mock_7"
+        }
+      }
+    },
+    {
+      "id": "candidate-976fa636-8f7e-4b52-9202-df89609a8d8c",
+      "ok": true,
+      "inputSha256": "7a95025292a2bd7dc57e48e3cc17641ddee04c00c810a32c9ef1d9bfa181974b",
+      "baseRelease": "dm-phone-direct-20261027-v1",
+      "sharedUnchanged": true,
+      "sourceBaseCommit": "b4c99cb9b994b8e806d272952c43bca93c412569",
+      "files": [
+        {
+          "source": "lab/release-files/feishu-continuation-progress/isolated-agent-BxeXdw5A.js",
+          "target": "openclaw/dist/isolated-agent-BxeXdw5A.js",
+          "before": "84227fa12d6b62a98f24bc9a712e9b08e5ea907b14ed951a4fc1de9caf674c1c",
+          "after": "2613b14741ab4cf2a03c0c4e6be90a0594ee406009324876aae1d634734f8698"
+        },
+        {
+          "source": "lab/release-files/feishu-continuation-progress/run-delivery.runtime-falxHVAy.js",
+          "target": "openclaw/dist/run-delivery.runtime-falxHVAy.js",
+          "before": "9f2b2bdb038cad77516346cb18f599057f363694843e2bde4cfc376b6ee6e74a",
+          "after": "6afb1b4a740dcb2c9fb374c7a3408246c7beed495b0171a68b73e665c0c52bf7"
+        },
+        {
+          "source": "lab/release-files/feishu-continuation-progress/v-feishu-task-presentation-cron.mjs",
+          "target": "openclaw/dist/v-feishu-task-presentation-cron.mjs",
+          "before": null,
+          "after": "80071002e00f987b87d29f237d5450cd98af5afdfce34f33f62b0b8e325c05ee"
+        },
+        {
+          "source": "lab/release-files/feishu-continuation-progress/v-feishu-task-presentation.mjs",
+          "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-task-presentation.mjs",
+          "before": "604b98fa78ecef8c778990eae389031954824b58e650e952801e8957e8470ada",
+          "after": "9b8b4ebd42fff7d82b384ece9d22f7417f47341527fc00a282f197f81a812a19"
+        },
+        {
+          "source": "lab/release-files/feishu-continuation-progress/monitor.account-WFdlCDhR.js",
+          "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+          "before": "6e12af1840f8ac6cd6519e3e80bb8ac1559271227c1d2c5283cf129b9d966344",
+          "after": "2b79970a5adaea149a79e90402e19cac36290c067be726e176a806497adc72c8"
+        }
+      ],
+      "timings": {
+        "inspectMs": 13,
+        "baselineMs": 3,
+        "snapshotMs": 35731,
+        "overlayMs": 16,
+        "testMs": 82697
+      },
+      "totalClientMs": 168842,
+      "proof": {
+        "harness": "vds",
+        "checks": [
+          "native human ingress still owns its card",
+          "real cron.add/run path",
+          "detached execution attached to original group",
+          "start and actual tool progress precede final",
+          "one native final with scheduler delivered receipt",
+          "existing inter-session presentation unchanged"
+        ],
+        "task": {
+          "id": "30956ec386a1cf394cdbddce6bbfefacaaf140c541afd9e696a81821b1b37a6c",
+          "phase": "completed",
+          "delivered": true,
+          "runIds": [
+            "54baacf1-7ecc-475c-a13a-caebca6ebf4f"
+          ],
+          "selectedModel": {
+            "provider": "deepseek",
+            "model": "vds-deepseek-flash",
+            "agentRuntime": "codex",
+            "lifecycleGeneration": "e03e8bb7-a5a5-4f6b-bcf3-431155edf3af"
+          }
+        },
+        "run": {
+          "status": "ok",
+          "delivered": true,
+          "delivery": {
+            "intended": {
+              "channel": "feishu",
+              "to": "oc_00000000000000000000000000000003",
+              "accountId": "default",
+              "source": "explicit"
+            },
+            "resolved": {
+              "ok": true,
+              "channel": "feishu",
+              "to": "oc_00000000000000000000000000000003",
+              "accountId": "default",
+              "source": "explicit"
+            },
+            "fallbackUsed": true,
+            "delivered": true
+          }
+        },
+        "visible": {
+          "progressSnapshots": 5,
+          "finalCards": 1,
+          "finalMessageId": "om_mock_7"
+        }
+      }
+    }
+  ]
+}

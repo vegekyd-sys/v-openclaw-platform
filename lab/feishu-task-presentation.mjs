@@ -4,7 +4,7 @@ import {createHash,randomUUID} from 'node:crypto';
 
 export const PRESENTATION_KEY = Symbol.for('openclaw.v.boundTaskPresentation.v1');
 export const PRESENTATION_METHOD = 'v.feishu.taskPresentation';
-const sources = new Set(['inter-session','voice-direct','voice-native','queued-followup','subagent-announce']);
+const sources = new Set(['inter-session','voice-direct','voice-native','queued-followup','subagent-announce','cron-continuation']);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const clean = value => typeof value === 'string' ? value.trim() : '';
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -74,6 +74,7 @@ export class TaskPresentationManager {
       const record={v:1,id,agentId:input.agentId,sessionKey:input.sessionKey,sessionId:entry.sessionId,route,source:input.source,taskId:input.taskId,
         owner:owner??null,text:safeText(clean(input.text)).slice(0,20000),createdAt:this.now(),updatedAt:this.now(),phase:'queued',runIds:[],lastSeq:0,
         lifecycleRevision:entry.lifecycleRevision,
+        ...(input.source==='cron-continuation'&&clean(input.executionSessionKey)?{executionSessionKey:input.executionSessionKey}:{}),
         anchorId:route.kind==='group'&&/^om_[a-zA-Z0-9_-]+$/u.test(input.anchorId??'')?input.anchorId:null,sinkState:null,publicSnapshot:'',payloads:[],executionOutcome:null,delivered:false};
       const handle=new TaskPresentation(this,record);this.tasks.set(id,handle);this.save(record);
       if(input.runId)handle.bindRun(input.runId);
@@ -83,7 +84,7 @@ export class TaskPresentationManager {
     this.opening.set(id,pending);return pending;
   }
   onAgentEvent(event) {try {
-    const h=this.runs.get(event?.runId);if(!h||event.sessionKey&&event.sessionKey!==h.record.sessionKey)return;
+    const h=this.runs.get(event?.runId);if(!h||event.sessionKey&&event.sessionKey!==(h.record.executionSessionKey??h.record.sessionKey))return;
     h.observe(event);
   } catch(error){this.logger.warn?.('Feishu task observer unavailable: '+String(error?.message??error));}}
   async rpc({params:p,client,respond}) {
@@ -130,7 +131,7 @@ export class TaskPresentationManager {
       const h=new TaskPresentation(this,r);this.tasks.set(r.id,h);
       if(r.delivered){await h.settleDelivery();continue;}
       if(r.executionOutcome)await h.finish(r.executionOutcome.result,r.executionOutcome.error);
-      else if(r.capturedTerminal&&!r.yielded)await h.finish({payloads:r.payloads});
+      else if(r.capturedTerminal&&!r.yielded&&r.source!=='cron-continuation')await h.finish({payloads:r.payloads});
       else await h.finish(null,'Gateway 重启打断了任务；请核对原执行状态后继续。');
     }
   }
@@ -196,7 +197,7 @@ class TaskPresentation {
     if((result?.yielded===true||result?.meta?.yielded===true||(this.record.yielded&&typeof result?.text!=='string'&&typeof result?.result!=='string'))&&!error){this.record.phase='waiting';this.manager.save(this.record);return this.flush();}
     const text=typeof result?.text==='string'?result.text:typeof result?.result==='string'?result.result:undefined;
     let payloads=text!==undefined?[{text:safeText(text)},...this.record.payloads.filter(p=>p.mediaUrl||p.mediaUrls?.length).map(p=>({...p,text:undefined}))]:this.record.payloads;
-    if(error){const detail=String(error?.message??error);const reason=/取消|cancel|abort/iu.test(detail)?'任务已取消。':/超时|timeout/iu.test(detail)?'任务超时，尚未完成。':/重启/iu.test(detail)?'Gateway 重启后无法确认原执行状态，请回到原会话核对。':'任务未完成，请回到原会话查看错误。';payloads=[{text:'⚠️ '+reason,isError:true}];}
+    if(error){const detail=String(error?.message??error);const reason=/超时|timeout|timed out/iu.test(detail)?'任务超时，尚未完成。':/取消|cancel|abort/iu.test(detail)?'任务已取消。':/重启/iu.test(detail)?'Gateway 重启后无法确认原执行状态，请回到原会话核对。':'任务未完成，请回到原会话查看错误。';payloads=[{text:'⚠️ '+reason,isError:true}];}
     if(!payloads.length||payloads.every(p=>!p.mediaUrl&&!p.mediaUrls?.length&&(!clean(p.text)||['NO_REPLY','REPLY_SKIP','ANNOUNCE_SKIP'].includes(clean(p.text)))))payloads=[{text:'任务已结束，本轮没有文字结果。'}];
     // First terminal is canonical. Retries replay its exact payload rather than a late caller's result.
     if(!this.record.executionOutcome){this.record.executionOutcome={result:{payloads:copy(payloads)},error:error?String(error?.message??error):null};
