@@ -1,0 +1,22 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/feishu-private-phone-menu/monitor.account-WFdlCDhR.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+      "before": "f1f45455a170908cd5c3eebf66ba52f763d6a17916861452ef88e3af6e881dfb",
+      "sha256": "3abf6dca367dddc754bdd09d94f249ea598b3660a4b6a3ee821963fe338d2308"
+    },
+    {
+      "source": "lab/release-files/feishu-private-phone-menu/v-feishu-private-phone-menu.mjs",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-private-phone-menu.mjs",
+      "before": null,
+      "sha256": "a4c8e39b851dbfcab9d5ad07111171043b5bef18d183a40525be6bb7d8c40c3e"
+    },
+    {
+      "source": "lab/release-files/feishu-private-phone-menu/v-feishu-voice-confirm.mjs",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-voice-confirm.mjs",
+      "before": "6eba4d8dc140be24901ae0836a27a64ad6fbca863fd3cd8078bbfe88f2d9ee53",
+      "sha256": "28a1478532b90ad4a5e9605aba698a3a2161f243bdbc988eb92b00450e3a2889"
+    }
+  ]
+}
