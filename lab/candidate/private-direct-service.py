@@ -17,9 +17,23 @@ app=config['channels']['feishu'];assert app['appId']=='cli_aae2c999c7789bd9'
 secret=re.sub(r'\$\{([^}]+)\}',lambda m:shared.get(m[1],''),app['appSecret']);assert secret
 private=root/'private';private.mkdir(mode=0o700,exist_ok=True)
 owner=pwd.getpwnam('lab-db91-parity')
+# Gateway has ProtectSystem=strict: the locator must live in its existing
+# writable state directory, not in the isolated Voice service's private tree.
+directory=pathlib.Path(shared['OPENCLAW_STATE_DIR'])/root.name
+assert not directory.is_symlink()
+directory.mkdir(mode=0o700,exist_ok=True)
+assert directory.is_dir()
+directory.chmod(0o700);os.chown(directory,owner.pw_uid,owner.pw_gid)
+locator=directory/'conversations.private.json'
+assert not locator.is_symlink()
+if not locator.exists():
+    fd=os.open(locator,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    with os.fdopen(fd,'w') as stream:json.dump({'version':1,'bindings':[]},stream)
+assert locator.is_file()
+locator.chmod(0o600);os.chown(locator,owner.pw_uid,owner.pw_gid)
 def save(name,data):
     path=private/name;path.write_text(json.dumps(data,ensure_ascii=False));path.chmod(0o600);os.chown(path,owner.pw_uid,owner.pw_gid)
-save('login.json',{'appId':app['appId'],'appSecret':secret,'actors':[],'accountId':'default','conversations':True,'allowUnidentified':True,'cardConfirmation':True,'privateConversationsFile':str(root/'private/conversations.private.json')})
+save('login.json',{'appId':app['appId'],'appSecret':secret,'actors':[],'accountId':'default','conversations':True,'allowUnidentified':True,'cardConfirmation':True,'privateConversationsFile':str(locator)})
 save('phones.json',[])
 save('candidate-release.json',{'version':'private-direct.candidate.20261027','title':'私聊底部菜单候选','items':['菜单默认显示输入框；从菜单直接进入共用电话页。','本轮验证入口与身份，未进行真实音频验收。']})
 env={**shared}
