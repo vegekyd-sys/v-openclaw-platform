@@ -471,6 +471,7 @@
         "lab/sessions-search-exact-read.test.mjs",
         "lab/doctor-subprocess.test.mjs",
         "lab/sessions-search-candidate-rows.test.mjs",
+        "lab/gateway-freeze-lookups.test.mjs",
         "tests/v-self-restart-gateway.test.mjs"
       ]
     }
