@@ -1,0 +1,7 @@
+{
+  "tests":["lab/feishu-voice-policy.test.mjs","lab/feishu-voice-actor.test.mjs"],
+  "support":["lab/feishu-voice-actor.mjs"],
+  "files":[{"source":"lab/feishu-voice-policy.mjs","target":"openclaw/dist/v-feishu-voice-policy.mjs"}],
+  "databases":[],
+  "timeoutSeconds":120
+}

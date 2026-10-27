@@ -1,9 +1,24 @@
 // The native Feishu ingress and routing functions are injected from its loaded
 // module. No independent owner list, role model, or pairing state is introduced.
 export function createFeishuVoicePolicy(d) {
+  // Share only an outstanding identical read, never an admission decision or a
+  // settled response. Each actor still runs the complete current ingress policy.
+  const pendingReads=new Map();
+  const read=(account,api,path)=>{
+    const key=JSON.stringify([account.accountId,account.appId,account.appSecret,account.domain,path]);
+    if(pendingReads.has(key))return pendingReads.get(key);
+    const work=Promise.resolve().then(()=>api('GET',path));
+    pendingReads.set(key,work);
+    const forget=()=>{if(pendingReads.get(key)===work)pendingReads.delete(key);};
+    work.then(forget,forget);
+    return work;
+  };
   return async ({cfg,account,actor}) => {
     const api = d.api(account), path = `/open-apis/im/v1/chats/${actor.chatId}`;
-    const info = await api('GET',path);
+    const membersPath=path+'/members?'+new URLSearchParams({member_id_type:'open_id',page_size:'100'});
+    // Chat mode and the first member page are independent read-only requests.
+    // Neither result authorizes anything until both have succeeded.
+    const [info,firstPage]=await Promise.all([read(account,api,path),read(account,api,membersPath)]);
     const isGroup = info?.chat_mode === 'group';
     if (!isGroup && info?.chat_mode !== 'p2p') return {admitted:false};
     // GET members is also checked for DM: possession of an oc_ ID is not proof
@@ -12,7 +27,7 @@ export function createFeishuVoicePolicy(d) {
     const seen = new Set();
     do {
       const query = new URLSearchParams({member_id_type:'open_id',page_size:'100',...(pageToken?{page_token:pageToken}:{})});
-      const page = await api('GET',path+'/members?'+query);
+      const page = pageToken?await read(account,api,path+'/members?'+query):firstPage;
       if (!Array.isArray(page?.items)) throw Error('feishu_members_unconfirmed');
       member ||= page.items.some(item => item.member_id === actor.openId);
       if (member || !page.has_more) break;
