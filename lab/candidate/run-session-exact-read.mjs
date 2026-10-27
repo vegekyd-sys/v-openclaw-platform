@@ -9,20 +9,18 @@ import {FILE,unpatch,sha256} from '../patch-run-session-exact-read.mjs';
 const dist=path.join(process.env.VLAB_CANDIDATE_RUNTIME,'openclaw/dist');
 const state=process.env.OPENCLAW_STATE_DIR;
 assert(process.env.VLAB_CANDIDATE_RUNTIME&&state&&process.env.VLAB_SHARED_STATE_DIR);
-// The shared mirror data disk cannot hold another 7 GB. This is a disposable
-// database, not a second Gateway. Do not relocate or delete any shared data.
-const scratch=fs.mkdtempSync('/var/tmp/run-session-exact-');
+// Use the relocated candidate runner on the root disk (see the incident report).
+// The runtime deliberately rejects symlinked databases during target discovery,
+// so keep a regular database inside this candidate's managed state directory.
 const relative='agents/makaron/agent/openclaw-agent.sqlite';
-const copy=path.join(scratch,'agent.sqlite');
 const link=path.join(state,relative);
 try {
+assert(!fs.existsSync(link),'candidate state must not already contain a database');
+fs.mkdirSync(path.dirname(link),{recursive:true});
 execFileSync('python3',['-c',
  'import sqlite3,sys; src=sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True); dst=sqlite3.connect(sys.argv[2]); src.backup(dst,pages=1024); dst.close(); src.close()',
- path.join(process.env.VLAB_SHARED_STATE_DIR,relative),copy],{timeout:300000,stdio:'inherit'});
-fs.mkdirSync(path.dirname(link),{recursive:true});
-assert(!fs.existsSync(link),'candidate state must not already contain a database');
-fs.symlinkSync(copy,link);
-console.log(JSON.stringify({stage:'private-snapshot',bytes:fs.statSync(copy).size}));
+ path.join(process.env.VLAB_SHARED_STATE_DIR,relative),link],{timeout:300000,stdio:'inherit'});
+console.log(JSON.stringify({stage:'private-snapshot',bytes:fs.statSync(link).size}));
 const source=fs.readFileSync(path.join(dist,FILE),'utf8');
 const beforePath=path.join(dist,'run-session-exact-before.js');
 fs.writeFileSync(beforePath,unpatch(source));
@@ -37,9 +35,9 @@ const sample=[...new Set(rows.filter((_,i)=>i%step===0).slice(0,12).map(r=>r.cur
 const queries=[...sample,...Array.from({length:8},(_,i)=>`missing-event-fixture-${i}`)];
 async function measure(fn){
  let last=performance.now(),maxGap=0; const iv=setInterval(()=>{const n=performance.now();maxGap=Math.max(maxGap,n-last);last=n;},1);
- const start=performance.now();let value;
- try{value=fn();await new Promise(r=>setTimeout(r,5));}finally{clearInterval(iv);}
- return {value,ms:performance.now()-start-5,maxGap};
+ const start=performance.now();let value,ms;
+ try{value=fn();ms=performance.now()-start;await new Promise(r=>setTimeout(r,5));}finally{clearInterval(iv);}
+ return {value,ms,maxGap};
 }
 const results=[];
 for(const id of queries){
@@ -49,6 +47,7 @@ for(const id of queries){
  assert.equal(b.value,a.value,'old/new run resolution differs');
  results.push({kind:id.startsWith('missing-')?'missing':'existing',beforeMs:a.ms,afterMs:b.ms,beforeGapMs:a.maxGap,afterGapMs:b.maxGap,found:typeof b.value==='string'});
 }
+assert(results.filter(r=>r.kind==='existing'&&r.found).length>=8,'positive parity must actually resolve the copied database');
 // The event handler's missing-context fallback across many distinct run IDs is the fault path.
 const burst=await measure(()=>{for(let i=0;i<64;i++)assert.equal(after.n(`unmapped-burst-${i}`,{agentId:'makaron'}),undefined);});
 const result={runtimeHash:sha256(source),beforeHash:sha256(unpatch(source)),rows:rows.length,queryPlan,parity:results.length,
@@ -57,5 +56,4 @@ console.log(JSON.stringify(result,null,2));
 db.close();fs.unlinkSync(beforePath);
 } finally {
  for(const suffix of['','-wal','-shm'])fs.rmSync(link+suffix,{force:true});
- fs.rmSync(scratch,{recursive:true,force:true});
 }
