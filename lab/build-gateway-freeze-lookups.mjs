@@ -1,19 +1,24 @@
-// Build lab/release-files/run-session-lookup-exact/ from V's bytes
-// (db91-release-v2026.9.1-db91.6/core/dist, unchanged since the 9.1 install; the first commit of the
-// release file is that copy).
-//   node lab/build-run-session-lookup-exact.mjs [<V dist dir>]
+// Build lab/release-files/gateway-freeze-lookups/ from V's bytes
+// (db91-release-v2026.9.1-db91.6/core/dist; the first commit of each release file is that copy).
+//   node lab/build-gateway-freeze-lookups.mjs [<V dist dir>]
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BEFORE_SHA, MARKER, NAME, patchRunSessionLookup, sha256, unpatchRunSessionLookup } from './patch-run-session-lookup-exact.mjs';
+import { FILES, MARKER, sha256 } from './patch-gateway-freeze-lookups.mjs';
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const source = `lab/release-files/run-session-lookup-exact/${NAME}`;
-const existing = fs.readFileSync(path.join(repo, source), 'utf8');
-const original = process.argv[2]
-  ? fs.readFileSync(path.join(process.argv[2], NAME), 'utf8')
-  : existing.includes(MARKER) ? unpatchRunSessionLookup(existing) : existing;
-if (sha256(original) !== BEFORE_SHA) throw new Error(`Unexpected ${NAME} checksum ${sha256(original)}`);
-const patched = patchRunSessionLookup(original);
-fs.writeFileSync(path.join(repo, source), patched);
-console.log(JSON.stringify({ source, target: `openclaw/dist/${NAME}`, before: BEFORE_SHA, after: sha256(patched) }, null, 2));
+const files = [];
+for (const [name, file] of Object.entries(FILES)) {
+  const source = `lab/release-files/gateway-freeze-lookups/${name}`;
+  const existing = fs.readFileSync(path.join(repo, source), 'utf8');
+  const original = process.argv[2]
+    ? fs.readFileSync(path.join(process.argv[2], name), 'utf8')
+    : existing.includes(MARKER) ? file.unpatch(existing) : existing;
+  if (sha256(original) !== file.before) throw new Error(`Unexpected ${name} checksum ${sha256(original)}`);
+  const patched = file.patch(original);
+  fs.writeFileSync(path.join(repo, source), patched);
+  files.push({ source, target: `openclaw/dist/${name}`, before: file.before, after: sha256(patched) });
+}
+const plan = { baseRelease: 'REPLACE_AT_STAGE', files };
+fs.writeFileSync(path.join(repo, 'lab/gateway-freeze-lookups.plan.json'), `${JSON.stringify(plan, null, 2)}\n`);
+console.log(JSON.stringify(plan, null, 2));

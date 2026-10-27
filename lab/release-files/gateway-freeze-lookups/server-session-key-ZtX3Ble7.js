@@ -69,7 +69,7 @@ function resolveSessionKeyForRun(runId, opts = {}) {
 		if (expiresAt !== void 0 && now !== void 0 && expiresAt > now) return;
 		resolvedSessionKeyByRunId.delete(cacheKey);
 	}
-	// run-session-lookup-exact: read only the rows whose current session id is the run id (indexed).
+	// gateway-freeze-lookups: read only the rows whose current session id is the run id (indexed).
 	const exactRunLookup = typeof runId === "string" && runId.length > 0 && process.env.OPENCLAW_V_RUN_SESSION_LOOKUP_EXACT !== "0";
 	const { store } = loadCombinedSessionStoreForGatewayCore(cfg, {
 		agentId: requestedAgentId,

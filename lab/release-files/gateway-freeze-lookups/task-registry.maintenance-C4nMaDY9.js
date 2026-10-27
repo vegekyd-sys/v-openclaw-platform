@@ -10,6 +10,7 @@ import { b as runWithGatewayIndependentRootWorkAdmission } from "./gateway-work-
 import { t as deriveSessionChatTypeFromKey } from "./session-chat-type-shared-BKTfMJHj.js";
 import { x as sweepExpiredPluginStateEntries } from "./plugin-state-store-PhQA2Nhh.js";
 import { a as listSessionEntriesReadOnly } from "./session-accessor.sqlite-entry-BlklNPKQ.js";
+import { listSessionEntriesMatchingReadOnly } from "./v-session-entries-matching.mjs";
 import "./session-accessor-K0XuW6ln.js";
 import { c as resolveAcpSessionTarget, t as acpSessionActorKey } from "./manager.utils-D8qTN17p.js";
 import { i as isAcpTurnActive, t as getAcpSessionManager } from "./manager-D8Ksq0fP.js";
@@ -271,7 +272,17 @@ function findTaskSessionEntry(task, context) {
 	const childSessionKey = task.childSessionKey?.trim();
 	if (!childSessionKey) return;
 	const agentId = taskRegistryMaintenanceRuntime.parseAgentSessionKey(childSessionKey)?.agentId;
-	return findSessionEntryByKey(getSessionEntryLookup(taskRegistryMaintenanceRuntime.resolveStorePath(void 0, { agentId }), context), childSessionKey);
+	const storePath = taskRegistryMaintenanceRuntime.resolveStorePath(void 0, { agentId });
+	// gateway-freeze-lookups: read only this key's rows (default runtime only), cached per reconcile context.
+	if (taskRegistryMaintenanceRuntime.listSessionEntries === listSessionEntriesReadOnly && process.env.OPENCLAW_V_TASK_SESSION_LOOKUP_EXACT !== "0") {
+		const cacheKey = `${storePath}\0${childSessionKey}`;
+		const cachedEntries = context ? context.sessionEntriesByKeyExact ??= /* @__PURE__ */ new Map() : void 0;
+		if (cachedEntries?.has(cacheKey)) return cachedEntries.get(cacheKey);
+		const entry = findSessionEntryByKey(buildSessionEntryLookup(listSessionEntriesMatchingReadOnly({ storePath }, { sessionKeys: [childSessionKey] })), childSessionKey);
+		cachedEntries?.set(cacheKey, entry);
+		return entry;
+	}
+	return findSessionEntryByKey(getSessionEntryLookup(storePath, context), childSessionKey);
 }
 function isActiveTask(task) {
 	return task.status === "queued" || task.status === "running";

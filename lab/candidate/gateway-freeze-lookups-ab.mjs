@@ -1,4 +1,4 @@
-// run-session-lookup-exact A/B on a copy of V's makaron session tables (see lab/run-session-lookup-exact.md).
+// gateway-freeze-lookups A/B on a copy of V's makaron session tables (see lab/gateway-freeze-lookups.md).
 //
 // Data (read-only export from V, kept outside the repository; FIXTURE_DIR on the VLab host):
 //   makaron.sqlite   session_nodes / session_windows / session_participants /
@@ -7,15 +7,18 @@
 // export; entry_valid keeps V's value. A few synthetic rows cover what V's data lacks (two keys sharing a
 // session id, an internal-session-effects row, a tombstone).
 //
-// Arms: V's server-session-key chunk and the release chunk loaded side by side from the candidate dist
-// (each has its own run lookup cache). Both import the runtime's combined store, which must be V's
-// (sessions-search-exact-read, match support).
+// Arms: V's chunks and the release chunks loaded side by side from the candidate dist (each copy has its
+// own module state). Both import the runtime's combined store and matching reader, which must be V's
+// (sessions-search-exact-read).
 //   1. equivalence: resolveSessionKeyForRun(runId, opts) on both, cache reset before every case
 //   2. cost per call: hit and miss
 //   3. event stream: OpenClaw's own agent event bus and server-chat createAgentEventHandler, events of
 //      runs whose session the handler cannot see (the three ways it happens on V), dispatched to the
 //      handler asynchronously as server-runtime-subscriptions does; counts whole-store lookups, measures
 //      main-thread blocking and compares everything the handler sends.
+//   4. task maintenance: getInspectableActiveTaskRestartBlockers (the host-thaw / restartChannels path)
+//      and reconcileTaskLookupToken over subagent / cli tasks pointing at real, missing, internal,
+//      tombstoned and wedged sessions; results compared, cost per call.
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -34,8 +37,9 @@ const SAMPLE = Number(process.env.SAMPLE ?? 60);
 const STREAM_EVENTS = Number(process.env.STREAM_EVENTS ?? 15);
 const STREAM_RUNS = Number(process.env.STREAM_RUNS ?? 2);
 const STREAM_RATE = Number(process.env.STREAM_RATE ?? 20);
-const REL = "lab/release-files/run-session-lookup-exact";
+const REL = "lab/release-files/gateway-freeze-lookups";
 const NAME = "server-session-key-ZtX3Ble7.js";
+const MAINT = "task-registry.maintenance-C4nMaDY9.js";
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const out = {};
 const progressLog = path.join(FIXTURE_DIR, `${path.basename(WORK_DIR)}.progress.log`);
@@ -63,8 +67,9 @@ process.env.OPENCLAW_DB91_INTEGRITY_STATE_ROOT = stateDir;
 process.env.OPENCLAW_HOME = WORK_DIR;
 
 // ---- side-by-side chunks ----
-const plan = JSON.parse(fs.readFileSync("lab/run-session-lookup-exact.plan.json", "utf8"));
-const [planFile] = plan.files;
+const plan = JSON.parse(fs.readFileSync("lab/gateway-freeze-lookups.plan.json", "utf8"));
+const planFileFor = (name) => plan.files.find((f) => f.target === `openclaw/dist/${name}`);
+const planFile = planFileFor(NAME);
 const copies = [];
 const place = (name, source) => {
   const file = path.join(DIST, name);
@@ -78,10 +83,14 @@ assert.equal(sha(fs.readFileSync(path.join(DIST, NAME), "utf8")), planFile.befor
 assert.equal(sha(fs.readFileSync(path.join(DIST, "combined-store-gateway-BwDhjbIt.js"), "utf8")), "9cb53296f60b4d375f19cdd0e52d104a7b255c9feaae34656654c718bb6f5c51", "V combined store");
 assert.equal(sha(fs.readFileSync(path.join(DIST, "v-session-entries-matching.mjs"), "utf8")), "d2d2c2cd7b33622fabcd1ab52ec003d2bf471735c64b49030294a76f27af7e02", "V matching reader");
 assert.equal(sha(fs.readFileSync(path.join(DIST, "server-chat-Mh_L0_2e.js"), "utf8")), "9c2f1bb1fd63684edfc89c1314fb668c5e4363b98e269507b9caf81ec052faed", "V server-chat");
+assert.equal(sha(fs.readFileSync(path.join(DIST, MAINT), "utf8")), planFileFor(MAINT).before, `V bytes: ${MAINT}`);
 const releaseSource = fs.readFileSync(path.join(REL, NAME), "utf8");
 assert.equal(sha(releaseSource), planFile.after, "release bytes");
+const maintReleaseSource = fs.readFileSync(path.join(REL, MAINT), "utf8");
+assert.equal(sha(maintReleaseSource), planFileFor(MAINT).after, `release bytes: ${MAINT}`);
 const base = await import(path.join(DIST, NAME));
-const patched = await import(place(NAME.replace(/\.js$/u, ".RSLPATCHED.js"), releaseSource));
+const patched = await import(place(NAME.replace(/\.js$/u, ".GFLPATCHED.js"), releaseSource));
+const maintArms = { base: await import(path.join(DIST, MAINT)), patched: await import(place(MAINT.replace(/\.js$/u, ".GFLPATCHED.js"), maintReleaseSource)) };
 assert.notEqual(base.n, patched.n);
 const arms = { base: { resolve: base.n, reset: base.t }, patched: { resolve: patched.n, reset: patched.t } };
 
@@ -170,6 +179,9 @@ const synthetic = {};
   synthetic.structural.keys = [`agent:makaron:rsl-x:${synthetic.structural.sessionId}`, `agent:makaron:rsl-y-${uuidFrom("g")}`];
   insert(synthetic.structural.keys[0], { ...donor, sessionId: synthetic.structural.sessionId, updatedAt: now - 5000 });
   insert(synthetic.structural.keys[1], { ...donor, sessionId: synthetic.structural.sessionId, updatedAt: now - 5000 });
+  // a subagent session whose orphan recovery is tombstoned (task maintenance marks its task lost with the reason)
+  synthetic.wedged = { key: `agent:makaron:subagent:rsl-wedged-${uuidFrom("h")}`, sessionId: uuidFrom("rsl-wedged"), reason: "rsl wedged reason" };
+  insert(synthetic.wedged.key, { ...donor, sessionId: synthetic.wedged.sessionId, subagentRecovery: { wedgedAt: now - 120_000, wedgedReason: synthetic.wedged.reason } });
   db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
   db.close();
   log("fixture", { counts, synthetic, ms: Math.round(performance.now() - t) });
@@ -367,6 +379,86 @@ for (const [name, scenario] of Object.entries(scenarios)) {
   result.sameOutput = result.base.sentDigest === result.patched.sentDigest && result.base.sent === result.patched.sent;
   log(`stream ${name}`, result);
   assert(result.sameOutput, `handler output differs: ${name}`);
+}
+
+// ---- 4. task maintenance: restart blockers and task reconcile ----
+{
+  const { a: listSessionEntriesReadOnly } = await import(path.join(DIST, "session-accessor.sqlite-entry-BlklNPKQ.js"));
+  const { o: resolveSessionStorePathCore } = await import(path.join(DIST, "paths-DDTeIhCT.js"));
+  const { O: parseAgentSessionKey } = await import(path.join(DIST, "session-key-CRjxKW0X.js"));
+  const { t: deriveSessionChatTypeFromKey } = await import(path.join(DIST, "session-chat-type-shared-BKTfMJHj.js"));
+  const now = Date.now();
+  const old = now - 3_600_000;
+  const task = (i, fields) => ({ taskId: `rsl-task-${i}`, status: "running", createdAt: old, startedAt: old, lastEventAt: old, label: `t${i}`, task: `task ${i}`, ...fields });
+  const sampleKeys = [...spread(nightshift, 30), ...spread(others, 10)].map((r) => r.session_key);
+  const archived = rows.find((r) => r.archived_at && !r.session_key.includes(":rsl-"))?.session_key;
+  const tasks = [
+    ...sampleKeys.map((key, i) => task(i, { runtime: "subagent", childSessionKey: key })),
+    ...Array.from({ length: 10 }, (_, i) => task(100 + i, { runtime: "subagent", childSessionKey: `agent:makaron:subagent:rsl-missing-${randomUUID()}` })),
+    task(200, { runtime: "subagent", childSessionKey: synthetic.internal.key }),
+    task(201, { runtime: "subagent", childSessionKey: synthetic.tombstone.key }),
+    task(202, { runtime: "subagent", childSessionKey: synthetic.wedged.key }),
+    ...(archived ? [task(203, { runtime: "subagent", childSessionKey: archived })] : []),
+    task(204, { runtime: "subagent", childSessionKey: sampleKeys[0].toUpperCase() }),
+    task(205, { runtime: "cli", childSessionKey: sampleKeys[1] }),
+    task(206, { runtime: "cli", childSessionKey: "agent:makaron:feishu:direct:ou_rsl" }),
+    task(207, { runtime: "cli", childSessionKey: sampleKeys[2], runId: `rsl-run-${randomUUID()}` }),
+    task(208, { runtime: "subagent", childSessionKey: `agent:makaron:subagent:rsl-fresh-${randomUUID()}`, lastEventAt: now }),
+    task(209, { runtime: "subagent", childSessionKey: sampleKeys[3], status: "queued" }),
+    task(210, { runtime: "subagent", taskKind: "native" }),
+    task(211, { runtime: "subagent", childSessionKey: `agent:v-codex:subagent:rsl-other-agent-${randomUUID()}` }),
+  ];
+  const byId = new Map(tasks.map((t) => [t.taskId, t]));
+  const runtimeFor = () => ({
+    ensureTaskRegistryReady: () => {},
+    listTaskRecords: (filter) => tasks.filter((t) => !filter || filter(t)).map((t) => ({ ...t })),
+    resolveTaskForLookupToken: (token) => (byId.has(token) ? { ...byId.get(token) } : undefined),
+    listSessionEntries: listSessionEntriesReadOnly,
+    resolveStorePath: resolveSessionStorePathCore,
+    parseAgentSessionKey,
+    deriveSessionChatTypeFromKey,
+    getAgentRunContext: registry.c,
+    isRuntimeAuthoritative: () => true,
+    isCronJobActive: () => false,
+    isBackgroundExecSessionActive: () => false,
+    hasActiveAcpTurn: () => false,
+    listTaskRegistryRecordsByRuntimeSourceIdFromSqlite: () => [],
+  });
+  for (const arm of Object.values(maintArms)) arm.m(runtimeFor());
+  const realNow = Date.now;
+  const frozen = (fn) => { Date.now = () => now; try { return fn(); } catch (error) { return { threw: String(error?.message ?? error) }; } finally { Date.now = realNow; } };
+  const result = {};
+  for (const [armName, arm] of Object.entries(maintArms)) {
+    result[armName] = {
+      blockers: frozen(() => arm.n()),
+      reconciled: tasks.map((t) => frozen(() => arm.d(t.taskId))),
+    };
+  }
+  const blockerDiff = JSON.stringify(result.base.blockers) !== JSON.stringify(result.patched.blockers);
+  const reconcileDiffs = tasks.map((t, i) => [t.taskId, result.base.reconciled[i], result.patched.reconciled[i]]).filter(([, a, b]) => JSON.stringify(a) !== JSON.stringify(b));
+  const statusCount = (list) => list.reduce((acc, t) => { const k = t?.threw ? "threw" : `${t?.status}${t?.error ? `: ${t.error}` : ""}`; acc[k] = (acc[k] ?? 0) + 1; return acc; }, {});
+  log("maintenance equivalence", {
+    tasks: tasks.length,
+    blockers: Array.isArray(result.base.blockers) ? result.base.blockers.length : result.base.blockers,
+    blockerDiff,
+    reconcileDifferences: reconcileDiffs.length,
+    diffs: reconcileDiffs.slice(0, 10),
+    reconciled: statusCount(result.base.reconciled),
+  });
+  assert(!blockerDiff, "restart blockers differ");
+  assert.equal(reconcileDiffs.length, 0, "task reconcile differs");
+  // switch off restores the whole-store read in the release chunk
+  process.env.OPENCLAW_V_TASK_SESSION_LOOKUP_EXACT = "0";
+  const offStart = performance.now();
+  frozen(() => maintArms.patched.n());
+  const offMs = Math.round(performance.now() - offStart);
+  delete process.env.OPENCLAW_V_TASK_SESSION_LOOKUP_EXACT;
+  log("maintenance switch off", { ms: offMs });
+  assert(offMs > 200, "switch off reads the whole store");
+  for (const armName of ["base", "patched"]) {
+    log(`cost.${armName} restart blockers (${tasks.length} tasks)`, await measure(`${armName}: getInspectableActiveTaskRestartBlockers`, () => frozen(() => maintArms[armName].n()).length, armName === "base" ? REPEAT : REPEAT * 10));
+  }
+  for (const arm of Object.values(maintArms)) arm.f();
 }
 
 console.log(JSON.stringify(out, null, 1));
