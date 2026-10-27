@@ -31,7 +31,7 @@ env.update({'OPENCLAW_CONFIG_PATH':shared['OPENCLAW_CONFIG_PATH'],'OPENCLAW_STAT
     'VOICE_ENTRIES_FILE':str(private/'phones.json'),'VOICE_IOS_PUBLIC_ENTRY':'1','VOICE_PUBLIC_TOOLS':'0',
     'VOICE_IOS_BINDINGS_FILE':str(private/'ios-bindings.json'),'VOICE_CALL_REPORTS_DIR':str(private/'reports'),
     'RTC_H5_TRANSCRIPT_DIR':str(private/'transcripts'),'RTC_H5_AVATAR_LOG_DIR':str(private/'avatar-events'),
-    'VOICE_CANDIDATE_RELEASE_FILE':str(private/'candidate-release.json'),'VOICE_PHONE_INPUT_POLICY':'phone',
+    'VOICE_CANDIDATE_RELEASE_FILE':str(private/'candidate-release.json'),'VOICE_PHONE_INPUT_POLICY':'native',
     'VOICE_DEFAULT_MODEL':'seeduplex'})
 for key in ['VOICE_RELEASE_SOCKET','VOICE_DEVICES_FILE','VOICE_PERSONAL_REPLY_ACCOUNT_ID','VOICE_FEISHU_ACCOUNTS_FILE']:
     env.pop(key,None)
