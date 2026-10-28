@@ -476,11 +476,17 @@
         "lab/gateway-freeze-lookups.test.mjs",
         "tests/v-self-restart-gateway.test.mjs",
         "lab/workboard-sweep-bounded.test.mjs",
-        "lab/openclaw-tool-safe-deny.test.mjs"
+        "lab/openclaw-tool-safe-deny.test.mjs",
+        "lab/skill-workshop-agent-apply.test.mjs",
+        "scripts/v-skills-catalog.test.mjs"
       ]
     }
   ],
   "deferredTestFiles": [
+    {
+      "file": "tests/bootstrap-memory-everywhere.test.mjs",
+      "reason": "Candidate test: imports the OpenClaw core and Codex plugin from $VLAB_CANDIDATE_RUNTIME; run with lab/release-files/bootstrap-memory-everywhere/candidate.*.plan.json"
+    },
     {
       "file": "lab/db91-writer-transaction-scope.test.mjs",
       "reason": "读取只存在于 Tianyi 这台 Mac 上的 ~/v-upgrade-private/20260912-openclaw94-shared-vlab 9.4 fixture；本机离线通过，CI 干净环境 ENOENT。fixture 进仓库或改成显式环境变量之前不进 CI 套件。"
