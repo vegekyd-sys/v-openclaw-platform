@@ -1,0 +1,14 @@
+{
+  "support": [
+    "lab/candidate/skills-catalog.mjs",
+    "scripts/v-skills-catalog.mjs",
+    "config/v-skills-catalog.json",
+    "tmp/v-skills-catalog-capture.json"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/skills-catalog.mjs"
+  ],
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity"
+}
