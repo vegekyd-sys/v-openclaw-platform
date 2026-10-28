@@ -76,9 +76,10 @@ V 上的实际记录：journal 只保留到 10/23，这段时间 DeepSeek 没有
 | A | 未设置 | high（Worker 写的） | **off** | off | off | **无** |
 | B1（只改三处指令写回） | 显式 high | high | high ✅ | **off**（Worker 写的） | off | 无 |
 | B1 | 未设置 | high | high ✅ | **off** | off | 无 |
-| B2（再改 Worker 转发） | | | | | | 见 3.3 |
+| B2（四处全改） | 显式 high | high | high ✅ | high ✅ | high ✅ | **high ✅** |
+| B2 | 未设置 | 未设置 ✅ | 未设置 | 未设置 | 未设置 | **high ✅**（来自模型参数） |
 
-candidate-11153c91。B1 证明了第四处写入点，补丁随后加上 `harness-event-contract.mjs`。
+A、B1：candidate-11153c91。B1 证明了第四处写入点，补丁随后加上 `harness-event-contract.mjs`。B2：candidate-23cdbb7a（4 个文件的运行时字节都与 V 一致）。Grok 那一轮的请求都不带 effort，与改前相同，即运行时钳制不变。
 
 ### 3.2 48 万 token 的 DeepSeek 大会话交给 Grok
 
@@ -94,9 +95,18 @@ candidate-11153c91。B1 证明了第四处写入点，补丁随后加上 `harnes
 - 备用模型溢出时，压缩的退路是 `compaction.model`。V 上它是 `deepseek/deepseek-flash`，DeepSeek 故障时这条退路也是坏的；主路是 versa-fast-quality（Azure gpt-5.6-sol），V 上 10/04 实证可用。
 - OpenClaw 不会按备用模型的窗口先压缩，先发一次超长请求、拿到 400 再压缩。
 
-### 3.3 第四轮（补丁 B2 + 清掉镜像会话的模型覆盖）
+### 3.3 DeepSeek 503 回退到 Grok，大会话（candidate-23cdbb7a）
 
-（VLab 数据盘被其他会话的 candidate 占满，排队中）
+先清掉镜像会话自带的用户模型覆盖（`deepseek-v4-flash`，source=user），使它和 V 上的默认会话一样；跑在 B2 运行时上（补丁只碰 thinking 写回，不碰回退和压缩）。
+
+| 场景 | 过程 | 用户看到回复 |
+|---|---|---|
+| 503 → Grok，窗口 50 万 | DeepSeek 503 ×2（Worker 1 次 + Gateway 1 次重试）→ `next=xai/grok-4.7` → `candidate_succeeded` | 13.0 s 内完成（Grok 请求在 9.4 s 发出） |
+| 503 → 27.2 万窗口 | DeepSeek 503 ×2 → Grok 400 溢出 → 自动压缩 48.4 万 → 摘要 1.5 万字（真实模型压缩，有 Decisions 等章节）→ Grok 6.8 万 token 重试成功 | 27.5 s；**会话被永久压缩** |
+| 手动 Grok，窗口 50 万 | 直接答 | 11.3 s |
+| 手动，窗口 27.2 万 | 400 → 压缩 → 答 | 47.5 s；会话被永久压缩 |
+
+结论：DeepSeek 故障时回退链本身是通的（#375 的效果在大会话上也成立）。窗口比会话小的备用模型能接住，但代价是这个会话被压缩，DeepSeek 恢复后也回不去。压缩能成功的前提是快速压缩模型可用；candidate-11153c91 里它不可用，退回 DeepSeek 压缩就失败了，用户看到英文报错。
 
 ## 4. 修复（本 PR）：切模型不再改写会话的 thinking 档位
 
