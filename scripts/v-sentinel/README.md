@@ -37,6 +37,9 @@ HTTPS. When the Gateway is the broken component, the alert still goes out.
 | unit down | `systemctl is-active` not `active` | |
 | stalled | 8+ stalled requests, two samples running | Baseline measured across three separate hours of real traffic on 2026-09-20: exactly 0. Two samples to skip a single burst. |
 | disk / memory | under 15 GB / 2 GB | |
+| disk low | root `/` under 60 GB, data disk `/srv/openclaw-data/disk1` under 20 GB (only when that path is its own mount) | 2026-10-27: the root went from 172 GB free to 53 GB in six days after the 10-21 resize, 43 GB of it in one day. 15 GB is a few hours at that pace. |
+| disk filling | at the rate free space fell over the last 6 h (one point per 10 min, needs ≥ 1 h of history), full within 24 h, two samples running | Catches a fast fill while there is still room; a cleanup that frees space clears it. |
+| big new file | a file over 4 GB changed in the last hour under `/tmp`, `/var/tmp` or `workspace/tmp`, scanned every 30 min (~1 s on V), each inode reported once | 2026-10-27: a 7.3 GB 192 kHz WAV in `/tmp`, and one 7.4 GB Feishu zip downloaded twice in parallel. Cleanup list: `docs/v-disk-governance.md`. |
 | plugin dir missing | any `plugins.load.paths` entry of the main or worker config absent on disk, every tick | 2026-10-09: a deleted plugin dir broke the worker config at once (48 turns failed in 22 min) and the main config silently (it would only have failed at the next Gateway start). |
 | config invalid | `openclaw config validate` fails for either file, run every 10 min (≈2 s each) as `openclaw` with the unit's own node + `dist/index.js` | Catches the main config breaking long before a restart exposes it. A validator timeout is not reported. |
 | worker invalid config | any `Worker Agent request failed … InvalidConfigError` in 3 min | Each one is a user turn that got an error card before reaching the model. |
