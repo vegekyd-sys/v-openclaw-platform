@@ -11,6 +11,38 @@
 
 ---
 
+## v2026.9.1-db91.6-release-batch-20261028
+
+上线：2026-10-28 19:51 CST（19:49 v-self-restart 一次，同时 --set skills）  ·  tag `v2026.9.1-db91.6-release-batch-20261028`
+
+**摘要**：四个 PR 一次重启：
+- #506：根目录 MEMORY.md 不再只在私聊预载：群聊、频道、定时任务、子 agent 也带上；Codex（/vcodex、/vds）把正文作为回合级 developer instructions 下发，不再只给一行指针。**但在 V 上还没生效**：上游另有一道记忆来源检查，V 的 MEMORY.md 自 10/12 20:09 起被记为 `untrusted`（被工具以外的途径改过，之后不可逆），所以私聊在内所有会话都不预载。修法待 Tianyi 选择。
+- #480：技能目录不再截断。`skills.limits={maxSkillsInPrompt:400,maxSkillsPromptChars:48000}`，关掉 59 个技能，重启时用 `--set skills=@file` 写入主配置，Worker 配置自动推导。V 上 286 个技能全部进目录（46,108 字符）。
+- #497：V 的 agent 能直接 apply 手写 skill 的 Workshop 提案；worker 会话的复盘不再被 native-attempt-bridge 拦下。
+- #498：硬盘哨兵提前告警（余量线、写满预测、临时目录大文件）。主机脚本，20:14 单独装到 `/opt/v-sentinel/`，不在下面的文件列表里。
+
+验收：
+- 重启：等了 92 s 仍有 19 个 worker 回合（主要是夜班），按 wait-then-proceed 照常重启；起来后 worker 5/5，加载错误 0。
+- 用 lark-cli 发真实飞书消息：
+  - worker 群：技能目录里能看到 scene-cli、wecom-unified、zhongfang-aff-preshow（原来截断在 geelark 之后）。
+  - `/vcodex` 群和 worker 群：都答「看不到 MEMORY.md 正文」。在 V 上用真实配置直接调用预载函数，私聊和群聊都只有 AGENTS/SOUL/IDENTITY/USER，原因是上面说的记忆来源检查，不是本次代码失效。
+- 共享 VLab（release-batch-20261028-v1，artifact d221068a）：VLab 的 MEMORY.md 没有 untrusted 记录，所以 worker 和 /vds 都能在群聊里不调工具答出 MEMORY.md 里的内容。VLab 的 Codex 插件副本（state/npm）已按 V 字节同步，VLab ALIGNED。
+- 同日硬盘清理 72 GB（清单 `/home/openclaw/backups/storage-maintenance/cleanup-20261028T183606.tsv`），根分区 80%。
+
+相对上一版 `v2026.9.1-db91.6-release-batch-20261027`：6 个文件变化。
+
+**经 VLab 发版 `release-batch-20261028-v1`**（monitor-v-production，dev `339cde9b`）
+> 验收：2026-10-28 18:51-19:05 shared VLab, code d221068a (#506 MEMORY.md everywhere, #497 Skill Workshop). Real Feishu lark-cli V-Lab group on vlab-worker (deepseek-flash): listed Project Context files include workspace/w1/MEMORY.md in a GROUP session; answered the DealClaw admin URL that only MEMORY.md contains without tools. (First phrasing let the model answer 'not preloaded' while the file was presen…
+- `core` experience-review-default-Dr4f0pMZ.js  798e630b → 604ab19a
+- `core` openclaw-tools-BODVdJQD.js  4bed21d8 → 0b8b6233
+- `core` service-query-Bt8YN8NM.js  2d2689ef → bb7aed5d
+- `core` workspace-BFk42BX6.js  7aa02efc → 5c74cd7c
+- `worker` native-attempt-bridge.mjs  0429d15e → a4171b1e
+- `codex` dist/attempt-context-DmQUNWwT.js  f3d2f15a → d425cfe2
+
+**这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #507 发布批次 20261028：MEMORY.md 全会话预载 + Skill Workshop + 硬盘哨兵 + 技能目录
+
 ## v2026.9.1-db91.6-release-batch-20261027
 
 上线：2026-10-27 22:01 CST（21:58 v-self-restart 一次，同时 --set tools.deny）  ·  tag `v2026.9.1-db91.6-release-batch-20261027`
