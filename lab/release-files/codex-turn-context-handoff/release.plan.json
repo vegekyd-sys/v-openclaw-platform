@@ -1,0 +1,23 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/codex-turn-context-handoff/dist/thread-lifecycle-DAcEJ_Om.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js",
+      "before": "4cceab62ea349d266533cf18f6ffdbd620407504cfe16126e16aa04e5bfcb661",
+      "after": "762089fdd5431db9feb5c8ef6f291e7736b021c522436015f25c70129b38abf7"
+    },
+    {
+      "source": "lab/release-files/codex-turn-context-handoff/dist/run-attempt-D1hJO4fX.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js",
+      "before": "c34d6d777a862db761e22e03fae20e70c595867361052475a5703f67446ce2ce",
+      "after": "09343afb62e31915dd8de00bcb24c9f638428889d0e2b305deb73d43271e25af"
+    },
+    {
+      "source": "lab/release-files/codex-turn-context-handoff/dist/compact-_t0HQrUS.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/compact-_t0HQrUS.js",
+      "before": "278c85051bb8cf0932c1409d860fc0fac63bacd619b9998e29c7ea7e0afb6406",
+      "after": "4af4b7036884e0f179d21e80e57bcf3c4ab376dafb8030938a0e039926e6f206"
+    }
+  ]
+}
