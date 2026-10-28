@@ -102,7 +102,7 @@ D 类还可以再拆开看（旧台账 72 项）：
 ## 三、要你决定的条件项
 
 1. **小荷/火山 RTC 语音还要不要**（VOICE-RTC 三项 + worker 语音 provider）：10/05 起 /voice 已经换成 GPT Live / SeedDuplex / Grok。不要的话这几项全部作废。
-2. **Telegram 还算不算 V 的渠道**（V-EXPERIENCE 三项）：只有你一个人在用，不要的话就作废。
+2. **Telegram 还算不算 V 的渠道**（V-EXPERIENCE 里只属于 Telegram 的三项）：只有你一个人在用，不要的话就作废。共用模块 V-EXPERIENCE/module 钉钉、企微也在用，不能删。
 3. **门禁口径**：是否改成"在 V 同规格机器上测，用户能感受到的指标不劣于 9.1"，重启时间不超过 9.1 的 2 倍。
 4. **测试机器**：能否用 V 的每日镜像开一台同规格的临时机器做门禁（按小时计费，测完就删）。
 
@@ -110,11 +110,110 @@ D 类还可以再拆开看（旧台账 72 项）：
 
 ---
 
-## 四、下一步（盘点第二轮）
+## 四、第二轮：逐项对照 9.35（2026-10-29）
 
-1. 把 D、D'、E、F 类约 130 项逐项对照 9.35 源码，确认哪些上游已经修了或已经有了。重点是 #375 5xx 回退、LOOPBACK-SENDER、NO-REPLY-AFTER-TOOL 这类回移项。
-2. 补全 10/11 之后新增项的文件级归属：哪个文件属于哪个 PR，有没有漏掉的改动。
-3. 得出最终的"必带清单"和工作量，再决定是否开同规格机器跑门禁。
+### 做法
+
+- 10/11 台账对 10.1 有逐项证据（上游 PR、提交、源码行号）。这些引用的上游 PR 是否进了 9.35，按 9.35 提交信息全文搜 PR 号来判断。
+  - 9.35 是 9.8 的发布分支加上 cherry-pick 的回移，提交哈希和主干不一样，所以"是不是祖先提交"判断不了，只能搜 PR 号。
+- 9.8→9.35 之间 656 个回移提交，按飞书、Codex、computer、语音、子 agent、注册表、重启等关键词逐条扫过。
+- 卡升级最狠的子会话冻结（#157935），直接读了 9.35 源码。
+- fork 里的源码补丁（51 个）和 10.3 门禁修复（31 个），都用 `git merge-tree` 试套到 9.35 上。
+- 范围：上一轮的 D、D'、E、F 类，共 111 项；另外 10/11 之后新增的约 20 项功能改动，按 CHANGELOG 判断。
+- **没做**：没有构建、没有跑测试；新增项没逐文件核对。标"实测确认"的项要到门禁时才能定。
+
+### 结论汇总（旧台账 111 项）
+
+| 结论 | 数量 | 说明 |
+|---|---:|---|
+| 9.35 已有，不带 | 15 | 其中 3 项是 9.35 的回移（10.1 反而没有） |
+| 作废 | 2 | |
+| 实测确认 | 9 | 可能已有或只看数据，门禁时验证 |
+| 部分已有，带剩余部分 | 16 | 大多只剩配置覆盖或一小段 |
+| 9.35 没有，要带 | 62 | 飞书 15、核心 19、企微 9、Codex 插件 7、钉钉 6、新版本自身问题 5、worker 插件 1 |
+| 要你决定 | 7 | 小荷 RTC 4 项、Telegram 3 项 |
+
+### 几条关键发现
+
+1. **9.35 自带了我们的几项补丁。**
+   - COMPUTER-EXEC-IDLE：9.35 回移了 #151127，回合结束就释放 computer 执行，正是 /vcc 桌面永久 BUSY 那个问题。
+   - E3c：回移了 #167878，上下文用尽时改抛溢出错误，不再把 max_tokens 钳成 1。
+   - MCP 回环 0b1236bb257：回移了 #165428，修了一半。
+   - 飞书流式合并：回移了 #166610，修了一半。
+   - gpt-6 系列双路由：上游自带，只剩配置覆盖。
+2. **子会话冻结（#157935）在 9.35 里还在。** 子会话结束时的钩子加载插件注册表，没有传可复用的注册表，会冷加载全部插件。fork 在 10.3 上的修法（`19df62b` 等 4 个提交）要带过来，试套时冲突都只在 1 个源文件。
+3. **会话列表被目录刷新拖慢的问题，9.35 可能还在。** 10.1 靠 #162280（只物化当页的行）缓解，但 #162280 不在 9.35。fork 的 session-row 系列（L 级）要带，门禁时专门测。
+4. **试套情况。**
+   - fork 源码补丁 51 个，6 个能直接套上，其余冲突。
+   - 10.3 门禁修复 31 个，9 个能直接套上，其余大多只冲突 1 个源文件。
+   - 冲突主要是上下文移动，不是逻辑重写，但每个都要人工看。
+5. **官方插件都有 9.35 版本。** npm 上 `@openclaw/feishu`、`@openclaw/codex`、`@openclaw/ai` 的 `extended-stable` 标签都指向 9.35，"只发 Gateway"不影响 V。
+6. **9.35 要求 Node ≥24.22.1。** V 现在是 Node 22.23.1。夜班 CLI、cua node 这些伴随服务要一起换，这是运维项。
+
+### 10/11 之后新增的功能项（约 20 项）
+
+| 改动 | 9.35 | 说明 |
+|---|---|---|
+| #375 上游 5xx/429 切备用模型 | 部分已有 | 核心 776f76b4b87 在 9.35；worker 跨进程那段随 worker 作废；只剩"同模型重试 1 次"策略 |
+| #345 DeepSeek 图片预算 | 部分已有 | 跟 E3 一起处理，上游通用估算已按固定额度算图片 |
+| #426 Codex 子 agent 后续任务重新认领 | 实测确认 | 9.35 回移了 #177577 等原生子 agent 修复，可能覆盖 |
+| 子任务结算（subagent-settle） | 实测确认 | 9.35 有一串子 agent 结算修复；worker 回传那半作废 |
+| #484 makaron 去掉 openclaw 工具 | 实测确认 | 9.35 的 `tools.deny` 配置可能就够，不用改核心 |
+| #497 agent 直接 apply Workshop 提案 | 部分 | worker 拦截那半作废；放行规则要看 9.35 的 Workshop |
+| #353 重启恢复认领不卡群 | 要带 | V 独有 |
+| #358 群聊换人不换 Codex 线程 | 要带 | V 独有 |
+| #361 /vds 按 100 万窗口压缩、40 MiB 换线程 | 要带 | /vds 是 V 独有 |
+| #441 语音委派、语音任务连续性 | 要带 | V 语音链路 |
+| 跨会话统一分发与回复（unified-session） | 要带 | V 独有，L 级 |
+| #444 memory_search 超时退关键词 | 要带 | |
+| #506 MEMORY.md 全场景预载 | 要带 | |
+| #454 卡片会话不做 memory flush、notes 12000 | 要带 | 小 |
+| #501 飞书自动续接显示在原卡 | 要带 | 飞书插件 |
+| 电话入口、语音确认卡（3 次发版） | 要带 | 飞书插件 |
+| 钉钉出站会话 ID 大小写 | 要带 | 钉钉插件 |
+
+### 工作量
+
+按 10/11 台账的 S/M/L 比例，换算到上次"全量 185 项约 76 人日"的估算口径：
+
+| 部分 | 估算 |
+|---|---|
+| 旧台账要带的（62 + 16 项） | 约 40 人日 |
+| 其中：核心 | 约 10 |
+| 其中：语音（GPT Live 等 12 项） | 约 10 |
+| 其中：飞书 | 约 9 |
+| 其中：Codex 插件 | 约 4 |
+| 其中：新版本自身问题 | 约 3 |
+| 其中：企微 + 钉钉 + Telegram | 约 5 |
+| 10/11 之后新增的约 15 项 | 约 12 人日 |
+| 10.3 门禁修复移植到 9.35 | 约 3–5 人日 |
+| 门禁上还没解决的三件事（停机时 worker 线程租约、插件源码复制、c15 每回合约 1 s） | 未知，要在 V 规格机器上先测有没有 |
+| **合计** | **约 55–60 人日，加门禁未知项** |
+
+老路线是 76 人日，加上 10/11 之后的新增和门禁，约 100 人日。这次省了约一半，省在三处：不带 worker、性能补丁推迟、9.35 自带了一部分。但要说清楚：**移植量仍然不小，"轻"主要轻在升级以后**。之后在 LTS 线上换小版本，每次只是一批修复；从现在起新改动先写源码，这个数就不会再涨。
+
+### 可以分期的地方
+
+切换当天必须有的：
+- 核心（含新版本自身问题和门禁修复）
+- Codex 插件
+- 飞书
+- 语音
+
+这四块约 35 人日。下面这些用的人少，可以切换后一两周内补上，代价是这段时间这些渠道回到官方体验：
+- 企微、钉钉、Telegram 的 V 体验
+- 一部分飞书外观项（卡片头、发送人缓存、预建卡片）
+
+### 下一步建议
+
+1. **先跑门禁，后移植。** 在 V 同规格的临时机器上，用 V 的数据快照，跑原版 9.35 + 子会话冻结修复（`19df62b` 等 4 个提交）+ 两个启动迁移参数，用现成的 gate 脚本测：
+   - 重启时间
+   - 子会话冻结
+   - c1/c5/c15 首字（不带 worker）
+   - 会话列表
+
+   这一步约 2–3 天，可以先回答"9.35 不带 worker 在 V 的规格上行不行"。不行的话，后面 55 人日也就不用投了。
+2. 门禁过了，再按"切换当天必须有"的范围移植，约 35 人日。
 
 ---
 
@@ -352,3 +451,144 @@ D 类还可以再拆开看（旧台账 72 项）：
 - CX-vds-switch-guard [codex-plugin,c4,S] Block /vds->OpenAI-on-Codex switch
 - SD-db91-env [systemd,c4,S] Toggles for db91 dist patches
 - SD-feishu-steer-prestart [systemd,c4,S] Re-patch 9.1 dist before every start
+
+
+## 附二：第二轮逐项结论（旧台账 111 项，对 9.35）
+
+| 结论 | 数量 | 层分布 | 工作量 S/M/L |
+|---|---:|---|---|
+| NEED | 62 | core 19, feishu 15, wecom 9, codex-plugin 7, dingtalk 6, upgrade-line 5, worker-plugin 1 | 44/14/4 |
+| PART | 16 | core 12, upgrade-line 1, feishu 1, worker-plugin 1, codex-plugin 1 | 8/5/3 |
+| DECIDE | 7 | core 6, worker-plugin 1 | 4/3/0 |
+| VERIFY | 9 | core 3, upgrade-line 3, wecom 2, dingtalk 1 | 8/1/0 |
+| UP | 15 | core 11, upgrade-line 1, codex-plugin 1, config 1, systemd 1 | 14/1/0 |
+| DROP | 2 | upgrade-line 1, config 1 | 2/0/0 |
+
+#### NEED
+
+- `CX-292-compaction-handoff` [codex-plugin, S]
+- `CX-322-vds-view-image` [codex-plugin, M]
+- `CX-B-persistent-vds-thread` [codex-plugin, M]
+- `CX-B2-auth-family` [codex-plugin, S]
+- `CX-C-vds-oversized` [codex-plugin, S]
+- `CX-E-memory-flush-transient` [codex-plugin, S]
+- `CX-G1-vds-deepseek` [codex-plugin, M]
+- `B5` [core, S]
+- `COMPUTER-FRAME-PRUNE` [core, S]
+- `E1` [core, S]
+- `E5` [core, S]
+- `E6` [core, S]
+- `GPT-LIVE/caller-links` [core, S]
+- `GPT-LIVE/document-controller` [core, M]
+- `GPT-LIVE/lifecycle` [core, L]
+- `GPT-LIVE/talk-consult-model` [core, S]
+- `GPT-LIVE/voice-exec-lifetime` [core, M]
+- `MEMSEARCH-QUALITY` [core, L]
+- `MSR` [core, S]
+- `SEC` [core, M]
+- `V-EXPERIENCE/command-text-and-secret-entry` [core, S]
+- `V-EXPERIENCE/module` [core, M]
+- `VDS-VIEW-IMAGE` [core, S]
+- `VOICE-CONTENT` [core, M]
+- `VOICE-NATIVE-TOOLS` [core, S]
+- `VOICE-RELIABILITY/classic-process-scope` [core, S]
+- `DINGTALK-background-line` [dingtalk, S]
+- `DINGTALK-command-auth` [dingtalk, S]
+- `DINGTALK-link-cards-handoff` [dingtalk, S]
+- `DINGTALK-questions` [dingtalk, S]
+- `DINGTALK-secret-link` [dingtalk, S]
+- `DINGTALK-work-view` [dingtalk, S]
+- `FEISHU-ask-user` [feishu, L]
+- `FEISHU-card-header-hidden` [feishu, S]
+- `FEISHU-card-precreate` [feishu, M]
+- `FEISHU-codex-commentary` [feishu, S]
+- `FEISHU-dm-approvals` [feishu, M]
+- `FEISHU-empty-card-discard` [feishu, S]
+- `FEISHU-model-switch-roles` [feishu, S]
+- `FEISHU-progress-stream` [feishu, M]
+- `FEISHU-queue-10min` [feishu, S]
+- `FEISHU-runtime-footer` [feishu, S]
+- `FEISHU-secret-entry` [feishu, M]
+- `FEISHU-sender-empty-cache` [feishu, S]
+- `FEISHU-steer-lane` [feishu, S]
+- `FEISHU-task-status` [feishu, M]
+- `FEISHU-visible-progress` [feishu, M]
+- `FORK96-174bb5d0e60` [upgrade-line, S]
+- `FORK96-61f7dfee0b3` [upgrade-line, S]
+- `FORK96-c7879215b95` [upgrade-line, S]
+- `FORK96-session-row-catalog-series` [upgrade-line, L]
+- `UPSTREAM-157935` [upgrade-line, S]
+- `WECOM-background-line` [wecom, S]
+- `WECOM-cli-native-config` [wecom, S]
+- `WECOM-command-auth` [wecom, S]
+- `WECOM-link-cards-handoff` [wecom, S]
+- `WECOM-questions` [wecom, S]
+- `WECOM-secret-link` [wecom, S]
+- `WECOM-sender-name` [wecom, S]
+- `WECOM-steer-active-run` [wecom, S]
+- `WECOM-work-view-streaming` [wecom, S]
+- `WORKER-port-status` [worker-plugin, S]
+
+#### PART
+
+- `CX-137-native-subagent-relay` [codex-plugin, M]
+- `B8` [core, M]
+- `C` [core, L]
+- `E2` [core, S] — 上游已带 gpt-6 系列双路由，只剩配置覆盖
+- `E3` [core, M]
+- `F7-core` [core, S]
+- `GPT-LIVE/consult-continuation` [core, L]
+- `GPT-LIVE/native-progress` [core, L]
+- `GPT-LIVE/spoken-confirmation` [core, S]
+- `GPT-LIVE/talk-relay-overflow-cancel` [core, S]
+- `LOOPBACK-SENDER` [core, S]
+- `NO-REPLY-AFTER-TOOL` [core, M] — #149642 在 9.35；但 #152786 让必答回合不能静默，要做更窄的移植
+- `VCODEX-SOL61` [core, S] — 同 E2，只剩配置覆盖
+- `FEISHU-stream-coalesce` [feishu, M] — 9.35 回移 #166610（收尾前合并过期预览）；流式中途替换那部分仍要
+- `FORK96-0b1236bb257` [upgrade-line, S] — 9.35 回移 #165428（同症状的一半）；剩下的请求作用域那一半仍要移植
+- `WORKER-fast-compaction` [worker-plugin, S] — 上游缺 provider 时回退原生压缩；要么拆成独立小插件，要么接受原生
+
+#### DECIDE
+
+- `V-EXPERIENCE/telegram-background-line` [core, M]
+- `V-EXPERIENCE/telegram-questions` [core, S]
+- `V-EXPERIENCE/telegram-working-view` [core, S]
+- `VOICE-RTC/control-ui` [core, M]
+- `VOICE-RTC/gateway-managed-room` [core, M]
+- `VOICE-RTC/provider-plugin` [core, S]
+- `WORKER-voice-providers` [worker-plugin, S]
+
+#### VERIFY
+
+- `BG-WORK-CODEX-SUBAGENT` [core, S] — 9.35 回移了一串 Codex 原生子 agent 修复（#175246/#177577/#179099），可能覆盖，实测
+- `IMAGE-HOLD` [core, S] — 主体在 9.35；冷启动无目录时的回退要实测
+- `SKILLS-WATCH-READY` [core, S] — 9.35 有 #155724/#155901，10.1 的完整机制还靠 9.35 没有的 #159226
+- `DINGTALK-sdk-compat` [dingtalk, S]
+- `FORK96-3013cb3112d` [upgrade-line, S] — 配置改用 deepseek-flash 后作废
+- `FORK96-6c9a1549915` [upgrade-line, M] — 根因 #156268 在 9.35；fork 的额外加固可选
+- `FORK96-b82243e4733` [upgrade-line, S] — 看数据：V 库里还有 9.1 时代的 azure 目录缓存行才需要；可改成升级时一次性清理
+- `WECOM-package-pins` [wecom, S]
+- `WECOM-sdk-compat` [wecom, S]
+
+#### UP
+
+- `CX-H-bounded-history` [codex-plugin, S]
+- `CFG-skills-workshop-symlink` [config, M]
+- `A13` [core, S]
+- `A16` [core, S]
+- `CANONICAL-SCAN-CACHE` [core, S]
+- `COMPUTER-EXEC-IDLE` [core, S] — 9.35 回移 c5c9fba2aad（#151127）：受准入的回合结束即释放 computer 执行
+- `E3b-deepseek-budget-image` [core, S] — 上游通用估算按固定额度计图片；只有保留 V 自己的 DeepSeek 守卫时才需要
+- `E3c-completions-overflow-signal` [core, S] — 9.35 回移 #167878：上下文用尽改抛溢出，不再钳成 max_tokens=1
+- `E4` [core, S]
+- `EXEC-APPROVALS-READ` [core, S]
+- `MEMORY-FLUSH-DEFER` [core, S]
+- `SESSIONS-EXACT-READS` [core, S]
+- `X-SEARCH-EFFORT` [core, S]
+- `SD-codex-orphan-cleanup` [systemd, S]
+- `FORK96-79e127b74fa+ff3f092bb5f` [upgrade-line, S]
+
+#### DROP
+
+- `CFG-web-search-parallel` [config, S] — V 已换 DeepSeek Search
+- `FORK96-8324404c49b` [upgrade-line, S]
