@@ -251,6 +251,7 @@ Recap 方案（PR #504 §3）已经把每个位置的权限、手机 / 桌面样
 
 共享笔记目录 `side-session-notes/local_7e0f8065…/reply-suggestions-20261028/`，不进仓库：
 
+- `效果图-桌面端.png`、`效果图-手机端三屏.png`：推荐方案的效果图（源文件 `docs/experiments/reply-suggestions-panel/mock-*.html`，内容是虚构的 CDN 选型场景）。
 - `v-panel-mock-手机.png`：推荐方案「V」面板的手机宽度样例（390 px）。
 - `case-1-智能伙伴推荐追问.jpg`、`case-2-智能伙伴输入框上方.jpg`、`case-3-智能伙伴群聊侧边栏.jpg`：飞书帮助中心《飞书智能伙伴使用说明书》的官方配图。
 - `1-…` 到 `4-…`：第一版聊天框内按钮的样例卡（附录 A），作为对照。
