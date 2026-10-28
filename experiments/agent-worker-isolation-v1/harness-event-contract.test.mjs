@@ -148,7 +148,7 @@ test("classifies and translates native Harness execution options", () => {
       provider: "azure-openai",
       model: "gpt-5.6-sol",
       promptCacheKey: "agent:makaron:feishu:group:fixture",
-      thinking: "high",
+      thinkingOnce: "high",
       blockReplyBreak: "message_end",
       conversationToolPolicy: { deny: ["message"] },
       pluginHarnessToolPolicyRestricted: true,
