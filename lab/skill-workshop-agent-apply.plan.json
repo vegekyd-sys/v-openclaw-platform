@@ -1,0 +1,24 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/skill-workshop-agent-apply/service-query-Bt8YN8NM.js",
+      "target": "openclaw/dist/service-query-Bt8YN8NM.js",
+      "before": "2d2689ef3d30db33f1af19b60ba514603e1e7849150374c75bbdb6452c3291f8"
+    },
+    {
+      "source": "lab/release-files/skill-workshop-agent-apply/openclaw-tools-BODVdJQD.js",
+      "target": "openclaw/dist/openclaw-tools-BODVdJQD.js",
+      "before": "4bed21d8039c6d825e70100615329d03c2ede065249ff61a0c503e83d432a754"
+    },
+    {
+      "source": "lab/release-files/skill-workshop-agent-apply/experience-review-default-Dr4f0pMZ.js",
+      "target": "openclaw/dist/experience-review-default-Dr4f0pMZ.js",
+      "before": "798e630be141634dc0c6fc42ecffcbc545e805ad2dea197394a7041dcd77d61b"
+    },
+    {
+      "source": "lab/release-files/skill-workshop-agent-apply/native-attempt-bridge.mjs",
+      "target": "production-worker/native-attempt-bridge.mjs",
+      "before": "0429d15e7793b3700b877f4ee6200eedb3f5ad484e79425935563edde958f2fa"
+    }
+  ]
+}
