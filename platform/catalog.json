@@ -229,7 +229,8 @@
         "lab/session-task-lifecycle.test.mjs",
         "lab/codex-suppressed-prompt-finalization.test.mjs",
         "scripts/configure-v-session-relay.test.mjs",
-        "tests/inter-session-plan.test.mjs"
+        "tests/inter-session-plan.test.mjs",
+        "lab/desktop-handback-progress.test.mjs"
       ]
     },
     {
