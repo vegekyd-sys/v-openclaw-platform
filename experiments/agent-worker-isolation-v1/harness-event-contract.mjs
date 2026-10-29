@@ -175,7 +175,8 @@ export const FORWARDED_HARNESS_OPTIONS = Object.freeze({
   suppressTranscriptOnlyAssistantPersistence:
     "suppressTranscriptOnlyAssistantPersistence",
   swarmCollector: "swarmCollector",
-  thinkLevel: "thinking",
+  // The Gateway's per-turn level (clamped to the turn's model), not a session setting to store.
+  thinkLevel: "thinkingOnce",
   toolProgressDetail: "toolProgressDetail",
   toolResultFormat: "toolResultFormat",
   // This fingerprint gates tool-authority-aware prompt hooks. It is opaque,
