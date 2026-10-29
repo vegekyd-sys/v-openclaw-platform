@@ -190,7 +190,8 @@
       "layer": "core",
       "path": "computer-use-contract-CisZRwLE.js",
       "sha256": "1f51021f38e16b555139f5fbf167131f32715276c283f5ee91edc54bb55c46be",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1e84b4bbed8",
+      "note": "versa/port-backlog-20261029; build compared with V bytes 2026-10-29: naming only"
     },
     {
       "layer": "core",
