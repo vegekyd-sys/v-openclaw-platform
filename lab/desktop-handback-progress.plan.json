@@ -1,0 +1,14 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/desktop-handback-progress/v-feishu-task-presentation.mjs",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-task-presentation.mjs",
+      "before": "d3f49b00811b026835f1f5a90afaf0d8f004a25a4fa3c3599e9c3d8facd6fdcb"
+    },
+    {
+      "source": "lab/release-files/desktop-handback-progress/monitor.account-WFdlCDhR.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+      "before": "1925d3f2d4f3550189e76b27bac09a40b25bbdd7b124e839c6605926b677366b"
+    }
+  ]
+}

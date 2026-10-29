@@ -14,7 +14,7 @@ export function createTaskPresentationAccount({cfg,accountId,runtime,createClien
       let state=record.sinkState??{};
       const persist=async next=>{state=JSON.parse(JSON.stringify(next));record.sinkState=state;await checkpoint(state);};
       if(!record.anchorId){
-        const title=record.source==='cron-continuation'?'↩️ 自动续接':record.source==='queued-followup'?'⏳ 排队请求':record.source==='subagent-announce'?'↩️ 子任务回报':record.source==='inter-session'?'📨 跨会话任务':'📞 语音交办';
+        const title=record.source==='desktop-handback'?'↩️ 电脑交还':record.source==='cron-continuation'?'↩️ 自动续接':record.source==='queued-followup'?'⏳ 排队请求':record.source==='subagent-announce'?'↩️ 子任务回报':record.source==='inter-session'?'📨 跨会话任务':'📞 语音交办';
         const response=await client.im.message.create({params:{receive_id_type:route.kind==='group'?'chat_id':'open_id'},
           data:{receive_id:route.chatId,msg_type:'text',uuid:record.id.slice(0,32),content:JSON.stringify({text:title+'\n'+record.text})}});
         if(response?.code!==0||!response.data?.message_id)throw Error('Feishu task anchor was not acknowledged');
