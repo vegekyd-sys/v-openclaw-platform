@@ -1,0 +1,16 @@
+{
+  "backup": "/opt/v-release-backups/v-desktop-handback-progress-20261030-sidecar",
+  "commit": "60afc19494127f10bc188fdd0aa8b4c00b5c25d9",
+  "files": [
+    {
+      "path": "core/task-presentation.js",
+      "before": null,
+      "after": "46bae355ab295d5d069968e4ee52720eb111d4f6481ee67af761b5c686a3f4f4"
+    },
+    {
+      "path": "index.js",
+      "before": "6c0c9db8027d993230c420dd0da4532a3c055abd77ebaaf99a3bf15a3e395337",
+      "after": "e730debba8d6a137d7323bc816efac58104e238246a33063b8a72a370f95eb79"
+    }
+  ]
+}

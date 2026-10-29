@@ -1,0 +1,118 @@
+{
+  "release": "v-desktop-handback-progress-20261030",
+  "sourceCommit": "60afc19494127f10bc188fdd0aa8b4c00b5c25d9",
+  "restart": {
+    "id": "20261030-002355-8763",
+    "outcome": "ok",
+    "finishedAt": "2026-10-30 00:33:21 CST",
+    "idleGate": {
+      "result": "idle",
+      "waitedS": 405,
+      "checks": 25,
+      "ownTurnActive": false
+    },
+    "readySeconds": 111,
+    "workerPool": {
+      "ok": true,
+      "ready": 5,
+      "minWorkers": 5
+    },
+    "streams": {
+      "ok": true,
+      "enabled": 2,
+      "running": 2,
+      "notRunning": [],
+      "missing": []
+    },
+    "warnings": [],
+    "postChecks": {
+      "cannotReap": 0,
+      "invalidConfig": 0,
+      "restartRecoveryClaimChanged": 0,
+      "streamAckTimeout": 0,
+      "codexInspectFailed": 0,
+      "rebuilding": 0,
+      "workersReady": 5
+    }
+  },
+  "liveProof": {
+    "pid": 922020,
+    "controlActive": false,
+    "tasks": [
+      {
+        "id": "1d019ff491c5c7ac7c18b29858a7d95f7dd68c85aaf8e39b82f3fe31de0142b8",
+        "phase": "completed",
+        "taskId": "v-desktop-handoff-wake-h_10eb7800dd29-1793292067718",
+        "source": "desktop-handback",
+        "runIds": [
+          "v-desktop-handoff-wake-h_10eb7800dd29-1793292067718"
+        ],
+        "createdAt": 1793292070410,
+        "updatedAt": 1793292092658,
+        "delivered": true,
+        "selectedModel": {
+          "provider": "deepseek",
+          "model": "vds-deepseek-flash",
+          "agentRuntime": "codex"
+        },
+        "sinkState": {
+          "anchorId": "om_x100b61033cbc18a8b4a5ad7eff22642",
+          "conversationChatId": "oc_104de99774aea6a55f5ae46863e99ef3",
+          "stream": {
+            "cardId": "7702130796735237131",
+            "sequence": 7,
+            "currentText": "HB511Q_PROGRESSHB511Q_RESULT",
+            "sentText": "HB511Q_PROGRESSHB511Q_RESULT",
+            "hasNote": true,
+            "messageId": "om_x100b61033cb3aca4b32e87c3448cb53"
+          },
+          "deliveredPayloads": 1,
+          "receipts": [
+            {
+              "payloadIndex": 0,
+              "visibleReplySent": true,
+              "messageId": "om_x100b61033cb3aca4b32e87c3448cb53"
+            }
+          ]
+        },
+        "error": null
+      }
+    ]
+  },
+  "progressSnapshots": [
+    {
+      "observedAt": 1793292073.171516,
+      "messageId": "om_x100b61033cb3aca4b32e87c3448cb53",
+      "content": "<card>\n正在继续处理请求。\n---\nAgent: makaron | Model: vds-deepseek-flash | Provider: deepseek | Runtime: codex\n</card>"
+    },
+    {
+      "observedAt": 1793292084.8540978,
+      "messageId": "om_x100b61033cb3aca4b32e87c3448cb53",
+      "content": "<card>\nHB511Q_PROGRESS\n\n🛠️ Bash\n---\nAgent: makaron | Model: vds-deepseek-flash | Provider: deepseek | Runtime: codex\n</card>"
+    },
+    {
+      "observedAt": 1793292093.920187,
+      "messageId": "om_x100b61033cb3aca4b32e87c3448cb53",
+      "content": "<card>\nHB511Q_RESULT\n---\nAgent: makaron | Model: vds-deepseek-flash | Provider: deepseek | Runtime: codex\n</card>"
+    }
+  ],
+  "finalMessage": {
+    "message_id": "om_x100b61033cb3aca4b32e87c3448cb53",
+    "content": "<card>\nHB511Q_RESULT\n---\nAgent: makaron | Model: vds-deepseek-flash | Provider: deepseek | Runtime: codex\n</card>",
+    "message_app_link": "https://applink.feishu.cn/client/chat/open?openChatId=oc_104de99774aea6a55f5ae46863e99ef3&position=304",
+    "update_time": "2026-10-30 00:41"
+  },
+  "parity": {
+    "aligned": true,
+    "at": "2026-10-29T16:29:11.240Z",
+    "vCore": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core",
+    "compared": 18850,
+    "by": "01a17c14-c76a-7213-9ab4-4a2fe56d855f"
+  },
+  "cleanup": {
+    "testHandoffsEnded": true,
+    "modelRestoredTo": "deepseek/deepseek-flash",
+    "integrationLeaseReleased": true
+  },
+  "firstPassNote": "First trial P passed execution and delivery, but UI automation clicked around automatic control acquisition and inadvertently reacquired control. Ended that test handoff. Trial Q waited for controller state, clicked handback once, verified no control remained; one run and same-card progress/final passed."
+}
