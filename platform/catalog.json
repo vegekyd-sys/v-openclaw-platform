@@ -237,6 +237,7 @@
       "purpose": "各条线在 lab/、scripts/、tests/、worker 实验目录下的离线回归；2026-09-24 从未登记状态收拢，全部离线通过",
       "files": [
         "tests/v-memory-indexer.test.mjs",
+        "tests/check-source-map.test.mjs",
         "scripts/bundle-prep-observer.test.mjs",
         "tests/workboard-notes-limit-patch.test.mjs",
         "tests/workboard-owner-concurrency-patch.test.mjs",
