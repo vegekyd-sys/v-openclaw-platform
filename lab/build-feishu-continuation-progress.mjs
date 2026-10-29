@@ -34,7 +34,7 @@ export function buildCronPresentation({write=true}={}){
  let patchedMonitor=monitor.replace(title,"const title=record.source==='cron-continuation'?'↩️ 自动续接':record.source==='queued-followup'?");
  const state='const taskState={state,runId:',attach='vTaskStatusAttach(params.sessionKey, session,';
  for(const anchor of [state,attach])if(patchedMonitor.split(anchor).length!==2)throw Error('Cron renderer anchor drift: '+anchor);
- patchedMonitor=patchedMonitor.replace(state,'const taskState={state,source:record.source,runId:').replace(attach,"if (!['cron-continuation','subagent-announce','queued-followup'].includes(params.boundTaskPresentation?.source)) vTaskStatusAttach(params.sessionKey, session,");
+ patchedMonitor=patchedMonitor.replace(state,'const taskState={state,source:record.source,runId:').replace(attach,"if (!['cron-continuation','subagent-announce','queued-followup','desktop-handback'].includes(params.boundTaskPresentation?.source)) vTaskStatusAttach(params.sessionKey, session,");
  // The conversation-wide background summary is a single slot and can say
  // 'ended' when another turn settles. Each continuation card owns its own
  // execution state; ordinary, inter-session and Voice summaries stay intact.
