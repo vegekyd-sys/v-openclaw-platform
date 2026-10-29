@@ -11,6 +11,20 @@
 
 ---
 
+## v-desktop-handback-progress-20261030
+
+上线：2026-10-30 00:33 CST 激活完成，00:41 CST 真实生产链路验收通过。
+
+**摘要**：接管页点击“交还给 V”后，排队、公开进度、工具状态和最终结果在原飞书群的同一张卡上展示。保留原执行链路、幂等键和原生投递回执，不重复启动模型或另发一份结果。
+
+- 来源：[PR #511](https://github.com/vegekyd-sys/v-openclaw-platform/pull/511)，已合入 dev `60afc19494127f10bc188fdd0aa8b4c00b5c25d9`。
+- VLab release `desktop-handback-progress-20261029-v1`，artifact `1876a504b6e0c7687fe5fabea0f07be0a5b88b652583f1e1c8fe8de0fc3ef46f`。117 项回归、真实页面交还、单 run、同卡进度和最终 ACK 已通过共享验收。
+- 相对上一版 `v2026.9.1-db91.6-release-batch-20261028`，七组件快照仅两份飞书文件变化：`dist/monitor.account-WFdlCDhR.js`（`1925d3f2` → `faa10628`）和 `dist/v-feishu-task-presentation.mjs`（`d3f49b00` → `070801aa`）。其他六个组件字节未变。
+- 桌面插件另有两份文件：`index.js`（`6c0c9db8` → `e730debb`），新增 `core/task-presentation.js`（`46bae355`）；同一提交与 VLab 已验收字节，保留原文件及权限回滚清单。
+- 配置未修改。重启请求 `20261030-002355-8763` 使用 `--if-busy abort --idle-timeout 3600`，等待业务空闲 405 秒后激活；5/5 workers、2/2 streams 恢复，0 告警。真实生产 Q 验收确认同卡进度/工具/最终结果、单 run 和成功回执；VLab 已 ALIGNED。
+
+[发布与回滚记录](docs/experiments/desktop-handback-production-20261030.md)
+
 ## v2026.9.1-db91.6-release-batch-20261028
 
 上线：2026-10-28 19:51 CST（19:49 v-self-restart 一次，同时 --set skills）  ·  tag `v2026.9.1-db91.6-release-batch-20261028`
