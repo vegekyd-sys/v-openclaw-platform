@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V 面板效果图 · 手机端</title>
+<style>
+  :root { --ink:#1f2329; --sub:#646a73; --faint:#8f959e; --line:#e4e5e7; --soft:#f5f6f7; --accent:#3370ff; --mine:#e1eaff; --warn:#d46b08; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#eceef1; font:15px/1.55 -apple-system,"PingFang SC","Helvetica Neue",sans-serif; color:var(--ink); }
+  .stage { width:1320px; height:1010px; padding:28px 30px; display:flex; gap:36px; }
+  .col { width:390px; }
+  .cap { height:62px; font-size:15px; color:var(--ink); }
+  .cap b { display:inline-flex; width:24px; height:24px; border-radius:50%; background:#f54a45; color:#fff; font-size:13px; align-items:center; justify-content:center; margin-right:8px; }
+  .cap span { color:var(--sub); font-size:13px; display:block; margin:4px 0 0 32px; }
+  .phone { width:390px; height:844px; background:#fff; border-radius:38px; overflow:hidden; position:relative; box-shadow:0 0 0 10px #1f2329, 0 18px 40px rgba(0,0,0,.25); display:flex; flex-direction:column; }
+  .status { height:44px; display:flex; justify-content:space-between; align-items:center; padding:0 26px; font-size:14px; font-weight:600; }
+  .nav { height:44px; display:flex; align-items:center; padding:0 14px; gap:10px; border-bottom:1px solid var(--line); }
+  .nav .back { font-size:22px; color:var(--ink); width:18px; }
+  .nav b { font-size:16px; flex:1; }
+  .nav .more { color:var(--sub); letter-spacing:2px; }
+  .tabs { display:flex; gap:20px; padding:0 16px; border-bottom:1px solid var(--line); height:38px; align-items:flex-end; font-size:13px; color:var(--sub); }
+  .tabs span { padding-bottom:8px; position:relative; }
+  .tabs .on { color:var(--accent); border-bottom:2px solid var(--accent); font-weight:600; }
+  .tabs .v { color:var(--ink); font-weight:600; }
+  .tabs .v.dot::after { content:""; position:absolute; right:-8px; top:0; width:6px; height:6px; border-radius:50%; background:#f54a45; }
+  .tabs .v.ring { background:#f3f6ff; outline:2px solid var(--accent); border-radius:6px; padding:2px 6px 6px; }
+  .msgs { flex:1; padding:14px 12px; display:flex; flex-direction:column; gap:12px; background:#f5f6f7; overflow:hidden; }
+  .row { display:flex; gap:8px; align-items:flex-start; }
+  .row.me { flex-direction:row-reverse; }
+  .av { width:30px; height:30px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:600; font-size:12px; }
+  .av.v { background:linear-gradient(135deg,#6b8cff,#a970ff); } .av.o { background:#f0a35e; }
+  .bubble { max-width:270px; padding:8px 11px; border-radius:10px; background:var(--mine); font-size:14px; }
+  .bubble.new { outline:2px solid var(--accent); }
+  .card { max-width:300px; border:1px solid var(--line); border-radius:10px; padding:10px 12px; background:#fff; font-size:14px; }
+  .card table { border-collapse:collapse; font-size:12px; margin:6px 0; }
+  .card td, .card th { border:1px solid var(--line); padding:3px 7px; text-align:left; }
+  .card th { background:var(--soft); }
+  .foot { color:var(--faint); font-size:11px; border-top:1px solid var(--line); margin-top:8px; padding-top:5px; }
+  .name { color:var(--faint); font-size:11px; margin-bottom:2px; }
+  .inputbar { height:86px; border-top:1px solid var(--line); padding:10px 12px 30px; display:flex; gap:10px; align-items:center; }
+  .inputbar div { flex:1; height:38px; border-radius:8px; background:var(--soft); color:var(--faint); padding:8px 12px; font-size:14px; }
+  .inputbar i { width:28px; height:28px; border-radius:50%; border:1.5px solid #8f959e; display:block; font-style:normal; color:var(--sub); text-align:center; line-height:25px; }
+  .panel { flex:1; padding:12px 16px; overflow:hidden; }
+  .meta { color:var(--faint); font-size:12px; display:flex; justify-content:space-between; }
+  .meta em { font-style:normal; color:var(--accent); }
+  .h0 { font-size:13px; color:var(--sub); font-weight:600; margin:12px 0 0; }
+  .about { color:var(--faint); font-size:12px; margin:2px 0 4px; }
+  .sg button { display:block; width:100%; text-align:left; margin:8px 0; padding:11px 13px; font:15px/1.4 inherit; font-family:inherit; color:var(--ink); background:#fff; border:1px solid #dee0e3; border-radius:10px; }
+  .sg button::after { content:"↗"; float:right; color:var(--faint); }
+  .sg button.tap { border-color:var(--accent); background:#e8efff; }
+  .edit { color:var(--accent); font-size:13px; }
+  hr { border:0; border-top:1px solid var(--line); margin:16px 0 6px; }
+  h2 { font-size:13px; color:var(--sub); font-weight:600; margin:12px 0 4px; }
+  .now { font-size:16px; font-weight:600; margin:4px 0 8px; line-height:1.5; }
+  .need { background:#f0f4ff; border-radius:8px; padding:8px 11px; font-size:13px; }
+  .need b { color:var(--accent); }
+  ul { list-style:none; padding:0; margin:0; font-size:13px; } li { padding:2px 0; } .done { color:var(--faint); }
+  .risk { color:var(--warn); font-size:13px; }
+  .bottom { height:82px; border-top:1px solid var(--line); padding:10px 16px 30px; }
+  .bottom div { height:40px; border:1px solid #dee0e3; border-radius:8px; text-align:center; line-height:38px; }
+  .toast { position:absolute; left:50%; top:118px; transform:translateX(-50%); background:rgba(31,35,41,.88); color:#fff; font-size:13px; padding:7px 14px; border-radius:8px; white-space:nowrap; }
+  .typing { color:var(--faint); font-size:13px; }
+  .hand { position:absolute; font-size:30px; }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="col">
+    <div class="cap"><b>1</b>V 回复完，顶部「V」标签出现红点<span>聊天里只有正文，建议不进消息流</span></div>
+    <div class="phone">
+      <div class="status"><span>14:21</span><span>●●● 5G ▮</span></div>
+      <div class="nav"><span class="back">‹</span><b>V - Makaron</b><span class="more">···</span></div>
+      <div class="tabs"><span class="on">消息</span><span>文件</span><span>📞 打给 V</span><span class="v dot">V</span></div>
+      <div class="msgs">
+        <div class="row me"><div class="av o">天</div><div class="bubble">交付页在大陆打开太慢了，能不能换个大陆能快速打开的 CDN？你测一下</div></div>
+        <div class="row"><div class="av v">V</div><div><div class="name">V - Makaron</div><div class="card">
+          <b>两家都测完了：大陆慢是因为 Cloudflare 在大陆没有节点。</b>
+          <table><tr><th></th><th>腾讯云 COS</th><th>七牛</th></tr><tr><td>比现在快</td><td>2.3 倍</td><td>1.9 倍</td></tr><tr><td>费用</td><td>约 ¥40/月</td><td>10 GB/月免费</td></tr></table>
+          两家都能用。你选定后我改上传目标，重传最近 3 个交付页。
+          <div class="foot">Agent: V × Makaron | Runtime: vlab-worker</div></div></div></div>
+      </div>
+      <div class="inputbar"><i>+</i><div>发送给 V - Makaron</div></div>
+      <div class="hand" style="left:180px; top:112px;">👆</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="cap"><b>2</b>点「V」，全屏打开 V 面板<span>上面是建议，下面是回顾；建议针对最近一条回复</span></div>
+    <div class="phone">
+      <div class="status"><span>14:21</span><span>●●● 5G ▮</span></div>
+      <div class="nav"><span class="back">‹</span><b>V</b><span class="more">⟳</span></div>
+      <div class="panel">
+        <div class="meta"><span>V - Makaron · 私聊</span></div>
+        <div class="h0">接下来可以说</div>
+        <div class="about">针对 V 14:20 的回复：两家 CDN 测速对比</div>
+        <div class="sg">
+          <button class="tap">用腾讯云 COS，先换最近 3 个交付页</button>
+          <button>七牛超出 10 GB 后怎么收费</button>
+          <button>6 Mbps 的样片先发我看画质</button>
+        </div>
+        <div class="edit">✏️ 改一改再发</div>
+        <hr>
+        <h2>回顾</h2>
+        <div class="now">在给夜班交付页换大陆 CDN。测速做完了，等你选一家。</div>
+        <div class="need">选 CDN：<b>腾讯云 COS</b>（快 2.3 倍，月约 ¥40）还是 <b>七牛</b>（快 1.9 倍，有免费额度）</div>
+        <h2>进展</h2>
+        <ul><li>▶️ 正在把样片压到 6 Mbps，看画质能不能接受</li><li class="done">☑️ 腾讯云 COS、七牛各测 3 次</li></ul>
+        <h2>风险</h2>
+        <div class="risk">⚠️ 七牛免费额度每月 10 GB，夜班跑一晚就会用完</div>
+      </div>
+      <div class="bottom"><div>回到聊天</div></div>
+      <div class="hand" style="left:290px; top:200px;">👆</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="cap"><b>3</b>点了建议：自动回到聊天，以你本人身份发出<span>和你自己打字发的一样，群里也看得到是你说的</span></div>
+    <div class="phone">
+      <div class="status"><span>14:21</span><span>●●● 5G ▮</span></div>
+      <div class="nav"><span class="back">‹</span><b>V - Makaron</b><span class="more">···</span></div>
+      <div class="tabs"><span class="on">消息</span><span>文件</span><span>📞 打给 V</span><span class="v">V</span></div>
+      <div class="msgs">
+        <div class="row"><div class="av v">V</div><div><div class="name">V - Makaron</div><div class="card">
+          <b>两家都测完了：大陆慢是因为 Cloudflare 在大陆没有节点。</b>
+          <div style="color:var(--faint);font-size:12px;margin-top:4px">…（同左）</div>
+          <div class="foot">Agent: V × Makaron | Runtime: vlab-worker</div></div></div></div>
+        <div class="row me"><div class="av o">天</div><div class="bubble new">用腾讯云 COS，先换最近 3 个交付页</div></div>
+        <div class="row"><div class="av v">V</div><div><div class="name">V - Makaron</div><div class="card">
+          好，切到腾讯云 COS。先改 cdn-upload 的上传目标，再重传最近 3 个交付页…
+          <div class="typing">▍生成中</div></div></div></div>
+      </div>
+      <div class="inputbar"><i>+</i><div>发送给 V - Makaron</div></div>
+      <div class="toast">已用你的身份发送</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
