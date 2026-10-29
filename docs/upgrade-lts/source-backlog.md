@@ -13,6 +13,22 @@
 | background-work-20261002 | `3613b3490d9` | 桥测试 + 回退用例，补丁前失败 | 逻辑一致；代码在源码构建里落在不同分块 |
 | db91-shrink-reuse-20261002 | `7282274202a` | 回执用例，补丁前失败 | V 是独立 `.mjs`，源码进了 `agent-db-integrity-gate.ts`，靠测试 |
 
+### 第一波分组（2026-10-30 合入 `3951d3e691b`）
+
+其余第一波发版（10/27 之前）按文件归属拆成 7 组（见 `backlog-split.md`），两个 session 串行翻译后合并到本分支。每个提交都有单测，去掉源码改动时测试会失败。合并后，改动到的 90 个测试文件里 88 个通过；剩下 2 个是 store 组引入的回归（见下）。合并带出一处测试期望要跟着改（工作板 `sessions.list` 带 `lifecycleOnly`），已在 `3951d3e691b` 修好。
+
+| 组 | 分支 @ 提交 | 第一波 | 字节对比 | 未完成 / 阻塞 |
+|---|---|---|---|---|
+| memory | `port-memory` @ `cefb2f891e8` | 完成（8 次发版，含上游 #140730、#137774 cherry-pick） | 逻辑等价 | manager-runtime 中 db91.6 的诊断日志没翻 |
+| store | `port-store` @ `fa836aa9556` | 完成（24 处改动） | 逻辑等价；多处逻辑拆到新模块 | **2 个上游测试回归**：`session-accessor.readonly` 汇总用例、`sqlite-handle-lifecycle` 磁盘预算用例；修好之前 `session-accessor`、`disk-budget` 两个文件保持 pending |
+| workboard | `port-workboard` @ `a791eabca2f` | 完成；有 4 个提交依赖 store 的接口，放在了 store 分支 | reply-admission-ticket 与 V 字节相同，其余逻辑等价 | `subagent-registry` 中 loopback 调用点要等 voice 组的 consult continuation |
+| codex | `port-codex` @ `4399171e2f8` | 完成（4 次发版） | 3 个文件和 2 个资产与 V 字节相同，其余逻辑等价 | — |
+| channels | `port-channels` @ `c6bd0db4705` | 完成（飞书 13 次发版、Telegram、x_search、审批卡、手机入口） | x-search 与 V 字节相同；飞书 chunk 切分不同，没法逐字节比，靠测试 | 3 个只供语音模块用的 core 挂钩交给 voice 组；钉钉/企微的源码路径在平台分支 `claude/bl-thirdparty-20261029`（未合入） |
+| voice | `port-voice` @ `e0167bc3998` | **部分**（7 处独立改动） | 未构建 | GPT Live 整条链（约 2,000 行 dist）；`v-feishu-voice-runtime` 需要改成插件注册接口 |
+| turn | `port-turn` @ `872d3e732c3` | **部分**（6 个提交，另有若干项基线已覆盖） | 未构建 | 约 16 次发版：firsttext r1–r4、restart-speed、history-image-e3、upstream-5xx 的 embedded-agent 部分等 |
+
+这次有 57 个文件从 pending 改成 `versa:3951d3e691b`。对照最新捕获，已源码化的文件数：core 113/187，飞书 5/10，codex 9/15，钉钉 0/4，企微 0/9。仍是 pending 的分三类：第二波发版也改过的文件（48 个），turn 组和 voice 组还没翻完的部分，以及上面那 2 个有回归的 store 文件。
+
 `release/source-map.json` 只把"V 线上最新版本已完全覆盖"的文件改成 `versa:`；一个文件后来还被别的发版改过的，要等那些发版也补上才改。
 
 

@@ -58,7 +58,8 @@
       "layer": "core",
       "path": "agent-run-control-BeeIeTBf.js",
       "sha256": "8219c5e862180b3fd69775644569234df6f0b849be0ee14c10ec4dfa5fd1233a",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; not byte-compared (group build pending); runtime A/B pending"
     },
     {
       "layer": "core",
@@ -83,13 +84,15 @@
       "layer": "core",
       "path": "agent-tools-djVuP1H1.js",
       "sha256": "f414fa7fc9f52a1d118a0ba14d100f4f73bc7134b6150191ab404c25e51d55ad",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; not byte-compared (group build pending); runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "agent-tools.before-tool-call-g2OT63u5.js",
       "sha256": "618ab46aa1b398a0815c461fd7af3b721272968ed3652e77639171604bb5f9e9",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; not byte-compared (group build pending); runtime A/B pending"
     },
     {
       "layer": "core",
@@ -122,19 +125,22 @@
       "layer": "core",
       "path": "bot-message-DC6p8sB3.js",
       "sha256": "f37781c45189f3fbff5c18bddd80f6a4d3b816a46e0865530f9d7545894d8c5e",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (channels group, versa/port-channels-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; feishu chunks re-split so verified by tests and reading; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "bot-native-command-builtins-mQhamMB9.js",
       "sha256": "8b7908bd3e11c1e238d74605cd148c64a52c09d6e2bb2a2ee505bc52de9e2a78",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (channels group, versa/port-channels-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; feishu chunks re-split so verified by tests and reading; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "bot-native-command-dispatch-7hG7WSS2.js",
       "sha256": "58c78cb2c03c91bff4a2681b0183bbd3a80f1e41d0abf0ba6307d1e08fbb7836",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (channels group, versa/port-channels-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; feishu chunks re-split so verified by tests and reading; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -166,25 +172,29 @@
       "layer": "core",
       "path": "collector-DyqVHdcZ.js",
       "sha256": "376387c50a24a360aab39aa9d6c11eed7897e45a0b23bb0da93a626d3e860644",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "combined-store-gateway-BwDhjbIt.js",
       "sha256": "9cb53296f60b4d375f19cdd0e52d104a7b255c9feaae34656654c718bb6f5c51",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "command-auth-DmNN2m2f.js",
       "sha256": "8b4858e31f7a4b9b6ae281ad3de20d31c818b5a99c4bdf670a50977b2136a5e8",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (channels group, versa/port-channels-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; feishu chunks re-split so verified by tests and reading; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "command-secret-gateway-DCJZ8pGz.js",
       "sha256": "f28f2fbe29a1a472dc8056790d9458e5690e792eaf1620bc98a51a65095c0038",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029) merged into versa/port-backlog-20261029; unit tests fail without the change; not byte-compared (group build pending); runtime A/B pending"
     },
     {
       "layer": "core",
@@ -197,7 +207,8 @@
       "layer": "core",
       "path": "config/sessions/session-transcript-reconcile.worker.js",
       "sha256": "fdce59ff030f7b0b2798cb1cb43d9615cb5a39c0d014f1489c026303c80bf7f9",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -338,7 +349,8 @@
       "layer": "core",
       "path": "doctor-health-contributions-Dz7xROs_.js",
       "sha256": "3d9cdefb8995efea0e6c8a853b81b9cad92ab20bd8ddd200134e556bb3fa7749",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -389,13 +401,15 @@
       "layer": "core",
       "path": "extensions/memory-core/manager-runtime.js",
       "sha256": "9781253523f64e0690f69b5d160243376be35a8defc7cc3b5e6ee09de2b7b0b0",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (memory group, versa/port-memory-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending; the db91.6 measureMemoryPreparation diagnostic log is not translated"
     },
     {
       "layer": "core",
       "path": "extensions/memory-core/memory-search-knn.child.js",
       "sha256": "97c542fbac2e4fe0e3f52e628f39a37003a678caab01bf4212dda756ef485a40",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (memory group, versa/port-memory-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -458,7 +472,8 @@
       "layer": "core",
       "path": "helpers-DEd6NfQU.js",
       "sha256": "8ee6539960753432f21ad9fefcde4319b1c08f15ed4e69f90ba4e7e92e5a1667",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (channels group, versa/port-channels-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; feishu chunks re-split so verified by tests and reading; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -516,7 +531,8 @@
       "layer": "core",
       "path": "manager-search-knn-NiSMMJUM.js",
       "sha256": "a9bd409237a06339ca6f7f947ad175e48897541f976aaa8d16021f0806ca204e",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (memory group, versa/port-memory-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -543,7 +559,8 @@
       "layer": "core",
       "path": "node-sqlite-CL-d6drd.js",
       "sha256": "da24951ca0a47d7a2ba43f1aa6f3fd844c85d5546170d66ed7d5aed6d3d93ee9",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (workboard group, versa/port-workboard-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (reply-admission-ticket identical); runtime A/B pending"
     },
     {
       "layer": "core",
@@ -590,7 +607,8 @@
       "layer": "core",
       "path": "operations-CTofDiKh.js",
       "sha256": "54ae7d7b23cd93b01c0571c6c3914ee97ee5c83a445707c6ac85f9adc1d1957b",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -708,13 +726,15 @@
       "layer": "core",
       "path": "registry-runtime-session-ownership-B1XvaNE7.js",
       "sha256": "d8e335dc000702f4909d5ed3e054b2c04b9199bc8d85e3239fde08fd09f79607",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "reply-admission-ticket-QG2vY13O.js",
       "sha256": "078c3742b69f7960813ce33770493db5e6964b3c43c5496c8a67d26c541bab3c",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (workboard group, versa/port-workboard-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (reply-admission-ticket identical); runtime A/B pending"
     },
     {
       "layer": "core",
@@ -746,7 +766,8 @@
       "layer": "core",
       "path": "runs-5WnDPZ0V.js",
       "sha256": "056243f50c64a10a17f3593f2f0ce9bb2e2ee71591b5ec4c113faa9dd492d6f2",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; not byte-compared (group build pending); runtime A/B pending"
     },
     {
       "layer": "core",
@@ -809,7 +830,8 @@
       "layer": "core",
       "path": "service-CzmmKrEg.js",
       "sha256": "b9b76fc08f123317d43aba5071e2545408bfd937eb636d8b12aded07c55ebe90",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (workboard group, versa/port-workboard-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (reply-admission-ticket identical); runtime A/B pending"
     },
     {
       "layer": "core",
@@ -821,7 +843,8 @@
       "layer": "core",
       "path": "session-D4AJhdUK.js",
       "sha256": "83cf19c8e3b3f95e27a5f37068d6e56ce71be86274890fd6baa0af6fa564c7c7",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (workboard group, versa/port-workboard-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (reply-admission-ticket identical); runtime A/B pending"
     },
     {
       "layer": "core",
@@ -833,13 +856,15 @@
       "layer": "core",
       "path": "session-accessor.sqlite-entry-BlklNPKQ.js",
       "sha256": "789fca01601893b6437154543628936dc28eb93c19070ad95f5a4ff1607c8f61",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
       "sha256": "ea381f9d45af70ff7bd47d2613e0b70974421ab375e273b77c870212a1666f07",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -852,31 +877,36 @@
       "layer": "core",
       "path": "session-accessor.sqlite-transcript-state-Cz9g7S9v.js",
       "sha256": "2583a789782d3f1282e2fe4670f79ec463356950d1240237437b7537778c7b75",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "session-accessor.sqlite-transcript-store-DV0WFe1a.js",
       "sha256": "74fba951650504050b9f6f0934137924f1418ca060c116750298477ea54ae257",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "session-history-eviction-d5aiCsHS.js",
       "sha256": "0c43970f918117a2b350517ab7af9bffc13065c40df54a1c2f270f1745143101",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "session-manager-CNTG_BAJ.js",
       "sha256": "84317e326ad0f19575f7d6cfc5482f2a6f8c5b9f29004411a51ede68e4935edf",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "session-search-visibility-H6aL2Pcb.js",
       "sha256": "566d4e58ac0b4dbd777b694bf9383823da7ed070d0b4cfa258813d57672b2ada",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (memory group, versa/port-memory-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -895,13 +925,15 @@
       "layer": "core",
       "path": "session-transcript-index-9itOio9h.js",
       "sha256": "7d14a3c07c3b78a216ce85d764444dce364990a342c77f1dd0230c9ea0025328",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "session-transcript-reconcile-j5qhAafV.js",
       "sha256": "85455fa43c681eda0b831d6dc9b147925c149acc503fd936a018e765faca325b",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -913,7 +945,8 @@
       "layer": "core",
       "path": "session-utils-store-Dlphca2N.js",
       "sha256": "b566c7e93e3cab8ecc2242ae241597d0ee9890cd8455b99c22a0262eb84dad6c",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -932,7 +965,8 @@
       "layer": "core",
       "path": "sessions-resolve-_D6BmQTT.js",
       "sha256": "a1b3f4b3c5368c3cc0a6f1e7a330f465e4aedfde3a5ef78b08e1c4fa95a8f6b2",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -982,13 +1016,15 @@
       "layer": "core",
       "path": "subagent-capabilities-CPAHEjL-.js",
       "sha256": "4ee0a32ecb6d7761635a04c5736b125ee4190c668e04936f2340c0e19753695b",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (workboard group, versa/port-workboard-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (reply-admission-ticket identical); runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "subagent-completion-admission.store-JmpNDYTF.js",
       "sha256": "c106a6cec9ba3c5def63297f43a23f9bcabe4543c373d61872f3cac7bad48c43",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (workboard group, versa/port-workboard-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (reply-admission-ticket identical); runtime A/B pending"
     },
     {
       "layer": "core",
@@ -1000,13 +1036,15 @@
       "layer": "core",
       "path": "subagent-registry-read-UaDFTyfW.js",
       "sha256": "142bb5158e21a3b68c3cd80fd6cd52beeb8904f632ca39ba9b08e4d1fb2db5c0",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (workboard group, versa/port-workboard-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (reply-admission-ticket identical); runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "subagent-registry.store.sqlite-hzGu4QSk.js",
       "sha256": "4bc27059fa5b0127892c1f0f3f6285d3334a98333f781e9f1dab245ab9bba9e7",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (workboard group, versa/port-workboard-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (reply-admission-ticket identical); runtime A/B pending"
     },
     {
       "layer": "core",
@@ -1065,19 +1103,22 @@
       "layer": "core",
       "path": "telegram-ingress-drain-factory-DJM2Jqrc.js",
       "sha256": "acdf98ee22458f8c6415e0ef7b8cc6cdf3e1edaf951d45a3fd6432ef1ef7b194",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (channels group, versa/port-channels-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; feishu chunks re-split so verified by tests and reading; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "tool-resolution-Con11qMn.js",
       "sha256": "aa63296c842b933f1c50fc8f879b3e82446766b4549758e60ef297b42b8d33a8",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; not byte-compared (group build pending); runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "tools-Byg09TOP.js",
       "sha256": "076e0ed9e9fba467b96a7404a81c4baa4a7f6c3fc347a9ca79762983eef55f00",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (memory group, versa/port-memory-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -1167,7 +1208,8 @@
       "layer": "core",
       "path": "v-health-session-summary-worker.mjs",
       "sha256": "b5cf6c19999d929c551acdf5164b894ff0c592a231b948ff4c705e2ccd1ebc81",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -1211,25 +1253,29 @@
       "layer": "core",
       "path": "ws-log-CFwaDvs6.js",
       "sha256": "2168a3f755af25f3115a745b3a2386f331684aaef22f205e8b60c6321b0be826",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (workboard group, versa/port-workboard-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (reply-admission-ticket identical); runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "x-search-shared-CJa_QAnc.js",
       "sha256": "bdb1ab1e8ffb48c4fc8ba3e2d7626496214ec1abfa7d965315ba9e57e4eae01a",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (channels group, versa/port-channels-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; feishu chunks re-split so verified by tests and reading; runtime A/B pending"
     },
     {
       "layer": "feishu",
       "path": "dist/channel-DSYCNah8.js",
       "sha256": "bb71f2d463696728477e85856a591b3fd94617f38aaf17b52eaadfaeffe46b7f",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (channels group, versa/port-channels-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; feishu chunks re-split so verified by tests and reading; runtime A/B pending"
     },
     {
       "layer": "feishu",
       "path": "dist/client-DMbIL3UH.js",
       "sha256": "8402132eb0fa664dbcfcc9834bd9e6bffb9cb59b797bec8dc36a82432e154497",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (channels group, versa/port-channels-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; feishu chunks re-split so verified by tests and reading; runtime A/B pending"
     },
     {
       "layer": "feishu",
@@ -1253,7 +1299,8 @@
       "layer": "feishu",
       "path": "dist/v-feishu-approvals.js",
       "sha256": "2905c12f9bc3cad97416f169ae7a08072878c7ff89a8f33076d710f7282cf71b",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (channels group, versa/port-channels-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; feishu chunks re-split so verified by tests and reading; runtime A/B pending"
     },
     {
       "layer": "feishu",
@@ -1271,7 +1318,8 @@
       "layer": "feishu",
       "path": "dist/v-feishu-voice-confirm.mjs",
       "sha256": "6eba4d8dc140be24901ae0836a27a64ad6fbca863fd3cd8078bbfe88f2d9ee53",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (channels group, versa/port-channels-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; feishu chunks re-split so verified by tests and reading; runtime A/B pending"
     },
     {
       "layer": "feishu",
@@ -1296,19 +1344,22 @@
       "layer": "codex",
       "path": "dist/dynamic-tools-BU9tmlYm.js",
       "sha256": "f3ad9f4d87130bb315322322e9bad45d15146a97c563fd23b8895ba85728ef0f",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (codex group, versa/port-codex-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (assets identical); runtime A/B pending"
     },
     {
       "layer": "codex",
       "path": "dist/harness-DXVZ5II5.js",
       "sha256": "2903634b801db3ed43e4374a6be6c2770d9745229ef705ef87729a3e83bdcfb2",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (codex group, versa/port-codex-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (assets identical); runtime A/B pending"
     },
     {
       "layer": "codex",
       "path": "dist/native-subagent-monitor-CnH147jH.js",
       "sha256": "b899ca81e9255ba3f817af3b81c9a2beb5298cc5644876e2fac65d6b74df69fe",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (codex group, versa/port-codex-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (assets identical); runtime A/B pending"
     },
     {
       "layer": "codex",
@@ -1320,7 +1371,8 @@
       "layer": "codex",
       "path": "dist/session-history-C5J1AKzG.js",
       "sha256": "9be280262d3f43d8dcfe8b72d388b6c678b0f5613b5e3b57ea8869c284561236",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (codex group, versa/port-codex-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (assets identical); runtime A/B pending"
     },
     {
       "layer": "codex",
@@ -1338,13 +1390,15 @@
       "layer": "codex",
       "path": "dist/side-question-BTZAII4l.js",
       "sha256": "1ca216cf4da959cebe995b443eb8b8d2b5b269623e728232f3583801fc3f4435",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (codex group, versa/port-codex-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (assets identical); runtime A/B pending"
     },
     {
       "layer": "codex",
       "path": "dist/thread-lifecycle-DAcEJ_Om.js",
       "sha256": "4cceab62ea349d266533cf18f6ffdbd620407504cfe16126e16aa04e5bfcb661",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (codex group, versa/port-codex-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (assets identical); runtime A/B pending"
     },
     {
       "layer": "codex",
@@ -1356,19 +1410,22 @@
       "layer": "codex",
       "path": "dist/transport-stdio-CyPldczm.js",
       "sha256": "cd3d59c5bfa3eafd26339b62cbb2819381f3e3d43d739d8169f4f5d142658831",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (codex group, versa/port-codex-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (assets identical); runtime A/B pending"
     },
     {
       "layer": "codex",
       "path": "dist/v-deepseek-base-instructions.md",
       "sha256": "3b08633fa672906666659d764864dfda1d7af5b5111ea5817c8f46e5de4e1a8d",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (codex group, versa/port-codex-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (assets identical); runtime A/B pending"
     },
     {
       "layer": "codex",
       "path": "dist/v-deepseek-model-catalog.json",
       "sha256": "6df9d13df5b31c095c15c499b2f4ebde4c2230fc550aada8f01c7752b5afbd81",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3951d3e691b",
+      "note": "wave-1 backlog (codex group, versa/port-codex-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (assets identical); runtime A/B pending"
     },
     {
       "layer": "dingtalk",
