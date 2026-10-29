@@ -1,0 +1,12 @@
+{
+ "tests": [
+  "tests/codex-turn-context-handoff.test.mjs"
+ ],
+ "env": {
+  "CODEX_BIN": "/tmp/turnctx-codex-0.159.2/package/vendor/x86_64-unknown-linux-musl/bin/codex",
+  "CODEX_TEST_CATALOG": "/tmp/turnctx-codex-0.159.2/models_cache.json",
+  "EXPECT_BASELINE": "1"
+ },
+ "user": "lab-db91-parity",
+ "timeoutSeconds": 0
+}
