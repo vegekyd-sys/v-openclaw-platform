@@ -271,6 +271,7 @@
         "lab/worker-prewarm-session-keys.test.mjs",
         "lab/worker-prewarm-contention-retry.test.mjs",
         "lab/worker-secret-egress.test.mjs",
+        "lab/worker-secret-egress-restore.test.mjs",
         "lab/cron-shared-tool-surface.test.mjs",
         "lab/db91-benchmark-profile.test.mjs",
         "lab/db91-event-loop-p50.test.mjs",
