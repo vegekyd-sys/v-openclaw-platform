@@ -47,7 +47,7 @@
       "source": "lab/release-files/feishu-continuation-progress/monitor.account-WFdlCDhR.js",
       "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
       "before": "6e12af1840f8ac6cd6519e3e80bb8ac1559271227c1d2c5283cf129b9d966344",
-      "sha256": "4fd547e3ed6b6b6f52b422d2db6db85bb0c2070e27261144fa49c20582a27e08"
+      "sha256": "faa1062883b3052d9803455762a35ba8bc8abfc8bd3a20d3875084f4f87a8f1f"
     }
   ]
 }

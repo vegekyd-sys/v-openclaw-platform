@@ -3110,7 +3110,7 @@ function createFeishuReplyDispatcher(params) {
 				}).catch((error) => params.runtime.log?.(`feishu[${account.accountId}] card note refresh failed: ${String(error)}`));
 				vFirsttextMark("cardCreatedAtMs");
 				streamingStartBackoffUntilByAccount.delete(account.accountId);
-				if (!['cron-continuation','subagent-announce','queued-followup'].includes(params.boundTaskPresentation?.source)) vTaskStatusAttach(params.sessionKey, session, (message) => params.runtime.log?.(`feishu[${account.accountId}] ${message}`));
+				if (!['cron-continuation','subagent-announce','queued-followup','desktop-handback'].includes(params.boundTaskPresentation?.source)) vTaskStatusAttach(params.sessionKey, session, (message) => params.runtime.log?.(`feishu[${account.accountId}] ${message}`));
 			} catch (error) {
 				rememberStreamingStartFailure(account.accountId);
 				params.runtime.error?.(`feishu[${account.accountId}]: streaming start failed; using non-streaming card fallback for ${STREAMING_START_FAILURE_BACKOFF_MS / 1e3}s: ${String(error)}`);
