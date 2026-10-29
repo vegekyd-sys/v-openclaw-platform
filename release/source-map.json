@@ -265,7 +265,8 @@
       "layer": "core",
       "path": "db91-integrity-gate.mjs",
       "sha256": "aa68547bbf63e027c81b135b351c8a979cd2f3c3b101d81014e48efbeafdff2e",
-      "source": "pending:backlog-20261029"
+      "source": "versa:7282274202a",
+      "note": "A9b shrink accepted when SQLite header records it; test in agent-db-integrity-gate.test.ts"
     },
     {
       "layer": "core",
@@ -535,7 +536,8 @@
       "layer": "core",
       "path": "model-route-contract-B2Q_03Gg.js",
       "sha256": "efb465d2bc7f474f7173bfbc6586d5a767e8970b7aa4031e6358543cb6f0384e",
-      "source": "pending:backlog-20261029"
+      "source": "versa:7f4fc4c255e",
+      "note": "gpt-6.1-sol (2b32e0e9cb8 + type fix 7f4fc4c255e); build compared 2026-10-29: same values, refactored into shared id list"
     },
     {
       "layer": "core",
@@ -547,7 +549,8 @@
       "layer": "core",
       "path": "openai-chatgpt-provider-BApw3_oy.js",
       "sha256": "46bc8cc01badf720ab5d3443bf66cc2885b998f90a072b3588d6694566935df2",
-      "source": "pending:backlog-20261029"
+      "source": "versa:2b32e0e9cb8",
+      "note": "gpt-6.1-sol synthetic entry; build compared 2026-10-29: same metadata via resolveCodexGpt6Model"
     },
     {
       "layer": "core",
@@ -1041,7 +1044,8 @@
       "layer": "core",
       "path": "task-registry.store.sqlite-paxOzi9K.js",
       "sha256": "81c9d4b22da822ee808655832fdd0d561b858ab9c03edd456753b91c4bbdf237",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3613b3490d9",
+      "note": "v-task-registry-bridge-store-v1; tests in src/tasks/v-task-registry-bridge.test.ts"
     },
     {
       "layer": "core",
