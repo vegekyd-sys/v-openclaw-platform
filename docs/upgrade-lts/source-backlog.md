@@ -13,15 +13,15 @@
 | background-work-20261002 | `3613b3490d9` | 桥测试 + 回退用例，补丁前失败 | 逻辑一致；代码在源码构建里落在不同分块 |
 | db91-shrink-reuse-20261002 | `7282274202a` | 回执用例，补丁前失败 | V 是独立 `.mjs`，源码进了 `agent-db-integrity-gate.ts`，靠测试 |
 
-### 第一波分组（2026-10-30 合入，当前 `3bde236a5ee`）
+### 第一波分组（2026-10-30 合入，当前 `e66c94e737a`）
 
 其余第一波发版（10/27 之前）按文件归属拆成 7 组（见 `backlog-split.md`），两个 session 串行翻译后合并到本分支。每个提交都有单测，去掉源码改动时测试会失败。合并后，改动到的 90 个测试文件里 88 个通过；剩下 2 个是 store 组引入的回归（见下）。合并带出一处测试期望要跟着改（工作板 `sessions.list` 带 `lifecycleOnly`），已在 `3951d3e691b` 修好。voice 组的 GPT Live 链合入后，又修了 store 和 voice 交叉留下的 3 处类型错误（`3bde236a5ee`）。合并后的窄类型检查只剩基线就有的 3 个错误。voice 改动过的 14 个测试文件里，只有 `werift` 一个用例失败，它在基线上也失败，原因是 Bun 环境里没有这个包。
 
 | 组 | 分支 @ 提交 | 第一波 | 字节对比 | 未完成 / 阻塞 |
 |---|---|---|---|---|
 | memory | `port-memory` @ `cefb2f891e8` | 完成（8 次发版，含上游 #140730、#137774 cherry-pick） | 逻辑等价 | manager-runtime 中 db91.6 的诊断日志没翻 |
-| store | `port-store` @ `0e12c8f5f22` | 完成（24 处改动） | 逻辑等价；多处逻辑拆到新模块 | 合并后发现 3 处上游测试回归，已全部修好（`port-store` @ `0e12c8f5f22`）：① 规范键校验跨连接共享，关库后不失效，这是 bug，fork 侧补了句柄代数，比 V 更严；② 磁盘预算用例要清在用会话的历史，V 有意保留，测试里打开开关；③ `sqlite-byte-size` 的测试夹具缺 `seq` 列。之后对 store 相关目录整体跑了一遍，与基线相比没有新的失败 |
-| workboard | `port-workboard` @ `a791eabca2f` | 完成；有 4 个提交依赖 store 的接口，放在了 store 分支 | reply-admission-ticket 与 V 字节相同，其余逻辑等价 | `subagent-registry` 的 loopback 调用点已由 voice 组补上；相关目录的整体测试还在跑 |
+| store | `port-store` @ `0e12c8f5f22` | 完成（24 处改动） | 逻辑等价；多处逻辑拆到新模块 | 合并后发现 3 处上游测试回归，已全部修好（`port-store` @ `0e12c8f5f22`）：① 规范键校验跨连接共享，关库后不失效，这是 bug，fork 侧补了句柄代数，比 V 更严；② 磁盘预算用例要清在用会话的历史，V 有意保留，测试里打开开关；③ `sqlite-byte-size` 的测试夹具缺 `seq` 列。之后对 store 相关目录整体跑了一遍，与基线相比没有新的失败。基线上原本就失败的有两处：`session-creator-preparation` 的 3 个用例；`src/cron` 整个目录一起跑时 worker 会崩，分 4 组跑则 203 个文件全过 |
+| workboard | `port-workboard` @ `d754711fcf5` | 完成；有 4 个提交依赖 store 的接口，放在了 store 分支 | reply-admission-ticket 与 V 字节相同，其余逻辑等价 | `subagent-registry` 的 loopback 调用点已由 voice 组补上。相关目录整体测试过一遍后，查出 1 处新失败：一个测试只 mock 了全量快照，但 settle 现在改读精简快照。已修 |
 | codex | `port-codex` @ `4399171e2f8` | 完成（4 次发版） | 3 个文件和 2 个资产与 V 字节相同，其余逻辑等价 | — |
 | channels | `port-channels` @ `c6bd0db4705` | 完成（飞书 13 次发版、Telegram、x_search、审批卡、手机入口） | x-search 与 V 字节相同；飞书 chunk 切分不同，没法逐字节比，靠测试 | 3 个只供语音模块用的 core 挂钩交给 voice 组；钉钉/企微的源码路径在平台分支 `claude/bl-thirdparty-20261029`（未合入） |
 | voice | `port-voice` @ `69f2fe8b4c5` | 完成（GPT Live 整条链，15 个提交；顺带做了 turn/workboard 组里依赖这条链的切片） | V 自己的模块在源码构建里落到别的 chunk，没法逐字节比；delegation controller 改写成 TS 后逐段读码对照 | 飞书语音身份改为插件注册接口（`registerFeishuVoiceIdentityProvider`），不再像 V 那样直接 import 插件安装目录。`gpt-live-call-lifecycle` 照搬了 V 写死的 owner 会话 key。`tools-invoke-shared` 里的 `voice-direct-tools` 还没有组认领。**没有做真实通话验收** |
