@@ -1,0 +1,1460 @@
+{
+  "since": "2026-10-29T12:00:00Z",
+  "doc": "docs/upgrade-lts/patch-catch-up-plan.md",
+  "layers": {
+    "core": {
+      "base": null,
+      "package": "npm:openclaw@2026.9.1"
+    },
+    "feishu": {
+      "base": "release/source-map/bases/feishu.json"
+    },
+    "codex": {
+      "base": "release/source-map/bases/codex.json"
+    },
+    "dingtalk": {
+      "base": "release/source-map/bases/dingtalk.json"
+    },
+    "wecom": {
+      "base": "release/source-map/bases/wecom.json"
+    },
+    "worker": {
+      "exempt": true,
+      "note": "our own plugin; source is this repo"
+    },
+    "session-relay": {
+      "exempt": true,
+      "note": "our own plugin; source is this repo"
+    }
+  },
+  "entries": [
+    {
+      "layer": "core",
+      "path": "agent-bundle-mcp-materialize-DlD9AJQW.js",
+      "sha256": "bd4240812bcd3a657f79d179a8aad05647fb65674edcf7124b57c2a78781ff1a",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "agent-command-DPfawBbr.js",
+      "sha256": "a7811ac05c817e98de881195e18407af3e485b2b8b242ed3465064ba72c680d1",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "agent-command-DeP5kHlK.js",
+      "sha256": "e7b522ff90d07f76e04c8067b64919a8c9e7068b46e44dfab707aea19f2976af",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "agent-db-process-coordinator.mjs",
+      "sha256": "51c170d34fad2b5d0a6b0de8b10d0f32b57384b5db32e78dfd7b80eb7547650e",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "agent-run-control-BeeIeTBf.js",
+      "sha256": "8219c5e862180b3fd69775644569234df6f0b849be0ee14c10ec4dfa5fd1233a",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "agent-runner-memory-7VF-zwNt.js",
+      "sha256": "befc094d3c6183b8275c1550cc91ccd333dfdd8a989ad9121be95d6c914746f2",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "agent-runner.runtime-CAdsMsQt.js",
+      "sha256": "09f1b500f122381a4af008d7bb78f478a0c703602974d50685a40b8238651e50",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "agent-runtime-identity-token-tbYOQmt6.js",
+      "sha256": "df78006506ed9aa892692ef3a4ddd11109132f48c0c50f3b2679b09150779d20",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "agent-tools-djVuP1H1.js",
+      "sha256": "f414fa7fc9f52a1d118a0ba14d100f4f73bc7134b6150191ab404c25e51d55ad",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "agent-tools.before-tool-call-g2OT63u5.js",
+      "sha256": "618ab46aa1b398a0815c461fd7af3b721272968ed3652e77639171604bb5f9e9",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "agents/agent-bundle-mcp-runtime.js",
+      "sha256": "7971447cf4e11d0fcc8e4b0c729085101bbc45c77a8f1ede1eb5f6c343769354",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "attempt.model-diagnostic-events-B4dGIs0S.js",
+      "sha256": "8aa2ea92c8c55aecec9077659295765f9cddfaf608bf71ef82b460ad031cee9d",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "automatic-maintenance-coordinator.mjs",
+      "sha256": "276b63f98c2b1432a3224ac27d033695aee062c7db31479a29223e77e6b956f1",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "bash-tools-DiAfkLAC.js",
+      "sha256": "43d9a2273b8de08d71493731cd3e5224b1ccb241a64b2fff740f42b6517608ff",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "bot-message-DC6p8sB3.js",
+      "sha256": "f37781c45189f3fbff5c18bddd80f6a4d3b816a46e0865530f9d7545894d8c5e",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "bot-native-command-builtins-mQhamMB9.js",
+      "sha256": "8b7908bd3e11c1e238d74605cd148c64a52c09d6e2bb2a2ee505bc52de9e2a78",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "bot-native-command-dispatch-7hG7WSS2.js",
+      "sha256": "58c78cb2c03c91bff4a2681b0183bbd3a80f1e41d0abf0ba6307d1e08fbb7836",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "builtin-openclaw-zQV8Wwjr.js",
+      "sha256": "a44b846a3a56be86a09e7aa0259a6ec64663d6c92a5861cd67fe4c88a83015f9",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "bundle-prep-observer.mjs",
+      "sha256": "bee5b5a50d40cb5a3c7dc64bcb43ab6c53462bfdf29305eb24a25096b939e152",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "citation-resolution-budget.mjs",
+      "sha256": "93dabf446753b0ee346beea9935bcfc714913cb9b3e7abf626a9b67da3040e40",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "classify-Dm9sTbZz.js",
+      "sha256": "a69e44f5d650917f91d86097f7f525a3b5e31db7e6618c9a993c650f3a388c92",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "collector-DyqVHdcZ.js",
+      "sha256": "376387c50a24a360aab39aa9d6c11eed7897e45a0b23bb0da93a626d3e860644",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "combined-store-gateway-BwDhjbIt.js",
+      "sha256": "9cb53296f60b4d375f19cdd0e52d104a7b255c9feaae34656654c718bb6f5c51",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "command-auth-DmNN2m2f.js",
+      "sha256": "8b4858e31f7a4b9b6ae281ad3de20d31c818b5a99c4bdf670a50977b2136a5e8",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "command-secret-gateway-DCJZ8pGz.js",
+      "sha256": "f28f2fbe29a1a472dc8056790d9458e5690e792eaf1620bc98a51a65095c0038",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "computer-use-contract-CisZRwLE.js",
+      "sha256": "1f51021f38e16b555139f5fbf167131f32715276c283f5ee91edc54bb55c46be",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "config/sessions/session-transcript-reconcile.worker.js",
+      "sha256": "fdce59ff030f7b0b2798cb1cb43d9615cb5a39c0d014f1489c026303c80bf7f9",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "control-ui-DhD7PO_6.js",
+      "sha256": "22d45d6970a05a3bd57ad123803c6977a49d04f5746415d6e756948e768afe52",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "control-ui/asset-manifest.json",
+      "sha256": "63fdae94b4f1f6b036430bcb161a02a926e7c9bd42bd280f988a507099d56837",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "control-ui/assets/control-ui-boot-chat-DWTSrxxk-rtc-v4.js",
+      "sha256": "7e4bcc734a656bd91d731fb1cfc8169e2b61a2a12f5745bf17c7ab70bb099a60",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "control-ui/assets/volcengine-rtc-4.68.1.esm.js",
+      "sha256": "5a66d63e574bd4858f8479fe73203780983e8f082b74cfd2da0dc1b3b1fa0c3d",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "control-ui/assets/volcengine-rtc-managed-room-client.js",
+      "sha256": "cee065c7fbe8a3ca2cfa440fb78cb107f37e18592baa97e8e1f57b56597b08bc",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "cron-6EvXRcEQ.js",
+      "sha256": "bbffaa91c03e5671dbbdf769bfbd7673227eb1b466fc72b2fb8dfe3c7a824c88",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "cron-tool-CPu6etIM.js",
+      "sha256": "75ba8152b283631a0d71d26fecfeb80a871391a730c49c11d4596d0f6bfc5722",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "database-verify-resource-group.mjs",
+      "sha256": "87eda8ea396327d1474e1a59260b8189407d407062dcf3b3ba1df7e067b0983d",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "db91-integrity-bootstrap.mjs",
+      "sha256": "87b7fa4767b0b7b56800e0163977778ee5da6999dfec6b5a07410208248dad84",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "db91-integrity-gate.mjs",
+      "sha256": "aa68547bbf63e027c81b135b351c8a979cd2f3c3b101d81014e48efbeafdff2e",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "db91-maintenance-throttle.mjs",
+      "sha256": "40da8a59927bb404c259e204c6a059cb32cac9c2d709108708a30e48c40843c8",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "db91-memory-provenance.mjs",
+      "sha256": "3521f6cd7f71cb5ab03cf56700a1974d94998fc4b3d3fe91d2a2da17fd397225",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "db91-read-ahead.mjs",
+      "sha256": "9d6cc4d80251c8627b0390fdddf01498f832bda75d6b4169717d1a53dfaed20c",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "db91-restart-carry.mjs",
+      "sha256": "5f18d635380c9d0d73ae30b4db0b2e9d5f7d6b19de46b69cdb2dd722e003ffca",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "db91-state-read-ahead.mjs",
+      "sha256": "b051c261177cdb358826c0b8e40248be4967b2eefb6552e379dc895ff10de9d8",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "db91-trajectory-sweep.mjs",
+      "sha256": "856ce3f8f0d98a79000a089f70ef3d18b592bc8b8d5162cfa7dcd4c2d8082d75",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "delivery-completion-Do3nBV6b.js",
+      "sha256": "d223a342ad217203dacac3fb6fc87b28e853b6f6f1afa0673e177cca1f1322d1",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "delivery.runtime-CAsclR-9.js",
+      "sha256": "3e943055229ccf3e2becae1bb132992f9861a5b2295a9abbb215ac6780aa7b2e",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "disk-budget-BzLS0kmH.js",
+      "sha256": "aa6aaf56f629b42588b905607ec5d0372a97c76c7fa58deb7186a4ebfc9665a4",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "dispatch-from-config-DOJq_7CI.js",
+      "sha256": "97e69403f0c37f178c2fc60b57cfb15711009a4e1257ebce12e4dd0d6dba43aa",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "doctor-health-contributions-Dz7xROs_.js",
+      "sha256": "3d9cdefb8995efea0e6c8a853b81b9cad92ab20bd8ddd200134e556bb3fa7749",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "dreaming-phases-C5ItPb99.js",
+      "sha256": "a72386d36ce5fabdbf3b5efa170efccc1656118fd95a4ff11414a85c0487ba92",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "embedded-agent-DaSvA-Yk.js",
+      "sha256": "88a9a95e96af39eea5753ae75b0952fa216c9a83c99d876c24dc2b44c3e3ac86",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "embedded-agent-helpers-CzpaLpCq.js",
+      "sha256": "63002d77d5d5b24601e3294e64331784ef855bb8019fad6c2316614f184672b2",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "embedded-agent.runtime-CL7poBKY.js",
+      "sha256": "8ba1f8fb7d2de9a69728dbc27b9119313ce7318d99ccc63c05446692e0a0f82e",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "engine-storage-C1hCjs4v.js",
+      "sha256": "feb18d0eb6416bf328784df96eab628b32a942d33aa751184801b7a15815f85a",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "exec-approvals-store-D159_AKa.js",
+      "sha256": "231279ca6aeea755bd63eb0c06219a254d11236c39e4a1a51ffe126fc452f5c1",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "experience-review-default-Dr4f0pMZ.js",
+      "sha256": "604ab19a8b0e2feb3c848c5cd164d386533bbcfe62974dd911454932474541db",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "extensions/memory-core/manager-runtime.js",
+      "sha256": "9781253523f64e0690f69b5d160243376be35a8defc7cc3b5e6ee09de2b7b0b0",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "extensions/memory-core/memory-search-knn.child.js",
+      "sha256": "97c542fbac2e4fe0e3f52e628f39a37003a678caab01bf4212dda756ef485a40",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "extensions/workboard/index.js",
+      "sha256": "448d3ae80781a98bc7b55ec14394c52f44e3247dc512d4e5aaef4a13c8a71466",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "gateway-DVu5Urba.js",
+      "sha256": "e6e07ff7f43bc29124039984f7672adca49cd935272c76c0210e9b20274d864e",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "gateway-caller-context-CRUBJj3M.js",
+      "sha256": "7c7a66ecc1c579ac1c4c0ac0617c6013b22eb284ab4b624e94784f4ee21c4cba",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "gemini-web-search-provider.runtime--94tDlhY.js",
+      "sha256": "d07766e2b99e1864b1b01390fec78fae145a68c196f338ec4181de400058cbaf",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "get-reply-CqW1y05D.js",
+      "sha256": "a22a84a9b832d0aed7a0ab00354dde35a332cff377a9eeca6df3130292a4f974",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "get-reply-from-config.runtime-CWdWv_c6.js",
+      "sha256": "727ad5143f48ac977331e09a09adbd07499fbb8cda425ece72ebfb040ebb929e",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "gpt-live-call-lifecycle.mjs",
+      "sha256": "ba6f0b7ec7c577ee55052906828d3cef9c1291b39f25e866cd91da5ca00189a8",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "gpt-live-consult-continuation.js",
+      "sha256": "41f572dd09f5934314773310cab6e03a21a750ded5b85c51f1970c8f80d91afa",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "gpt-live-voice-exec-lifetime.js",
+      "sha256": "1f101c5ccefa75850499283948ec32b6470ba82dcb4f68b6ac03634118148439",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "helpers-DEd6NfQU.js",
+      "sha256": "8ee6539960753432f21ad9fefcde4319b1c08f15ed4e69f90ba4e7e92e5a1667",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "history-image-prune-Dg0CDQ4a.js",
+      "sha256": "dbe28902fd72d4620e1cbd16ad03daab58758011e5692d0705957583e3e24c49",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "host-capability-Dq3cEEWF.js",
+      "sha256": "296b132dec1ae0b747e63538562d16c8561a7170d125d0811bc86eea26c88526",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "index.js",
+      "sha256": "fe5494158ceb95450fec18bc9b6b4bb44c08c8dfd53c776001338b3fc053c069",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "inference-route-Bv_D48Z8.js",
+      "sha256": "11a127d159f836d09941eaf0abd760535d336d91c7a51ebee7a53fd8da5443d0",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "isolated-agent-BxeXdw5A.js",
+      "sha256": "2613b14741ab4cf2a03c0c4e6be90a0594ee406009324876aae1d634734f8698",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "lifecycle-YRwzpo9_.js",
+      "sha256": "82c249a02236215329b3b3bb747b7e58b94035d8c546e2296e1fe63372047aa4",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "list-snapshot-revision-B919xtbt.js",
+      "sha256": "ea5c9cfbe61b203bcf838e4bf0a1d1a43934b26b8598028e7bdae255f292833c",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "loader-UHuBXZwI.js",
+      "sha256": "d06e737e98437a7e1d595af5c7b22c15ed23d53e268949fdcaf4d7219e2a54d2",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "manager-search-knn-NiSMMJUM.js",
+      "sha256": "a9bd409237a06339ca6f7f947ad175e48897541f976aaa8d16021f0806ca204e",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "memory-core-host-engine-sessions-CAnvQ_5o.js",
+      "sha256": "697381c0f781baae3a7d622b8156162192f820be6cf781cec0ff37bb08891f48",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "memory-schema-BSs9MQgq.js",
+      "sha256": "7267571c87d05e1662a8277b86a22760d77679e7ff48474022983eec2238584b",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "model-route-contract-B2Q_03Gg.js",
+      "sha256": "efb465d2bc7f474f7173bfbc6586d5a767e8970b7aa4031e6358543cb6f0384e",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "node-sqlite-CL-d6drd.js",
+      "sha256": "da24951ca0a47d7a2ba43f1aa6f3fd844c85d5546170d66ed7d5aed6d3d93ee9",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "openai-chatgpt-provider-BApw3_oy.js",
+      "sha256": "46bc8cc01badf720ab5d3443bf66cc2885b998f90a072b3588d6694566935df2",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "openclaw-agent-db-CUTe8BX6.js",
+      "sha256": "046d7a8253f5a97b1887bdbe5ae5d3826b6bae53aa84d5240e2f1216f4421cc5",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "openclaw-agent-db-maintenance-DYSkzMMg.js",
+      "sha256": "b6c84c9a8cc7f98ca858f434c10c5c66d8fa253d11615ec90851b0729c123a9e",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "openclaw-database-verify-a3Yme38Y.js",
+      "sha256": "bace8934c1550e2219ac1c4085a16808c53e29d5b44f00c39ab70e48299edce9",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "openclaw-state-db-Bh3Bq87y.js",
+      "sha256": "0e366560308f226295f31ff4ecbedfbd9e700a9432b2a1935febc238a4d102db",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "openclaw-tools-BODVdJQD.js",
+      "sha256": "0b8b623310c01d8153a7f751c1f3a2042a2f3481d62499effce4f34d60ed2799",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "operations-CTofDiKh.js",
+      "sha256": "54ae7d7b23cd93b01c0571c6c3914ee97ee5c83a445707c6ac85f9adc1d1957b",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "payloads-Ch7RD6Ym.js",
+      "sha256": "d03cf80cdc443e8efaa23a99bac3f3595402c696e74f8877328011d49b10df5d",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "placement-store-CkyLHi6x.js",
+      "sha256": "5bcb7a2f4a0fa7dd73922cff7920e9cd5485d58c1128c5cbae2eb5c583c6bf17",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "plugin-sdk/agent-harness-task-runtime.js",
+      "sha256": "50dc439b5cbb8a16860aab0bd8b4f4fd485f16a246f881820be5c0ea9c0754e3",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "progress-card-CciYmFS8.js",
+      "sha256": "40c4d10a52e8ee4e1984351d7e71c19048a9dcbb1ef4830615c455cf2174bc10",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "project-memory-readonly.mjs",
+      "sha256": "2eb8daf953c52e500ea211b50a65f25a25f45b510828d664612a40013baf85ba",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "provider-policy-surface-bKCE_kaj.js",
+      "sha256": "faaf92510b5bd40ce767ee0640e69b97cce8698ad4922a1fc943fe2da3518c44",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "provider-web-search-BBL3jMNu.js",
+      "sha256": "315728c200357f3451daa928b5661144c8bddd274621a7b25f8be54b4614431f",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "public-surface-loader-V55JV4Jk.js",
+      "sha256": "dec325ae26f3f5e42ee86fc962f49b9d7edf05b9edc03c061555c98fb3d34bce",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "pw-session-Bp2ZghGj.js",
+      "sha256": "8a74119037da617a8b4d812ee507f28a874b3c42404815005b1a10045594c485",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "question-BdQvLMDb.js",
+      "sha256": "43ffe97b223a46c3ae411a80e98d9dcfb6e578526d8392aef897dcc46dc2504e",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "question-channel-runtime-BhJ40GDw.js",
+      "sha256": "262f91b2c7f06199b6e34d931827a0e5fa1b8efefa714d1632dae035c252b5a9",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "question-gateway-runtime-BuwS3oNQ.js",
+      "sha256": "d659f25bd0becbac75b8b2d1a2e1d1dc5387ad685b8604bcf74622ae00629d3d",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "realtime-quicksilver-delegation-controller-B0yPpiHp.js",
+      "sha256": "3e098e6a43b5aa3bd4fc2c713e0e5616da357555629c5a2c3e7c8f8df235a03b",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "realtime-quicksilver-session-B3HKftDE.js",
+      "sha256": "22ae5c48d5bcf2386783212762f6999d5c237780e6469c5bedcf8e83704e46f0",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "realtime-session-harness-CEO5kVAJ.js",
+      "sha256": "d8515037de8468ad82330a92f8644382efd4f4b1050d92abaa18a4747ccd4a76",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "refresh-BzYxPady.js",
+      "sha256": "3e34ae21675df38e58889654a384a9bcdc39c77b28f9eed2f612250402c06671",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "registry-lookup-MnRZoGSI.js",
+      "sha256": "79416d86653ad4918b1d0e1e44f706041374df5f1ec3f75ce122bce6441f5e52",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "registry-runtime-session-ownership-B1XvaNE7.js",
+      "sha256": "d8e335dc000702f4909d5ed3e054b2c04b9199bc8d85e3239fde08fd09f79607",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "reply-admission-ticket-QG2vY13O.js",
+      "sha256": "078c3742b69f7960813ce33770493db5e6964b3c43c5496c8a67d26c541bab3c",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "reply-prefix-Ddn3qL_7.js",
+      "sha256": "e38b7e02843c2de2eed3c063d0c1c628229275b3308da9fc69deae8625a5a9e1",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "run-delivery.runtime-falxHVAy.js",
+      "sha256": "6afb1b4a740dcb2c9fb374c7a3408246c7beed495b0171a68b73e665c0c52bf7",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "run-session-target-D4dx7X-Q.js",
+      "sha256": "c0776b3f63b998266be0306ce7708243ef7c8918a01fa9a358c80504105b51f1",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "runner-BIhCXp3h.js",
+      "sha256": "f99d7111d20a9292fce75c1db42127a7dc4da6972b43437dc3f53aa17c07a47d",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "runs-5WnDPZ0V.js",
+      "sha256": "056243f50c64a10a17f3593f2f0ce9bb2e2ee71591b5ec4c113faa9dd492d6f2",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "runtime-api-1CCazqtv.js",
+      "sha256": "62ecf47e8b884b72e25bee5b993a4a90ad0cdaf95003c4ac3a5d8d019b8da7ed",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "runtime-store.sqlite-D0DF2c9M.js",
+      "sha256": "ff4e9dc5b2295fbcb9da229b2546f4101844c72a0f91e0a7d49aa4dbbfbf6d50",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "selection-BC0YSSFq.js",
+      "sha256": "b55b53525a4e668c4c242090893d6f8cb4de0ac96899b444f0dd85cf3f8bdaa4",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "server-methods-CLElG7qF.js",
+      "sha256": "f3889a32fdaf2a54315378dd3c8bea08b25dedc4e293afd83c718ad54e9b9edc",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "server-reload-handlers-DblQx0j4.js",
+      "sha256": "e566fd2554eb041d632c89fd1aa98fc47147eb27493aeb17d18295a50ff37951",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "server-session-key-ZtX3Ble7.js",
+      "sha256": "6310b72b4fe21d37e7e137ec33f29497519c12fef8a3fc3661ced869654cf021",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "server-start-BNcm1gUN.js",
+      "sha256": "9b71ace5b596fffdaf4263d14fbc5ddac6c8d413dbd48253da7d69fc8bdb6205",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "server-startup-post-attach-BPE6Pv6n.js",
+      "sha256": "fdd1061374a6e999bf7f80cfda0f6676ce05889c75473cd80fedd989e45a891c",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "server-worker-placement-startup-BvPREvpr.js",
+      "sha256": "8e73e9eb1480777d59848279a864694dd11aabba84da49c1ac0dc27979ae10a8",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "service-CzmmKrEg.js",
+      "sha256": "b9b76fc08f123317d43aba5071e2545408bfd937eb636d8b12aded07c55ebe90",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "service-query-Bt8YN8NM.js",
+      "sha256": "bb7aed5d457fd73fb6d5d967fabdad182a5fe5f834842c42e62af8ed62c95c5c",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "session-D4AJhdUK.js",
+      "sha256": "83cf19c8e3b3f95e27a5f37068d6e56ce71be86274890fd6baa0af6fa564c7c7",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor-K0XuW6ln.js",
+      "sha256": "30c7b9d6e3d9baf842e51f4811708b0f21a95c5cd36ebc150b2dd7a2fed2c15d",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-entry-BlklNPKQ.js",
+      "sha256": "789fca01601893b6437154543628936dc28eb93c19070ad95f5a4ff1607c8f61",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+      "sha256": "ea381f9d45af70ff7bd47d2613e0b70974421ab375e273b77c870212a1666f07",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-scope-BwPKGcgm.js",
+      "sha256": "caffb3629c5cbfb1fbf6027c8dccac7fa7d829d30bd8f4ddac8c4046a4dfbf34",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-transcript-state-Cz9g7S9v.js",
+      "sha256": "2583a789782d3f1282e2fe4670f79ec463356950d1240237437b7537778c7b75",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-transcript-store-DV0WFe1a.js",
+      "sha256": "74fba951650504050b9f6f0934137924f1418ca060c116750298477ea54ae257",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "session-history-eviction-d5aiCsHS.js",
+      "sha256": "0c43970f918117a2b350517ab7af9bffc13065c40df54a1c2f270f1745143101",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "session-manager-CNTG_BAJ.js",
+      "sha256": "84317e326ad0f19575f7d6cfc5482f2a6f8c5b9f29004411a51ede68e4935edf",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "session-search-visibility-H6aL2Pcb.js",
+      "sha256": "566d4e58ac0b4dbd777b694bf9383823da7ed070d0b4cfa258813d57672b2ada",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "session-sharing-BlMqwMBH.js",
+      "sha256": "615cd9d6b87f11be7453c5c1fe46c75a6b1c7b9eebe97eceedc87ba2dd58f0bf",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "session-task-lifecycle.mjs",
+      "sha256": "ee510a91a78db739adfbf8af3343d924bb09e60188ce01bf6d3cdb20534d51f6",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "session-transcript-index-9itOio9h.js",
+      "sha256": "7d14a3c07c3b78a216ce85d764444dce364990a342c77f1dd0230c9ea0025328",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "session-transcript-reconcile-j5qhAafV.js",
+      "sha256": "85455fa43c681eda0b831d6dc9b147925c149acc503fd936a018e765faca325b",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "session-utils-list-BUP03AzS.js",
+      "sha256": "a6d40fb5ae98bb8b61ff157487b4a59942c32f126620eda56869c24fc06b3de2",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "session-utils-store-Dlphca2N.js",
+      "sha256": "b566c7e93e3cab8ecc2242ae241597d0ee9890cd8455b99c22a0262eb84dad6c",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "sessions-helpers-Bn_vDNby.js",
+      "sha256": "4c8dd6f402ee54ce0eee133cfefe25e01340a485d598390ad21d22fc8ed8206c",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "sessions-read-C6mAMxyQ.js",
+      "sha256": "5c84c606c258ae729630a659d54bdf28d1b7cb2999b1ca86a325832b78ef5a43",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "sessions-resolve-_D6BmQTT.js",
+      "sha256": "a1b3f4b3c5368c3cc0a6f1e7a330f465e4aedfde3a5ef78b08e1c4fa95a8f6b2",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "sessions-spawn-tool-1FQMTkIo.js",
+      "sha256": "ba127bab652e9f4401437816895d90e5471cc3d7bb8387cbf159f3b9e31f5f32",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "sqlite-begin-contention-retry.mjs",
+      "sha256": "0540c343e348045452d68ddeb8ca62bc9e46303a517011eb17ca516a3e85ce4d",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "sqlite-store-CH-caj1l.js",
+      "sha256": "d06ee044d85a76f19c5fa034b019f934735027afab56934d9d2c9aa5c2633c34",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "src-B9mb84px.js",
+      "sha256": "b082258bca1169829a2079a133b60e78c865876b3ede2455a07a29894a942727",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "state/openclaw-database-verify.worker.js",
+      "sha256": "e9966af8c1ee78f6974b5dd00f95e291bdd4ffe6e38ebafeb718b5dbaa58ecc5",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-announce-delivery-Dosep7Zr.js",
+      "sha256": "f8b6fd0fd2803d78e3c8f5570f90f7e2532ddb2f551151deb1c1a06fbad8650d",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-announce.requester-settle-wake-B2NSziIo.js",
+      "sha256": "ec4c192bb11900e170eb9257fde565461cae0dd3a8c0fb55b61c895ad9db8649",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-capabilities-CPAHEjL-.js",
+      "sha256": "4ee0a32ecb6d7761635a04c5736b125ee4190c668e04936f2340c0e19753695b",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-completion-admission.store-JmpNDYTF.js",
+      "sha256": "c106a6cec9ba3c5def63297f43a23f9bcabe4543c373d61872f3cac7bad48c43",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-registry-C24yr_PF.js",
+      "sha256": "1d9f45d61e7201f27cd79b5941985443e4639b2bc21a0d4e1d97b386ad190a47",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-registry-read-UaDFTyfW.js",
+      "sha256": "142bb5158e21a3b68c3cd80fd6cd52beeb8904f632ca39ba9b08e4d1fb2db5c0",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-registry.store.sqlite-hzGu4QSk.js",
+      "sha256": "4bc27059fa5b0127892c1f0f3f6285d3334a98333f781e9f1dab245ab9bba9e7",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "system-agent-BhnNvC3z.js",
+      "sha256": "50f9c3e48d5c2defacca72da0e5420f8b369095c511bdc148a0ad1791ad22c06",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "system-prompt-params-B645JcX8.js",
+      "sha256": "24d196636e47b585231ef18de8a4dbbafa8701aefb06c04b70b3c114f3fa1ec9",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "talk-DkFuKRod.js",
+      "sha256": "f01a6e7b16cea92da439d1bacda8b6f0159acbc55e9157d130893a3e204fff3c",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "task-registry-activity-DSlVVJwD.js",
+      "sha256": "2e70d33de6eb5b6bf042de8cfd3ec9d6c34939cedf4ea8c31b19dc0012c7bb6d",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "task-registry.maintenance-C4nMaDY9.js",
+      "sha256": "cd4a70c3b909d6d8e21a26a8fce250b281a67f76c5d4779f91d90d8b7e4671d3",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "task-registry.store.sqlite-paxOzi9K.js",
+      "sha256": "81c9d4b22da822ee808655832fdd0d561b858ab9c03edd456753b91c4bbdf237",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "task-summary-qdovVAE7.js",
+      "sha256": "788de4765ce51bbe2eae0f09a9545e91f6e4822010fb5eed3493a775402a6d5b",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "tasks-DNVtnKlS.js",
+      "sha256": "238760cc0681d00c5c13dd2bb942dc85cf43eb752bb5d43c00d3787d5641ec7a",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "telegram-ingress-drain-factory-DJM2Jqrc.js",
+      "sha256": "acdf98ee22458f8c6415e0ef7b8cc6cdf3e1edaf951d45a3fd6432ef1ef7b194",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "tool-resolution-Con11qMn.js",
+      "sha256": "aa63296c842b933f1c50fc8f879b3e82446766b4549758e60ef297b42b8d33a8",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "tools-Byg09TOP.js",
+      "sha256": "076e0ed9e9fba467b96a7404a81c4baa4a7f6c3fc347a9ca79762983eef55f00",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "tools-catalog-DGR0f9wo.js",
+      "sha256": "bbc820d386c29a59abcf50376fa8cf190cdbd61729240a2fcd59dd4442fb1722",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "tools-invoke-ev4-EXmh.js",
+      "sha256": "a5f191fc50f4fed5d0e7e4a2f9451059aa6c1cbac321c728a1907e23704ad0a7",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "tools-invoke-shared-CjpflNGO.js",
+      "sha256": "f327eda68270be7b98bca2217fba2767a2a105c850de0625071ab2e2faf8c949",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "v-experience.js",
+      "sha256": "484da30979760dbc5e73d7f9d098c9302703f7859e362a11e6bb5563c8c4013e",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "v-feishu-task-presentation-command.mjs",
+      "sha256": "acc0fcf5da7d409876b07ab10053c45a7ff0ef848cc0b6a8b100a2ef5b2999c2",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "v-feishu-task-presentation-core-bridge.mjs",
+      "sha256": "920fd1f966a5014efd3036d7058d766d3da97f199ebc75f19046bffbaf709c09",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "v-feishu-task-presentation-cron.mjs",
+      "sha256": "80071002e00f987b87d29f237d5450cd98af5afdfce34f33f62b0b8e325c05ee",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "v-feishu-task-presentation-delivery.mjs",
+      "sha256": "47b4e136a66e7eaf2478d4c68e4d3c87e0193f6f83c2bd2174058d3a6107a4eb",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "v-feishu-task-presentation-followup.mjs",
+      "sha256": "824905696977aa8418145791c78eb00d7bd33da401a3127a522a0e53a6e98529",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "v-feishu-task-presentation-runtime.mjs",
+      "sha256": "d98433695dc87517208487540e96b7b62614a858411139eac807417b22f140b7",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "v-feishu-voice-actor.mjs",
+      "sha256": "9c890ca5e326b958554337de4f0aec94af94a26581da13054d6b50efecfa677e",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "v-feishu-voice-policy.mjs",
+      "sha256": "88e361a38810e9a609e3073759a8daafc3a084462f871b7a281784bde7482bf6",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "v-feishu-voice-runtime.mjs",
+      "sha256": "4be65ba00e2cacf356cff59fefc616ed018c74902491861fc9f54dcf808594ff",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "v-feishu-voice-tools.mjs",
+      "sha256": "c4bd3f23ef142e3e2773a6b64b2347f06306cb8e20566d8ab31a2b25a081e64d",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "v-health-session-summary-worker.mjs",
+      "sha256": "b5cf6c19999d929c551acdf5164b894ff0c592a231b948ff4c705e2ccd1ebc81",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "v-session-entries-matching.mjs",
+      "sha256": "3e5671e2cec4eb82fe670fc4bc5f3fab82006ecc3e3ee182e7bbc7e146999a88",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "versa-cron-shared-management-v1.mjs",
+      "sha256": "8c0417d80b2a341285dee975767abfaf3c30f334a610970478767d61bf79244b",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "voice-process-owner.mjs",
+      "sha256": "c0045e63409a22e94bff30a3a4bfc03f3a52e768d569c5dadbde86086c716be5",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "voice-task-lifetime.js",
+      "sha256": "49a8bf6e97dab4e70084732826a25236328c0609a031c93b6a6cfcbb93a84692",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "workboard-lookup-cache.mjs",
+      "sha256": "8250ff78ec0baab63cb38f4e78dc71ee0f0cd9847f414b62491c191a6ccc3c4e",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "core",
+      "path": "workspace-BFk42BX6.js",
+      "sha256": "5c74cd7c84c4745fb615bff621836be5a5473949c29db0b115ab81f72a4ce027",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "ws-log-CFwaDvs6.js",
+      "sha256": "2168a3f755af25f3115a745b3a2386f331684aaef22f205e8b60c6321b0be826",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "x-search-shared-CJa_QAnc.js",
+      "sha256": "bdb1ab1e8ffb48c4fc8ba3e2d7626496214ec1abfa7d965315ba9e57e4eae01a",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "feishu",
+      "path": "dist/channel-DSYCNah8.js",
+      "sha256": "bb71f2d463696728477e85856a591b3fd94617f38aaf17b52eaadfaeffe46b7f",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "feishu",
+      "path": "dist/client-DMbIL3UH.js",
+      "sha256": "8402132eb0fa664dbcfcc9834bd9e6bffb9cb59b797bec8dc36a82432e154497",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "feishu",
+      "path": "dist/feishu-private-conversations.mjs",
+      "sha256": "012454219d94e8aeff08a2957770b2d68796e01cecfadc0a861157f559c644f0",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "feishu",
+      "path": "dist/index.js",
+      "sha256": "7803f53a62f3824fd9670f2928038ea9f7060d0ad3bef0663cad31b24329c43c",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "feishu",
+      "path": "dist/monitor.account-WFdlCDhR.js",
+      "sha256": "1925d3f2d4f3550189e76b27bac09a40b25bbdd7b124e839c6605926b677366b",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "feishu",
+      "path": "dist/v-feishu-approvals.js",
+      "sha256": "2905c12f9bc3cad97416f169ae7a08072878c7ff89a8f33076d710f7282cf71b",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "feishu",
+      "path": "dist/v-feishu-phone-tabs.mjs",
+      "sha256": "9544191e8d456488457b44c141bfa3794650f894e26bcc131cd61b4769a250b9",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "feishu",
+      "path": "dist/v-feishu-task-presentation.mjs",
+      "sha256": "d3f49b00811b026835f1f5a90afaf0d8f004a25a4fa3c3599e9c3d8facd6fdcb",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "feishu",
+      "path": "dist/v-feishu-voice-confirm.mjs",
+      "sha256": "6eba4d8dc140be24901ae0836a27a64ad6fbca863fd3cd8078bbfe88f2d9ee53",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "feishu",
+      "path": "openclaw.plugin.json",
+      "sha256": "483c07a0e1a3e077400d56360f57d40468a400fc0628696d4f536f2cd9b7ddf6",
+      "source": "versa:aea2dae23b4",
+      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/attempt-context-DmQUNWwT.js",
+      "sha256": "d425cfe28349a0313a7be3dbba56bd6790fd70005501119d83aced3532a3a7d7",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/bounded-turn-wzJrwKKe.js",
+      "sha256": "a2eebda0a3425249ed70cd6cc710dc0c204bdcf41415618125ade6ba02a216a6",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/dynamic-tools-BU9tmlYm.js",
+      "sha256": "f3ad9f4d87130bb315322322e9bad45d15146a97c563fd23b8895ba85728ef0f",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/harness-DXVZ5II5.js",
+      "sha256": "2903634b801db3ed43e4374a6be6c2770d9745229ef705ef87729a3e83bdcfb2",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/native-subagent-monitor-CnH147jH.js",
+      "sha256": "b899ca81e9255ba3f817af3b81c9a2beb5298cc5644876e2fac65d6b74df69fe",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/run-attempt-D1hJO4fX.js",
+      "sha256": "c34d6d777a862db761e22e03fae20e70c595867361052475a5703f67446ce2ce",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/session-history-C5J1AKzG.js",
+      "sha256": "9be280262d3f43d8dcfe8b72d388b6c678b0f5613b5e3b57ea8869c284561236",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/settled-turn-context-D3SNWtUn.js",
+      "sha256": "929c1ea936cce6ac892700114d9c042db856a79ad6d02d89355ef9514d2e08db",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/settled-turn-finalizer-BVJx4yoc.js",
+      "sha256": "7506b388b1718c02fe72c69195b49649e4a17cb730fac87720eef7c7a277dd94",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/side-question-BTZAII4l.js",
+      "sha256": "1ca216cf4da959cebe995b443eb8b8d2b5b269623e728232f3583801fc3f4435",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/thread-lifecycle-DAcEJ_Om.js",
+      "sha256": "4cceab62ea349d266533cf18f6ffdbd620407504cfe16126e16aa04e5bfcb661",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/transcript-mirror-DTUxFWa_.js",
+      "sha256": "af4c007c0965bf78dee27ea3185044488b419c4ea2905b960c8f0e1c75dd4ae5",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/transport-stdio-CyPldczm.js",
+      "sha256": "cd3d59c5bfa3eafd26339b62cbb2819381f3e3d43d739d8169f4f5d142658831",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/v-deepseek-base-instructions.md",
+      "sha256": "3b08633fa672906666659d764864dfda1d7af5b5111ea5817c8f46e5de4e1a8d",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/v-deepseek-model-catalog.json",
+      "sha256": "6df9d13df5b31c095c15c499b2f4ebde4c2230fc550aada8f01c7752b5afbd81",
+      "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "dingtalk",
+      "path": "dist/connection-DCvu-l09.mjs",
+      "sha256": "397c42c3f66d0cd7898168de21be1607303723cd797d9174ad4b1d6694d44520",
+      "source": "pending:third-party-plugin",
+      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+    },
+    {
+      "layer": "dingtalk",
+      "path": "dist/message-handler-BUoLSylZ.mjs",
+      "sha256": "5cd4d5d761641f8dd2809163ab5a00e55817f47e7b8c125f5533147e1db0ee23",
+      "source": "pending:third-party-plugin",
+      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+    },
+    {
+      "layer": "dingtalk",
+      "path": "dist/runtime-C81EKBS1.mjs",
+      "sha256": "6c9d9e2d3604cc0a97824f498d047feecb7ce885bcda040c0e602a3fa3979835",
+      "source": "pending:third-party-plugin",
+      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+    },
+    {
+      "layer": "dingtalk",
+      "path": "dist/v-experience.mjs",
+      "sha256": "6555ba08e72b4c46d58f8756a4e43bd4991371fbaab56fb904c507357cc784df",
+      "source": "pending:third-party-plugin",
+      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+    },
+    {
+      "layer": "wecom",
+      "path": "README.md",
+      "sha256": "6df6dcf6fce0dfdc046295f48adb05ea3b1d8410c1eddc4914df44bf6b61aab3",
+      "source": "pending:third-party-plugin",
+      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+    },
+    {
+      "layer": "wecom",
+      "path": "dist/index.js",
+      "sha256": "3f3d4222b4874c86af19cef1da4c1d8e76e7500c1822279cd375c2544dba81d7",
+      "source": "pending:third-party-plugin",
+      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+    },
+    {
+      "layer": "wecom",
+      "path": "dist/src/channel.js",
+      "sha256": "4b21464a5d55d728d1e6a51594d636b4153a8b88b7da0b88821567ac3edb1941",
+      "source": "pending:third-party-plugin",
+      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+    },
+    {
+      "layer": "wecom",
+      "path": "dist/src/cli/tool.js",
+      "sha256": "c7b703958019ead892f06ad94f29aa1a6f3b2ff3bc6bc2a6fcfa9c728817d651",
+      "source": "pending:third-party-plugin",
+      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+    },
+    {
+      "layer": "wecom",
+      "path": "dist/src/monitor.js",
+      "sha256": "f015717ebe8bd9371d37a252341c4e8a8089a32285997182d82e9886e6bd075c",
+      "source": "pending:third-party-plugin",
+      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+    },
+    {
+      "layer": "wecom",
+      "path": "dist/src/sender-name.d.ts",
+      "sha256": "9911b9707df4a285d9abca6f4f5aff9c82db819df58a3aa1368d5b56f21cb84a",
+      "source": "pending:third-party-plugin",
+      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+    },
+    {
+      "layer": "wecom",
+      "path": "dist/src/sender-name.js",
+      "sha256": "95a90ab47b6219ca059e22f4e7542f887bf93445c881ec0e376758bf1f8bcc85",
+      "source": "pending:third-party-plugin",
+      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+    },
+    {
+      "layer": "wecom",
+      "path": "dist/src/v-experience.mjs",
+      "sha256": "a85c1d37db7a88d3556349c3a9a7bceb35b56f3fa431f36f76d1accd331a3850",
+      "source": "pending:third-party-plugin",
+      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+    },
+    {
+      "layer": "wecom",
+      "path": "package.json",
+      "sha256": "fb2bbf0e3abd3c4e28e6c9e6b8a1efec3f50ceb0a0d80fe3bcb5a7db0bfcc28d",
+      "source": "pending:third-party-plugin",
+      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+    }
+  ]
+}
