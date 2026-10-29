@@ -44,6 +44,48 @@ const WECOM_V = {
   "dist/src/v-experience.mjs": "a85c1d37db7a88d3556349c3a9a7bceb35b56f3fa431f36f76d1accd331a3850",
 };
 
+// The platform source of each V file, for release/source-map.json's
+// `platform:<path>` entries: the first path is the file that produces it (a
+// patch, or the stored source a patch copies in); any further paths are the
+// patches applied before it, in order. The npm baselines are inputs.
+export const PLATFORM_SOURCES = {
+  dingtalk: {
+    "dist/connection-DCvu-l09.mjs": ["apps/v-experience/dingtalk/patch.mjs"],
+    "dist/message-handler-BUoLSylZ.mjs": ["apps/v-experience/dingtalk/patch.mjs"],
+    "dist/runtime-C81EKBS1.mjs": ["apps/v-experience/dingtalk/patch.mjs"],
+    // apps/v-experience/v-experience.mjs as of 5978d5d5, stored with the release.
+    "dist/v-experience.mjs": ["lab/release-files/v-experience-dingtalk-peer-case-outbound/dist/v-experience.mjs"],
+  },
+  wecom: {
+    "README.md": ["lab/release-files/wecom-vlab2/patch.mjs"],
+    "package.json": ["lab/release-files/wecom-vlab2/patch.mjs"],
+    "dist/index.js": ["lab/release-files/wecom-vlab2/patch.mjs"],
+    "dist/src/cli/tool.js": ["lab/release-files/wecom-vlab2/patch.mjs"],
+    "dist/src/channel.js": ["apps/v-experience/wecom/patch.mjs"],
+    "dist/src/monitor.js": ["apps/v-experience/wecom/patch.mjs", "lab/release-files/wecom-vlab2/patch.mjs"],
+    // tsc output of sender-name.ts, stored in release/ and written by the vlab.2 patch.
+    "dist/src/sender-name.js": ["lab/release-files/wecom-vlab2/sender-name.ts", "lab/release-files/wecom-vlab2/patch.mjs"],
+    "dist/src/sender-name.d.ts": ["lab/release-files/wecom-vlab2/sender-name.ts", "lab/release-files/wecom-vlab2/patch.mjs"],
+    "dist/src/v-experience.mjs": ["lab/release-files/v-experience-wecom-empty-reply/dist/src/v-experience.mjs"],
+  },
+};
+
+test("every third-party V file names platform sources that exist", () => {
+  assert.deepEqual(Object.keys(PLATFORM_SOURCES.dingtalk).toSorted(), Object.keys(DINGTALK_V).toSorted());
+  assert.deepEqual(Object.keys(PLATFORM_SOURCES.wecom).toSorted(), Object.keys(WECOM_V).toSorted());
+  for (const layer of Object.values(PLATFORM_SOURCES)) {
+    for (const [rel, sources] of Object.entries(layer)) {
+      assert.ok(sources.length > 0, rel);
+      for (const source of sources) assert.ok(fs.existsSync(at(source)), `${rel}: ${source} exists`);
+    }
+  }
+  // Stored sources that are copied in verbatim are V's bytes themselves.
+  assert.equal(sha(at(PLATFORM_SOURCES.dingtalk["dist/v-experience.mjs"][0])), DINGTALK_V["dist/v-experience.mjs"]);
+  assert.equal(sha(at(PLATFORM_SOURCES.wecom["dist/src/v-experience.mjs"][0])), WECOM_V["dist/src/v-experience.mjs"]);
+  assert.equal(sha(at("lab/release-files/wecom-vlab2/release/sender-name.js")), WECOM_V["dist/src/sender-name.js"]);
+  assert.equal(sha(at("lab/release-files/wecom-vlab2/release/sender-name.d.ts")), WECOM_V["dist/src/sender-name.d.ts"]);
+});
+
 test("DingTalk connector 0.8.26 + apps/v-experience/dingtalk/patch.mjs = V", () => {
   const dir = tmp();
   const npm = bases("dingtalk");
