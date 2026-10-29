@@ -138,7 +138,7 @@
     }
   ],
   "local": {
-    "focusedTests": 107,
+    "focusedTests": 117,
     "failures": 0,
     "vlabStatic": "passed",
     "catalogAudit": "passed"
