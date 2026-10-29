@@ -71,3 +71,17 @@
 ## 时间
 
 第 0 步立刻开始；第 1–3 步约 3–4 周，期间 V 照常发版（按第 0 步双写）；第 4 步从第一条月线演练开始每月一次。
+
+## 第 2 步前置检查结果（2026-10-29，B）
+
+问题：`versa/main` 能不能构建出和 npm 9.1 等价的包？结论：**能，前提成立。**
+
+| 检查 | 结果 |
+|---|---|
+| 源码构建原版 9.1（`upstream/v2026.9.1`，Node 24.17 + pnpm 12.1，`GIT_COMMIT`/`OPENCLAW_BUILD_TIMESTAMP` 设成官方值）vs npm `openclaw@2026.9.1` 的 `dist/` | 除 Control UI 外 6985 个文件，6983 个逐字节相同，**连带哈希的分块文件名都一样**。差的 2 个（`build-info.json`、`cli-startup-metadata.json`）只是嵌入的提交号标签不同；`postinstall-inventory.json` 是打包阶段才生成的 |
+| Control UI | 本地构建的前端资源哈希和官方不同，按 `versa/use-official-control-ui.sh` 换回官方前端，再叠加 V 的语音资源（`versa/README.md`） |
+| 构建 `versa/main`（9/25 M1 的 96 个文件，68 个提交） | 构建成功。补丁带的 121 个测试文件全部通过（3339 个测试，0 失败） |
+| 与 V 9/24 字节逐文件比 | 96 个补丁文件里 72 个在 fork 构建中也有改动；其余是 V 单独加的 `.mjs` 模块，源码构建时被打进别的分块，按文件名对不上不代表缺失。按 10/11 台账核对，`release/source-map.json` 里标 `versa:` 的 65 个文件，对应的补丁都有源码提交和测试 |
+| 没做 | 运行时行为等价（VLab 上 A/B）。V 现在的字节里还有第 1 步那 147 个欠账文件，要等它们翻译完，才能拿 fork 构建和 V 做同版本 A/B |
+
+工具与证据：`~/v-upgrade-private/20261029-repro91/`（`compare-dist.py`、`compare-patched.py`、`markers.py`、构建和测试日志）；构建工作区 `~/openclaw-versa-wt/repro91`（原版）、`~/openclaw-versa-wt/repro-main`（`versa/main`）。

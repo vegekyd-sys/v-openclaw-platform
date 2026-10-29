@@ -33,7 +33,7 @@
       "path": "agent-bundle-mcp-materialize-DlD9AJQW.js",
       "sha256": "bd4240812bcd3a657f79d179a8aad05647fb65674edcf7124b57c2a78781ff1a",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -52,7 +52,7 @@
       "path": "agent-db-process-coordinator.mjs",
       "sha256": "51c170d34fad2b5d0a6b0de8b10d0f32b57384b5db32e78dfd7b80eb7547650e",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -77,7 +77,7 @@
       "path": "agent-runtime-identity-token-tbYOQmt6.js",
       "sha256": "df78006506ed9aa892692ef3a4ddd11109132f48c0c50f3b2679b09150779d20",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -96,21 +96,21 @@
       "path": "agents/agent-bundle-mcp-runtime.js",
       "sha256": "7971447cf4e11d0fcc8e4b0c729085101bbc45c77a8f1ede1eb5f6c343769354",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "attempt.model-diagnostic-events-B4dGIs0S.js",
       "sha256": "8aa2ea92c8c55aecec9077659295765f9cddfaf608bf71ef82b460ad031cee9d",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "automatic-maintenance-coordinator.mjs",
       "sha256": "276b63f98c2b1432a3224ac27d033695aee062c7db31479a29223e77e6b956f1",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -147,14 +147,14 @@
       "path": "bundle-prep-observer.mjs",
       "sha256": "bee5b5a50d40cb5a3c7dc64bcb43ab6c53462bfdf29305eb24a25096b939e152",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "citation-resolution-budget.mjs",
       "sha256": "93dabf446753b0ee346beea9935bcfc714913cb9b3e7abf626a9b67da3040e40",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -203,56 +203,56 @@
       "path": "control-ui-DhD7PO_6.js",
       "sha256": "22d45d6970a05a3bd57ad123803c6977a49d04f5746415d6e756948e768afe52",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "control-ui/asset-manifest.json",
       "sha256": "63fdae94b4f1f6b036430bcb161a02a926e7c9bd42bd280f988a507099d56837",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "control-ui/assets/control-ui-boot-chat-DWTSrxxk-rtc-v4.js",
       "sha256": "7e4bcc734a656bd91d731fb1cfc8169e2b61a2a12f5745bf17c7ab70bb099a60",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "control-ui/assets/volcengine-rtc-4.68.1.esm.js",
       "sha256": "5a66d63e574bd4858f8479fe73203780983e8f082b74cfd2da0dc1b3b1fa0c3d",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "control-ui/assets/volcengine-rtc-managed-room-client.js",
       "sha256": "cee065c7fbe8a3ca2cfa440fb78cb107f37e18592baa97e8e1f57b56597b08bc",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "cron-6EvXRcEQ.js",
       "sha256": "bbffaa91c03e5671dbbdf769bfbd7673227eb1b466fc72b2fb8dfe3c7a824c88",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "cron-tool-CPu6etIM.js",
       "sha256": "75ba8152b283631a0d71d26fecfeb80a871391a730c49c11d4596d0f6bfc5722",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "database-verify-resource-group.mjs",
       "sha256": "87eda8ea396327d1474e1a59260b8189407d407062dcf3b3ba1df7e067b0983d",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -271,21 +271,21 @@
       "path": "db91-maintenance-throttle.mjs",
       "sha256": "40da8a59927bb404c259e204c6a059cb32cac9c2d709108708a30e48c40843c8",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "db91-memory-provenance.mjs",
       "sha256": "3521f6cd7f71cb5ab03cf56700a1974d94998fc4b3d3fe91d2a2da17fd397225",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "db91-read-ahead.mjs",
       "sha256": "9d6cc4d80251c8627b0390fdddf01498f832bda75d6b4169717d1a53dfaed20c",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -298,21 +298,21 @@
       "path": "db91-state-read-ahead.mjs",
       "sha256": "b051c261177cdb358826c0b8e40248be4967b2eefb6552e379dc895ff10de9d8",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "db91-trajectory-sweep.mjs",
       "sha256": "856ce3f8f0d98a79000a089f70ef3d18b592bc8b8d5162cfa7dcd4c2d8082d75",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "delivery-completion-Do3nBV6b.js",
       "sha256": "d223a342ad217203dacac3fb6fc87b28e853b6f6f1afa0673e177cca1f1322d1",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -343,7 +343,7 @@
       "path": "dreaming-phases-C5ItPb99.js",
       "sha256": "a72386d36ce5fabdbf3b5efa170efccc1656118fd95a4ff11414a85c0487ba92",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -368,14 +368,14 @@
       "path": "engine-storage-C1hCjs4v.js",
       "sha256": "feb18d0eb6416bf328784df96eab628b32a942d33aa751184801b7a15815f85a",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "exec-approvals-store-D159_AKa.js",
       "sha256": "231279ca6aeea755bd63eb0c06219a254d11236c39e4a1a51ffe126fc452f5c1",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -406,21 +406,21 @@
       "path": "gateway-DVu5Urba.js",
       "sha256": "e6e07ff7f43bc29124039984f7672adca49cd935272c76c0210e9b20274d864e",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "gateway-caller-context-CRUBJj3M.js",
       "sha256": "7c7a66ecc1c579ac1c4c0ac0617c6013b22eb284ab4b624e94784f4ee21c4cba",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "gemini-web-search-provider.runtime--94tDlhY.js",
       "sha256": "d07766e2b99e1864b1b01390fec78fae145a68c196f338ec4181de400058cbaf",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -481,7 +481,7 @@
       "path": "inference-route-Bv_D48Z8.js",
       "sha256": "11a127d159f836d09941eaf0abd760535d336d91c7a51ebee7a53fd8da5443d0",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -494,21 +494,21 @@
       "path": "lifecycle-YRwzpo9_.js",
       "sha256": "82c249a02236215329b3b3bb747b7e58b94035d8c546e2296e1fe63372047aa4",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "list-snapshot-revision-B919xtbt.js",
       "sha256": "ea5c9cfbe61b203bcf838e4bf0a1d1a43934b26b8598028e7bdae255f292833c",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "loader-UHuBXZwI.js",
       "sha256": "d06e737e98437a7e1d595af5c7b22c15ed23d53e268949fdcaf4d7219e2a54d2",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -521,14 +521,14 @@
       "path": "memory-core-host-engine-sessions-CAnvQ_5o.js",
       "sha256": "697381c0f781baae3a7d622b8156162192f820be6cf781cec0ff37bb08891f48",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "memory-schema-BSs9MQgq.js",
       "sha256": "7267571c87d05e1662a8277b86a22760d77679e7ff48474022983eec2238584b",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -553,28 +553,28 @@
       "path": "openclaw-agent-db-CUTe8BX6.js",
       "sha256": "046d7a8253f5a97b1887bdbe5ae5d3826b6bae53aa84d5240e2f1216f4421cc5",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "openclaw-agent-db-maintenance-DYSkzMMg.js",
       "sha256": "b6c84c9a8cc7f98ca858f434c10c5c66d8fa253d11615ec90851b0729c123a9e",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "openclaw-database-verify-a3Yme38Y.js",
       "sha256": "bace8934c1550e2219ac1c4085a16808c53e29d5b44f00c39ab70e48299edce9",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "openclaw-state-db-Bh3Bq87y.js",
       "sha256": "0e366560308f226295f31ff4ecbedfbd9e700a9432b2a1935febc238a4d102db",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -593,7 +593,7 @@
       "path": "payloads-Ch7RD6Ym.js",
       "sha256": "d03cf80cdc443e8efaa23a99bac3f3595402c696e74f8877328011d49b10df5d",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -618,56 +618,56 @@
       "path": "project-memory-readonly.mjs",
       "sha256": "2eb8daf953c52e500ea211b50a65f25a25f45b510828d664612a40013baf85ba",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "provider-policy-surface-bKCE_kaj.js",
       "sha256": "faaf92510b5bd40ce767ee0640e69b97cce8698ad4922a1fc943fe2da3518c44",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "provider-web-search-BBL3jMNu.js",
       "sha256": "315728c200357f3451daa928b5661144c8bddd274621a7b25f8be54b4614431f",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "public-surface-loader-V55JV4Jk.js",
       "sha256": "dec325ae26f3f5e42ee86fc962f49b9d7edf05b9edc03c061555c98fb3d34bce",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "pw-session-Bp2ZghGj.js",
       "sha256": "8a74119037da617a8b4d812ee507f28a874b3c42404815005b1a10045594c485",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "question-BdQvLMDb.js",
       "sha256": "43ffe97b223a46c3ae411a80e98d9dcfb6e578526d8392aef897dcc46dc2504e",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "question-channel-runtime-BhJ40GDw.js",
       "sha256": "262f91b2c7f06199b6e34d931827a0e5fa1b8efefa714d1632dae035c252b5a9",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "question-gateway-runtime-BuwS3oNQ.js",
       "sha256": "d659f25bd0becbac75b8b2d1a2e1d1dc5387ad685b8604bcf74622ae00629d3d",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -698,7 +698,7 @@
       "path": "registry-lookup-MnRZoGSI.js",
       "sha256": "79416d86653ad4918b1d0e1e44f706041374df5f1ec3f75ce122bce6441f5e52",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -717,7 +717,7 @@
       "path": "reply-prefix-Ddn3qL_7.js",
       "sha256": "e38b7e02843c2de2eed3c063d0c1c628229275b3308da9fc69deae8625a5a9e1",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -730,7 +730,7 @@
       "path": "run-session-target-D4dx7X-Q.js",
       "sha256": "c0776b3f63b998266be0306ce7708243ef7c8918a01fa9a358c80504105b51f1",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -755,7 +755,7 @@
       "path": "runtime-store.sqlite-D0DF2c9M.js",
       "sha256": "ff4e9dc5b2295fbcb9da229b2546f4101844c72a0f91e0a7d49aa4dbbfbf6d50",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -774,7 +774,7 @@
       "path": "server-reload-handlers-DblQx0j4.js",
       "sha256": "e566fd2554eb041d632c89fd1aa98fc47147eb27493aeb17d18295a50ff37951",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -787,7 +787,7 @@
       "path": "server-start-BNcm1gUN.js",
       "sha256": "9b71ace5b596fffdaf4263d14fbc5ddac6c8d413dbd48253da7d69fc8bdb6205",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -842,7 +842,7 @@
       "path": "session-accessor.sqlite-scope-BwPKGcgm.js",
       "sha256": "caffb3629c5cbfb1fbf6027c8dccac7fa7d829d30bd8f4ddac8c4046a4dfbf34",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -879,7 +879,7 @@
       "path": "session-sharing-BlMqwMBH.js",
       "sha256": "615cd9d6b87f11be7453c5c1fe46c75a6b1c7b9eebe97eceedc87ba2dd58f0bf",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -916,7 +916,7 @@
       "path": "sessions-helpers-Bn_vDNby.js",
       "sha256": "4c8dd6f402ee54ce0eee133cfefe25e01340a485d598390ad21d22fc8ed8206c",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -941,7 +941,7 @@
       "path": "sqlite-begin-contention-retry.mjs",
       "sha256": "0540c343e348045452d68ddeb8ca62bc9e46303a517011eb17ca516a3e85ce4d",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -960,7 +960,7 @@
       "path": "state/openclaw-database-verify.worker.js",
       "sha256": "e9966af8c1ee78f6974b5dd00f95e291bdd4ffe6e38ebafeb718b5dbaa58ecc5",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -1009,14 +1009,14 @@
       "path": "system-agent-BhnNvC3z.js",
       "sha256": "50f9c3e48d5c2defacca72da0e5420f8b369095c511bdc148a0ad1791ad22c06",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "system-prompt-params-B645JcX8.js",
       "sha256": "24d196636e47b585231ef18de8a4dbbafa8701aefb06c04b70b3c114f3fa1ec9",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -1047,14 +1047,14 @@
       "path": "task-summary-qdovVAE7.js",
       "sha256": "788de4765ce51bbe2eae0f09a9545e91f6e4822010fb5eed3493a775402a6d5b",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "tasks-DNVtnKlS.js",
       "sha256": "238760cc0681d00c5c13dd2bb942dc85cf43eb752bb5d43c00d3787d5641ec7a",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -1175,7 +1175,7 @@
       "path": "versa-cron-shared-management-v1.mjs",
       "sha256": "8c0417d80b2a341285dee975767abfaf3c30f334a610970478767d61bf79244b",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -1194,7 +1194,7 @@
       "path": "workboard-lookup-cache.mjs",
       "sha256": "8250ff78ec0baab63cb38f4e78dc71ee0f0cd9847f414b62491c191a6ccc3c4e",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -1273,7 +1273,7 @@
       "path": "openclaw.plugin.json",
       "sha256": "483c07a0e1a3e077400d56360f57d40468a400fc0628696d4f536f2cd9b7ddf6",
       "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; equivalence pending the repro build"
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
     },
     {
       "layer": "codex",
