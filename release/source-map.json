@@ -119,7 +119,8 @@
       "layer": "core",
       "path": "bash-tools-DiAfkLAC.js",
       "sha256": "43d9a2273b8de08d71493731cd3e5224b1ccb241a64b2fff740f42b6517608ff",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -376,7 +377,8 @@
       "layer": "core",
       "path": "embedded-agent.runtime-CL7poBKY.js",
       "sha256": "8ba1f8fb7d2de9a69728dbc27b9119313ce7318d99ccc63c05446692e0a0f82e",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -455,7 +457,8 @@
       "layer": "core",
       "path": "gpt-live-call-lifecycle.mjs",
       "sha256": "ba6f0b7ec7c577ee55052906828d3cef9c1291b39f25e866cd91da5ca00189a8",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending; keeps V's hard-coded owner session key as V does"
     },
     {
       "layer": "core",
@@ -467,7 +470,8 @@
       "layer": "core",
       "path": "gpt-live-voice-exec-lifetime.js",
       "sha256": "1f101c5ccefa75850499283948ec32b6470ba82dcb4f68b6ac03634118148439",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -486,7 +490,8 @@
       "layer": "core",
       "path": "host-capability-Dq3cEEWF.js",
       "sha256": "296b132dec1ae0b747e63538562d16c8561a7170d125d0811bc86eea26c88526",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -628,7 +633,8 @@
       "layer": "core",
       "path": "plugin-sdk/agent-harness-task-runtime.js",
       "sha256": "50dc439b5cbb8a16860aab0bd8b4f4fd485f16a246f881820be5c0ea9c0754e3",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -696,13 +702,15 @@
       "layer": "core",
       "path": "realtime-quicksilver-delegation-controller-B0yPpiHp.js",
       "sha256": "3e098e6a43b5aa3bd4fc2c713e0e5616da357555629c5a2c3e7c8f8df235a03b",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "realtime-quicksilver-session-B3HKftDE.js",
       "sha256": "22ae5c48d5bcf2386783212762f6999d5c237780e6469c5bedcf8e83704e46f0",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -793,7 +801,8 @@
       "layer": "core",
       "path": "server-methods-CLElG7qF.js",
       "sha256": "f3889a32fdaf2a54315378dd3c8bea08b25dedc4e293afd83c718ad54e9b9edc",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -851,7 +860,8 @@
       "layer": "core",
       "path": "session-accessor-K0XuW6ln.js",
       "sha256": "30c7b9d6e3d9baf842e51f4811708b0f21a95c5cd36ebc150b2dd7a2fed2c15d",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (store group) merged into versa/port-backlog-20261029; unit tests fail without each change; store directory test sweep has no new failures against the base; runtime A/B pending; stricter than V: the canonical-key validation shared by path is dropped when this process closes the file handle (fa88e0faa22)"
     },
     {
       "layer": "core",
@@ -926,7 +936,8 @@
       "layer": "core",
       "path": "session-transcript-index-9itOio9h.js",
       "sha256": "7d14a3c07c3b78a216ce85d764444dce364990a342c77f1dd0230c9ea0025328",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (store group) merged into versa/port-backlog-20261029; unit tests fail without each change; store directory test sweep has no new failures against the base; runtime A/B pending; the byte-size test fixture gained the seq column (0e12c8f5f22)"
     },
     {
       "layer": "core",
@@ -1010,7 +1021,8 @@
       "layer": "core",
       "path": "subagent-announce.requester-settle-wake-B2NSziIo.js",
       "sha256": "ec4c192bb11900e170eb9257fde565461cae0dd3a8c0fb55b61c895ad9db8649",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -1030,7 +1042,8 @@
       "layer": "core",
       "path": "subagent-registry-C24yr_PF.js",
       "sha256": "1d9f45d61e7201f27cd79b5941985443e4639b2bc21a0d4e1d97b386ad190a47",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -1064,7 +1077,8 @@
       "layer": "core",
       "path": "talk-DkFuKRod.js",
       "sha256": "f01a6e7b16cea92da439d1bacda8b6f0159acbc55e9157d130893a3e204fff3c",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -1124,13 +1138,15 @@
       "layer": "core",
       "path": "tools-catalog-DGR0f9wo.js",
       "sha256": "bbc820d386c29a59abcf50376fa8cf190cdbd61729240a2fcd59dd4442fb1722",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "tools-invoke-ev4-EXmh.js",
       "sha256": "a5f191fc50f4fed5d0e7e4a2f9451059aa6c1cbac321c728a1907e23704ad0a7",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -1190,19 +1206,22 @@
       "layer": "core",
       "path": "v-feishu-voice-policy.mjs",
       "sha256": "88e361a38810e9a609e3073759a8daafc3a084462f871b7a281784bde7482bf6",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "v-feishu-voice-runtime.mjs",
       "sha256": "4be65ba00e2cacf356cff59fefc616ed018c74902491861fc9f54dcf808594ff",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending; reads the Feishu voice identity from a plugin-sdk registry the Feishu plugin fills, instead of importing the installed plugin path as V does"
     },
     {
       "layer": "core",
       "path": "v-feishu-voice-tools.mjs",
       "sha256": "c4bd3f23ef142e3e2773a6b64b2347f06306cb8e20566d8ab31a2b25a081e64d",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -1228,13 +1247,15 @@
       "layer": "core",
       "path": "voice-process-owner.mjs",
       "sha256": "c0045e63409a22e94bff30a3a4bfc03f3a52e768d569c5dadbde86086c716be5",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "voice-task-lifetime.js",
       "sha256": "49a8bf6e97dab4e70084732826a25236328c0609a031c93b6a6cfcbb93a84692",
-      "source": "pending:backlog-20261029"
+      "source": "versa:3bde236a5ee",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
     },
     {
       "layer": "core",
