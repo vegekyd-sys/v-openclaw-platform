@@ -337,7 +337,8 @@
       "layer": "core",
       "path": "disk-budget-BzLS0kmH.js",
       "sha256": "aa6aaf56f629b42588b905607ec5d0372a97c76c7fa58deb7186a4ebfc9665a4",
-      "source": "pending:backlog-20261029"
+      "source": "versa:b18d58c5f19",
+      "note": "wave-1 backlog (store group) merged into versa/port-backlog-20261029; the upstream archive-materialization test runs with OPENCLAW_SESSION_BUDGET_EVICT_HISTORY=1 because V keeps live history (f3a7876b5a7); runtime A/B pending"
     },
     {
       "layer": "core",
@@ -925,8 +926,7 @@
       "layer": "core",
       "path": "session-transcript-index-9itOio9h.js",
       "sha256": "7d14a3c07c3b78a216ce85d764444dce364990a342c77f1dd0230c9ea0025328",
-      "source": "versa:3951d3e691b",
-      "note": "wave-1 backlog (store group, versa/port-store-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent; runtime A/B pending"
+      "source": "pending:backlog-20261029"
     },
     {
       "layer": "core",
