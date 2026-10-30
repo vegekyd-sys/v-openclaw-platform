@@ -1,0 +1,65 @@
+{
+  "support": [
+    "lab/candidate/v-client-gateway.mjs",
+    "lab/candidate/bound-task-support.mjs",
+    "lab/candidate/feishu-fake-open-api.mjs",
+    "lab/candidate/feishu-no-live.cjs",
+    "lab/candidate/vapp-support.mjs"
+  ],
+  "files": [
+    {
+      "source": "lab/candidate/bound-task-plugin/index.js",
+      "target": "extensions/bound-task-candidate/index.js"
+    },
+    {
+      "source": "lab/candidate/bound-task-plugin/openclaw.plugin.json",
+      "target": "extensions/bound-task-candidate/openclaw.plugin.json"
+    },
+    {
+      "source": "lab/candidate/bound-task-plugin/package.json",
+      "target": "extensions/bound-task-candidate/package.json"
+    },
+    {
+      "source": "apps/v-experience/app/index.js",
+      "target": "extensions/vapp/index.js"
+    },
+    {
+      "source": "apps/v-experience/app/core/vapp.js",
+      "target": "extensions/vapp/core/vapp.js"
+    },
+    {
+      "source": "apps/v-experience/app/approvals.js",
+      "target": "extensions/vapp/approvals.js"
+    },
+    {
+      "source": "apps/v-experience/app/core/feishu-avatars.js",
+      "target": "extensions/vapp/core/feishu-avatars.js"
+    },
+    {
+      "source": "apps/v-experience/app/core/apns.js",
+      "target": "extensions/vapp/core/apns.js"
+    },
+    {
+      "source": "apps/v-experience/app/openclaw.plugin.json",
+      "target": "extensions/vapp/openclaw.plugin.json"
+    },
+    {
+      "source": "apps/v-experience/app/package.json",
+      "target": "extensions/vapp/package.json"
+    },
+    {
+      "source": "apps/v-experience/v-experience.mjs",
+      "target": "extensions/vapp/v-experience.mjs"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/v-client-gateway.mjs"
+  ],
+  "env": {
+    "VCLIENT_HOLD_MINUTES": "180",
+    "VCLIENT_VAPP": "1"
+  },
+  "timeoutSeconds": 12000,
+  "user": "lab-db91-parity"
+}

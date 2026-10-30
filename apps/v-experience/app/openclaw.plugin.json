@@ -1,0 +1,39 @@
+{
+  "id": "vapp",
+  "name": "V App",
+  "description": "V's iOS app as a channel: messages in, V cards out, over the Gateway connection the app already has.",
+  "activation": {
+    "onStartup": true
+  },
+  "channels": ["vapp"],
+  "channelConfigs": {
+    "vapp": {
+      "label": "V App",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "defaultUser": { "type": "string" },
+          "users": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string" },
+                "owner": { "type": "boolean" },
+                "devices": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

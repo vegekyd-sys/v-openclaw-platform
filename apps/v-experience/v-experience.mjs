@@ -225,6 +225,16 @@ export function createWorkView({ sessionKey, onChange = () => {}, log, formatToo
     clearWorking() { commentary.clear(); statusLine = ""; },
     /** The reply up to and including the question was sent and closed; what follows starts after it. */
     closedAtQuestion() { if (q) { q.prefix = ""; q.closed = true; } commentary.clear(); statusLine = ""; },
+    /** What the view shows right now as data, for channels that draw their own layout (the V app). */
+    snapshot() {
+      return {
+        question: q ? { record: q.record, state: q.state, staged: q.staged, answers: q.answers } : null,
+        commentary: [...commentary.values()],
+        status: statusLine,
+        plan: steps.map((s) => ({ step: s.step, status: s.status })),
+        waitingElsewhere: elsewhere,
+      };
+    },
     waitingForAnswer: () => elsewhere || q?.state === "pending",
     hasContent: () => steps.length > 0 || Boolean(statusLine) || commentary.size > 0 || Boolean(q) || elsewhere,
     /** The reply while working. */
@@ -256,6 +266,181 @@ function escapeMarkdown(text) {
 }
 
 // -------------------------------------------------------------- background
+
+// v-card-v1: cards for channels that draw Feishu card JSON 2.0 themselves (the V app).
+// The subset and the callback shapes are in apps/v-experience/schema/README.md.
+export const V_CARD_VERSION = 1;
+
+const cardMarkdown = (content, size) => ({ tag: "markdown", content, ...(size ? { text_size: size } : {}) });
+const vCard = (elements, header) => ({ schema: "2.0", v_card: V_CARD_VERSION, ...(header ? { header } : {}), body: { elements } });
+const cardHeader = (title, template) => ({ title: { tag: "plain_text", content: title }, template });
+
+/**
+ * V's reply as a card: the answer so far, then a rule and the work view
+ * (💬 commentary, status, ☑️/▶️/◻️ plan, background line) while V works;
+ * only the answer and a quiet footer once the run is over — the Feishu layout.
+ * `view` is `createWorkView().snapshot()`.
+ */
+export function workCard({ answer = "", view = null, phase = "working", background = "", footer = "" } = {}) {
+  const text = String(answer ?? "").trim();
+  const active = phase === "thinking" || phase === "working" || phase === "waiting";
+  const elements = [];
+  if (active) {
+    const commentary = view?.commentary ?? [];
+    const body = text || commentary.join("\n\n");
+    if (body) elements.push(cardMarkdown(body));
+    const status = view?.waitingElsewhere ? "❓ 请在下方卡片中回答" : view?.status || (phase === "thinking" && !body ? "💭 正在思考" : "");
+    const plan = planMarkdown(view?.plan ?? []);
+    if ((status || plan || background) && elements.length) elements.push({ tag: "hr" });
+    if (status) elements.push(cardMarkdown(status, "notation"));
+    if (plan) elements.push(cardMarkdown(plan));
+    if (background) elements.push(cardMarkdown(background, "notation"));
+  } else {
+    const ending = phase === "aborted" ? "这一轮已停止。" : phase === "failed" ? "这一轮没有完成。" : "";
+    if (text) elements.push(cardMarkdown(text));
+    else if (ending) elements.push(cardMarkdown(ending, "notation"));
+    if (background) elements.push(cardMarkdown(background, "notation"));
+    if (footer) elements.push(cardMarkdown(footer, "notation"));
+  }
+  return vCard(elements);
+}
+
+/**
+ * An `ask_user` record as a card with tappable options. Buttons post
+ * `{kind: "question", id, question, option}`; several choices or several
+ * questions add a 确认 button posting `{kind: "question", id, submit: true}`.
+ * Answered, expired or cancelled questions collapse to their record line.
+ */
+export function questionCard(record, { state = "pending", staged = {}, answers } = {}) {
+  if (state !== "pending") {
+    return vCard([cardMarkdown(questionRecordLine(record, state, answers))], cardHeader("V 的问题", "grey"));
+  }
+  const numbered = record.questions.length > 1;
+  const staging = numbered || record.questions.some((q) => q.multiSelect);
+  const elements = [];
+  record.questions.forEach((q, i) => {
+    const picked = new Set(staged[i] ?? []);
+    elements.push(cardMarkdown(`**${numbered ? `${i + 1}. ` : ""}${escapeMarkdown(q.question)}**${q.multiSelect ? "（可多选）" : ""}`));
+    for (const o of q.options) {
+      elements.push({
+        tag: "button",
+        text: { tag: "plain_text", content: o.label },
+        type: picked.has(o.label) ? "primary_filled" : "default",
+        width: "fill",
+        behaviors: [{ type: "callback", value: { kind: "question", id: record.id, question: i, option: o.label } }],
+      });
+      if (o.description) elements.push(cardMarkdown(escapeMarkdown(o.description), "notation"));
+    }
+  });
+  if (staging) {
+    elements.push({
+      tag: "button",
+      text: { tag: "plain_text", content: "确认" },
+      type: "primary_filled",
+      width: "fill",
+      behaviors: [{ type: "callback", value: { kind: "question", id: record.id, submit: true } }],
+    });
+  }
+  elements.push(cardMarkdown("也可以直接在聊天中回复答案", "notation"));
+  return vCard(elements, cardHeader("V 想问你", "blue"));
+}
+
+/**
+ * A link card (`{title, lines, buttons, image?}`: the credential link, V's
+ * 「电脑」 handoff card) as a V card. URL buttons open the link; command
+ * buttons post `{kind: "command", command}`, which the channel sends as the
+ * tapper's message, as DingTalk and WeCom do.
+ */
+export function linkVCard(card, { template = "blue" } = {}) {
+  const elements = [];
+  if (card.image?.ref) elements.push({ tag: "img", img_key: card.image.ref, alt: { tag: "plain_text", content: card.image.alt ?? "" } });
+  if (card.lines?.length) elements.push(cardMarkdown(card.lines.join("\n")));
+  for (const [i, b] of (card.buttons ?? []).entries()) {
+    const behavior = b.url ? { type: "open_url", default_url: b.url } : b.command ? { type: "callback", value: { kind: "command", command: b.command } } : undefined;
+    if (!behavior) continue;
+    elements.push({ tag: "button", text: { tag: "plain_text", content: b.label }, type: i === 0 ? "primary_filled" : "default", width: "fill", behaviors: [behavior] });
+  }
+  return vCard(elements, card.title ? cardHeader(card.title, template) : undefined);
+}
+
+const SECRET_CARD_STATES = {
+  saved: { title: "凭据已保存", template: "green", line: "✅ 已安全保存，V 会继续刚才的任务。" },
+  expired: { title: "凭据请求已过期", template: "grey", line: "没有在时限内录入，V 已跳过这一步。还需要的话，让 V 重新发起。" },
+  cancelled: { title: "凭据请求已取消", template: "grey", line: "这次请求已取消，没有保存任何值。" },
+};
+
+const APPROVAL_KIND_LABEL = { exec: "命令", plugin: "插件操作", "system-agent": "系统操作" };
+const APPROVAL_DECISION_LABEL = { "allow-once": "允许一次", "allow-always": "总是允许", deny: "拒绝" };
+
+function approvalSubject(view) {
+  if (view.approvalKind === "exec") {
+    const lines = ["```", String(view.commandPreview || view.commandText || "").replaceAll("```", "``"), "```"];
+    if (view.cwd) lines.push(`目录：${view.cwd}`);
+    if (view.warningText) lines.push(`⚠️ ${String(view.warningText).slice(0, 400)}`);
+    return lines.join("\n");
+  }
+  if (view.approvalKind === "system-agent") return String(view.operationSummary || view.commandText || view.title || "").slice(0, 1200);
+  return [`**${String(view.title ?? "").slice(0, 200)}**`, view.description && String(view.description).slice(0, 1000), view.toolName && `工具：${view.toolName}`].filter(Boolean).join("\n");
+}
+
+/**
+ * An approval as a V card, the Feishu owner-DM layout. `view` is the Gateway's
+ * native approval view; a pending one has decision buttons posting
+ * `{kind: "vapp-approval", id, approvalKind, decision}`.
+ */
+export function approvalCard({ request, view, nowMs }) {
+  const kind = APPROVAL_KIND_LABEL[view.approvalKind] ?? "操作";
+  const elements = [cardMarkdown(approvalSubject(view))];
+  const meta = [view.agentId && `agent：${view.agentId}`];
+  const pending = view.phase === "pending" || (!view.phase && nowMs !== undefined);
+  if (pending) {
+    const expires = view.expiresAtMs ?? request?.expiresAtMs;
+    if (Number.isFinite(expires)) meta.push(`${Math.max(1, Math.round((expires - (nowMs ?? Date.now())) / 60000))} 分钟内有效`);
+    if (meta.some(Boolean)) elements.push(cardMarkdown(meta.filter(Boolean).join(" · "), "notation"));
+    const buttons = (view.actions ?? []).filter((a) => a?.action?.type === "approval" && a.action.approvalId && APPROVAL_DECISION_LABEL[a.action.decision]).map((a) => ({
+      tag: "button",
+      text: { tag: "plain_text", content: APPROVAL_DECISION_LABEL[a.action.decision] },
+      type: a.action.decision === "deny" ? "danger" : a.action.decision === "allow-once" ? "primary_filled" : "default",
+      behaviors: [{ type: "callback", value: { kind: "vapp-approval", id: a.action.approvalId, approvalKind: a.action.approvalKind, decision: a.action.decision } }],
+    }));
+    if (buttons.length) elements.push({ tag: "column_set", flex_mode: "flow", columns: buttons.map((button) => ({ tag: "column", width: "auto", elements: [button] })) });
+    return vCard(elements, cardHeader(`需要你审批：${kind}`, "blue"));
+  }
+  const timedOut = view.phase === "resolved" && view.decision === "deny" && !view.resolvedBy;
+  let title; let status; let template = "grey";
+  if (view.phase === "expired" || view.terminalStatus === "expired" || timedOut) { title = `已过期：${kind}`; status = "没有在时限内审批，什么也没有执行。"; }
+  else if (view.terminalStatus === "cancelled") { title = `已取消：${kind}`; status = "这条审批已取消，什么也没有执行。"; }
+  else if (view.decision === "deny") { title = `已拒绝：${kind}`; status = "已拒绝，什么也没有执行。"; }
+  else { title = `已批准：${kind}`; template = "blue"; status = view.decision === "allow-always" ? "已设为总是允许。" : "已批准。"; }
+  elements.push(cardMarkdown(status));
+  return vCard(elements, cardHeader(title, template));
+}
+
+export const SECRET_FIELD = "secret_value";
+
+/**
+ * A credential request as a V card with a masked input, the Feishu layout.
+ * Terminal states drop the form so nothing stays submittable. The value goes
+ * from the form straight to `question.resolve`, never through the chat.
+ */
+export function secretEntryCard(record, state = "pending") {
+  const q = record?.questions?.[0] ?? {};
+  const name = q.secretStore?.name ?? q.header ?? "凭据";
+  const terminal = SECRET_CARD_STATES[state];
+  if (terminal) return vCard([cardMarkdown(terminal.line)], cardHeader(terminal.title, terminal.template));
+  return vCard([
+    cardMarkdown(q.question ?? `V 需要凭据 ${name}。`),
+    {
+      tag: "form",
+      name: "v_secret_entry_form",
+      elements: [
+        { tag: "input", name: SECRET_FIELD, input_type: "password", required: true, max_length: 1000, width: "fill", placeholder: { tag: "plain_text", content: "粘贴密钥，提交后不会出现在聊天里" } },
+        { tag: "button", name: "v_secret_entry_submit", text: { tag: "plain_text", content: "安全保存" }, type: "primary_filled", width: "fill", form_action_type: "submit", behaviors: [{ type: "callback", value: { kind: "secret", id: record?.id } }] },
+      ],
+    },
+    cardMarkdown("🔒 值直接存进 V 的凭据库，不进聊天记录，也不经过模型。", "notation"),
+  ], cardHeader(`🔑 V 需要凭据 ${name}`, "blue"));
+}
 
 // v-experience-session-kind-v1: 「会话请求」 is a sessions_send request another session is working on.
 const KIND_ORDER = ["会话请求", "子 agent", "后台命令", "生图", "生成视频", "生成音乐", "自动化", "后台任务"];
