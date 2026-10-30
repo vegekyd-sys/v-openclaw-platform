@@ -58,7 +58,7 @@ for (const c of cases) {
         : { pass: true, note, ms: Date.now() - started };
     } catch (e) {
       // A harness failure is not a reverse-control failure: only assertions count.
-      row.runs[t] = { pass: false, kind: e.contract ? "contract" : "harness", note: String(e.message).slice(0, 400), ms: Date.now() - started };
+      row.runs[t] = { pass: false, kind: e.contract ? "contract" : "harness", note: e.contract ? String(e.message).slice(0, 400) : String(e.message).slice(-500), ms: Date.now() - started };
     } finally {
       await Promise.race([gw?.stop().catch(() => {}), new Promise((r) => setTimeout(r, 15_000))]);
     }

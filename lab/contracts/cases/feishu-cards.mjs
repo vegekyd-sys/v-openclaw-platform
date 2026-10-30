@@ -1,4 +1,6 @@
 // What a Feishu user sees, read from the calls the fake open platform received.
+const PROGRESS = { plan: [{ step: "第一步检查", status: "in_progress" }, { step: "第二步修复", status: "pending" }] };
+
 const waitForReply = (gw, text) =>
   gw.until(() => gw.feishu.outboundText().includes(text), { what: `"${text}" in a Feishu call` });
 
@@ -10,6 +12,45 @@ const cardJson = (gw) => {
 };
 
 export default [
+  {
+    id: "F6/nameless-sender-looked-up-once",
+    ledger: ["FEISHU-sender-empty-cache"],
+    boot: {
+      feishu: true,
+      feishuApi: (call) => (call.path.startsWith("/open-apis/contact/v3/users/") ? { user: { open_id: "ou_nameless" } } : undefined),
+      modelScript: () => ({ text: "回答" }),
+    },
+    timeoutMs: 90_000,
+    async run({ gw, assert }) {
+      await gw.feishuSend({ text: "一", sender: "ou_nameless", chatId: "oc_n" });
+      await gw.until(() => gw.model.requests.length === 1, { what: "first turn" });
+      await settled(gw);
+      await new Promise((r) => setTimeout(r, 500));
+      await gw.feishuSend({ text: "二", sender: "ou_nameless", chatId: "oc_n" });
+      await gw.until(() => gw.model.requests.length === 2, { what: "second turn" });
+      const lookups = gw.feishu.calls.filter((c) => c.path.endsWith("/users/ou_nameless")).length;
+      assert(lookups === 1, `${lookups} contact lookups for a sender with no name`);
+      return "one lookup";
+    },
+  },
+  {
+    id: "F7/progress-card-streams-into-reply-card",
+    ledger: ["FEISHU-progress-stream"],
+    boot: {
+      feishu: true,
+      modelScript: (body) => {
+        if (JSON.stringify(body.messages).includes('"role":"tool"')) return { text: "做完了" };
+        return { toolCalls: [{ name: "progress_card", args: PROGRESS } ] };
+      },
+    },
+    async run({ gw, assert }) {
+      await gw.feishuSend({ text: "开工" });
+      await waitForReply(gw, "做完了");
+      await settled(gw);
+      assert(gw.feishu.outboundText().includes("第一步检查"), `the checklist never reached the card: ${gw.feishu.outboundText().slice(-400)}`);
+      return "checklist in the card";
+    },
+  },
   {
     id: "F5/card-footer-names-runtime",
     ledger: ["FEISHU-runtime-footer", "B5"],

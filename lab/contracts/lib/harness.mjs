@@ -59,6 +59,9 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
     },
     config,
   );
+  for (const provider of Object.values(fullConfig.models.providers)) {
+    if (provider.baseUrl === "FAKE_MODEL_URL") provider.baseUrl = `http://127.0.0.1:${model.port}/v1`;
+  }
   if (feishu) {
     fullConfig.plugins = merge(fullConfig.plugins, { entries: { feishu: { enabled: true } } });
     fullConfig.channels = merge(
