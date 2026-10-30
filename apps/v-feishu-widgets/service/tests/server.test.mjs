@@ -43,13 +43,15 @@ test("admin API needs the bearer token", async (t) => {
 test("shell escapes the title and frame is an opaque-origin document", async (t) => {
   const h = await boot(); t.after(h.close);
   const w = await h.create({ title: "<img src=x onerror=1>$&" });
-  const shell = await fetch(`${h.pub}/w/${w.id}`);
+  const shell = await fetch(`${h.pub}/open?w=${w.id}`);
   assert.equal(shell.status, 200);
   const page = await shell.text();
   assert(!page.includes("<img src=x"), "title is not HTML");
   assert(page.includes("&lt;img src=x onerror=1&gt;$&amp;"), "literal $& survives replacement");
   assert.match(shell.headers.get("content-security-policy"), /default-src 'none'/u);
   assert.match(shell.headers.get("content-security-policy"), /frame-src 'self'/u);
+  assert.match(page, /src="\/v-widgets\/shell\.js"/u, "script path does not depend on the page path");
+  assert.equal(w.url, `https://pub.example/v-widgets/open?w=${w.id}`);
   const frame = await fetch(`${h.pub}/w/${w.id}/frame`);
   assert.equal(frame.headers.get("content-security-policy"), "sandbox allow-scripts");
   assert.equal(await frame.text(), DOC, "document bytes are served unchanged");
@@ -57,9 +59,10 @@ test("shell escapes the title and frame is an opaque-origin document", async (t)
 
 test("a widget id is the only read capability and unknown ids are gone", async (t) => {
   const h = await boot(); t.after(h.close);
-  assert.equal((await fetch(`${h.pub}/w/${"x".repeat(32)}`)).status, 404);
+  assert.equal((await fetch(`${h.pub}/open?w=${"x".repeat(32)}`)).status, 404);
   assert.equal((await fetch(`${h.pub}/w/${"x".repeat(32)}/frame`)).status, 404);
-  assert.equal((await fetch(`${h.pub}/w/short`)).status, 404);
+  assert.equal((await fetch(`${h.pub}/open?w=short`)).status, 404);
+  assert.equal((await fetch(`${h.pub}/open`)).status, 404);
 });
 
 test("the id does not name its directory on disk", async (t) => {
@@ -125,7 +128,7 @@ test("expired widgets are gone", async (t) => {
   const h = await boot({ host: { now: () => clock } }); t.after(h.close);
   const w = await h.create();
   clock += 31 * 24 * 60 * 60 * 1000;
-  assert.equal((await fetch(`${h.pub}/w/${w.id}`)).status, 404);
+  assert.equal((await fetch(`${h.pub}/open?w=${w.id}`)).status, 404);
 });
 
 test("the audit log never holds tickets, codes or text", async (t) => {

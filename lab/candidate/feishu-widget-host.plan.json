@@ -22,6 +22,6 @@
   "timeoutSeconds": 0,
   "user": "lab-db91-parity",
   "env": {
-    "WIDGET_RUN": "run6"
+    "WIDGET_RUN": "run7"
   }
 }

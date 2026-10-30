@@ -67,22 +67,24 @@ export function createWidgetHost({ pathPrefix = "/v-widgets", publicBaseUrl, adm
     return true;
   };
 
-  const publicRoutes = async (req, res, route) => {
+  const publicRoutes = async (req, res, route, query) => {
     if (req.method === "GET" && route === "/healthz") return sendJson(res, 200, { ok: true });
     if (req.method === "GET" && route === "/shell.js") {
       res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache", "x-content-type-options": "nosniff" });
       return res.end(SHELL_JS);
     }
-    let match = route.match(/^\/w\/([A-Za-z0-9_-]{32,64})$/u);
-    if (req.method === "GET" && match) {
-      const widget = store.get(match[1]);
+    // One fixed page path: Feishu sign-in checks the page against an exact callback URL
+    // registered on the app, so the widget id has to be in the query.
+    if (req.method === "GET" && route === "/open") {
+      const widget = store.get(query.get("w") ?? "");
       if (!widget) { res.writeHead(404, shellHeaders); return res.end("<!doctype html><meta charset=utf-8><title>组件已过期</title><p style='font:15px sans-serif;padding:24px'>这个组件已过期，请让 V 重新生成。</p>"); }
       res.writeHead(200, shellHeaders);
       return res.end(SHELL
         .replaceAll("__TITLE__", () => escapeHtml(widget.title))
+        .replace("__BASE__", () => pathPrefix)
         .replace("__CONFIG__", () => escapeHtml(JSON.stringify({ id: widget.id, appId: widget.appId, base: pathPrefix, version: widget.version }))));
     }
-    match = route.match(/^\/w\/([A-Za-z0-9_-]{32,64})\/frame$/u);
+    let match = route.match(/^\/w\/([A-Za-z0-9_-]{32,64})\/frame$/u);
     if (req.method === "GET" && match) {
       const widget = store.get(match[1]);
       if (!widget) { res.writeHead(404); return res.end(); }
@@ -142,7 +144,7 @@ export function createWidgetHost({ pathPrefix = "/v-widgets", publicBaseUrl, adm
     const url = new URL(req.url, "http://local");
     if (url.pathname !== pathPrefix && !url.pathname.startsWith(`${pathPrefix}/`)) return sendJson(res, 404, { error: "not_found" });
     try {
-      await publicRoutes(req, res, url.pathname.slice(pathPrefix.length) || "/");
+      await publicRoutes(req, res, url.pathname.slice(pathPrefix.length) || "/", url.searchParams);
     } catch (error) {
       if (error instanceof IdentityError) {
         audit({ kind: "identity-failed", reason: error.message });
@@ -169,7 +171,7 @@ export function createWidgetHost({ pathPrefix = "/v-widgets", publicBaseUrl, adm
           id: widget.id,
           version: widget.version,
           messageId: widget.messageId ?? null,
-          url: `${publicBaseUrl}${pathPrefix}/w/${widget.id}`,
+          url: `${publicBaseUrl}${pathPrefix}/open?w=${widget.id}`,
           localFrameUrl: `/w/${widget.id}/frame`,
         });
       }
