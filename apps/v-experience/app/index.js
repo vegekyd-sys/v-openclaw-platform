@@ -9,10 +9,12 @@ import { buildChannelInboundEventContext, resolveChannelInboundRouteEnvelope, to
 import { callGatewayFromCli } from "openclaw/plugin-sdk/gateway-runtime";
 import { saveMediaBuffer } from "openclaw/plugin-sdk/media-store";
 import { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pipeline";
+import { createApns } from "./core/apns.js";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { ACCOUNT_ID, CHANNEL_ID, createVapp, vappConfig } from "./core/vapp.js";
+import { ACCOUNT_ID, CHANNEL_ID, createVapp, resolveUser, vappConfig } from "./core/vapp.js";
 import * as vx from "./v-experience.mjs";
 
 // Turns and connections live in the Gateway. Worker children and CLI processes
@@ -38,6 +40,7 @@ const startTurn = (job) => {
 async function runAccount(ctx) {
   ctx.setStatus({ accountId: ctx.accountId, running: true, configured: true, enabled: true, lifecycle: "running" });
   turns.running = true;
+  const unobserve = runtime.events.onAgentEvent((event) => vapp.observeAgentEvent(event));
   try {
     while (!ctx.abortSignal.aborted) {
       while (turns.queue.length) void turns.queue.shift()();
@@ -48,6 +51,7 @@ async function runAccount(ctx) {
       turns.wake = undefined;
     }
   } finally {
+    unobserve?.();
     turns.running = false;
     ctx.setStatus({ accountId: ctx.accountId, running: false, configured: true, enabled: true, lifecycle: "stopped" });
   }
@@ -71,9 +75,22 @@ const fileStore = {
   },
 };
 
+const pushFile = () => path.join(runtime.state.resolveStateDir(), "vapp", "push-tokens.json");
+const apns = createApns({
+  getConfig: () => getConfig()?.channels?.vapp?.apns,
+  readFile: (file) => fs.readFile(file, "utf8"),
+  loadTokens: () => fs.readFile(pushFile(), "utf8").then(JSON.parse).catch(() => ({})),
+  saveTokens: async (tokens) => {
+    await fs.mkdir(path.dirname(pushFile()), { recursive: true, mode: 0o700 });
+    await fs.writeFile(pushFile(), JSON.stringify(tokens), { mode: 0o600 });
+  },
+  log: (message) => console.log(`[vapp] ${message}`),
+});
+
 const vapp = createVapp({
   vx,
   store: fileStore,
+  notify: (userId, note) => { apns.notify(userId, note); },
   startTurn,
   getConfig,
   call: (method, params) => callGateway(method, params),
@@ -105,15 +122,29 @@ const channelSchema = {
     enabled: { type: "boolean" },
     defaultUser: { type: "string" },
     users: { type: "object", additionalProperties: userSchema },
+    apns: {
+      type: "object",
+      additionalProperties: false,
+      properties: { keyFile: { type: "string" }, keyId: { type: "string" }, teamId: { type: "string" }, bundleId: { type: "string" } },
+    },
   },
 };
+
+// A picture on a card may be a temp file the sender deletes right after sending.
+async function keepCardImage(link) {
+  const ref = link?.image?.ref;
+  if (!ref?.startsWith("file://")) return link;
+  const bytes = await fs.readFile(fileURLToPath(ref));
+  const saved = await saveMediaBuffer(bytes, "image/jpeg", "outbound", 10 * 1024 * 1024);
+  return { ...link, image: { ...link.image, ref: saved.path } };
+}
 
 async function sendOut({ cfg, to, text, mediaUrl, payload }) {
   if (cfg) currentConfig = cfg;
   const media = [...new Set([mediaUrl, payload?.mediaUrl, ...(payload?.mediaUrls ?? [])].filter((m) => typeof m === "string" && m.trim()))].map((source) => ({ source }));
   const body = payload?.text ?? text ?? "";
   const presentation = payload?.presentation ?? payload?.channelData?.presentation;
-  const link = presentation ? vx.linkCardFromPresentation(presentation, body, { commands: true }) : undefined;
+  const link = presentation ? await keepCardImage(vx.linkCardFromPresentation(presentation, body, { commands: true })) : undefined;
   const message = { to, text: link ? undefined : body, media, ...(link ? { card: vx.linkVCard(link) } : {}) };
   const result = IN_WORKER ? await callGateway("vapp.deliver", message, ["operator.write"]) : vapp.deliver(message);
   return { channel: CHANNEL_ID, messageId: result?.id ?? "" };
@@ -189,6 +220,12 @@ export default defineChannelPluginEntry({
     api.registerGatewayMethod("vapp.send", method(vapp.send), write);
     api.registerGatewayMethod("vapp.action", method(vapp.action), write);
     api.registerGatewayMethod("vapp.stop", method(vapp.stop), write);
+    api.registerGatewayMethod("vapp.push", method(async ({ params, client }) => {
+      const user = resolveUser(getConfig(), client);
+      if (!user) throw Object.assign(new Error("这台设备还没有绑定 V 用户"), { code: "UNAVAILABLE" });
+      await apns.register(user.id, String(params?.token ?? ""), { sandbox: params?.sandbox === true });
+      return { ok: true };
+    }), write);
     api.registerGatewayMethod("vapp.history", method(vapp.history), write);
     api.registerGatewayMethod("vapp.react", method(vapp.userReact), write);
     api.registerGatewayMethod("vapp.deliver", method(({ params }) => vapp.deliver(params ?? {})), write);

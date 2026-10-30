@@ -239,3 +239,73 @@ test("reactions reach the app and stay with the chat", async () => {
   const page = await h.vapp.history({ params: {}, client: phone, context: h.context });
   assert.equal(page.items.at(-1).kind, "reaction");
 });
+
+test("work on the chat that no vapp.send started gets a live card, and no duplicate of a delivered reply", async () => {
+  const h = harness(async () => {});
+  await h.vapp.hello({ client: phone, context: h.context });
+  const sessionKey = "agent:makaron:vapp:direct:tianyi";
+  h.vapp.observeAgentEvent({ runId: "r1", sessionKey, stream: "lifecycle", data: { phase: "start" } });
+  h.vapp.observeAgentEvent({ runId: "r1", sessionKey, stream: "assistant", data: { text: "夜班报告" } });
+  await sleep(5);
+  assert.ok(h.cards().at(-1).live, "live while the run goes on");
+  h.vapp.observeAgentEvent({ runId: "r1", sessionKey, stream: "lifecycle", data: { phase: "end" } });
+  await sleep(1600);
+  assert.equal(h.cards().at(-1).live, false);
+  assert.ok(markdown(h.cards().at(-1).card).join().includes("夜班报告"));
+
+  h.vapp.observeAgentEvent({ runId: "r2", sessionKey, stream: "lifecycle", data: { phase: "start" } });
+  h.vapp.observeAgentEvent({ runId: "r2", sessionKey, stream: "assistant", data: { text: "子任务结果" } });
+  await sleep(5);
+  h.vapp.observeAgentEvent({ runId: "r2", sessionKey, stream: "lifecycle", data: { phase: "end" } });
+  h.vapp.deliver({ to: "vapp:tianyi", text: "子任务结果" });
+  await sleep(1600);
+  assert.equal(h.cards().at(-1).removed, true, "the core delivered it as a message");
+});
+
+test("a run started by vapp.send is not observed twice", async () => {
+  let release;
+  const h = harness(async () => { await new Promise((resolve) => { release = resolve; }); });
+  await h.vapp.send({ params: { text: "你好", clientMessageId: "m9" }, client: phone, context: h.context });
+  await sleep(10);
+  const before = h.cards().length;
+  const sessionKey = "agent:makaron:vapp:direct:tianyi";
+  h.vapp.observeAgentEvent({ runId: "own", sessionKey, stream: "lifecycle", data: { phase: "start" } });
+  h.vapp.observeAgentEvent({ runId: "own", sessionKey, stream: "assistant", data: { text: "x" } });
+  await sleep(10);
+  assert.equal(h.cards().length, before);
+  release();
+});
+
+test("APNs: signed with the key, dead tokens dropped, nothing sent without config", async () => {
+  const { createApns } = await import("../apps/v-experience/app/core/apns.js");
+  const crypto = await import("node:crypto");
+  const { privateKey, publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const sent = [];
+  const saved = [];
+  let config;
+  const apns = createApns({
+    getConfig: () => config,
+    readFile: async () => privateKey.export({ type: "pkcs8", format: "pem" }),
+    loadTokens: async () => ({}),
+    saveTokens: async (t) => { saved.push(JSON.parse(JSON.stringify(t))); },
+    send: async (host, token, headers, body) => { sent.push({ host, token, headers, body }); return token.startsWith("dead") ? { status: 410, reason: "Unregistered" } : { status: 200 }; },
+  });
+  const live = "ab".repeat(32);
+  const dead = "dead" + "cd".repeat(30);
+  await apns.register("tianyi", live, { sandbox: true });
+  await apns.register("tianyi", dead);
+  await apns.notify("tianyi", { sessionKey: "s", body: "你好" });
+  assert.equal(sent.length, 0, "no config, no push");
+  config = { keyFile: "/k.p8", keyId: "KEY", teamId: "TEAM", bundleId: "com.versa.vclient" };
+  await apns.notify("tianyi", { sessionKey: "s", body: "<font color='grey'>你好</font>" });
+  assert.equal(sent.length, 2);
+  const mine = sent.find((s) => s.token === live);
+  assert.equal(mine.host, "https://api.sandbox.push.apple.com");
+  assert.equal(JSON.parse(mine.body).aps.alert.body, "你好");
+  const [head, claims, sig] = mine.headers.authorization.replace("bearer ", "").split(".");
+  assert.equal(JSON.parse(Buffer.from(head, "base64url")).kid, "KEY");
+  assert.equal(JSON.parse(Buffer.from(claims, "base64url")).iss, "TEAM");
+  assert.ok(crypto.verify("sha256", Buffer.from(`${head}.${claims}`), { key: publicKey, dsaEncoding: "ieee-p1363" }, Buffer.from(sig, "base64url")));
+  assert.deepEqual(saved.at(-1).tianyi.map((t) => t.token), [live]);
+  await assert.rejects(() => apns.register("tianyi", "not hex"));
+});

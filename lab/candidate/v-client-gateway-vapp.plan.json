@@ -28,6 +28,10 @@
       "target": "extensions/vapp/core/vapp.js"
     },
     {
+      "source": "apps/v-experience/app/core/apns.js",
+      "target": "extensions/vapp/core/apns.js"
+    },
+    {
       "source": "apps/v-experience/app/openclaw.plugin.json",
       "target": "extensions/vapp/openclaw.plugin.json"
     },

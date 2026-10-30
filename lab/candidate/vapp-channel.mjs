@@ -41,7 +41,7 @@ async function connectApp() {
     app = new GatewayClient({
       url: `ws://127.0.0.1:${c.port}`, token: c.gatewayToken, clientName: 'openclaw-ios', mode: 'ui', platform: 'ios',
       scopes: ['operator.approvals', 'operator.questions', 'operator.read', 'operator.write'],
-      onEvent: e => { if (String(e.event).startsWith('plugin.vapp.')) events.push({at: Date.now(), event: e.event, payload: e.payload}); },
+      onEvent: e => { if (/^plugin\.vapp\.|approval/.test(String(e.event))) events.push({at: Date.now(), event: e.event, payload: e.payload}); },
       onHelloOk: () => { clearTimeout(timer); resolve(); },
       onConnectError: e => { clearTimeout(timer); reject(e); },
     });
@@ -148,21 +148,21 @@ try {
 
   await scenario('stop', async () => {
     const mark = events.length;
-    await call('vapp.send', {text: '从 1 数到 3000，每个数字单独一行，全部写出来，不要省略，不要调用工具。', clientMessageId: 'cand-stop'});
-    await until(() => turnSince(mark).all.some(p => /\b20\b/.test(markdown(p.card))), {timeoutMs: 240_000, intervalMs: 300, label: 'streaming'});
+    await call('vapp.send', {text: '用 exec 工具执行 sleep 90，结束后回复「睡醒了」。', clientMessageId: 'cand-stop'});
+    await until(() => turnSince(mark).all.some(p => /⚙|sleep|命令/.test(markdown(p.card))), {timeoutMs: 180_000, intervalMs: 200, label: 'tool running'});
     const during = await call('vapp.history', {});
     assert.ok(during.live.length >= 1, 'the card is live');
+    const stopAt = Date.now();
     const stopped = await call('vapp.stop', {});
     assert.equal(stopped.stopped, true);
-    const stopAt = Date.now();
-    await until(() => turnSince(mark).all.at(-1)?.live === false, {timeoutMs: 60_000, intervalMs: 200, label: 'settled'});
+    await until(() => turnSince(mark).all.at(-1)?.live === false, {timeoutMs: 60_000, intervalMs: 100, label: 'settled'});
+    const stopMs = Date.now() - stopAt;
     const last = turnSince(mark).all.at(-1);
-    const size = markdown(last.card).length;
     await sleep(3_000);
     assert.equal(turnSince(mark).all.at(-1).seq, last.seq, 'nothing more after the stop');
-    const after = await call('vapp.history', {});
-    assert.equal(after.live.length, 0);
-    return {stopMs: Date.now() - stopAt - 3_000, chars: size, tail: markdown(last.card).slice(-40)};
+    assert.ok(!markdown(last.card).includes('睡醒了'));
+    assert.equal((await call('vapp.history', {})).live.length, 0);
+    return {stopMs, text: markdown(last.card).slice(-60)};
   });
 
   await scenario('steer', async () => {
@@ -174,6 +174,7 @@ try {
     await until(() => events.slice(mark).filter(e => e.event === 'plugin.vapp.card').every(e => e.payload.live === false || events.slice(mark).some(x => x.payload.cardId === e.payload.cardId && x.payload.live === false)), {timeoutMs: 240_000, intervalMs: 1000, label: 'all settled'});
     const texts = [...new Map(events.slice(mark).filter(e => e.event === 'plugin.vapp.card').map(e => [e.payload.cardId, e.payload])).values()].map(p => markdown(p.card));
     assert.ok(texts.join('\n').includes('BLUEBIRD'), texts.join(' / ').slice(0, 500));
+    assert.equal(texts.length, 1, `steered into one reply: ${texts.join(' / ').slice(0, 500)}`);
     return {cards: texts.length, texts: texts.map(t => t.slice(0, 160))};
   });
 
@@ -227,6 +228,37 @@ try {
     const fin = await finalOf(mark, {cardSuffix: ':1'});
     assert.ok(!JSON.stringify(events.slice(mark)).includes('cand-secret-value'), 'the value never comes back');
     return {reply: markdown(fin.card).slice(0, 200)};
+  });
+
+  await scenario('other-run', async () => {
+    const mark = events.length;
+    const sessionKey = results.hello.sessionKey;
+    await call('chat.send', {sessionKey, message: '只回复这句话：后台任务报告 ALPHA', idempotencyKey: 'cand-other', deliver: false});
+    await until(() => [...turnSince(mark).last.values()].some(p => p.final), {timeoutMs: 180_000, intervalMs: 300, label: 'card for a run nobody here sent'});
+    const fin = [...turnSince(mark).last.values()].find(p => p.final);
+    assert.match(markdown(fin.card), /ALPHA/);
+    return {cards: turnSince(mark).last.size, final: markdown(fin.card).slice(0, 120)};
+  });
+
+  await scenario('plugin-card', async () => {
+    const mark = events.length;
+    const picture = path.join(process.env.VLAB_CANDIDATE_DATA ?? '/tmp', 'card-picture.jpg');
+    fs.writeFileSync(picture, Buffer.from('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP////////////////////////////////////////////////////////////////////////////////////////wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAAAP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAT8AVP/Z', 'base64'));
+    const presentation = {title: '电脑', blocks: [{type: 'text', text: `需要你接管\n![桌面](file://${picture})`}, {type: 'buttons', buttons: [{label: '我完成了', value: '/status'}]}]};
+    const sent = await call('message.action', {channel: 'vapp', action: 'send', params: {to: 'tianyi', message: '需要你接管', presentation}, idempotencyKey: 'cand-card'}).catch(e => ({rpcError: String(e?.message ?? e)}));
+    await sleep(1_000);
+    const message = events.slice(mark).find(e => e.event === 'plugin.vapp.message')?.payload;
+    return {sent: JSON.stringify(sent).slice(0, 300), card: JSON.stringify(message?.card ?? message ?? null).slice(0, 900)};
+  });
+
+  await scenario('approval-events', async () => {
+    const mark = events.length;
+    const asked = call('exec.approval.request', {id: 'cand-approval-1', command: 'ls /tmp', host: 'gateway', sessionKey: results.hello.sessionKey, agentId: 'makaron', timeoutMs: 20_000, twoPhase: true}, 30_000).catch(e => ({rpcError: String(e?.message ?? e)}));
+    await sleep(1_500);
+    const requested = events.slice(mark).find(e => e.event === 'exec.approval.requested')?.payload;
+    const resolved = requested ? await call('exec.approval.resolve', {id: requested.id, decision: 'deny'}).catch(e => ({rpcError: String(e?.message ?? e)})) : null;
+    await sleep(500);
+    return {asked: JSON.stringify(await Promise.race([asked, sleep(200)])).slice(0, 200), requested: JSON.stringify(requested ?? null).slice(0, 600), resolved: JSON.stringify(resolved).slice(0, 200), resolvedEvent: JSON.stringify(events.slice(mark).find(e => e.event === 'exec.approval.resolved')?.payload ?? null).slice(0, 300), names: events.slice(mark).map(e => e.event)};
   });
 
   await scenario('history', async () => {

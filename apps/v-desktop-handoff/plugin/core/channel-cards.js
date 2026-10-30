@@ -16,7 +16,7 @@ import { normalizePayment } from "./card.js";
 const LIVE = new Set(["pending", "active"]);
 
 /** Channels that get the 「电脑」 card (picture + 接管 / 完成 / 跳过) instead of the plain link card. */
-export const NATIVE_CARD_CHANNELS = ["feishu", "telegram", "dingtalk-connector", "wecom"];
+export const NATIVE_CARD_CHANNELS = ["feishu", "telegram", "dingtalk-connector", "wecom", "vapp"];
 
 /** Channels whose card the plugin can rewrite at any time (the others: see setCardState). */
 export const EDITABLE_CARD_CHANNELS = ["feishu", "telegram"];

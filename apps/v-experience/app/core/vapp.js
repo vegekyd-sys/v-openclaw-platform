@@ -119,7 +119,7 @@ function createChatLog(store, log) {
  * @param {object} deps.inbound     {resolveRoute, buildContext, dispatch, saveMedia, toMediaFacts}
  * @param {(msg: string) => void} [deps.log]
  */
-export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updateMs = UPDATE_MS, startTurn = (job) => job(), store = memoryStore() }) {
+export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updateMs = UPDATE_MS, startTurn = (job) => job(), store = memoryStore(), notify = () => {} }) {
   const chatLog = createChatLog(store, log);
   const liveCards = new Map(); // userId -> Map(cardId -> payload) of cards still changing
   const running = new Map(); // userId -> Set of turns
@@ -227,6 +227,7 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
       sessionKey,
       view,
       aborted: false,
+      answerText: () => body(),
       partial(value) {
         const next = text(value);
         if (!next || next === answer) return;
@@ -242,6 +243,14 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
         finals.push(next);
         phase = "working";
         schedule();
+      },
+      /** The reply reached the user another way (the core sent it as a message). */
+      discard() {
+        if (finished) return;
+        clearTimeout(timer);
+        finished = true;
+        view.dispose();
+        if (shown) emit(null, { removed: true, final: true });
       },
       /** A question has its own card below; this one stops here and the rest of the reply starts a new card under it. */
       splitForQuestion() {
@@ -283,6 +292,7 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
           if (shown) emit(null, { removed: true, final: true });
           return;
         }
+        if (finalText) notify(user.id, { sessionKey, body: finalText });
         const id = cardId();
         const card = (background = "") => vx.workCard({ answer: finalText, phase: failed && !finalText ? "failed" : "done", background, footer: footer() });
         emit(card(), { id, final: true });
@@ -325,6 +335,7 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
       const q = { turn, record, secret: true, staged: {}, state: "pending", answers: undefined, frozen: turn.splitForQuestion() };
       questions.set(record.id, q);
       paintQuestion(q);
+      notify(turn.user.id, { sessionKey: turn.sessionKey, body: "V 需要你填写一个凭据" });
       log(`vapp: credential question ${record.id} delivered to ${turn.user.id}`);
       return true;
     }
@@ -332,6 +343,7 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     const q = { turn, record, staged: {}, state: "pending", answers: undefined, frozen: turn.splitForQuestion() };
     questions.set(record.id, q);
     paintQuestion(q);
+    notify(turn.user.id, { sessionKey: turn.sessionKey, body: `V 在问你：${record.questions?.[0]?.question ?? ""}` });
     vx.trackChatQuestion({
       channel: CHANNEL_ID, chatKey: turn.user.id, senderId: turn.user.id, record, inline: true,
       onStaged: (staged) => { q.staged = staged; paintQuestion(q); },
@@ -365,6 +377,9 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     const delivered = push(userId, "message", message);
     // Also the only copy when the user is offline; the app reads it from vapp.history.
     chatLog.record(userId, { ...message, kind: "message" });
+    recentSends.push({ userId, at: message.at, text: text(body).trim() });
+    if (recentSends.length > 40) recentSends.shift();
+    notify(userId, { sessionKey, body: body || (card ? (card.header?.title?.content ?? "V 发来一张卡片") : "V 发来一个文件") });
     return { id, delivered };
   }
 
@@ -436,6 +451,9 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
           },
         },
         replyOptions: {
+          onModelSelected: (selected) => pipeline.onModelSelected?.(selected),
+          // Keeps the reply operation's admission open so a later message can steer this run.
+          queuedFollowupLifecycle: {},
           allowToolLifecycleWhenProgressHidden: true,
           commentaryProgressEnabled: true,
           suppressDefaultToolProgressMessages: true,
@@ -458,6 +476,60 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
       turn.finish({ failed });
     }
     return turn;
+  }
+
+  // ---------------------------------------------------------- other runs
+
+  // Work on this chat that no vapp.send started: sessions_send from another
+  // session, a voice delegation, a scheduled continuation, a sub-agent's report.
+  // It gets the same live card; a reply the core then sends as a message is not
+  // shown twice.
+  const recentSends = [];
+  const observed = new Map(); // runId -> {turn, startedAt}
+  const ownRuns = new Set();
+  const userOfSession = (sessionKey) => {
+    const cfg = getConfig();
+    return Object.keys(vappConfig(cfg).users).map((id) => ({ id, name: vappConfig(cfg).users[id]?.name || id }))
+      .find((user) => route(cfg, user).route.sessionKey === sessionKey);
+  };
+
+  function observeAgentEvent(event) {
+    const { runId, stream, sessionKey, data = {} } = event ?? {};
+    if (!runId || !sessionKey || event.isHeartbeat) return;
+    let entry = observed.get(runId);
+    if (stream === "lifecycle" && data.phase === "start" && !entry) {
+      const user = userOfSession(sessionKey);
+      if (!user) return;
+      const own = [...(running.get(user.id) ?? [])].find((turn) => !turn.runId);
+      if (own) {
+        own.runId = runId;
+        ownRuns.add(runId);
+        while (ownRuns.size > 200) ownRuns.delete(ownRuns.values().next().value);
+        return;
+      }
+      if (ownRuns.has(runId)) return;
+      entry = { turn: createTurn({ user, sessionKey }), user, startedAt: Date.now() };
+      entry.turn.paintNow();
+      observed.set(runId, entry);
+      return;
+    }
+    if (!entry) return;
+    const { turn } = entry;
+    if (stream === "assistant") turn.partial(data.text);
+    else if (stream === "tool" && data.phase === "start") turn.view.toolStart(data);
+    else if (stream === "plan") turn.view.planUpdate(data);
+    else if (stream === "item") turn.view.itemEvent(data);
+    else if (stream === "lifecycle" && (data.phase === "end" || data.phase === "error")) {
+      observed.delete(runId);
+      // The core's delivery of the same reply lands just after the run ends.
+      const timer = setTimeout(() => {
+        const answer = turn.answerText().trim();
+        const sent = recentSends.some((m) => m.userId === entry.user.id && m.at >= entry.startedAt && m.text && (!answer || m.text === answer || answer.includes(m.text)));
+        if (sent || !answer || vx.isSilentReply?.(answer) || /^NO_REPLY$/u.test(answer)) turn.discard();
+        else turn.finish({ failed: data.phase === "error" });
+      }, 1500);
+      timer.unref?.();
+    }
   }
 
   // ---------------------------------------------------------- gateway methods
@@ -601,5 +673,5 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     return sendMessage(user, { sessionKey: resolved.sessionKey, text: body, media, card });
   }
 
-  return { hello, send, action, deliver, stop, history, userReact, runTurn, push, connections, questions };
+  return { hello, send, action, deliver, stop, history, userReact, observeAgentEvent, runTurn, push, connections, questions };
 }
