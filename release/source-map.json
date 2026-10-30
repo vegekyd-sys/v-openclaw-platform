@@ -40,7 +40,9 @@
       "layer": "core",
       "path": "agent-command-DPfawBbr.js",
       "sha256": "a7811ac05c817e98de881195e18407af3e485b2b8b242ed3465064ba72c680d1",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -78,7 +80,9 @@
       "layer": "core",
       "path": "agent-runner.runtime-CAdsMsQt.js",
       "sha256": "09f1b500f122381a4af008d7bb78f478a0c703602974d50685a40b8238651e50",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -380,7 +384,9 @@
       "layer": "core",
       "path": "delivery.runtime-CAsclR-9.js",
       "sha256": "3e943055229ccf3e2becae1bb132992f9861a5b2295a9abbb215ac6780aa7b2e",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -394,7 +400,9 @@
       "layer": "core",
       "path": "dispatch-from-config-DOJq_7CI.js",
       "sha256": "97e69403f0c37f178c2fc60b57cfb15711009a4e1257ebce12e4dd0d6dba43aa",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -416,7 +424,9 @@
       "layer": "core",
       "path": "embedded-agent-DaSvA-Yk.js",
       "sha256": "88a9a95e96af39eea5753ae75b0952fa216c9a83c99d876c24dc2b44c3e3ac86",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -454,7 +464,9 @@
       "layer": "core",
       "path": "experience-review-default-Dr4f0pMZ.js",
       "sha256": "604ab19a8b0e2feb3c848c5cd164d386533bbcfe62974dd911454932474541db",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -476,7 +488,9 @@
       "layer": "core",
       "path": "extensions/workboard/index.js",
       "sha256": "448d3ae80781a98bc7b55ec14394c52f44e3247dc512d4e5aaef4a13c8a71466",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -506,7 +520,9 @@
       "layer": "core",
       "path": "get-reply-CqW1y05D.js",
       "sha256": "a22a84a9b832d0aed7a0ab00354dde35a332cff377a9eeca6df3130292a4f974",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -528,7 +544,9 @@
       "layer": "core",
       "path": "gpt-live-consult-continuation.js",
       "sha256": "41f572dd09f5934314773310cab6e03a21a750ded5b85c51f1970c8f80d91afa",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -582,7 +600,9 @@
       "layer": "core",
       "path": "isolated-agent-BxeXdw5A.js",
       "sha256": "2613b14741ab4cf2a03c0c4e6be90a0594ee406009324876aae1d634734f8698",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -692,7 +712,9 @@
       "layer": "core",
       "path": "openclaw-tools-BODVdJQD.js",
       "sha256": "0b8b623310c01d8153a7f751c1f3a2042a2f3481d62499effce4f34d60ed2799",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -730,7 +752,9 @@
       "layer": "core",
       "path": "progress-card-CciYmFS8.js",
       "sha256": "40c4d10a52e8ee4e1984351d7e71c19048a9dcbb1ef4830615c455cf2174bc10",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -816,7 +840,9 @@
       "layer": "core",
       "path": "realtime-session-harness-CEO5kVAJ.js",
       "sha256": "d8515037de8468ad82330a92f8644382efd4f4b1050d92abaa18a4747ccd4a76",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -862,7 +888,9 @@
       "layer": "core",
       "path": "run-delivery.runtime-falxHVAy.js",
       "sha256": "6afb1b4a740dcb2c9fb374c7a3408246c7beed495b0171a68b73e665c0c52bf7",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -892,7 +920,9 @@
       "layer": "core",
       "path": "runtime-api-1CCazqtv.js",
       "sha256": "62ecf47e8b884b72e25bee5b993a4a90ad0cdaf95003c4ac3a5d8d019b8da7ed",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -906,7 +936,9 @@
       "layer": "core",
       "path": "selection-BC0YSSFq.js",
       "sha256": "b55b53525a4e668c4c242090893d6f8cb4de0ac96899b444f0dd85cf3f8bdaa4",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -928,7 +960,9 @@
       "layer": "core",
       "path": "server-session-key-ZtX3Ble7.js",
       "sha256": "6310b72b4fe21d37e7e137ec33f29497519c12fef8a3fc3661ced869654cf021",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -966,7 +1000,9 @@
       "layer": "core",
       "path": "service-query-Bt8YN8NM.js",
       "sha256": "bb7aed5d457fd73fb6d5d967fabdad182a5fe5f834842c42e62af8ed62c95c5c",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -1060,7 +1096,9 @@
       "layer": "core",
       "path": "session-task-lifecycle.mjs",
       "sha256": "ee510a91a78db739adfbf8af3343d924bb09e60188ce01bf6d3cdb20534d51f6",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -1082,7 +1120,9 @@
       "layer": "core",
       "path": "session-utils-list-BUP03AzS.js",
       "sha256": "a6d40fb5ae98bb8b61ff157487b4a59942c32f126620eda56869c24fc06b3de2",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -1104,7 +1144,9 @@
       "layer": "core",
       "path": "sessions-read-C6mAMxyQ.js",
       "sha256": "5c84c606c258ae729630a659d54bdf28d1b7cb2999b1ca86a325832b78ef5a43",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -1118,7 +1160,9 @@
       "layer": "core",
       "path": "sessions-spawn-tool-1FQMTkIo.js",
       "sha256": "ba127bab652e9f4401437816895d90e5471cc3d7bb8387cbf159f3b9e31f5f32",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -1132,13 +1176,17 @@
       "layer": "core",
       "path": "sqlite-store-CH-caj1l.js",
       "sha256": "d06ee044d85a76f19c5fa034b019f934735027afab56934d9d2c9aa5c2633c34",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
       "path": "src-B9mb84px.js",
       "sha256": "b082258bca1169829a2079a133b60e78c865876b3ede2455a07a29894a942727",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -1152,7 +1200,9 @@
       "layer": "core",
       "path": "subagent-announce-delivery-Dosep7Zr.js",
       "sha256": "f8b6fd0fd2803d78e3c8f5570f90f7e2532ddb2f551151deb1c1a06fbad8650d",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -1230,13 +1280,17 @@
       "layer": "core",
       "path": "task-registry-activity-DSlVVJwD.js",
       "sha256": "2e70d33de6eb5b6bf042de8cfd3ec9d6c34939cedf4ea8c31b19dc0012c7bb6d",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
       "path": "task-registry.maintenance-C4nMaDY9.js",
       "sha256": "cd4a70c3b909d6d8e21a26a8fce250b281a67f76c5d4779f91d90d8b7e4671d3",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -1314,49 +1368,65 @@
       "layer": "core",
       "path": "v-experience.js",
       "sha256": "484da30979760dbc5e73d7f9d098c9302703f7859e362a11e6bb5563c8c4013e",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
       "path": "v-feishu-task-presentation-command.mjs",
       "sha256": "acc0fcf5da7d409876b07ab10053c45a7ff0ef848cc0b6a8b100a2ef5b2999c2",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
       "path": "v-feishu-task-presentation-core-bridge.mjs",
       "sha256": "920fd1f966a5014efd3036d7058d766d3da97f199ebc75f19046bffbaf709c09",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
       "path": "v-feishu-task-presentation-cron.mjs",
       "sha256": "80071002e00f987b87d29f237d5450cd98af5afdfce34f33f62b0b8e325c05ee",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
       "path": "v-feishu-task-presentation-delivery.mjs",
       "sha256": "47b4e136a66e7eaf2478d4c68e4d3c87e0193f6f83c2bd2174058d3a6107a4eb",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
       "path": "v-feishu-task-presentation-followup.mjs",
       "sha256": "824905696977aa8418145791c78eb00d7bd33da401a3127a522a0e53a6e98529",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
       "path": "v-feishu-task-presentation-runtime.mjs",
       "sha256": "d98433695dc87517208487540e96b7b62614a858411139eac807417b22f140b7",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
       "path": "v-feishu-voice-actor.mjs",
       "sha256": "9c890ca5e326b958554337de4f0aec94af94a26581da13054d6b50efecfa677e",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -1394,7 +1464,9 @@
       "layer": "core",
       "path": "v-session-entries-matching.mjs",
       "sha256": "3e5671e2cec4eb82fe670fc4bc5f3fab82006ecc3e3ee182e7bbc7e146999a88",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -1432,7 +1504,9 @@
       "layer": "core",
       "path": "workspace-BFk42BX6.js",
       "sha256": "5c74cd7c84c4745fb615bff621836be5a5473949c29db0b115ab81f72a4ce027",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "core",
@@ -1470,13 +1544,17 @@
       "layer": "feishu",
       "path": "dist/feishu-private-conversations.mjs",
       "sha256": "012454219d94e8aeff08a2957770b2d68796e01cecfadc0a861157f559c644f0",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "feishu",
       "path": "dist/index.js",
       "sha256": "7803f53a62f3824fd9670f2928038ea9f7060d0ad3bef0663cad31b24329c43c",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "feishu",
@@ -1498,7 +1576,9 @@
       "layer": "feishu",
       "path": "dist/v-feishu-phone-tabs.mjs",
       "sha256": "9544191e8d456488457b44c141bfa3794650f894e26bcc131cd61b4769a250b9",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "feishu",
@@ -1528,13 +1608,17 @@
       "layer": "codex",
       "path": "dist/attempt-context-DmQUNWwT.js",
       "sha256": "d425cfe28349a0313a7be3dbba56bd6790fd70005501119d83aced3532a3a7d7",
-      "source": "pending:backlog-20261029"
+      "source": "versa:79a835e50fd",
+      "note": "wave-2 backlog: release-batch-20261027/28 on workboard, sessions, cron and bootstrap (versa/port-wave2-r-20261030 @ 79a835e50fd) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "codex",
       "path": "dist/bounded-turn-wzJrwKKe.js",
       "sha256": "a2eebda0a3425249ed70cd6cc710dc0c204bdcf41415618125ade6ba02a216a6",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "codex",
@@ -1564,7 +1648,9 @@
       "layer": "codex",
       "path": "dist/run-attempt-D1hJO4fX.js",
       "sha256": "c34d6d777a862db761e22e03fae20e70c595867361052475a5703f67446ce2ce",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "codex",
@@ -1578,13 +1664,17 @@
       "layer": "codex",
       "path": "dist/settled-turn-context-D3SNWtUn.js",
       "sha256": "929c1ea936cce6ac892700114d9c042db856a79ad6d02d89355ef9514d2e08db",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "codex",
       "path": "dist/settled-turn-finalizer-BVJx4yoc.js",
       "sha256": "7506b388b1718c02fe72c69195b49649e4a17cb730fac87720eef7c7a277dd94",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "codex",
@@ -1606,7 +1696,9 @@
       "layer": "codex",
       "path": "dist/transcript-mirror-DTUxFWa_.js",
       "sha256": "af4c007c0965bf78dee27ea3185044488b419c4ea2905b960c8f0e1c75dd4ae5",
-      "source": "pending:backlog-20261029"
+      "source": "versa:1c0413a0eae",
+      "note": "wave-2 backlog: unified-session-20261027 and the 10/27-28 batches on the task card (versa/port-wave2-u-20261030 @ 1c0413a0eae) merged into versa/port-backlog-20261029 @ eb33b02e0c1; unit tests fail without each change; normalized comparison against the 10/30 capture judged every item, 0 mistranslations; runtime A/B pending",
+      "equivalence": "normdiff:eb33b02e0c1"
     },
     {
       "layer": "codex",
