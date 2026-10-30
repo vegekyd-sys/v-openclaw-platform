@@ -45,7 +45,8 @@
       "layer": "core",
       "path": "agent-command-DeP5kHlK.js",
       "sha256": "e7b522ff90d07f76e04c8067b64919a8c9e7068b46e44dfab707aea19f2976af",
-      "source": "pending:backlog-20261029"
+      "source": "versa:35f7f06f225",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -65,7 +66,8 @@
       "layer": "core",
       "path": "agent-runner-memory-7VF-zwNt.js",
       "sha256": "befc094d3c6183b8275c1550cc91ccd333dfdd8a989ad9121be95d6c914746f2",
-      "source": "pending:backlog-20261029"
+      "source": "versa:35f7f06f225",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -147,7 +149,8 @@
       "layer": "core",
       "path": "builtin-openclaw-zQV8Wwjr.js",
       "sha256": "a44b846a3a56be86a09e7aa0259a6ec64663d6c92a5861cd67fe4c88a83015f9",
-      "source": "pending:backlog-20261029"
+      "source": "versa:35f7f06f225",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -167,7 +170,8 @@
       "layer": "core",
       "path": "classify-Dm9sTbZz.js",
       "sha256": "a69e44f5d650917f91d86097f7f525a3b5e31db7e6618c9a993c650f3a388c92",
-      "source": "pending:backlog-20261029"
+      "source": "versa:35f7f06f225",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -271,7 +275,8 @@
       "layer": "core",
       "path": "db91-integrity-bootstrap.mjs",
       "sha256": "87b7fa4767b0b7b56800e0163977778ee5da6999dfec6b5a07410208248dad84",
-      "source": "pending:backlog-20261029"
+      "source": "versa:35f7f06f225",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending; restart carry as in db91-restart-carry.mjs"
     },
     {
       "layer": "core",
@@ -305,7 +310,8 @@
       "layer": "core",
       "path": "db91-restart-carry.mjs",
       "sha256": "5f18d635380c9d0d73ae30b4db0b2e9d5f7d6b19de46b69cdb2dd722e003ffca",
-      "source": "pending:backlog-20261029"
+      "source": "versa:35f7f06f225",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending; carry checks match V, which does not re-verify a database changed in place while stopped (same identity, not shrunk), see team A turn report 4.2"
     },
     {
       "layer": "core",
@@ -371,7 +377,8 @@
       "layer": "core",
       "path": "embedded-agent-helpers-CzpaLpCq.js",
       "sha256": "63002d77d5d5b24601e3294e64331784ef855bb8019fad6c2316614f184672b2",
-      "source": "pending:backlog-20261029"
+      "source": "versa:35f7f06f225",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -451,7 +458,8 @@
       "layer": "core",
       "path": "get-reply-from-config.runtime-CWdWv_c6.js",
       "sha256": "727ad5143f48ac977331e09a09adbd07499fbb8cda425ece72ebfb040ebb929e",
-      "source": "pending:backlog-20261029"
+      "source": "versa:35f7f06f225",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -484,7 +492,8 @@
       "layer": "core",
       "path": "history-image-prune-Dg0CDQ4a.js",
       "sha256": "dbe28902fd72d4620e1cbd16ad03daab58758011e5692d0705957583e3e24c49",
-      "source": "pending:backlog-20261029"
+      "source": "versa:35f7f06f225",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending; completes computer-frame-prune with the history-image-e3 resize skip (#355)"
     },
     {
       "layer": "core",
@@ -497,7 +506,8 @@
       "layer": "core",
       "path": "index.js",
       "sha256": "fe5494158ceb95450fec18bc9b6b4bb44c08c8dfd53c776001338b3fc053c069",
-      "source": "pending:backlog-20261029"
+      "source": "versa:35f7f06f225",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -627,7 +637,8 @@
       "layer": "core",
       "path": "placement-store-CkyLHi6x.js",
       "sha256": "5bcb7a2f4a0fa7dd73922cff7920e9cd5485d58c1128c5cbae2eb5c583c6bf17",
-      "source": "pending:backlog-20261029"
+      "source": "versa:35f7f06f225",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -722,7 +733,8 @@
       "layer": "core",
       "path": "refresh-BzYxPady.js",
       "sha256": "3e34ae21675df38e58889654a384a9bcdc39c77b28f9eed2f612250402c06671",
-      "source": "pending:backlog-20261029"
+      "source": "versa:35f7f06f225",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -769,7 +781,8 @@
       "layer": "core",
       "path": "runner-BIhCXp3h.js",
       "sha256": "f99d7111d20a9292fce75c1db42127a7dc4da6972b43437dc3f53aa17c07a47d",
-      "source": "pending:backlog-20261029"
+      "source": "versa:35f7f06f225",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -828,13 +841,15 @@
       "layer": "core",
       "path": "server-startup-post-attach-BPE6Pv6n.js",
       "sha256": "fdd1061374a6e999bf7f80cfda0f6676ce05889c75473cd80fedd989e45a891c",
-      "source": "pending:backlog-20261029"
+      "source": "versa:35f7f06f225",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending"
     },
     {
       "layer": "core",
       "path": "server-worker-placement-startup-BvPREvpr.js",
       "sha256": "8e73e9eb1480777d59848279a864694dd11aabba84da49c1ac0dc27979ae10a8",
-      "source": "pending:backlog-20261029"
+      "source": "versa:35f7f06f225",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending"
     },
     {
       "layer": "core",
@@ -1152,7 +1167,8 @@
       "layer": "core",
       "path": "tools-invoke-shared-CjpflNGO.js",
       "sha256": "f327eda68270be7b98bca2217fba2767a2a105c850de0625071ab2e2faf8c949",
-      "source": "pending:backlog-20261029"
+      "source": "versa:35f7f06f225",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending"
     },
     {
       "layer": "core",
