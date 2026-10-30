@@ -593,6 +593,29 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     if (note) notify(userId, { sessionKey: resolved.sessionKey, body: note });
   }
 
+  // The app's session list. Rows on the Gateway are about 2.4 KB and most of the
+  // newest belong to sub-agents, so the plain list is 700 KB; this is what the app
+  // draws, and a slow link can carry it. Owners only: it names every chat.
+  const SESSION_FIELDS = ["key", "kind", "isMain", "channel", "chatType", "subject", "displayName", "label", "lastActivityAt", "updatedAt", "unread", "pinned", "lastMessagePreview", "model"];
+  let sessionsCache;
+  async function sessions({ client, context }) {
+    const user = requireUser(client);
+    attach(user, client, context);
+    if (!user.owner) return { sessions: [] };
+    if (!sessionsCache || Date.now() - sessionsCache.at > 20_000) {
+      const pending = Promise.resolve(call("sessions.list", { limit: 400, includeLastMessage: true })).then((result) => (result?.sessions ?? [])
+        .filter((row) => !/:(subagent|cron|hook):/u.test(text(row.key)) && !row.isBackground && !row.archived)
+        .slice(0, 120)
+        .map((row) => ({
+          ...Object.fromEntries(SESSION_FIELDS.filter((field) => row[field] !== undefined).map((field) => [field, typeof row[field] === "string" ? row[field].slice(0, 300) : row[field]])),
+          ...(row.origin?.provider ? { origin: { provider: row.origin.provider } } : {}),
+        })));
+      sessionsCache = { at: Date.now(), pending };
+      pending.catch(() => { sessionsCache = undefined; });
+    }
+    return { sessions: await sessionsCache.pending };
+  }
+
   /** Stops the user's running turns with the channel's own /stop. */
   async function stop({ client, context }) {
     const user = requireUser(client);
@@ -704,5 +727,5 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     return sendMessage(user, { sessionKey: resolved.sessionKey, text: body, media, card });
   }
 
-  return { showCard, hello, send, action, deliver, stop, history, userReact, observeAgentEvent, runTurn, push, connections, questions };
+  return { showCard, sessions, hello, send, action, deliver, stop, history, userReact, observeAgentEvent, runTurn, push, connections, questions };
 }

@@ -10,6 +10,7 @@ const QUESTION_LISTENERS = Symbol.for("openclaw.questionChannelRequestedListener
 const askId = (n) => `ask_${String(n).repeat(32).slice(0, 32)}`;
 
 /** A vapp with a fake Gateway: `script(replyOptions, deliver)` plays one turn. */
+const listCalls = [];
 function harness(script) {
   const events = [];
   const resolved = [];
@@ -20,6 +21,14 @@ function harness(script) {
     updateMs: 0,
     call: async (method, params) => {
       if (method === "question.resolve") { resolved.push(params); return { ok: true }; }
+      if (method === "sessions.list") {
+        listCalls.push(params);
+        return { sessions: [
+          { key: "agent:makaron:feishu:group:oc_1", displayName: "群", lastMessagePreview: "x".repeat(1000), internals: "y".repeat(5000) },
+          { key: "agent:makaron:subagent:1", displayName: "子 agent" },
+          { key: "agent:makaron:cron:1", displayName: "定时" },
+        ] };
+      }
       if (method === "chat.history") return { messages: [{ role: "assistant", content: [{ type: "text", text: "读回的答案" }] }] };
       throw new Error(`unexpected ${method}`);
     },
@@ -318,4 +327,17 @@ test("APNs: signed with the key, dead tokens dropped, nothing sent without confi
   assert.ok(crypto.verify("sha256", Buffer.from(`${head}.${claims}`), { key: publicKey, dsaEncoding: "ieee-p1363" }, Buffer.from(sig, "base64url")));
   assert.deepEqual(saved.at(-1).tianyi.map((t) => t.token), [live]);
   await assert.rejects(() => apns.register("tianyi", "not hex"));
+});
+
+test("the app's session list has chats only, small rows, and is shared for a while", async () => {
+  const h = harness(async () => {});
+  listCalls.length = 0;
+  const first = await h.vapp.sessions({ client: phone, context: h.context });
+  assert.deepEqual(first.sessions.map((row) => row.key), ["agent:makaron:feishu:group:oc_1"]);
+  assert.equal(first.sessions[0].lastMessagePreview.length, 300);
+  assert.equal(first.sessions[0].internals, undefined);
+  await h.vapp.sessions({ client: phone, context: h.context });
+  assert.equal(listCalls.length, 1, "one walk of the sessions");
+  const other = { connId: "c2", connect: { device: { id: "dev-xinyi" } } };
+  assert.deepEqual((await h.vapp.sessions({ client: other, context: h.context })).sessions, [], "not for other users");
 });

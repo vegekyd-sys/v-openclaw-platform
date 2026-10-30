@@ -275,6 +275,15 @@ try {
     return {buttons: buttons.length, title: last.card.header.title.content};
   });
 
+  await scenario('sessions', async () => {
+    const started = Date.now();
+    const {sessions} = await call('vapp.sessions', {});
+    const full = await call('sessions.list', {limit: 400, includeLastMessage: true});
+    assert.ok(sessions.some(row => row.key === results.hello.sessionKey), 'the app chat is listed');
+    assert.ok(!sessions.some(row => /:subagent:/.test(row.key)));
+    return {rows: sessions.length, bytes: JSON.stringify(sessions).length, fullBytes: JSON.stringify(full.sessions).length, sample: sessions[0], ms: Date.now() - started};
+  });
+
   await scenario('history', async () => {
     const page = await call('vapp.history', {limit: 200});
     const kinds = page.items.reduce((acc, e) => ({...acc, [e.kind]: (acc[e.kind] ?? 0) + 1}), {});

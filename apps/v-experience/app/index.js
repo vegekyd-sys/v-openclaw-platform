@@ -231,6 +231,7 @@ export default defineChannelPluginEntry({
     api.registerGatewayMethod("vapp.send", method(vapp.send), write);
     api.registerGatewayMethod("vapp.action", method(vapp.action), write);
     api.registerGatewayMethod("vapp.stop", method(vapp.stop), write);
+    api.registerGatewayMethod("vapp.sessions", method(vapp.sessions), write);
     api.registerGatewayMethod("vapp.push", method(async ({ params, client }) => {
       const user = resolveUser(getConfig(), client);
       if (!user) throw Object.assign(new Error("这台设备还没有绑定 V 用户"), { code: "UNAVAILABLE" });
