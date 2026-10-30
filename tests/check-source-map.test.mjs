@@ -48,12 +48,42 @@ test("a change captured after the cutoff must name its source", () => {
   assert.match(pending.errors[0], /changed after/);
 
   const sourced = checkSourceMap({
-    map: map([{ layer: "core", path: "dist/x.js", sha256: "x2", source: "versa:0123456789a" }]),
+    map: map([
+      {
+        layer: "core",
+        path: "dist/x.js",
+        sha256: "x2",
+        source: "versa:0123456789a",
+        equivalence: "normdiff:0123456789a",
+      },
+    ]),
     captures,
     readBase,
   });
   assert.deepEqual(sourced.errors, []);
   assert.equal(sourced.report.core.versa, 1);
+  assert.equal(sourced.report.core.compared, 1);
+});
+
+test("a fork commit without a recorded comparison with V fails", () => {
+  const captures = [capture("r1", "core", "2026-10-28T00:00:00Z", { "dist/x.js": "x1", "dist/y.json": "y1" })];
+  const entry = (path, sha256, equivalence) => ({ layer: "core", path, sha256, source: "versa:0123456789a", equivalence });
+  const missing = checkSourceMap({
+    map: map([entry("dist/x.js", "x1"), entry("dist/y.json", "y1", "looks-fine")]),
+    captures,
+    readBase,
+  });
+  assert.equal(missing.errors.length, 2);
+  assert.ok(missing.errors.every((e) => /records no comparison with V/.test(e)));
+  assert.equal(missing.report.core.compared, 0);
+
+  const recorded = checkSourceMap({
+    map: map([entry("dist/x.js", "x1", "normdiff:fedcba98765"), entry("dist/y.json", "y1", "identical:fedcba98765")]),
+    captures,
+    readBase,
+  });
+  assert.deepEqual(recorded.errors, []);
+  assert.equal(recorded.report.core.compared, 2);
 });
 
 test("unmapped patched files and malformed sources fail; only the latest capture counts", () => {
