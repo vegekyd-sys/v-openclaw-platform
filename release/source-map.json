@@ -1329,8 +1329,9 @@
     {
       "layer": "feishu",
       "path": "dist/monitor.account-WFdlCDhR.js",
-      "sha256": "1925d3f2d4f3550189e76b27bac09a40b25bbdd7b124e839c6605926b677366b",
-      "source": "pending:backlog-20261029"
+      "sha256": "faa1062883b3052d9803455762a35ba8bc8abfc8bd3a20d3875084f4f87a8f1f",
+      "source": "versa:7ffcad5bfdf",
+      "note": "wave-2 + 10/30 desktop hand-back (versa/port-feishu-presentation-20261030, fast-forwarded into versa/port-backlog-20261029); task presentation, native adapter and inter-session bridge modules are byte-identical to V; hooks are equivalent TS; plugin entry also registers the presentation as V's index.js does; every behaviour hunk fails a test when reverted; 30/30 markers present in the fork build and absent from stock 9.1"
     },
     {
       "layer": "feishu",
@@ -1348,8 +1349,9 @@
     {
       "layer": "feishu",
       "path": "dist/v-feishu-task-presentation.mjs",
-      "sha256": "d3f49b00811b026835f1f5a90afaf0d8f004a25a4fa3c3599e9c3d8facd6fdcb",
-      "source": "pending:backlog-20261029"
+      "sha256": "070801aa1b7ec41aa5b7cd02110f7d67e01e2becfe4a0c59efa3b023f5c55de4",
+      "source": "versa:7ffcad5bfdf",
+      "note": "wave-2 + 10/30 desktop hand-back (versa/port-feishu-presentation-20261030, fast-forwarded into versa/port-backlog-20261029); task presentation, native adapter and inter-session bridge modules are byte-identical to V; hooks are equivalent TS; plugin entry also registers the presentation as V's index.js does; every behaviour hunk fails a test when reverted; 30/30 markers present in the fork build and absent from stock 9.1"
     },
     {
       "layer": "feishu",

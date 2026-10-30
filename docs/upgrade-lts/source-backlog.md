@@ -29,6 +29,8 @@
 
 第一波共有 94 个文件从 pending 改成 `versa:`（`3951d3e691b`、`b18d58c5f19`、`3bde236a5ee`、`35f7f06f225`）。对照最新捕获，已源码化的文件数：core 150/187，飞书 5/10，codex 9/15，钉钉 0/4，企微 0/9。core、飞书、codex 里剩下的 48 个，全是第二波发版（unified-session-20261027、release-batch-20261027/28）也改过的文件。钉钉和企微的 13 个文件，源码路径在平台分支 `claude/bl-thirdparty-20261029`，那个分支还没合入。
 
+10/30 的发版 `v-desktop-handback-progress-20261030` 改了 2 个飞书文件（`monitor.account`、`v-feishu-task-presentation`）。同步 dev 后，门禁把这两个文件报成 unmapped。补法：把这两个文件在第二波和 10/30 的改动全部翻完（`versa/port-feishu-presentation-20261030`，已快进合入汇总线，汇总线现在是 `7ffcad5bfdf`）。三个 V 模块与 V 字节相同；钩子是等价的 TS 改写；插件入口按 V 的 index.js 注册了任务展示。改行为的 hunk 撤掉任何一处都会有测试失败；30 个特征串全部命中。飞书已源码化的文件变成 7/10。
+
 `release/source-map.json` 只把"V 线上最新版本已完全覆盖"的文件改成 `versa:`；一个文件后来还被别的发版改过的，要等那些发版也补上才改。
 
 
