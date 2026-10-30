@@ -1470,92 +1470,92 @@
       "layer": "dingtalk",
       "path": "dist/connection-DCvu-l09.mjs",
       "sha256": "397c42c3f66d0cd7898168de21be1607303723cd797d9174ad4b1d6694d44520",
-      "source": "pending:third-party-plugin",
-      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+      "source": "platform:apps/v-experience/dingtalk/patch.mjs",
+      "note": "rebuilt byte for byte from the npm package by tests/third-party-v-bytes.test.mjs"
     },
     {
       "layer": "dingtalk",
       "path": "dist/message-handler-BUoLSylZ.mjs",
       "sha256": "5cd4d5d761641f8dd2809163ab5a00e55817f47e7b8c125f5533147e1db0ee23",
-      "source": "pending:third-party-plugin",
-      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+      "source": "platform:apps/v-experience/dingtalk/patch.mjs",
+      "note": "rebuilt byte for byte from the npm package by tests/third-party-v-bytes.test.mjs"
     },
     {
       "layer": "dingtalk",
       "path": "dist/runtime-C81EKBS1.mjs",
       "sha256": "6c9d9e2d3604cc0a97824f498d047feecb7ce885bcda040c0e602a3fa3979835",
-      "source": "pending:third-party-plugin",
-      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+      "source": "platform:apps/v-experience/dingtalk/patch.mjs",
+      "note": "rebuilt byte for byte from the npm package by tests/third-party-v-bytes.test.mjs"
     },
     {
       "layer": "dingtalk",
       "path": "dist/v-experience.mjs",
       "sha256": "6555ba08e72b4c46d58f8756a4e43bd4991371fbaab56fb904c507357cc784df",
-      "source": "pending:third-party-plugin",
-      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+      "source": "platform:lab/release-files/v-experience-dingtalk-peer-case-outbound/dist/v-experience.mjs",
+      "note": "rebuilt byte for byte from the npm package by tests/third-party-v-bytes.test.mjs"
     },
     {
       "layer": "wecom",
       "path": "README.md",
       "sha256": "6df6dcf6fce0dfdc046295f48adb05ea3b1d8410c1eddc4914df44bf6b61aab3",
-      "source": "pending:third-party-plugin",
-      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+      "source": "platform:lab/release-files/wecom-vlab2/patch.mjs",
+      "note": "rebuilt byte for byte from the npm package by tests/third-party-v-bytes.test.mjs"
     },
     {
       "layer": "wecom",
       "path": "dist/index.js",
       "sha256": "3f3d4222b4874c86af19cef1da4c1d8e76e7500c1822279cd375c2544dba81d7",
-      "source": "pending:third-party-plugin",
-      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+      "source": "platform:lab/release-files/wecom-vlab2/patch.mjs",
+      "note": "rebuilt byte for byte from the npm package by tests/third-party-v-bytes.test.mjs"
     },
     {
       "layer": "wecom",
       "path": "dist/src/channel.js",
       "sha256": "4b21464a5d55d728d1e6a51594d636b4153a8b88b7da0b88821567ac3edb1941",
-      "source": "pending:third-party-plugin",
-      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+      "source": "platform:apps/v-experience/wecom/patch.mjs",
+      "note": "rebuilt byte for byte from the npm package by tests/third-party-v-bytes.test.mjs"
     },
     {
       "layer": "wecom",
       "path": "dist/src/cli/tool.js",
       "sha256": "c7b703958019ead892f06ad94f29aa1a6f3b2ff3bc6bc2a6fcfa9c728817d651",
-      "source": "pending:third-party-plugin",
-      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+      "source": "platform:lab/release-files/wecom-vlab2/patch.mjs",
+      "note": "rebuilt byte for byte from the npm package by tests/third-party-v-bytes.test.mjs"
     },
     {
       "layer": "wecom",
       "path": "dist/src/monitor.js",
       "sha256": "f015717ebe8bd9371d37a252341c4e8a8089a32285997182d82e9886e6bd075c",
-      "source": "pending:third-party-plugin",
-      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+      "source": "platform:apps/v-experience/wecom/patch.mjs",
+      "note": "rebuilt byte for byte from the npm package by tests/third-party-v-bytes.test.mjs; applied before it: lab/release-files/wecom-vlab2/patch.mjs"
     },
     {
       "layer": "wecom",
       "path": "dist/src/sender-name.d.ts",
       "sha256": "9911b9707df4a285d9abca6f4f5aff9c82db819df58a3aa1368d5b56f21cb84a",
-      "source": "pending:third-party-plugin",
-      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+      "source": "platform:lab/release-files/wecom-vlab2/sender-name.ts",
+      "note": "rebuilt byte for byte from the npm package by tests/third-party-v-bytes.test.mjs; applied before it: lab/release-files/wecom-vlab2/patch.mjs"
     },
     {
       "layer": "wecom",
       "path": "dist/src/sender-name.js",
       "sha256": "95a90ab47b6219ca059e22f4e7542f887bf93445c881ec0e376758bf1f8bcc85",
-      "source": "pending:third-party-plugin",
-      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+      "source": "platform:lab/release-files/wecom-vlab2/sender-name.ts",
+      "note": "rebuilt byte for byte from the npm package by tests/third-party-v-bytes.test.mjs; applied before it: lab/release-files/wecom-vlab2/patch.mjs"
     },
     {
       "layer": "wecom",
       "path": "dist/src/v-experience.mjs",
       "sha256": "a85c1d37db7a88d3556349c3a9a7bceb35b56f3fa431f36f76d1accd331a3850",
-      "source": "pending:third-party-plugin",
-      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+      "source": "platform:lab/release-files/v-experience-wecom-empty-reply/dist/src/v-experience.mjs",
+      "note": "rebuilt byte for byte from the npm package by tests/third-party-v-bytes.test.mjs"
     },
     {
       "layer": "wecom",
       "path": "package.json",
       "sha256": "fb2bbf0e3abd3c4e28e6c9e6b8a1efec3f50ceb0a0d80fe3bcb5a7db0bfcc28d",
-      "source": "pending:third-party-plugin",
-      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+      "source": "platform:lab/release-files/wecom-vlab2/patch.mjs",
+      "note": "rebuilt byte for byte from the npm package by tests/third-party-v-bytes.test.mjs"
     }
   ]
 }
