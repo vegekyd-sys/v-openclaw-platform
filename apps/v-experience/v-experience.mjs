@@ -363,6 +363,38 @@ export function linkVCard(card, { template = "blue" } = {}) {
   return vCard(elements, card.title ? cardHeader(card.title, template) : undefined);
 }
 
+const SECRET_CARD_STATES = {
+  saved: { title: "凭据已保存", template: "green", line: "✅ 已安全保存，V 会继续刚才的任务。" },
+  expired: { title: "凭据请求已过期", template: "grey", line: "没有在时限内录入，V 已跳过这一步。还需要的话，让 V 重新发起。" },
+  cancelled: { title: "凭据请求已取消", template: "grey", line: "这次请求已取消，没有保存任何值。" },
+};
+
+export const SECRET_FIELD = "secret_value";
+
+/**
+ * A credential request as a V card with a masked input, the Feishu layout.
+ * Terminal states drop the form so nothing stays submittable. The value goes
+ * from the form straight to `question.resolve`, never through the chat.
+ */
+export function secretEntryCard(record, state = "pending") {
+  const q = record?.questions?.[0] ?? {};
+  const name = q.secretStore?.name ?? q.header ?? "凭据";
+  const terminal = SECRET_CARD_STATES[state];
+  if (terminal) return vCard([cardMarkdown(terminal.line)], cardHeader(terminal.title, terminal.template));
+  return vCard([
+    cardMarkdown(q.question ?? `V 需要凭据 ${name}。`),
+    {
+      tag: "form",
+      name: "v_secret_entry_form",
+      elements: [
+        { tag: "input", name: SECRET_FIELD, input_type: "password", required: true, max_length: 1000, width: "fill", placeholder: { tag: "plain_text", content: "粘贴密钥，提交后不会出现在聊天里" } },
+        { tag: "button", name: "v_secret_entry_submit", text: { tag: "plain_text", content: "安全保存" }, type: "primary_filled", width: "fill", form_action_type: "submit", behaviors: [{ type: "callback", value: { kind: "secret", id: record?.id } }] },
+      ],
+    },
+    cardMarkdown("🔒 值直接存进 V 的凭据库，不进聊天记录，也不经过模型。", "notation"),
+  ], cardHeader(`🔑 V 需要凭据 ${name}`, "blue"));
+}
+
 // v-experience-session-kind-v1: 「会话请求」 is a sessions_send request another session is working on.
 const KIND_ORDER = ["会话请求", "子 agent", "后台命令", "生图", "生成视频", "生成音乐", "自动化", "后台任务"];
 

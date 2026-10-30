@@ -8,6 +8,9 @@ import { createChatChannelPlugin, defineChannelPluginEntry, buildChannelOutbound
 import { buildChannelInboundEventContext, resolveChannelInboundRouteEnvelope, toInboundMediaFactsWithMetadata } from "openclaw/plugin-sdk/channel-inbound";
 import { callGatewayFromCli } from "openclaw/plugin-sdk/gateway-runtime";
 import { saveMediaBuffer } from "openclaw/plugin-sdk/media-store";
+import { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pipeline";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 import { ACCOUNT_ID, CHANNEL_ID, createVapp, vappConfig } from "./core/vapp.js";
 import * as vx from "./v-experience.mjs";
@@ -50,8 +53,27 @@ async function runAccount(ctx) {
   }
 }
 
+// One append-only JSON-lines file per user. Async, so a write never holds the Gateway.
+const logFile = (userId) => path.join(runtime.state.resolveStateDir(), "vapp", `${encodeURIComponent(userId)}.jsonl`);
+const fileStore = {
+  async load(userId) {
+    const raw = await fs.readFile(logFile(userId), "utf8").catch((error) => { if (error.code === "ENOENT") return ""; throw error; });
+    return raw.split("\n").filter(Boolean).flatMap((line) => { try { return [JSON.parse(line)]; } catch { return []; } });
+  },
+  async append(userId, entry) {
+    await fs.mkdir(path.dirname(logFile(userId)), { recursive: true, mode: 0o700 });
+    await fs.appendFile(logFile(userId), `${JSON.stringify(entry)}\n`, { mode: 0o600 });
+  },
+  async rewrite(userId, entries) {
+    const temp = `${logFile(userId)}.tmp`;
+    await fs.writeFile(temp, entries.map((entry) => `${JSON.stringify(entry)}\n`).join(""), { mode: 0o600 });
+    await fs.rename(temp, logFile(userId));
+  },
+};
+
 const vapp = createVapp({
   vx,
+  store: fileStore,
   startTurn,
   getConfig,
   call: (method, params) => callGateway(method, params),
@@ -59,6 +81,8 @@ const vapp = createVapp({
     resolveRoute: resolveChannelInboundRouteEnvelope,
     buildContext: buildChannelInboundEventContext,
     dispatch: (params) => runtime.channel.inbound.dispatch(params),
+    createPipeline: (params) => createChannelReplyPipeline(params),
+    systemEvent: (message, options) => runtime.system.enqueueSystemEvent(message, options),
     saveMedia: saveMediaBuffer,
     toMediaFacts: toInboundMediaFactsWithMetadata,
   },
@@ -95,6 +119,17 @@ async function sendOut({ cfg, to, text, mediaUrl, payload }) {
   return { channel: CHANNEL_ID, messageId: result?.id ?? "" };
 }
 
+const actions = {
+  describeMessageTool: () => ({ actions: ["react"] }),
+  supportsAction: ({ action }) => action === "react",
+  handleAction: async ({ params, toolContext }) => {
+    const reaction = { messageId: params.messageId ?? toolContext?.currentMessageId, emoji: params.emoji, remove: params.remove === true };
+    const to = params.to ?? params.target ?? toolContext?.currentChannelId;
+    const result = IN_WORKER ? await callGateway("vapp.deliver", { to, reaction }, ["operator.write"]) : vapp.deliver({ to, reaction });
+    return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
+  },
+};
+
 const plugin = createChatChannelPlugin({
   base: {
     id: CHANNEL_ID,
@@ -122,6 +157,7 @@ const plugin = createChatChannelPlugin({
       }),
     },
     gateway: { startAccount: (ctx) => runAccount(ctx) },
+    actions,
   },
   outbound: {
     deliveryMode: "direct",
@@ -152,6 +188,9 @@ export default defineChannelPluginEntry({
     api.registerGatewayMethod("vapp.hello", method(vapp.hello), write);
     api.registerGatewayMethod("vapp.send", method(vapp.send), write);
     api.registerGatewayMethod("vapp.action", method(vapp.action), write);
+    api.registerGatewayMethod("vapp.stop", method(vapp.stop), write);
+    api.registerGatewayMethod("vapp.history", method(vapp.history), write);
+    api.registerGatewayMethod("vapp.react", method(vapp.userReact), write);
     api.registerGatewayMethod("vapp.deliver", method(({ params }) => vapp.deliver(params ?? {})), write);
   },
 });

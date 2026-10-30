@@ -97,6 +97,7 @@ try {
     const text = markdown(fin.card);
     assert.match(text, /51/, 'the answer is in the final card');
     assert.ok(!tagsOf(fin.card).includes('hr'), 'no work view in the final card');
+    assert.match(text, /Runtime: /, 'the runtime footer, as on Feishu');
     assert.equal(markdown(versions[0].card), '💭 正在思考', 'the card opens with thinking');
     const sawPlan = versions.some(p => /[☑️▶️◻️]/u.test(markdown(p.card)) && tagsOf(p.card).includes('hr'));
     const seqOrdered = versions.every((p, i) => i === 0 || p.seq > versions[i - 1].seq);
@@ -143,6 +144,97 @@ try {
     const messages = events.slice(mark).filter(e => e.event === 'plugin.vapp.message').map(e => e.payload);
     assert.ok(messages.some(m => /vapp 测试消息/.test(m.text ?? '')), `message event: ${JSON.stringify(messages).slice(0, 400)}`);
     return {messages: messages.map(m => ({text: m.text, sessionKey: m.sessionKey}))};
+  });
+
+  await scenario('stop', async () => {
+    const mark = events.length;
+    await call('vapp.send', {text: '从 1 数到 3000，每个数字单独一行，全部写出来，不要省略，不要调用工具。', clientMessageId: 'cand-stop'});
+    await until(() => turnSince(mark).all.some(p => /\b20\b/.test(markdown(p.card))), {timeoutMs: 240_000, intervalMs: 300, label: 'streaming'});
+    const during = await call('vapp.history', {});
+    assert.ok(during.live.length >= 1, 'the card is live');
+    const stopped = await call('vapp.stop', {});
+    assert.equal(stopped.stopped, true);
+    const stopAt = Date.now();
+    await until(() => turnSince(mark).all.at(-1)?.live === false, {timeoutMs: 60_000, intervalMs: 200, label: 'settled'});
+    const last = turnSince(mark).all.at(-1);
+    const size = markdown(last.card).length;
+    await sleep(3_000);
+    assert.equal(turnSince(mark).all.at(-1).seq, last.seq, 'nothing more after the stop');
+    const after = await call('vapp.history', {});
+    assert.equal(after.live.length, 0);
+    return {stopMs: Date.now() - stopAt - 3_000, chars: size, tail: markdown(last.card).slice(-40)};
+  });
+
+  await scenario('steer', async () => {
+    const mark = events.length;
+    await call('vapp.send', {text: '用 exec 工具执行 sleep 25，结束后回复「任务一完成」，并加上我后来补充的任何要求。', clientMessageId: 'cand-steer-1'});
+    await until(() => turnSince(mark).all.some(p => /exec|命令|sleep|⚙/.test(markdown(p.card))), {timeoutMs: 180_000, intervalMs: 300, label: 'tool running'});
+    await call('vapp.send', {text: '补充：回复里带上暗号 BLUEBIRD。', clientMessageId: 'cand-steer-2'});
+    await sleep(60_000);
+    await until(() => events.slice(mark).filter(e => e.event === 'plugin.vapp.card').every(e => e.payload.live === false || events.slice(mark).some(x => x.payload.cardId === e.payload.cardId && x.payload.live === false)), {timeoutMs: 240_000, intervalMs: 1000, label: 'all settled'});
+    const texts = [...new Map(events.slice(mark).filter(e => e.event === 'plugin.vapp.card').map(e => [e.payload.cardId, e.payload])).values()].map(p => markdown(p.card));
+    assert.ok(texts.join('\n').includes('BLUEBIRD'), texts.join(' / ').slice(0, 500));
+    return {cards: texts.length, texts: texts.map(t => t.slice(0, 160))};
+  });
+
+  await scenario('model-switch', async () => {
+    const mark = events.length;
+    await call('vapp.send', {text: '/model', clientMessageId: 'cand-model'});
+    const fin = await finalOf(mark, {timeoutMs: 60_000});
+    const text = markdown(fin.card);
+    assert.ok(!/not authorized|未授权|unauthorized/i.test(text), text.slice(0, 300));
+    return {reply: text.slice(0, 300), tags: tagsOf(fin.card)};
+  });
+
+  await scenario('react', async () => {
+    const mark = events.length;
+    await call('vapp.send', {text: '请用 message 工具 action=react 给我这条消息加一个 👍 表情，然后回复「好」。', clientMessageId: 'cand-react'});
+    await finalOf(mark);
+    await sleep(1_000);
+    const reaction = events.slice(mark).find(e => e.event === 'plugin.vapp.reaction');
+    assert.ok(reaction, 'a reaction event');
+    return {reaction: reaction.payload};
+  });
+
+  await scenario('image', async () => {
+    const mark = events.length;
+    const png = (await import('node:zlib')).default;
+    const crc = (buf) => { let c = ~0; for (const b of buf) { c ^= b; for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xedb88320 : c >>> 1; } return ~c >>> 0; };
+    const chunk = (type, data) => { const t = Buffer.from(type); const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const sum = Buffer.alloc(4); sum.writeUInt32BE(crc(Buffer.concat([t, data]))); return Buffer.concat([len, t, data, sum]); };
+    const size = 64; const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4); ihdr[8] = 8; ihdr[9] = 2;
+    const raw = Buffer.alloc((size * 3 + 1) * size); for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) raw[y * (size * 3 + 1) + 1 + x * 3] = 255;
+    const file = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', png.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+    await call('vapp.send', {text: '这张图是什么颜色？一个词回答。', clientMessageId: 'cand-image', media: [{contentBase64: file.toString('base64'), mimeType: 'image/png', fileName: 'red.png'}]}, 60_000);
+    const fin = await finalOf(mark);
+    const echo = events.slice(mark).find(e => e.event === 'plugin.vapp.user' && e.payload.id === 'cand-image');
+    assert.ok(echo?.payload.media?.[0]?.source, 'the sent picture is echoed with its V path');
+    assert.match(markdown(fin.card), /红|red/i);
+    return {reply: markdown(fin.card).slice(0, 120), media: echo.payload.media};
+  });
+
+  await scenario('secret', async () => {
+    const mark = events.length;
+    await call('vapp.send', {text: '请用 ask_user 工具向我索取一个凭据：questions 里放一题，isSecret=true，secretStore.name=VAPP_CAND_TOKEN，header 写「测试凭据」。拿到后回复「已保存」，不要复述内容。如果工具不支持就直接说明原因。', clientMessageId: 'cand-secret'});
+    let form;
+    await until(() => {
+      const q = turnSince(mark).all.find(p => p.cardId.startsWith('q:') && p.card?.body?.elements?.some(e => e.tag === 'form'));
+      form = q; return Boolean(q) || [...turnSince(mark).last.values()].some(p => p.final && !p.cardId.startsWith('q:'));
+    }, {timeoutMs: 240_000, intervalMs: 500, label: 'secret form or a reply'});
+    if (!form) return {noForm: true, reply: markdown([...turnSince(mark).last.values()].at(-1).card).slice(0, 300)};
+    const button = form.card.body.elements.find(e => e.tag === 'form').elements.find(e => e.tag === 'button');
+    const saved = await call('vapp.action', {value: button.behaviors[0].value, form: {secret_value: 'cand-secret-value'}});
+    assert.equal(saved.ok, true, JSON.stringify(saved));
+    const fin = await finalOf(mark, {cardSuffix: ':1'});
+    assert.ok(!JSON.stringify(events.slice(mark)).includes('cand-secret-value'), 'the value never comes back');
+    return {reply: markdown(fin.card).slice(0, 200)};
+  });
+
+  await scenario('history', async () => {
+    const page = await call('vapp.history', {limit: 200});
+    const kinds = page.items.reduce((acc, e) => ({...acc, [e.kind]: (acc[e.kind] ?? 0) + 1}), {});
+    assert.ok(kinds.user >= 5 && kinds.card >= 5, JSON.stringify(kinds));
+    assert.ok(page.items.some(e => e.id === 'cand-image' && e.media?.length), 'the picture is in the log');
+    return {kinds, live: page.live.length};
   });
 
   results.eventCounts = events.reduce((acc, e) => ({...acc, [e.event]: (acc[e.event] ?? 0) + 1}), {});

@@ -14,7 +14,9 @@ export const CHANNEL_ID = "vapp";
 export const ACCOUNT_ID = "default";
 const UPDATE_MS = 300; // Feishu-like streaming cadence
 const MAX_CONNS_PER_USER = 8;
-const MAX_MEDIA_BYTES = 30 * 1024 * 1024;
+const MAX_MEDIA_BYTES = 18 * 1024 * 1024; // base64 of this still fits one 25 MiB Gateway frame
+const LOG_CAP = 600; // entries kept per user
+const REPLY_FOOTER_PARTS = [["Agent", "identityName"], ["Model", "model"], ["Provider", "provider"], ["Runtime", "agentRuntime"]];
 
 const text = (value) => (typeof value === "string" ? value : "");
 const randomId = (prefix) => `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -41,6 +43,74 @@ export function resolveUser(cfg, client) {
   return { id, name: text(entry.name) || id, owner: entry.owner === true || id === config.defaultUser, deviceId };
 }
 
+/** Where a user's chat log lives; the plugin passes a file store, tests this one. */
+export function memoryStore() {
+  const lines = new Map();
+  return {
+    load: async (userId) => [...(lines.get(userId) ?? [])],
+    append: async (userId, entry) => { lines.set(userId, [...(lines.get(userId) ?? []), entry]); },
+    rewrite: async (userId, entries) => { lines.set(userId, [...entries]); },
+  };
+}
+
+/**
+ * The app's chat as V showed it: what the user sent, each finished card, each
+ * message. `vapp.history` serves this, so a reopened chat has its cards and
+ * reading it never touches the session transcript (a big one blocks the Gateway).
+ * Later entries with the same id replace earlier ones; a `removed` entry drops it.
+ */
+function createChatLog(store, log) {
+  const users = new Map(); // userId -> {ready: Promise<Map>, appended}
+  const open = (userId) => {
+    let user = users.get(userId);
+    if (!user) {
+      user = {
+        appended: 0,
+        ready: Promise.resolve().then(() => store.load(userId)).catch((error) => {
+          log(`vapp: chat log of ${userId} unreadable: ${String(error?.message ?? error)}`);
+          return [];
+        }).then((lines) => {
+          const entries = new Map();
+          for (const line of lines) {
+            if (line.removed) entries.delete(line.id);
+            else entries.set(line.id, line);
+          }
+          return entries;
+        }),
+      };
+      users.set(userId, user);
+    }
+    return user;
+  };
+  let tail = Promise.resolve();
+  return {
+    record(userId, entry) {
+      const user = open(userId);
+      tail = tail.then(async () => {
+        const entries = await user.ready;
+        if (entry.removed) entries.delete(entry.id);
+        else entries.set(entry.id, { ...entries.get(entry.id), ...entry });
+        while (entries.size > LOG_CAP) entries.delete(entries.keys().next().value);
+        user.appended += 1;
+        if (user.appended > LOG_CAP) {
+          user.appended = 0;
+          await store.rewrite(userId, [...entries.values()]);
+        } else {
+          await store.append(userId, entry);
+        }
+      }).catch((error) => log(`vapp: chat log of ${userId} not written: ${String(error?.message ?? error)}`));
+      return tail;
+    },
+    async page(userId, { before, limit = 60 } = {}) {
+      await tail;
+      const list = [...(await open(userId).ready).values()].sort((a, b) => a.at - b.at);
+      const end = before ? Math.max(0, list.findIndex((e) => e.id === before)) : list.length;
+      const size = Math.min(Math.max(1, Number(limit) || 60), 200);
+      return { items: list.slice(Math.max(0, end - size), end), hasMore: end > size };
+    },
+  };
+}
+
 /**
  * @param {object} deps
  * @param {object} deps.vx          the v-experience module
@@ -49,7 +119,11 @@ export function resolveUser(cfg, client) {
  * @param {object} deps.inbound     {resolveRoute, buildContext, dispatch, saveMedia, toMediaFacts}
  * @param {(msg: string) => void} [deps.log]
  */
-export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updateMs = UPDATE_MS, startTurn = (job) => job() }) {
+export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updateMs = UPDATE_MS, startTurn = (job) => job(), store = memoryStore() }) {
+  const chatLog = createChatLog(store, log);
+  const liveCards = new Map(); // userId -> Map(cardId -> payload) of cards still changing
+  const running = new Map(); // userId -> Set of turns
+  const cardTimes = new Map(); // cardId -> first shown, so a rewrite keeps its place
   const connections = new Map(); // userId -> Map(connId -> at)
   let broadcastToConnIds; // set by the first vapp.* request (the Gateway's context)
   const questions = new Map(); // question id -> {turn, record, staged, state, answers}
@@ -86,6 +160,24 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     }
   };
 
+  /** One card change: pushed now, kept for a reconnect while live, logged once it settles. */
+  const publishCard = (userId, payload) => {
+    const at = cardTimes.get(payload.cardId) ?? Date.now();
+    cardTimes.set(payload.cardId, at);
+    while (cardTimes.size > 300) cardTimes.delete(cardTimes.keys().next().value);
+    const full = { ...payload, at };
+    push(userId, "card", full);
+    const live = liveCards.get(userId) ?? new Map();
+    liveCards.set(userId, live);
+    if (full.live) {
+      live.set(full.cardId, full);
+      return;
+    }
+    live.delete(full.cardId);
+    const id = `card:${full.cardId}`;
+    chatLog.record(userId, full.removed ? { id, removed: true } : { id, kind: "card", at, sessionKey: full.sessionKey, cardId: full.cardId, card: full.card });
+  };
+
   const requireUser = (client) => {
     const user = resolveUser(getConfig(), client);
     if (!user) throw Object.assign(new Error("这台设备还没有绑定 V 用户"), { code: "UNAVAILABLE" });
@@ -94,7 +186,7 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
 
   // ------------------------------------------------------------------ turns
 
-  function createTurn({ user, sessionKey }) {
+  function createTurn({ user, sessionKey, silent = false, footer = () => "" }) {
     const turnId = randomId("t");
     let seq = 0;
     let segment = 0;
@@ -109,14 +201,15 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
 
     const cardId = () => `${turnId}:${segment}`;
     const body = () => (finals.length ? finals.join("\n\n") : answer);
-    const emit = (card, { id = cardId(), final = false, removed = false } = {}) => {
+    const emit = (card, { id = cardId(), final = false, removed = false, live = !final && !removed } = {}) => {
+      if (silent) return;
       seq += 1;
-      push(user.id, "card", { sessionKey, turnId, cardId: id, seq, final, ...(removed ? { removed: true } : { card }) });
+      publishCard(user.id, { sessionKey, turnId, cardId: id, seq, final, live, ...(removed ? { removed: true } : { card }) });
     };
     const paint = () => {
       clearTimeout(timer);
       timer = undefined;
-      if (finished) return;
+      if (finished || silent) return;
       lastPush = Date.now();
       shown = true;
       const waiting = view.waitingForAnswer();
@@ -133,6 +226,7 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
       user,
       sessionKey,
       view,
+      aborted: false,
       partial(value) {
         const next = text(value);
         if (!next || next === answer) return;
@@ -158,7 +252,7 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
       /** The question was answered: its card above becomes plain text, work continues in a new card. */
       resumeAfter(frozen) {
         if (finished) return;
-        if (frozen.text) emit(vx.workCard({ answer: frozen.text, phase: "done" }), { id: frozen.id });
+        if (frozen.text) emit(vx.workCard({ answer: frozen.text, phase: "done" }), { id: frozen.id, live: false });
         else emit(null, { id: frozen.id, removed: true });
         segment += 1;
         answer = "";
@@ -173,13 +267,24 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
         const finalText = body().trim();
         finished = true;
         view.dispose();
+        if (silent) return;
+        for (const q of questions.values()) {
+          if (q.turn !== turn || q.state !== "pending") continue;
+          call("question.resolve", { id: q.record.id, cancel: true, resolvedBy: `vapp:${user.id}:turn-ended` }).catch(() => {});
+          questionDone(q.record.id, undefined, "cancelled");
+        }
+        if (turn.aborted) {
+          const card = vx.workCard({ answer: finalText, phase: finalText ? "done" : "aborted", footer: finalText ? "这一轮已停止。" : "" });
+          emit(card, { final: true });
+          return;
+        }
         if (!finalText && !failed) {
           // Nothing to say (NO_REPLY, or the message steered a running turn).
           if (shown) emit(null, { removed: true, final: true });
           return;
         }
         const id = cardId();
-        const card = (background = "") => vx.workCard({ answer: finalText, phase: failed && !finalText ? "failed" : "done", background });
+        const card = (background = "") => vx.workCard({ answer: finalText, phase: failed && !finalText ? "failed" : "done", background, footer: footer() });
         emit(card(), { id, final: true });
         vx.watchBackground({
           channel: `${CHANNEL_ID}:${user.id}`,
@@ -196,8 +301,8 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
 
   // -------------------------------------------------------------- questions
 
-  const questionCardFor = (q) => vx.questionCard(q.record, { state: q.state, staged: q.staged, answers: q.answers });
-  const paintQuestion = (q) => push(q.turn.user.id, "card", { sessionKey: q.turn.sessionKey, turnId: q.turn.turnId, cardId: `q:${q.record.id}`, seq: Date.now(), final: q.state !== "pending", card: questionCardFor(q) });
+  const questionCardFor = (q) => (q.secret ? vx.secretEntryCard(q.record, q.state) : vx.questionCard(q.record, { state: q.state, staged: q.staged, answers: q.answers }));
+  const paintQuestion = (q) => publishCard(q.turn.user.id, { sessionKey: q.turn.sessionKey, turnId: q.turn.turnId, cardId: `q:${q.record.id}`, seq: Date.now(), final: q.state !== "pending", live: q.state === "pending", card: questionCardFor(q) });
 
   const questionDone = (id, answers, state = "answered") => {
     const q = questions.get(id);
@@ -206,7 +311,7 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     q.answers = answers;
     vx.untrackChatQuestion(id);
     paintQuestion(q);
-    if (state === "answered") q.turn.view.questionAnswered(answers);
+    if (state === "answered" && !q.secret) q.turn.view.questionAnswered(answers);
     q.turn.resumeAfter(q.frozen);
   };
 
@@ -216,16 +321,11 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     if (!secret && !vx.isRenderableAsk(record)) return false;
     if (!vx.claimQuestionDelivery(record.id)) return true;
     if (secret) {
-      // A one-time entry link in the asker's own chat, as in a Feishu DM.
-      const how = await vx.deliverSecretQuestion({
-        record, channel: CHANNEL_ID, askerId: turn.user.id, direct: true, markdown: true,
-        sendHere: async (message, card) => {
-          sendMessage(turn.user.id, { sessionKey: turn.sessionKey, ...(card ? { card: vx.linkVCard(card) } : { text: message }) });
-        },
-        cancel: () => call("question.resolve", { id: record.id, cancel: true, resolvedBy: "vapp:credential-unsupported" }),
-        log,
-      });
-      log(`vapp: credential question ${record.id} ${how}`);
+      // A masked form in the card, as in a Feishu DM. Typing in the chat never answers it.
+      const q = { turn, record, secret: true, staged: {}, state: "pending", answers: undefined, frozen: turn.splitForQuestion() };
+      questions.set(record.id, q);
+      paintQuestion(q);
+      log(`vapp: credential question ${record.id} delivered to ${turn.user.id}`);
       return true;
     }
     records.set(record.id, record);
@@ -261,7 +361,10 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
 
   function sendMessage(userId, { sessionKey, text: body, media = [], card }) {
     const id = randomId("m");
-    const delivered = push(userId, "message", { id, sessionKey, at: Date.now(), ...(body ? { text: body } : {}), ...(media.length ? { media } : {}), ...(card ? { card } : {}) });
+    const message = { id, sessionKey, at: Date.now(), ...(body ? { text: body } : {}), ...(media.length ? { media } : {}), ...(card ? { card } : {}) };
+    const delivered = push(userId, "message", message);
+    // Also the only copy when the user is offline; the app reads it from vapp.history.
+    chatLog.record(userId, { ...message, kind: "message" });
     return { id, delivered };
   }
 
@@ -275,14 +378,22 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
       const file = await inbound.saveMedia(bytes, item.mimeType, "inbound", MAX_MEDIA_BYTES, text(item.fileName) || undefined);
       saved.push({ path: file.path, contentType: file.contentType });
     }
-    return saved.length ? inbound.toMediaFacts(saved) : [];
+    return { facts: saved.length ? await inbound.toMediaFacts(saved) : [], refs: saved.map((file) => ({ source: file.path, mimeType: file.contentType })) };
   }
 
   /** One message from the app → one V turn, shown as cards. */
-  async function runTurn(user, { body, media, messageId, cfg }) {
+  async function runTurn(user, { body, media, messageId, cfg, silent = false, quote = "" }) {
     const { route: resolved, buildEnvelope } = route(cfg, user);
     const sessionKey = resolved.sessionKey;
-    const turn = createTurn({ user, sessionKey });
+    const pipeline = inbound.createPipeline?.({ cfg, agentId: resolved.agentId, channel: CHANNEL_ID, accountId: ACCOUNT_ID }) ?? {};
+    const footer = () => {
+      const ctx = pipeline.responsePrefixContextProvider?.() ?? {};
+      return REPLY_FOOTER_PARTS.filter(([, key]) => ctx[key]).map(([label, key]) => `${label}: ${ctx[key]}`).join(" | ");
+    };
+    const turn = createTurn({ user, sessionKey, silent, footer });
+    const active = running.get(user.id) ?? new Set();
+    running.set(user.id, active);
+    if (!silent) active.add(turn);
     const unroute = vx.onQuestionRequested(sessionKey, (record) => deliverQuestion(turn, record));
     const envelope = buildEnvelope({ channel: "V App", from: user.name, timestamp: Date.now(), body });
     const ctxPayload = inbound.buildContext({
@@ -296,7 +407,7 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
       conversation: { kind: "direct", id: user.id, label: user.name, nativeChannelId: user.id },
       route: { agentId: resolved.agentId, dmScope: resolved.dmScope, accountId: ACCOUNT_ID, routeSessionKey: sessionKey, dispatchSessionKey: sessionKey },
       reply: { to: user.id, originatingTo: user.id },
-      message: { body: envelope, bodyForAgent: body, rawBody: body, commandBody: body },
+      message: { body: envelope, bodyForAgent: quote ? `[Replying to: "${quote}"]\n\n${body}` : body, rawBody: body, commandBody: body },
       media,
       access: { commands: { authorized: user.owner }, mentions: { canDetectMention: false, wasMentioned: false } },
     });
@@ -335,7 +446,7 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
           onCompactionStart: () => turn.view.compaction(true),
           onCompactionEnd: () => turn.view.compaction(false),
         },
-        replyPipeline: {},
+        replyPipeline: pipeline,
         record: { onRecordError: (error) => log(`vapp: session record failed: ${String(error?.message ?? error)}`) },
       });
     } catch (error) {
@@ -343,6 +454,7 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
       log(`vapp: dispatch for ${user.id} failed: ${String(error?.message ?? error)}`);
     } finally {
       unroute();
+      active.delete(turn);
       turn.finish({ failed });
     }
     return turn;
@@ -363,6 +475,14 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     const cfg = getConfig();
     const body = text(params?.text).trim();
     const messageId = text(params?.clientMessageId).trim() || randomId("vm");
+    const quote = text(params?.quote).trim().slice(0, 500);
+    const { route: resolved } = route(cfg, user);
+    const media = await inboundMedia(params?.media);
+    if (!body && !media.facts.length) throw Object.assign(new Error("消息是空的"), { code: "INVALID_REQUEST" });
+    // Every device of this user shows it, and it is there when the chat reopens.
+    const shown = { id: messageId, sessionKey: resolved.sessionKey, at: Date.now(), ...(body ? { text: body } : {}), ...(quote ? { quote } : {}), ...(media.refs.length ? { media: media.refs } : {}) };
+    push(user.id, "user", shown);
+    chatLog.record(user.id, { ...shown, kind: "user" });
     // A reply to a waiting question answers it at once instead of starting a
     // turn that would queue behind the one that asked.
     if (body && vx.hasTrackedQuestion({ channel: CHANNEL_ID, chatKey: user.id, senderId: user.id })) {
@@ -374,19 +494,74 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
       });
       if (answered.handled) return { messageId, answeredQuestion: true, ...(vx.shouldSendAnswerNotice(answered) ? { notice: answered.notice } : {}) };
     }
-    const media = await inboundMedia(params?.media);
-    if (!body && !media.length) throw Object.assign(new Error("消息是空的"), { code: "INVALID_REQUEST" });
     // The turn runs on (started by the channel account, see index.js); the app
     // follows it through plugin.vapp.card events.
-    startTurn(() => runTurn(user, { body, media, messageId, cfg }).catch((error) => log(`vapp: turn failed: ${String(error?.message ?? error)}`)));
-    const { route: resolved } = route(cfg, user);
+    startTurn(() => runTurn(user, { body, media: media.facts, messageId, cfg, quote }).catch((error) => log(`vapp: turn failed: ${String(error?.message ?? error)}`)));
     return { messageId, sessionKey: resolved.sessionKey };
+  }
+
+  /** Stops the user's running turns with the channel's own /stop. */
+  async function stop({ client, context }) {
+    const user = requireUser(client);
+    attach(user, client, context);
+    const active = [...(running.get(user.id) ?? [])];
+    if (!active.length) return { ok: true, stopped: false };
+    for (const turn of active) turn.aborted = true;
+    const cfg = getConfig();
+    startTurn(() => runTurn(user, { body: "/stop", media: [], messageId: randomId("vs"), cfg, silent: true }).catch((error) => log(`vapp: stop failed: ${String(error?.message ?? error)}`)));
+    return { ok: true, stopped: true };
+  }
+
+  /** The chat as V showed it, plus the cards still changing right now. */
+  async function history({ params, client, context }) {
+    const user = requireUser(client);
+    attach(user, client, context);
+    const page = await chatLog.page(user.id, { before: text(params?.before) || undefined, limit: params?.limit });
+    return { ...page, live: params?.before ? [] : [...(liveCards.get(user.id)?.values() ?? [])] };
+  }
+
+  /** A reaction from either side: shown on every device, kept with the message. */
+  function react(userId, { messageId, emoji, remove = false, from }) {
+    const id = text(messageId).trim();
+    const symbol = text(emoji).trim();
+    if (!id || !symbol) throw Object.assign(new Error("messageId and emoji are required"), { code: "INVALID_REQUEST" });
+    const { route: resolved } = route(getConfig(), { id: userId });
+    const payload = { messageId: id, sessionKey: resolved.sessionKey, emoji: symbol, remove, from, at: Date.now() };
+    push(userId, "reaction", payload);
+    chatLog.record(userId, { id: `reaction:${id}:${from}:${symbol}`, kind: "reaction", ...payload });
+    return { ok: true };
+  }
+
+  /** The user reacted to one of V's messages: V hears about it at its next turn. */
+  async function userReact({ params, client, context }) {
+    const user = requireUser(client);
+    attach(user, client, context);
+    const result = react(user.id, { ...params, from: "user" });
+    const { route: resolved } = route(getConfig(), user);
+    inbound.systemEvent?.(`${user.name} ${params?.remove ? "取消了" : "加了"}表情回应 ${text(params?.emoji)}（消息 ${text(params?.messageId)}）`, { sessionKey: resolved.sessionKey });
+    return result;
   }
 
   async function action({ params, client, context }) {
     const user = requireUser(client);
     attach(user, client, context);
     const value = params?.value ?? {};
+    if (value.kind === "secret") {
+      const q = questions.get(value.id);
+      if (!q?.secret || q.turn.user.id !== user.id || q.state !== "pending") return { ok: false, toast: "这个请求已经结束了" };
+      const secret = text(params?.form?.[vx.SECRET_FIELD]);
+      if (!secret.trim()) return { ok: false, toast: "请先填写" };
+      if (secret.length > 1000) return { ok: false, toast: "内容太长了" };
+      try {
+        await call("question.resolve", { id: q.record.id, answers: { answers: { [vx.SECRET_FIELD]: [secret] } }, resolvedBy: `vapp:${user.id}` });
+      } catch (error) {
+        // Never log the value; the error text comes from the Gateway.
+        log(`vapp: credential ${q.record.id} not saved: ${String(error?.code ?? error?.message ?? "error")}`);
+        return { ok: false, toast: "没有保存成功，请重试" };
+      }
+      questionDone(q.record.id, undefined, "saved");
+      return { ok: true };
+    }
     if (value.kind === "command") {
       const command = text(value.command).trim();
       if (!/^\/[a-z][\w-]{0,31}(?: [\w-]{1,48})?$/u.test(command)) return { ok: false, toast: "这个按钮已失效" };
@@ -418,12 +593,13 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
   }
 
   /** Outbound (message tool, cron, sessions_send results) to a vapp user. */
-  function deliver({ to, text: body, media = [], card }) {
+  function deliver({ to, text: body, media = [], card, reaction }) {
     const user = text(to).replace(/^vapp:/u, "").trim();
     if (!user) throw new Error("vapp target required");
+    if (reaction) return react(user, { ...reaction, from: "v" });
     const { route: resolved } = route(getConfig(), { id: user });
     return sendMessage(user, { sessionKey: resolved.sessionKey, text: body, media, card });
   }
 
-  return { hello, send, action, deliver, runTurn, push, connections, questions };
+  return { hello, send, action, deliver, stop, history, userReact, runTurn, push, connections, questions };
 }

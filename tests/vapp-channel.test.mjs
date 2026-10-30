@@ -162,3 +162,80 @@ test("command buttons are sent as the tapper's message", async () => {
   const bad = await h.vapp.action({ params: { value: { kind: "command", command: "rm -rf /" } }, client: phone, context: h.context });
   assert.equal(bad.ok, false);
 });
+
+test("a reopened chat gets its cards back: user messages, finished cards, offline messages", async () => {
+  const h = harness(async ({ deliver }) => { await deliver({ text: "好的" }, { kind: "final" }); });
+  await h.vapp.send({ params: { text: "你好", clientMessageId: "m1", quote: "上一句" }, client: phone, context: h.context });
+  await sleep(20);
+  h.vapp.deliver({ to: "vapp:tianyi", text: "离线时发的" });
+  const page = await h.vapp.history({ params: {}, client: phone, context: h.context });
+  assert.deepEqual(page.items.map((e) => e.kind), ["user", "card", "message"]);
+  assert.equal(page.items[0].quote, "上一句");
+  assert.deepEqual(page.live, []);
+  const earlier = await h.vapp.history({ params: { before: page.items[1].id }, client: phone, context: h.context });
+  assert.deepEqual(earlier.items.map((e) => e.id), ["m1"]);
+});
+
+test("cards still changing are live and come back with history; a stop ends them", async () => {
+  let release;
+  const bodies = [];
+  const h = harness(async ({ ctxPayload, replyOptions }) => {
+    bodies.push(ctxPayload.message.commandBody);
+    if (ctxPayload.message.commandBody === "/stop") { release(); return; }
+    replyOptions.onPartialReply({ text: "写到一半" });
+    await new Promise((resolve) => { release = resolve; });
+  });
+  await h.vapp.send({ params: { text: "写长文", clientMessageId: "m2" }, client: phone, context: h.context });
+  await sleep(20);
+  const during = await h.vapp.history({ params: {}, client: phone, context: h.context });
+  assert.equal(during.live.length, 1);
+  assert.equal(during.live[0].live, true);
+  assert.deepEqual(await h.vapp.stop({ client: phone, context: h.context }), { ok: true, stopped: true });
+  await sleep(20);
+  assert.deepEqual(bodies, ["写长文", "/stop"]);
+  const after = await h.vapp.history({ params: {}, client: phone, context: h.context });
+  assert.deepEqual(after.live, []);
+  const last = h.cards().at(-1);
+  assert.equal(last.live, false);
+  assert.ok(markdown(last.card).join().includes("写到一半"));
+  assert.ok(markdown(last.card).join().includes("这一轮已停止"));
+  assert.equal(h.cards().filter((c) => c.card && markdown(c.card).join().includes("stop")).length, 0, "the /stop itself shows nothing");
+});
+
+test("a credential question is a masked form; the value only goes to question.resolve", async () => {
+  let done;
+  const logs = [];
+  const h = harness(async () => { await new Promise((resolve) => { done = resolve; }); });
+  await h.vapp.send({ params: { text: "需要密钥", clientMessageId: "m3" }, client: phone, context: h.context });
+  await sleep(10);
+  const id = askId(7);
+  for (const listener of globalThis[QUESTION_LISTENERS] ?? []) listener({ id, sessionKey: "agent:makaron:vapp:direct:tianyi", questions: [{ id: "secret_value", question: "请填 TOKEN", isSecret: true, secretStore: { name: "TOKEN" }, options: [] }] });
+  await sleep(10);
+  const card = h.cards().find((c) => c.cardId === `q:${id}`);
+  const form = card.card.body.elements.find((e) => e.tag === "form");
+  assert.equal(form.elements[0].input_type, "password");
+  const empty = await h.vapp.action({ params: { value: form.elements[1].behaviors[0].value, form: {} }, client: phone, context: h.context });
+  assert.equal(empty.ok, false);
+  const saved = await h.vapp.action({ params: { value: form.elements[1].behaviors[0].value, form: { secret_value: "hunter2" } }, client: phone, context: h.context });
+  assert.equal(saved.ok, true);
+  assert.deepEqual(h.resolved.at(-1).answers, { answers: { secret_value: ["hunter2"] } });
+  const answered = h.cards().filter((c) => c.cardId === `q:${id}`).at(-1);
+  assert.ok(!JSON.stringify(answered).includes("hunter2"));
+  assert.equal(answered.card.body.elements.some((e) => e.tag === "form"), false);
+  const page = await h.vapp.history({ params: {}, client: phone, context: h.context });
+  assert.ok(!JSON.stringify(page).includes("hunter2"), "never in the chat log");
+  done();
+  await sleep(5);
+  void logs;
+});
+
+test("reactions reach the app and stay with the chat", async () => {
+  const h = harness(async () => {});
+  await h.vapp.hello({ client: phone, context: h.context });
+  h.vapp.deliver({ to: "vapp:tianyi", reaction: { messageId: "m1", emoji: "👍" } });
+  const event = h.events.find((e) => e.event === "plugin.vapp.reaction");
+  assert.equal(event.payload.emoji, "👍");
+  assert.equal(event.payload.from, "v");
+  const page = await h.vapp.history({ params: {}, client: phone, context: h.context });
+  assert.equal(page.items.at(-1).kind, "reaction");
+});
