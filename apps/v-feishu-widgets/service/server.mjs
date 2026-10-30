@@ -53,7 +53,9 @@ export function createWidgetHost({ pathPrefix = "/v-widgets", publicBaseUrl, adm
     "cache-control": "no-store",
     "referrer-policy": "no-referrer",
     "x-content-type-options": "nosniff",
-    "content-security-policy": `default-src 'none'; script-src 'self' ${SDK_ORIGIN}; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; frame-src 'self'; base-uri 'none'; form-action 'none'`,
+    // 'unsafe-eval' is for Feishu's h5-js-sdk, which evals at load (without it window.h5sdk never
+    // appears). This page holds no untrusted content: the widget is in the sandboxed frame.
+    "content-security-policy": `default-src 'none'; script-src 'self' 'unsafe-eval' ${SDK_ORIGIN}; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; frame-src 'self'; base-uri 'none'; form-action 'none'`,
   };
 
   const allowed = (key) => {

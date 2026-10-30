@@ -5,6 +5,12 @@ import assert from 'node:assert/strict';
 // card-action.ts dispatchSyntheticCommand. Sender policy, the chat queue, the streaming reply
 // card and every runtime then behave as they do for that person's own message. The registry is
 // global because the plugin and the channel do not share a module; one entry per Feishu account.
+//
+// The turn runs in the channel's own async context, captured when the handlers register, the
+// same context a real event gets. Run from the Gateway method's context it inherits that
+// request's work admission (process/gateway-work-admission.ts), which is released as soon as the
+// method responds, and every enqueue then fails with GatewayDrainingError although nothing is
+// draining. The turn outlives the request by design, so it must not belong to it.
 
 export const MARKER = 'v-feishu-widget-inbound-v1';
 
@@ -19,7 +25,8 @@ export function patchFeishuMonitor(source) {
     `	const { cfg, accountId, channelRuntime, runtime, chatHistories, fireAndForget, abortSignal } = context;\n`,
     `	const { cfg, accountId, channelRuntime, runtime, chatHistories, fireAndForget, abortSignal } = context;
 	// ${MARKER}
-	(globalThis[Symbol.for("v.feishu.synthetic-inbound")] ??= new Map()).set(accountId, ({ openId, chatId, chatType, text, replyToMessageId }) => handleFeishuMessage({
+	const vWidgetInboundScope = new (process.getBuiltinModule("node:async_hooks").AsyncResource)("v-feishu-widget-inbound");
+	(globalThis[Symbol.for("v.feishu.synthetic-inbound")] ??= new Map()).set(accountId, ({ openId, chatId, chatType, text, replyToMessageId }) => vWidgetInboundScope.runInAsyncScope(() => handleFeishuMessage({
 		cfg,
 		event: {
 			sender: { sender_id: { open_id: openId } },
@@ -37,7 +44,7 @@ export function patchFeishuMonitor(source) {
 		runtime,
 		channelRuntime,
 		accountId,
-	}));
+	})));
 `,
     'registerEventHandlers context destructure');
 }

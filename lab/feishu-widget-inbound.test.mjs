@@ -26,6 +26,20 @@ globalThis.__calls=calls;`;
   assert.equal(call.event.message.mentions[0].id.open_id, 'ou_bot');
 });
 
+test('the turn runs in the channel context, not the caller request context', async () => {
+  const { AsyncLocalStorage } = await import('node:async_hooks');
+  const request = new AsyncLocalStorage();
+  globalThis.__als = request;
+  const source = `const botOpenIds=new Map();async function handleFeishuMessage(){globalThis.__seen=globalThis.__als.getStore();}
+function registerEventHandlers(eventDispatcher, context) {
+${anchor}}
+registerEventHandlers(null,{cfg:{},accountId:"ctx",channelRuntime:{},runtime:{}});`;
+  new Function(patchFeishuMonitor(source))();
+  const inbound = globalThis[Symbol.for('v.feishu.synthetic-inbound')].get('ctx');
+  await request.run('released-request-lease', () => inbound({ openId: 'ou_p', chatId: 'oc_g', chatType: 'group', text: 'x' }));
+  assert.equal(globalThis.__seen, undefined);
+});
+
 test('refuses unknown monitors and double patching', () => {
   assert.throws(() => patchFeishuMonitor('nothing here'), /Expected exactly one/u);
   assert.throws(() => patchFeishuMonitor(patchFeishuMonitor(anchor)), /already patched/u);

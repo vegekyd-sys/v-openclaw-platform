@@ -80,7 +80,7 @@ export default definePluginEntry({
         // The picture must not hold up the turn; the card is patched when it is ready.
         void (async () => {
           const bytes = await captureWidget({ chromePath: pluginConfig.chromePath, url: `${pluginConfig.publicLoopbackUrl ?? "http://127.0.0.1:23970/v-widgets"}${widget.localFrameUrl}` });
-          if (!bytes) return;
+          if (!bytes) { api.logger?.warn?.("v-feishu-widgets snapshot: no picture"); return; }
           const imageKey = await feishu.uploadImage(bytes);
           await feishu.patchCard(messageId, widgetCard({ ...view, imageKey }));
         })().catch((error) => api.logger?.warn?.(`v-feishu-widgets snapshot: ${error.message}`));
@@ -98,7 +98,9 @@ export default definePluginEntry({
         const target = feishuTarget(chat);
         // Bots cannot post as a person, so the chat sees who pressed what from this line.
         const echoId = await feishuFor(creds).sendEcho({ ...target, cardMessageId, text: `🧩 ${name} 在「${title}」里：${text}` });
-        await inbound({ openId, chatId: chat, chatType: chatType === "p2p" ? "p2p" : "group", text: `[来自组件「${title}」的操作] ${text}`, replyToMessageId: echoId });
+        // A turn can run for minutes; the page only needs to know it was accepted.
+        void Promise.resolve(inbound({ openId, chatId: chat, chatType: chatType === "p2p" ? "p2p" : "group", text: `[来自组件「${title}」的操作] ${text}`, replyToMessageId: echoId }))
+          .catch((error) => api.logger?.error?.(`v-feishu-widgets inbound: ${String(error?.message ?? error)}`));
         respond(true, { ok: true, messageId: echoId });
       } catch (error) {
         respond(false, undefined, { code: "UNAVAILABLE", message: String(error?.message ?? error) });
