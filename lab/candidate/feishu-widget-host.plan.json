@@ -1,0 +1,27 @@
+{
+  "support": [
+    "lab/candidate/feishu-widget-host.mjs",
+    "lab/patch-feishu-widget-inbound.mjs",
+    "apps/v-feishu-widgets/plugin/core/card.js",
+    "apps/v-feishu-widgets/plugin/core/feishu.js",
+    "apps/v-feishu-widgets/plugin/core/snapshot.js",
+    "apps/v-feishu-widgets/plugin/index.js",
+    "apps/v-feishu-widgets/plugin/openclaw.plugin.json",
+    "apps/v-feishu-widgets/plugin/package.json",
+    "apps/v-feishu-widgets/service/lib/feishu-identity.mjs",
+    "apps/v-feishu-widgets/service/lib/gateway.mjs",
+    "apps/v-feishu-widgets/service/lib/store.mjs",
+    "apps/v-feishu-widgets/service/public/shell.html",
+    "apps/v-feishu-widgets/service/public/shell.js",
+    "apps/v-feishu-widgets/service/server.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/feishu-widget-host.mjs"
+  ],
+  "timeoutSeconds": 0,
+  "user": "lab-db91-parity",
+  "env": {
+    "WIDGET_RUN": "run1"
+  }
+}

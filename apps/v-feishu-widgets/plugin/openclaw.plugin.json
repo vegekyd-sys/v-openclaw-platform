@@ -1,0 +1,20 @@
+{
+  "id": "v-feishu-widgets",
+  "name": "V Feishu Widgets",
+  "description": "Gives show_widget a current-channel presenter on Feishu: the HTML widget runs in an in-client web view opened from a card, and its buttons send back into the same session.",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["adminTokenFile"],
+    "properties": {
+      "adminUrl": { "type": "string" },
+      "publicLoopbackUrl": { "type": "string" },
+      "adminTokenFile": { "type": "string" },
+      "maxSourceBytes": { "type": "integer", "minimum": 1024 },
+      "chromePath": { "type": "string" }
+    }
+  }
+}

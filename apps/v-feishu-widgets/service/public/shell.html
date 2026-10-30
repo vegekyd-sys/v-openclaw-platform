@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>__TITLE__</title>
+<style>
+:root{--bg:#f7f8fa;--fg:#1f2329;--muted:#646a73;--bar:#ffffffee;--line:#e4e6eb}
+@media (prefers-color-scheme:dark){:root{--bg:#141517;--fg:#ebebeb;--muted:#a6a6a6;--bar:#1e1f22ee;--line:#303236}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px/1.45 -apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif}
+#frame{display:block;width:100%;min-height:calc(100dvh - 40px);border:0;background:transparent}
+#status{position:sticky;bottom:0;display:flex;gap:8px;align-items:center;min-height:40px;padding:8px 14px calc(8px + env(safe-area-inset-bottom));background:var(--bar);backdrop-filter:blur(8px);border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+#status b{font-weight:500;color:var(--fg)}
+#status[data-state=error]{color:#d83931}
+</style>
+</head>
+<body data-config="__CONFIG__">
+<iframe id="frame" title="__TITLE__" sandbox="allow-scripts"></iframe>
+<div id="status" role="status" aria-live="polite">正在确认你的飞书身份…</div>
+<script src="../shell.js"></script>
+</body>
+</html>
