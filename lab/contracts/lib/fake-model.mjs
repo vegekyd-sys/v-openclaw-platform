@@ -3,6 +3,11 @@
 // is recorded so a contract can assert on what the Gateway actually sent.
 import { createServer } from "node:http";
 
+/** The newest tool result in a request. Channels append runtime context after it, so it need not be last. */
+export function lastToolResult(body) {
+  return body.messages.findLast((m) => m.role === "tool");
+}
+
 export async function startFakeModel(script) {
   const requests = [];
   const server = createServer(async (req, res) => {

@@ -180,6 +180,7 @@ export async function connectRpc(port) {
   const pending = new Map();
   const events = [];
   let nextId = 1;
+  let hello = null;
   let onConnected, onFailed;
   const connected = new Promise((res, rej) => ((onConnected = res), (onFailed = rej)));
   ws.addEventListener("error", (e) => onFailed(new Error(`ws error ${e.message ?? ""}`)));
@@ -217,7 +218,10 @@ export async function connectRpc(port) {
       return;
     }
     if (j.id === "connect") {
-      if (j.ok) onConnected();
+      if (j.ok) {
+        hello = j.payload;
+        onConnected();
+      }
       else onFailed(new Error(`connect refused: ${JSON.stringify(j.error)}`));
       return;
     }
@@ -237,6 +241,7 @@ export async function connectRpc(port) {
   await connected.finally(() => clearTimeout(connectTimer));
   return {
     events,
+    hello,
     close: () => ws.close(),
     call(method, params = {}, { timeoutMs = 60_000, expectFinal = false } = {}) {
       const id = String(nextId++);

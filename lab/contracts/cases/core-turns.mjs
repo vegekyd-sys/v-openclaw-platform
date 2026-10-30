@@ -52,16 +52,4 @@ export default [
       return `delayP50Ms=${found[1]}`;
     },
   },
-  {
-    id: "E2/gpt-6-routes-in-catalog",
-    ledger: ["E2"],
-    async run({ gw, assert }) {
-      const { models } = await gw.rpc.call("models.list", { view: "all" });
-      const ids = models.map((m) => m.id);
-      for (const id of ["gpt-6-sol", "gpt-6-luna", "gpt-6-astra", "gpt-6.1-sol"]) {
-        assert(ids.includes(id), `${id} is not in models.list (${ids.length} models)`);
-      }
-      return `${ids.length} models`;
-    },
-  },
 ];

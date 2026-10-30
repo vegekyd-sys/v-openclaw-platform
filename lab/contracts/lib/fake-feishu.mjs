@@ -51,7 +51,8 @@ export async function startFakeFeishu(overrides = () => undefined) {
       return;
     }
     if (url.pathname.startsWith("/open-apis/im/v1/messages") && req.method === "POST") {
-      return reply({ message_id: `om_out_${++seq}`, chat_id: "oc_contract", create_time: String(Date.now()) });
+      call.messageId = `om_out_${++seq}`;
+      return reply({ message_id: call.messageId, chat_id: "oc_contract", create_time: String(Date.now()) });
     }
     if (url.pathname === "/open-apis/cardkit/v1/cards" && req.method === "POST") {
       return reply({ card_id: `card_${++seq}` });

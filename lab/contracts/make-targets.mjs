@@ -5,7 +5,7 @@
 //   stock    the published v2026.9.1 dist and official Feishu/Codex packages (the reverse control)
 //   v        stock with V's captured core, Feishu and Codex files on top
 //   fork     the fork's own build, as it comes out of `pnpm build`
-//   fork-c5  fork build with stock Control UI plus the RTC overlay (what C5 ships)
+//   fork-c5  fork build as C5 ships it: published file set, stock Control UI, RTC overlay
 //
 // usage: make-targets.mjs --out <dir> --stock <dir holding the published dist> --modules <worktree with node_modules> --fork <worktree> --capture <release/captured/name> --feishu <official package> --codex <official package>
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -81,6 +81,13 @@ for (const project of new Set(voice.match(NPM_PROJECT) ?? [])) {
 target("fork", a.fork);
 
 const c5 = target("fork-c5", a.fork);
+// `pnpm build` emits every extension; the published package drops most of them through
+// the `files` list. Keep what V actually has: published set plus its two installed plugins.
+const files = JSON.parse(readFileSync(path.join(a.fork, "package.json"), "utf8")).files;
+for (const entry of files) {
+  const id = entry.match(/^!dist\/extensions\/([^/]+)\/\*\*$/)?.[1];
+  if (id && id !== "feishu" && id !== "codex") rmSync(path.join(c5, "dist", "extensions", id), { recursive: true, force: true });
+}
 rmSync(path.join(c5, "dist", "control-ui"), { recursive: true });
 cpSync(path.join(stock, "dist", "control-ui"), path.join(c5, "dist", "control-ui"), { recursive: true });
 const overlay = path.join(a.fork, "versa", "overlay-control-ui-assets.mjs");
