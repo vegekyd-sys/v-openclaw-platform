@@ -1,0 +1,17 @@
+[Unit]
+Description=V link preview answers for Feishu
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/env node /opt/v-link-preview/server.mjs /etc/v-link-preview/config.json
+Restart=on-failure
+RestartSec=5
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target
