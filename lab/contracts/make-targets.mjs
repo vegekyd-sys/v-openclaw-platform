@@ -41,13 +41,16 @@ function target(name, distFrom) {
   return root;
 }
 
-// 9.1 does not bundle these two: on V they are installed packages, loaded by path.
+// 9.1 does not bundle these two; on V they are installed packages. Channel ingress
+// is only open to trusted plugins, so they sit in the bundled directory here. Their
+// bytes are what V has; only the location differs.
 function plugins(root) {
   // Plugins import the host as `openclaw`; on V their node_modules links to the runtime.
-  mkdirSync(path.join(root, "plugins", "node_modules"), { recursive: true });
-  symlinkSync(root, path.join(root, "plugins", "node_modules", "openclaw"));
+  mkdirSync(path.join(root, "dist", "extensions", "node_modules"), { recursive: true });
+  symlinkSync(root, path.join(root, "dist", "extensions", "node_modules", "openclaw"));
   for (const id of ["feishu", "codex"]) {
-    const dest = path.join(root, "plugins", id);
+    const dest = path.join(root, "dist", "extensions", id);
+    rmSync(dest, { recursive: true, force: true });
     cpSync(a[id], dest, { recursive: true, verbatimSymlinks: true });
     rmSync(path.join(dest, "node_modules", "openclaw"), { recursive: true, force: true });
     if (!existsSync(path.join(dest, "node_modules"))) {
@@ -63,8 +66,8 @@ plugins(stock);
 const v = target("v", a.stock);
 cpSync(path.join(a.capture, "dist"), path.join(v, "dist"), { recursive: true });
 plugins(v);
-cpSync(path.join(`${a.capture}.feishu`, "dist", "dist"), path.join(v, "plugins", "feishu", "dist"), { recursive: true });
-cpSync(path.join(`${a.capture}.codex`, "dist", "dist"), path.join(v, "plugins", "codex", "dist"), { recursive: true });
+cpSync(path.join(`${a.capture}.feishu`, "dist", "dist"), path.join(v, "dist", "extensions", "feishu", "dist"), { recursive: true });
+cpSync(path.join(`${a.capture}.codex`, "dist", "dist"), path.join(v, "dist", "extensions", "codex", "dist"), { recursive: true });
 
 // V's voice runtime imports the Feishu plugin through the install path it has on V.
 const NPM_PROJECT = /openclaw-feishu-[0-9a-f]+__openclaw-generation__g-[0-9a-f]+/g;
@@ -72,7 +75,7 @@ const voice = readFileSync(path.join(v, "dist", "v-feishu-voice-runtime.mjs"), "
 for (const project of new Set(voice.match(NPM_PROJECT) ?? [])) {
   const link = path.join(a.out, "npm", "projects", project, "node_modules", "@openclaw", "feishu");
   mkdirSync(path.dirname(link), { recursive: true });
-  symlinkSync(path.join(v, "plugins", "feishu"), link);
+  symlinkSync(path.join(v, "dist", "extensions", "feishu"), link);
 }
 
 target("fork", a.fork);

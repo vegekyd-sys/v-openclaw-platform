@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { createServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { FEISHU_SECRETS, sendFeishuEvent, startFakeFeishu, textEvent } from "./fake-feishu.mjs";
 import { startFakeModel } from "./fake-model.mjs";
 
 const TOKEN = "contract-token";
@@ -27,7 +28,7 @@ function merge(base, over) {
   return out;
 }
 
-export async function boot(targetDir, { config = {}, env = {}, modelScript, skipChannels = true } = {}) {
+export async function boot(targetDir, { config = {}, env = {}, modelScript, feishu, feishuApi } = {}) {
   const dir = mkdtempSync(path.join(os.tmpdir(), "c2-"));
   const stateDir = path.join(dir, "state");
   const workspace = path.join(dir, "ws");
@@ -36,6 +37,8 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, skip
   const script = { current: modelScript ?? (() => ({ text: "ok" })) };
   const model = await startFakeModel(script);
   const port = await freePort();
+  const fakeFeishu = feishu ? await startFakeFeishu(feishuApi) : null;
+  const webhookPort = feishu ? await freePort() : null;
   const fullConfig = merge(
     {
       gateway: { mode: "local", port, bind: "loopback", auth: { mode: "token", token: TOKEN } },
@@ -56,11 +59,26 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, skip
     },
     config,
   );
-  const pluginsDir = path.join(targetDir, "plugins");
-  if (existsSync(pluginsDir)) {
-    fullConfig.plugins = merge(fullConfig.plugins, {
-      load: { paths: ["feishu", "codex"].map((id) => path.join(pluginsDir, id)) },
-    });
+  if (feishu) {
+    fullConfig.plugins = merge(fullConfig.plugins, { entries: { feishu: { enabled: true } } });
+    fullConfig.channels = merge(
+      {
+        feishu: {
+          appId: "cli_contract",
+          appSecret: "contract-secret",
+          domain: `https://127.0.0.1:${fakeFeishu.port}`,
+          connectionMode: "webhook",
+          webhookPort,
+          webhookPath: "/feishu/events",
+          ...FEISHU_SECRETS,
+          dmPolicy: "open",
+          allowFrom: ["*"],
+          groupPolicy: "open",
+          requireMention: false,
+        },
+      },
+      merge(fullConfig.channels, feishu === true ? {} : { feishu }),
+    );
   }
   const configPath = path.join(dir, "openclaw.json");
   writeFileSync(configPath, JSON.stringify(fullConfig, null, 2));
@@ -72,7 +90,7 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, skip
       ...process.env,
       OPENCLAW_STATE_DIR: stateDir,
       OPENCLAW_CONFIG_PATH: configPath,
-      ...(skipChannels ? { OPENCLAW_SKIP_CHANNELS: "1" } : {}),
+      ...(feishu ? { NODE_TLS_REJECT_UNAUTHORIZED: "0" } : { OPENCLAW_SKIP_CHANNELS: "1" }),
       OPENCLAW_DISABLE_BONJOUR: "1",
       ...env,
     },
@@ -99,6 +117,7 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, skip
   } catch (e) {
     child.kill("SIGKILL");
     await model.stop();
+    await fakeFeishu?.stop();
     throw e;
   }
   return {
@@ -111,14 +130,27 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, skip
     script,
     rpc,
     logs: () => logs.join(""),
+    feishu: fakeFeishu,
+    /** Pushes one user message into the Feishu channel. */
+    feishuSend: (opts) => sendFeishuEvent(webhookPort, textEvent(opts)),
+    feishuEvent: (event, type) => sendFeishuEvent(webhookPort, event, type),
+    /** Polls until `check()` returns something truthy. */
+    async until(check, { timeoutMs = 60_000, what = "condition" } = {}) {
+      const deadline = Date.now() + timeoutMs;
+      for (;;) {
+        const v = await check();
+        if (v) return v;
+        if (Date.now() > deadline) throw Object.assign(new Error(`timed out waiting for ${what}`), { contract: true });
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    },
     http: (p, init) => fetch(`http://127.0.0.1:${port}${p}`, init),
     /** Runs one agent turn and resolves with its final wait result. */
     async turn(message, { sessionKey = "agent:main:contract", timeoutMs = 90_000 } = {}) {
       const key = crypto.randomUUID();
-      const sent = await rpc.call("agent", { message, sessionKey, idempotencyKey: key, deliver: false }, { expectFinal: false, timeoutMs });
-      const runId = sent.runId ?? key;
-      const waited = await rpc.call("agent.wait", { runId, timeoutMs }, { timeoutMs: timeoutMs + 5000 });
-      return { runId, ...waited };
+      const final = await rpc.call("agent", { message, sessionKey, idempotencyKey: key, deliver: false }, { expectFinal: true, timeoutMs });
+      const payloads = final.result?.payloads ?? [];
+      return { ...final, text: payloads.map((p) => p.text ?? "").join("\n") };
     },
     async history(sessionKey = "agent:main:contract") {
       return (await rpc.call("chat.history", { sessionKey, limit: 200 })).messages ?? [];
@@ -132,6 +164,7 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, skip
         if (!exited) child.kill("SIGKILL");
       }
       await model.stop();
+      await fakeFeishu?.stop();
       writeFileSync(logPath, logs.join(""));
       if (!process.env.C2_KEEP) rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
     },
