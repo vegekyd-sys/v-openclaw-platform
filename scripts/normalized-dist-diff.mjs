@@ -6,6 +6,9 @@
 //
 // usage: node scripts/normalized-dist-diff.mjs --capture <dir> --stock <dir> --fork <dir>
 //          --files <list.txt> --out <dir> [--node-modules <fork checkout>]
+//          [--exclude <dir>,<dir>]   fork subdirectories to leave out of the index,
+//                                    e.g. worker (a 40 MB bundle that repeats every
+//                                    core function and would be matched instead)
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -80,14 +83,14 @@ function units(file) {
 }
 
 // name -> fork files whose top level declares it (cheap regex index).
-function indexFork(root) {
+function indexFork(root, exclude) {
   const idx = new Map();
   const DECL = /^(?:export\s+)?(?:async\s+)?(?:function\*?|class|const|let|var)\s+([A-Za-z_$][\w$]*)/gm;
   const walk = (dir) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) {
-        if (e.name !== "control-ui" && e.name !== "node_modules") walk(p);
+        if (e.name !== "control-ui" && e.name !== "node_modules" && !exclude.has(path.relative(root, p))) walk(p);
       } else if (/\.(?:js|mjs|cjs)$/.test(e.name)) {
         const text = fs.readFileSync(p, "utf8");
         for (const m of text.matchAll(DECL)) {
@@ -170,7 +173,7 @@ const capture = args.capture, stock = args.stock, fork = args.fork;
 const files = fs.readFileSync(args.files, "utf8").split("\n").map((s) => s.trim()).filter(Boolean);
 fs.mkdirSync(args.out, { recursive: true });
 console.error("indexing fork build...");
-const forkIdx = indexFork(fork);
+const forkIdx = indexFork(fork, new Set((args.exclude ?? "").split(",").filter(Boolean)));
 const forkFilesByPrefix = new Map();
 for (const set of forkIdx.values())
   for (const f of set) {
