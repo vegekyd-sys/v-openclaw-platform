@@ -442,7 +442,7 @@ export default definePluginEntry({
     // with continueAgent the 9.1 core drops that text. Not awaited: V continues meanwhile.
     const announce = (id, text) => {
       const card = cards.get(id);
-      if (!card?.target || !["dingtalk-connector", "wecom", "vapp"].includes(card.channel)) {
+      if (!card?.target || !["dingtalk-connector", "wecom"].includes(card.channel)) {
         return;
       }
       deliverPrivately({ channel: card.channel, target: card.target, accountId: card.accountId ?? config.messageAccountId, text, command: config.openclawCommand, entry: config.openclawEntry })

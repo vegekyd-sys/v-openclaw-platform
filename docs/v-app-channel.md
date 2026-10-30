@@ -115,6 +115,8 @@ App 上线后 `vapp.history` 补齐（以后加推送）。
 - 推送：`channels.vapp.apns = {keyFile, keyId, teamId, bundleId}`；没配就不发。每个回复、提问、消息都推，
   因为服务端判断不了 App 是否真在前台（断掉的连接几分钟内看着还活着），由 App 在正在看那个会话时隐藏横幅。
 - App（v-voice `claude/v-client-feishu-cards`）：连上后调 `vapp.hello`，App 私聊走上面这套；其他会话仍是控制台视图。
+- 「电脑」接管卡：接管插件的代码不动（它的发布字节被锁定），部署时在它的配置里把 `vapp` 加进 `cardChannels` 和 `nativeCardChannels`。
+  状态变化的提示语目前只发给钉钉和企微，App 上卡片不会提示状态变化，要等下一次改接管插件时加上。
 - 还没做：多用户登录；`session.identityLinks` 需要部署时配 Tianyi 的飞书 open_id；飞书群的回复只在 App 内（`deliver:false`），
   要不要代发到飞书群待定。
 

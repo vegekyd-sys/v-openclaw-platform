@@ -69,7 +69,7 @@ export function handoffCard({ purpose = "login", kind = "control", reason, url, 
  * callback button), DingTalk (actionCard) and WeCom (text_notice template
  * card) through V's v-experience channel patches, link button only.
  */
-export const DEFAULT_CARD_CHANNELS = ["feishu", "telegram", "dingtalk-connector", "wecom", "vapp"];
+export const DEFAULT_CARD_CHANNELS = ["feishu", "telegram", "dingtalk-connector", "wecom"];
 
 /** Channels whose cards can carry the 交还给 V callback button. */
 export const CALLBACK_CARD_CHANNELS = ["feishu", "telegram"];
