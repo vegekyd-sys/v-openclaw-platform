@@ -84,6 +84,11 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
     );
   }
   const configPath = path.join(dir, "openclaw.json");
+  // A contract can name a policy file; it is written here and only exists for this boot.
+  if (env.OPENCLAW_CRON_SHARED_POLICY === "POLICY_FILE") {
+    env = { ...env, OPENCLAW_CRON_SHARED_POLICY: path.join(dir, "cron-shared-policy.json") };
+    writeFileSync(env.OPENCLAW_CRON_SHARED_POLICY, JSON.stringify({ version: 1, agents: { main: { mode: "shared", enabled: true } } }));
+  }
   writeFileSync(configPath, JSON.stringify(fullConfig, null, 2));
   const logPath = path.join(dir, "gateway.log");
   const logs = [];

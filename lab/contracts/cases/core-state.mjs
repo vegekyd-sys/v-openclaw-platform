@@ -23,6 +23,27 @@ export default [
     },
   },
   {
+    id: "D2/one-owner-runs-several-cards",
+    ledger: ["D2"],
+    boot: {
+      config: { plugins: { entries: { workboard: { enabled: true } } } },
+      modelScript: async () => {
+        await new Promise((r) => setTimeout(r, 8000));
+        return { text: "卡片做完" };
+      },
+    },
+    timeoutMs: 90_000,
+    async run({ gw, assert }) {
+      for (const n of [1, 2, 3]) {
+        await gw.rpc.call("workboard.cards.create", { title: `card ${n}`, status: "ready", assignee: "agent:main" , labels: ["contract"] });
+      }
+      const r = await gw.rpc.call("workboard.cards.dispatch", {});
+      const started = r.started?.length ?? 0;
+      assert(started >= 2, `${started} card(s) started for one owner: ${JSON.stringify(r).slice(0, 400)}`);
+      return `${started} cards started`;
+    },
+  },
+  {
     id: "MEMSEARCH-QUALITY/rare-term-outranks-common-terms",
     ledger: ["MEMSEARCH-QUALITY"],
     boot: { config: memoryOnly, modelScript: search("memory tianyi history 星擎路线") },
