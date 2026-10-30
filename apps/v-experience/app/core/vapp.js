@@ -596,6 +596,8 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
   // The app's session list. Rows on the Gateway are about 2.4 KB and most of the
   // newest belong to sub-agents, so the plain list is 700 KB; this is what the app
   // draws, and a slow link can carry it. Owners only: it names every chat.
+  // The limit is high because a busy night pushes the chats behind thousands of
+  // sub-agent rows; the Gateway walks every session whatever the limit.
   const SESSION_FIELDS = ["key", "kind", "isMain", "channel", "chatType", "subject", "displayName", "label", "lastActivityAt", "updatedAt", "unread", "pinned", "lastMessagePreview", "model"];
   let sessionsCache;
   async function sessions({ client, context }) {
@@ -603,7 +605,7 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     attach(user, client, context);
     if (!user.owner) return { sessions: [] };
     if (!sessionsCache || Date.now() - sessionsCache.at > 20_000) {
-      const pending = Promise.resolve(call("sessions.list", { limit: 400, includeLastMessage: true })).then((result) => (result?.sessions ?? [])
+      const pending = Promise.resolve(call("sessions.list", { limit: 3000, includeLastMessage: true })).then((result) => (result?.sessions ?? [])
         .filter((row) => !/:(subagent|cron|hook):/u.test(text(row.key)) && !row.isBackground && !row.archived)
         .slice(0, 120)
         .map((row) => ({
