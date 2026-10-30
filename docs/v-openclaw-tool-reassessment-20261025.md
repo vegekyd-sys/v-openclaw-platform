@@ -119,3 +119,41 @@ for p in ("/home/openclaw/.openclaw/openclaw.json","/home/openclaw/.openclaw/exp
 ## 附录：第一版 (b) 的对照
 
 candidate-b909e0bf（`/vds`，UM 与 V Browser 各 2 轮 × 两组）：两组都 0 次调用 `openclaw`，DeepSeek 下复现不了生产的触发；装了规则的一组读了技能、中位 320 s 完成，未装的一组 353 s。这说明 V 本来就会自己诊断，也是 Tianyi 不需要那条规则的依据之一。
+
+## 9. 2026-10-26：其他路由也去掉 openclaw 工具
+
+Tianyi 10/26：「不用openclaw 工具你再另两个harness上也落实下」。#479 已于 10/26 02:58 随
+`v2026.9.1-db91.6-sessions-search-20261026` 上 V，线上 `/vcodex` 验收通过；剩下 Gateway 内 openclaw harness、
+vlab-worker、claude-cli 三条路由。
+
+**官方机制先查了**：`agents.defaults.systemAgent` 只有 `agentId`；Worker 插件没有单独的覆盖层（Worker 配置逐字推导自主配置）；
+`tools.byProvider` 能细到 provider/模型，但 Codex 与非 Codex 路由共用 provider（第 4 节），按模型列名单太脆弱。
+能统一覆盖的只有 `agents.entries.makaron.tools.deny`，它的唯一问题是第 4 节的 Codex 退化。
+
+**退化的真正原因**：core `toolPolicyRestrictsHarnessNativeTools` 对 deny 里的每个名字，只要「不是核心目录工具」或
+「不在 harness 的安全清单里」就判受限。`openclaw` 不在 `CORE_TOOL_DEFINITIONS` 里（`isKnownCoreToolId("openclaw")`
+为 false），所以只往 Codex 的 `CODEX_TOOL_POLICY_SAFE_DENY_NAMES` 里加名字不够。补丁改在 core 这一处：拒绝
+`openclaw` 不算受限（`lab/release-files/openclaw-tool-safe-deny/`，V 字节 5a0c1a19 → b55b5352，只加一行）。
+它只以 OpenClaw 工具出现，任何 harness 都没有原生对应物，core 生成列表时就已经把它去掉。
+
+**VLab candidate**（`lab/candidate/openclaw-tool-all-routes.mjs`；起点 = V 现状：#479 的 Codex 排除已开、
+`selection-BC0YSSFq.js` 为 V 字节、reload 用 V 的默认 hybrid）：
+
+| 阶段 | `/vds`（codex） | Worker 路由（vlab-worker） | Gateway 内（openclaw harness，deepseek-v4-pro） |
+|---|---|---|---|
+| before | 122，无 openclaw，有 gateway_exec | 130，含 openclaw | 129，含 openclaw |
+| patched（只换代码，无 deny） | 不变 | 不变 | 不变 |
+| hot（运行中 `config patch` 加 deny） | **不变**（仍有 gateway_exec） | 129，只少 openclaw | 128，只少 openclaw |
+| restart（带 deny 冷启动） | **不变** | 只少 openclaw | 只少 openclaw |
+
+所有回合都回复「收到」。deny 热生效：`config hot reload applied` 约 10 s、CLI 打印 "Change will apply without
+restarting the gateway"、没有插件重载、Gateway 进程不换；Worker 配置约 9 s 后由推导写入同样的 deny，Worker 代际排空换代。
+证据：candidate-8d6d58e0（三条路由全部通过，`/vcc` 一项失败见下）、candidate-8678fdfe（同样结果，直接读候选会话库得出）、
+以及只跑三条路由的最终一轮 candidate-151fb217（全部断言通过，deny 热生效 9.1 s、Worker 配置推导 9.1 s）。
+
+**claude-cli（`/vcc`）没测成**：共享 VLab 的 Claude 登录被拒——「Your organization has disabled Claude subscription
+access for Claude Code」，四个阶段都在回复前失败。claude-cli 的 OpenClaw 工具同样来自按 agent 策略过滤后的工具列表
+（V 上 claude-cli 会话的 `systemPromptReport.tools` 与其它路由同一来源），预期一并去掉；上线后要用一个 `/vcc` 会话核对。
+
+**上线**：见 `lab/release-files/openclaw-tool-safe-deny/README.md`。代码要重启，deny 热生效，但必须**先**让代码生效再写 deny；
+最稳是在同一次 `v-self-restart` 里 `--set 'agents.entries.makaron.tools.deny=["openclaw"]'`。#479 的排除保留。

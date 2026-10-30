@@ -1,0 +1,147 @@
+{
+  "id": "candidate-8115f8be-46cb-44a2-a05b-a6b211661e16",
+  "ok": true,
+  "sourceCommit": "967d137637998ee19b3c2ca94254a07a62ddd993",
+  "branch": "codex/desktop-handback-progress",
+  "dirty": true,
+  "inputSha256": "5a2455da6f1a0b4aee367df0f1ba514556dfcca8283f1815bfdf805c6992a2a5",
+  "runnerSha256": "1ae3c86fd910a5b724bf9516183354e4656fa13f6cedac5a69278c66d270d12c",
+  "baseRelease": "release-batch-20261028-v1",
+  "runtimeSha": "9e61c1c1591935bceaf5f235974585887e9676c57839983c14e1a399b8a7aced",
+  "sharedUnchanged": true,
+  "integrationLeaseRequired": false,
+  "timings": {
+    "inspectMs": 15,
+    "baselineMs": 1,
+    "snapshotMs": 69648,
+    "overlayMs": 21,
+    "testMs": 97394
+  },
+  "totalServerMs": 167096,
+  "totalClientMs": 176893,
+  "sourceCommitMeaning": "Candidate base HEAD; tested uncommitted inputs are identified by inputSha256 and per-file SHA-256. All overlaid source hashes matched the worktree at commit preparation.",
+  "proof": {
+    "harness": "vds",
+    "checks": [
+      "real desktop plugin polling and claim",
+      "real runtime.subagent.run / agent RPC",
+      "public progress and tool status before final",
+      "one original-group card and native final ACK",
+      "polling cannot duplicate the run"
+    ],
+    "result": {
+      "phase": "completed",
+      "delivered": true,
+      "source": "desktop-handback",
+      "selectedModel": {
+        "provider": "deepseek",
+        "model": "vds-deepseek-flash",
+        "agentRuntime": "codex"
+      },
+      "claims": 1,
+      "progressSnapshots": 7,
+      "finalCards": 1
+    }
+  },
+  "files": [
+    {
+      "source": "lab/release-files/desktop-handback-progress/v-feishu-task-presentation.mjs",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-task-presentation.mjs",
+      "before": "d3f49b00811b026835f1f5a90afaf0d8f004a25a4fa3c3599e9c3d8facd6fdcb",
+      "after": "070801aa1b7ec41aa5b7cd02110f7d67e01e2becfe4a0c59efa3b023f5c55de4"
+    },
+    {
+      "source": "lab/release-files/desktop-handback-progress/monitor.account-WFdlCDhR.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+      "before": "1925d3f2d4f3550189e76b27bac09a40b25bbdd7b124e839c6605926b677366b",
+      "after": "faa1062883b3052d9803455762a35ba8bc8abfc8bd3a20d3875084f4f87a8f1f"
+    },
+    {
+      "source": "lab/candidate/bound-task-plugin/index.js",
+      "target": "extensions/bound-task-candidate/index.js",
+      "after": "31c6ff6a7cfa61ef1f519cb9b8fef9e72a71f1276fb23779eea43dd4d99f358d"
+    },
+    {
+      "source": "lab/candidate/bound-task-plugin/openclaw.plugin.json",
+      "target": "extensions/bound-task-candidate/openclaw.plugin.json",
+      "after": "b70b047eeda6ec67ddba61c1043a6fc9ec16b74a8391b66a9de3858b56243c4b"
+    },
+    {
+      "source": "lab/candidate/bound-task-plugin/package.json",
+      "target": "extensions/bound-task-candidate/package.json",
+      "after": "21d7e243533ab2cd64e255b3afcc9ab5daf6d3abdf210c059e8b9b822fccfd41"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/index.js",
+      "target": "extensions/v-desktop-handoff/index.js",
+      "after": "e730debba8d6a137d7323bc816efac58104e238246a33063b8a72a370f95eb79"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/package.json",
+      "target": "extensions/v-desktop-handoff/package.json",
+      "after": "a914d73acc15dda834b4e61afcf73c2bab815f3d022d239adeaf218f3a447c19"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/openclaw.plugin.json",
+      "target": "extensions/v-desktop-handoff/openclaw.plugin.json",
+      "after": "8c42f0f5d8732b3486f9025a75663b23c44fafe8c1e28fe9d271675733df062b"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/admin-client.js",
+      "target": "extensions/v-desktop-handoff/core/admin-client.js",
+      "after": "c8c3640362dc4c4e7f87069e1e2f6c4ad843af3f388e5bfd6e1a4f83aab36cdc"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/card.js",
+      "target": "extensions/v-desktop-handoff/core/card.js",
+      "after": "630b803d9132cda6a46f7e4e0d00ad8bbb5b32f6c8d3b766c2f872eff5173643"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/channel-cards.js",
+      "target": "extensions/v-desktop-handoff/core/channel-cards.js",
+      "after": "12dca9a5888837352c847da61ddbeeceb9494075a622afec0c84a8604c1f51c6"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/deliver.js",
+      "target": "extensions/v-desktop-handoff/core/deliver.js",
+      "after": "7da9b16f26fcaa47f5bb017b10364e7b12333ca98151738e3d3579db7ad55d14"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/feishu-api.js",
+      "target": "extensions/v-desktop-handoff/core/feishu-api.js",
+      "after": "461633189fff54a90c66e05ee91d8c56e28bb349fb0e524f58417315041cc56c"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/identity.js",
+      "target": "extensions/v-desktop-handoff/core/identity.js",
+      "after": "dcc6343f16ef9e134137ccd59a7023dbcb4ee404ff76084865a4b6d5df749c50"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/native-card.js",
+      "target": "extensions/v-desktop-handoff/core/native-card.js",
+      "after": "acce4693a011bdc8403933ba2e97beb4e2b18c1c91bf7a178b965561cc1a52a7"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/policy.js",
+      "target": "extensions/v-desktop-handoff/core/policy.js",
+      "after": "4702d379ca86e8f0cedf9ca6de685d8d1469a4f3ba0a75de0dcef92f6c3dff32"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/task-presentation.js",
+      "target": "extensions/v-desktop-handoff/core/task-presentation.js",
+      "after": "46bae355ab295d5d069968e4ee52720eb111d4f6481ee67af761b5c686a3f4f4"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/telegram-api.js",
+      "target": "extensions/v-desktop-handoff/core/telegram-api.js",
+      "after": "fc82f964685bdb8dbab097f8ea4d7094bb3d9274f67adfff746464b1e83392ee"
+    }
+  ],
+  "local": {
+    "focusedTests": 117,
+    "failures": 0,
+    "vlabStatic": "passed",
+    "catalogAudit": "passed"
+  },
+  "scope": "Private Gateway and actual plugin poller, agent RPC, Codex/VDS DeepSeek model. Local fake desktop service and Feishu API; no real chat, browser takeover page or production acceptance."
+}

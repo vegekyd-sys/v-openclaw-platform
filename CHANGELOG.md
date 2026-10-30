@@ -11,6 +11,104 @@
 
 ---
 
+## v-desktop-handback-progress-20261030
+
+上线：2026-10-30 00:33 CST 激活完成，00:41 CST 真实生产链路验收通过。
+
+**摘要**：接管页点击“交还给 V”后，排队、公开进度、工具状态和最终结果在原飞书群的同一张卡上展示。保留原执行链路、幂等键和原生投递回执，不重复启动模型或另发一份结果。
+
+- 来源：[PR #511](https://github.com/vegekyd-sys/v-openclaw-platform/pull/511)，已合入 dev `60afc19494127f10bc188fdd0aa8b4c00b5c25d9`。
+- VLab release `desktop-handback-progress-20261029-v1`，artifact `1876a504b6e0c7687fe5fabea0f07be0a5b88b652583f1e1c8fe8de0fc3ef46f`。117 项回归、真实页面交还、单 run、同卡进度和最终 ACK 已通过共享验收。
+- 相对上一版 `v2026.9.1-db91.6-release-batch-20261028`，七组件快照仅两份飞书文件变化：`dist/monitor.account-WFdlCDhR.js`（`1925d3f2` → `faa10628`）和 `dist/v-feishu-task-presentation.mjs`（`d3f49b00` → `070801aa`）。其他六个组件字节未变。
+- 桌面插件另有两份文件：`index.js`（`6c0c9db8` → `e730debb`），新增 `core/task-presentation.js`（`46bae355`）；同一提交与 VLab 已验收字节，保留原文件及权限回滚清单。
+- 配置未修改。重启请求 `20261030-002355-8763` 使用 `--if-busy abort --idle-timeout 3600`，等待业务空闲 405 秒后激活；5/5 workers、2/2 streams 恢复，0 告警。真实生产 Q 验收确认同卡进度/工具/最终结果、单 run 和成功回执；VLab 已 ALIGNED。
+
+[发布与回滚记录](docs/experiments/desktop-handback-production-20261030.md)
+
+## v2026.9.1-db91.6-release-batch-20261028
+
+上线：2026-10-28 19:51 CST（19:49 v-self-restart 一次，同时 --set skills）  ·  tag `v2026.9.1-db91.6-release-batch-20261028`
+
+**摘要**：四个 PR 一次重启：
+- #506：根目录 MEMORY.md 不再只在私聊预载：群聊、频道、定时任务、子 agent 也带上；Codex（/vcodex、/vds）把正文作为回合级 developer instructions 下发，不再只给一行指针。**但在 V 上还没生效**：上游另有一道记忆来源检查，V 的 MEMORY.md 自 10/12 20:09 起被记为 `untrusted`（被工具以外的途径改过，之后不可逆），所以私聊在内所有会话都不预载。修法待 Tianyi 选择。
+- #480：技能目录不再截断。`skills.limits={maxSkillsInPrompt:400,maxSkillsPromptChars:48000}`，关掉 59 个技能，重启时用 `--set skills=@file` 写入主配置，Worker 配置自动推导。V 上 286 个技能全部进目录（46,108 字符）。
+- #497：V 的 agent 能直接 apply 手写 skill 的 Workshop 提案；worker 会话的复盘不再被 native-attempt-bridge 拦下。
+- #498：硬盘哨兵提前告警（余量线、写满预测、临时目录大文件）。主机脚本，20:14 单独装到 `/opt/v-sentinel/`，不在下面的文件列表里。
+
+验收：
+- 重启：等了 92 s 仍有 19 个 worker 回合（主要是夜班），按 wait-then-proceed 照常重启；起来后 worker 5/5，加载错误 0。
+- 用 lark-cli 发真实飞书消息：
+  - worker 群：技能目录里能看到 scene-cli、wecom-unified、zhongfang-aff-preshow（原来截断在 geelark 之后）。
+  - `/vcodex` 群和 worker 群：都答「看不到 MEMORY.md 正文」。在 V 上用真实配置直接调用预载函数，私聊和群聊都只有 AGENTS/SOUL/IDENTITY/USER，原因是上面说的记忆来源检查，不是本次代码失效。
+- 共享 VLab（release-batch-20261028-v1，artifact d221068a）：VLab 的 MEMORY.md 没有 untrusted 记录，所以 worker 和 /vds 都能在群聊里不调工具答出 MEMORY.md 里的内容。VLab 的 Codex 插件副本（state/npm）已按 V 字节同步，VLab ALIGNED。
+- 同日硬盘清理 72 GB（清单 `/home/openclaw/backups/storage-maintenance/cleanup-20261028T183606.tsv`），根分区 80%。
+
+相对上一版 `v2026.9.1-db91.6-release-batch-20261027`：6 个文件变化。
+
+**经 VLab 发版 `release-batch-20261028-v1`**（monitor-v-production，dev `339cde9b`）
+> 验收：2026-10-28 18:51-19:05 shared VLab, code d221068a (#506 MEMORY.md everywhere, #497 Skill Workshop). Real Feishu lark-cli V-Lab group on vlab-worker (deepseek-flash): listed Project Context files include workspace/w1/MEMORY.md in a GROUP session; answered the DealClaw admin URL that only MEMORY.md contains without tools. (First phrasing let the model answer 'not preloaded' while the file was presen…
+- `core` experience-review-default-Dr4f0pMZ.js  798e630b → 604ab19a
+- `core` openclaw-tools-BODVdJQD.js  4bed21d8 → 0b8b6233
+- `core` service-query-Bt8YN8NM.js  2d2689ef → bb7aed5d
+- `core` workspace-BFk42BX6.js  7aa02efc → 5c74cd7c
+- `worker` native-attempt-bridge.mjs  0429d15e → a4171b1e
+- `codex` dist/attempt-context-DmQUNWwT.js  f3d2f15a → d425cfe2
+
+**这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #507 发布批次 20261028：MEMORY.md 全会话预载 + Skill Workshop + 硬盘哨兵 + 技能目录
+
+## v2026.9.1-db91.6-release-batch-20261027
+
+上线：2026-10-27 22:01 CST（21:58 v-self-restart 一次，同时 --set tools.deny）  ·  tag `v2026.9.1-db91.6-release-batch-20261027`
+
+**摘要**：今天 V 两次冻结的根因修复，加上同批的四项改动，一次重启上线：
+- #500：server-chat 处理 run 事件和 host-thaw 重启阻塞检查，原来每次都整读 makaron 全部会话（约 1 万行，每次 10–13 s、2.7 GB），现在改为按 id 走索引读（毫秒级）。16:4x 冻结 6 分钟、18:28 冻结 89 s 的两条路径都在其中。
+- #487：workboard 生命周期巡检不再每分钟整读会话和卡片。
+- #501：飞书自动续接（current-session cron、子 agent 回报）的启动、进度和结果显示在原群同一张卡上；排队追问有状态提示；静默的内部回报不再生成空卡。
+- #484：所有 makaron 路由都去掉 openclaw 工具。配置 `agents.entries.makaron.tools.deny=["openclaw"]` 在重启时用 `--set` 写入主配置，Worker 配置自动推导；一行 core 补丁保住 Codex 的原生工具面。
+- #495：飞书私聊电话直达的代码随 #501 一起上线（#501 的 monitor.account 以 #495 的字节为基础），但功能未启用：配置未改，Voice #166 未部署，新私聊未经真人验收，后续由 Codex 线完成。
+
+验收：
+- 重启：101 s 就绪，worker 5/5、stream 2/2，加载错误 0；两份配置的 deny 都是 `["openclaw"]`。
+- 用 lark-cli 发真实飞书消息：
+  - `/vcodex` 群：
+    - 工具 101 个，没有 openclaw，有 gateway_exec；
+    - 子 agent 续接在同一张卡上依次显示计划、后台行、续接进度和结果；
+    - 续接回合运行中的追问显示「⏳ 请求已排队」，随后单独回复，没有串卡；
+    - 三个子 agent 的静默回报，群内新增消息为 0；
+    - current-session cron 先出现「↩️ 自动续接已受理」，再给出结果卡。
+  - worker 群：cron 同样通过，工具 109 个，没有 openclaw。
+- 重启后 22 分钟：host-thaw 0、workboard 失败 0、运行时错误 0，liveness 只延迟过一次 8.6 s（22:07）。
+- 漂移 0 findings（9,251 个文件），VLab ALIGNED。共享 VLab 先验收：release-batch-20261027-v1，artifact d32688a6。
+
+相对上一版 `v2026.9.1-db91.6-unified-session-20261027`：19 个文件变化。
+
+**经 VLab 发版 `release-batch-20261027-v1`**（monitor-v-production，dev `8cfce5af`）
+> 验收：2026-10-27 21:38-21:46 shared VLab, code d32688a6 + temporary deny openclaw config (removed again before accept; V gets it via v-self-restart --set). Real Feishu lark-cli V-Lab group: /vds tools 124 no openclaw, gateway_exec present (#484); /vds spawn_agent->yield->continuation PARENT_DONE SUB_OK_19573 in one card, no empty cards (#501); vlab-worker sessions_search ok, tools 129 no openclaw. Since…
+- `core` extensions/workboard/index.js  610d45fe → 448d3ae8
+- `core` isolated-agent-BxeXdw5A.js  84227fa1 → 2613b147
+- `core` run-delivery.runtime-falxHVAy.js  9f2b2bdb → 6afb1b4a
+- `core` runtime-api-1CCazqtv.js  3bc03ce6 → 62ecf47e
+- `core` selection-BC0YSSFq.js  5a0c1a19 → b55b5352
+- `core` server-session-key-ZtX3Ble7.js  30a0e1f9 → 6310b72b
+- `core` session-utils-list-BUP03AzS.js  a6e3d70f → a6d40fb5
+- `core` sessions-read-C6mAMxyQ.js  eb18ffa5 → 5c84c606
+- `core` sqlite-store-CH-caj1l.js  12c1f546 → d06ee044
+- `core` task-registry.maintenance-C4nMaDY9.js  b6fe747f → cd4a70c3
+- `core` v-feishu-task-presentation-delivery.mjs  8e11035f → 47b4e136
+- `core` v-feishu-task-presentation-followup.mjs  2e3922a5 → 82490569
+- `core` v-feishu-task-presentation-runtime.mjs  e48e2604 → d9843369
+- `core` v-session-entries-matching.mjs  d2d2c2cd → 3e5671e2
+- `core` v-feishu-task-presentation-cron.mjs  — → 80071002
+- `feishu` dist/monitor.account-WFdlCDhR.js  f1f45455 → 1925d3f2
+- `feishu` dist/v-feishu-phone-tabs.mjs  6c3b8c2a → 9544191e
+- `feishu` dist/v-feishu-task-presentation.mjs  604b98fa → d3f49b00
+- `feishu` dist/feishu-private-conversations.mjs  — → 01245421
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #502 release batch 2026-10-27：#500 #487 #501 #484 #495 合入 dev
+- #500 perf(gateway): 两条冻结 V 的整读查找改为索引读（server-chat run 查找 + 重启阻塞检查）
+
 ## v2026.9.1-db91.6-unified-session-20261027
 
 上线：2026-10-27 03:32 CST；v-self-restart、生产 9 项功能验收及最终 align 已完成  ·  tag `v2026.9.1-db91.6-unified-session-20261027`

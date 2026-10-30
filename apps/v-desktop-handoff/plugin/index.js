@@ -15,6 +15,7 @@ import { nativeHandoffCard } from "./core/native-card.js";
 import { EDITABLE_CARD_CHANNELS, NATIVE_CARD_CHANNELS, handoffPresentation, isPublicImageUrl, nativeCardInstruction, telegramHandoffCard } from "./core/channel-cards.js";
 import { TelegramApi, telegramChat, telegramCredentials } from "./core/telegram-api.js";
 import { decideHandBack, decideToolCall, refuseEnd } from "./core/policy.js";
+import { runHandbackWithPresentation } from "./core/task-presentation.js";
 
 // V's picture for the card when the desktop cannot be captured (generated media stays out of git).
 const DEFAULT_COVER = "https://cdn.makaron.app/storage/v1/object/public/images/5955d413-cad2-4814-b094-7fdf62d20400/0bc9ae1f-59b7-45a7-9e73-bf7c9951afdd/snapshot-d2ec2e6c-240d-4400-b0ad-4fce335e2e8c.jpg";
@@ -705,8 +706,6 @@ export default definePluginEntry({
     // service wakes V in the conversation the handoff belongs to, so the user does not
     // have to go back to the chat and press 我完成了. claimWake succeeds once, so a
     // second Gateway or a later 我完成了 never wakes V twice.
-    const WAKE_MESSAGE = (id) =>
-      `用户在接管页点了「交还给 V」：电脑已经交还给你（${id}）。直接继续刚才的任务，不用再问。`;
     let wakeTimer = null;
     api.registerService?.({
       id: "v-desktop-handoff-page-handback",
@@ -737,7 +736,7 @@ export default definePluginEntry({
               // Wake V first; the card (screenshot upload + Feishu patch) follows in the background.
               try {
                 const res = await withTimeout(
-                  run({ sessionKey: h.sessionKey, message: WAKE_MESSAGE(h.id), deliver: true, idempotencyKey: `v-desktop-handoff-wake-${h.id}-${h.pageHandBackAt}` }),
+                  runHandbackWithPresentation(h, run, { logger: ctx.logger }),
                   30_000,
                 );
                 ctx.logger?.info?.(`desktop handoff ${h.id} handed back on the page; woke ${h.sessionKey} (run ${res?.runId ?? "?"})`);

@@ -1,0 +1,11 @@
+{
+ "tests": [
+  "tests/bootstrap-memory-everywhere.test.mjs"
+ ],
+ "files": [],
+ "env": {
+  "EXPECT_BASELINE": "1"
+ },
+ "user": "lab-db91-parity",
+ "timeoutSeconds": 0
+}

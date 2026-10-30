@@ -4,12 +4,16 @@ import {createHash,randomUUID} from 'node:crypto';
 
 export const PRESENTATION_KEY = Symbol.for('openclaw.v.boundTaskPresentation.v1');
 export const PRESENTATION_METHOD = 'v.feishu.taskPresentation';
-const sources = new Set(['inter-session','voice-direct','voice-native','queued-followup','subagent-announce']);
+const sources = new Set(['inter-session','voice-direct','voice-native','queued-followup','subagent-announce','cron-continuation','desktop-handback']);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const clean = value => typeof value === 'string' ? value.trim() : '';
 const copy = value => JSON.parse(JSON.stringify(value));
 const publicPayload = p => p && !p.isReasoning && p.phase !== 'analysis' && p.phase !== 'commentary';
 const safeText = text => String(text ?? '').replace(/\b(?:sk-[\w-]{20,}|gh[oprs]_[\w]{20,}|github_pat_[\w]{20,})\b/gu,'‹已隐去›').replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/gu,'‹已隐去›');
+// Older releases persisted an observation interruption as an execution failure.
+// Only this exact, locally authored notice is eligible for recovery migration.
+const legacyInterruption = r => r.executionOutcome?.error === 'Gateway 重启打断了任务；请核对原执行状态后继续。';
+const QUEUED_TEXT='⏳ 请求已排队，等待当前任务结束后继续处理。';
 
 /** Only an explicit external binding is eligible. A key alone is not publish authority. */
 export function boundFeishuRoute(entry, actor) {
@@ -27,7 +31,16 @@ export class TaskPresentationManager {
   constructor({getEntry,getConfig=()=>({}),directory,logger={},now=Date.now}={}) {
     this.getEntry=getEntry;this.getConfig=getConfig;this.directory=directory;this.logger=logger;this.now=now;
     this.accounts=new Map();this.tasks=new Map();this.runs=new Map();this.claims=new Map();this.opening=new Map();this.closed=false;
+    this.progressListener=e=>this.onProgressEvent(e);this.listenProgress();
   }
+  listenProgress(){(globalThis[Symbol.for('openclaw.v.progressCardChangedListeners')]??=new Set()).add(this.progressListener);}
+  onProgressEvent(event){try{
+    const h=this.runs.get(event?.runId);
+    if(!h?.ownsRun(event.runId)||event.sessionKey!==(h.record.executionSessionKey??h.record.sessionKey)||JSON.stringify(event).length>100000)return;
+    // Native card creation awaits remote APIs. Retain the latest verified plan
+    // before a subscriber exists, then let the renderer replay that same event.
+    h.record.latestProgressEvent=copy(event);this.save(h.record);
+  }catch{}}
   registerAccount(accountId,factory) {
     this.accounts.set(accountId,factory);
     return ()=>{if(this.accounts.get(accountId)===factory)this.accounts.delete(accountId);};
@@ -74,18 +87,29 @@ export class TaskPresentationManager {
       const record={v:1,id,agentId:input.agentId,sessionKey:input.sessionKey,sessionId:entry.sessionId,route,source:input.source,taskId:input.taskId,
         owner:owner??null,text:safeText(clean(input.text)).slice(0,20000),createdAt:this.now(),updatedAt:this.now(),phase:'queued',runIds:[],lastSeq:0,
         lifecycleRevision:entry.lifecycleRevision,
+        ...(input.source==='cron-continuation'&&clean(input.executionSessionKey)?{executionSessionKey:input.executionSessionKey}:{}),
         anchorId:route.kind==='group'&&/^om_[a-zA-Z0-9_-]+$/u.test(input.anchorId??'')?input.anchorId:null,sinkState:null,publicSnapshot:'',payloads:[],executionOutcome:null,delivered:false};
       const handle=new TaskPresentation(this,record);this.tasks.set(id,handle);this.save(record);
       if(input.runId)handle.bindRun(input.runId);
-      void handle.enqueue(()=>handle.ensureSink());
+      // Completion notifications may be deliberate silence. Publish only once
+      // this run has public progress or a real outcome; admission is not progress.
+      if(input.source!=='subagent-announce')void handle.enqueue(()=>handle.ensureSink());
+      if(['queued-followup','desktop-handback'].includes(input.source))void handle.partial({text:QUEUED_TEXT,phase:'commentary',kind:'status'});
       return handle;
     })().catch(error=>{this.logger.warn?.('Feishu task presentation unavailable: '+String(error?.message??error));return null;}).finally(()=>this.opening.delete(id));
     this.opening.set(id,pending);return pending;
   }
   onAgentEvent(event) {try {
-    const h=this.runs.get(event?.runId);if(!h||event.sessionKey&&event.sessionKey!==h.record.sessionKey)return;
+    const h=this.runs.get(event?.runId);if(!h||event.sessionKey&&event.sessionKey!==(h.record.executionSessionKey??h.record.sessionKey))return;
     h.observe(event);
   } catch(error){this.logger.warn?.('Feishu task observer unavailable: '+String(error?.message??error));}}
+  executionHandle(params) {
+    try {
+    const h=this.runs.get(params.runId)??[...this.tasks.values()].find(h=>h.record.activeRunId===params.runId&&(h.record.interruptedAt||legacyInterruption(h.record)));
+    if(!h||!this.current(h.record)||params.sessionKey&&params.sessionKey!==(h.record.executionSessionKey??h.record.sessionKey)||params.sessionId&&params.sessionId!==h.record.sessionId&&h.record.source!=='cron-continuation'||params.agentId&&params.agentId!==h.record.agentId)return null;
+    return h;
+    } catch{return null;}
+  }
   async rpc({params:p,client,respond}) {
     try {
       const actor=client?.internal?.voiceActor,admin=client?.connect?.scopes?.includes('operator.admin');
@@ -125,13 +149,16 @@ export class TaskPresentationManager {
     if(!this.directory||!fs.existsSync(this.directory))return;
     for(const name of fs.readdirSync(this.directory).filter(n=>/^[a-f0-9]{64}\.json$/u.test(n)).slice(-1024)) {
       let r;try{r=JSON.parse(fs.readFileSync(path.join(this.directory,name),'utf8'));}catch{continue;}
-      if(r.v!==1||r.id+'.json'!==name||r.delivered&&(!r.deliveryCompletion||r.deliverySettled)||this.tasks.has(r.id)||!this.accounts.has(r.route?.accountId))continue;
+      if(r.v!==1||r.id+'.json'!==name||r.delivered&&!legacyInterruption(r)&&(!r.deliveryCompletion||r.deliverySettled)||this.tasks.has(r.id)||!this.accounts.has(r.route?.accountId))continue;
       if(!this.current(r)){r.phase='retired';this.save(r);continue;}
       const h=new TaskPresentation(this,r);this.tasks.set(r.id,h);
+      // Do not rewrite an old visible notice or replay execution on startup.
+      // A subsequently admitted execution of this exact run may reclaim it.
+      if(legacyInterruption(r))continue;
       if(r.delivered){await h.settleDelivery();continue;}
       if(r.executionOutcome)await h.finish(r.executionOutcome.result,r.executionOutcome.error);
-      else if(r.capturedTerminal&&!r.yielded)await h.finish({payloads:r.payloads});
-      else await h.finish(null,'Gateway 重启打断了任务；请核对原执行状态后继续。');
+      else if(r.capturedTerminal&&!r.yielded&&r.source!=='cron-continuation')await h.finish({payloads:r.payloads});
+      else await h.interrupt();
     }
   }
   async retryPending(){
@@ -139,11 +166,11 @@ export class TaskPresentationManager {
       if(h.record.delivered&&h.record.deliveryCompletion&&!h.record.deliverySettled){await h.settleDelivery();continue;}
       if(h.record.delivered||h.record.phase==='retired'||!h.record.error||h.retrying||this.now()<(h.record.retryAfter??0))continue;
       h.retrying=true;
-      try {this.save(h.record);if(h.record.executionOutcome)await h.finish();else await h.start();}
+      try {this.save(h.record);if(h.record.executionOutcome)await h.finish();else if(h.record.interruptedAt)await h.interrupt();else await h.start();}
       finally {h.retrying=false;}
     }
   }
-  async close(){this.closed=true;await Promise.all([...this.tasks.values()].map(h=>h.flush()));for(const h of this.tasks.values())await h.sink?.cleanup?.();this.runs.clear();}
+  async close(){this.closed=true;globalThis[Symbol.for('openclaw.v.progressCardChangedListeners')]?.delete(this.progressListener);await Promise.all([...this.tasks.values()].map(h=>h.flush()));for(const h of this.tasks.values())await h.sink?.cleanup?.();this.runs.clear();}
 }
 
 class TaskPresentation {
@@ -168,16 +195,49 @@ class TaskPresentation {
     if(this.manager.claims.has(runId)||this.manager.runs.has(runId)&&this.manager.runs.get(runId)!==this)return false;
     if(this.record.activeRunId&&this.record.activeRunId!==runId&&this.record.phase!=='waiting'&&!continuation)return false;
     if(this.record.activeRunId&&this.record.activeRunId!==runId){
-      this.record.payloads=[];this.record.publicSnapshot='';this.record.yielded=false;this.record.capturedTerminal=false;this.record.executionFailed=false;
+      this.record.payloads=[];this.record.publicSnapshot='';this.record.yielded=false;this.record.capturedTerminal=false;this.record.executionFailed=false;delete this.record.latestProgressEvent;
     }
     if(!this.record.runIds.includes(runId))this.record.runIds.push(runId);
     this.record.activeRunId=runId;this.manager.save(this.record);this.manager.runs.set(runId,this);return true;}
   ownsRun(runId){return !this.record.delivered&&this.manager.current(this.record)&&this.manager.runs.get(runId)===this&&(!this.record.activeRunId||this.record.activeRunId===runId);}
-  start(model){if(!this.record.delivered&&model?.provider&&model?.model){this.record.selectedModel={...this.record.selectedModel,...model,agentRuntime:model.agentRuntime??this.record.selectedModel?.agentRuntime};this.manager.save(this.record);}
+  selectModel(model){if(!this.record.delivered&&model?.provider&&model?.model){this.record.selectedModel={...this.record.selectedModel,...model,agentRuntime:model.agentRuntime??this.record.selectedModel?.agentRuntime};this.manager.save(this.record);}}
+  async interrupt(){
+    this.record.interruptedAt??=this.manager.now();this.record.phase='interrupted';this.manager.save(this.record);
+    // An interrupted observer has no authority to settle the task ledger.
+    return this.partial({text:'⚠️ Gateway 已重启，等待原任务恢复或核对执行状态。',phase:'commentary',kind:'status'});
+  }
+  resumeExecution(params){
+    if(this.manager.executionHandle(params)!==this||this.manager.claims.has(params.runId))return false;
+    if(this.record.interruptedAt||legacyInterruption(this.record)){
+      this.record.interruptions=[...(this.record.interruptions??[]),{at:this.record.interruptedAt??this.record.updatedAt,resumedAt:this.manager.now(),runId:params.runId}].slice(-16);
+      delete this.record.interruptedAt;
+      const legacy=legacyInterruption(this.record);
+      this.record.delivered=false;this.record.executionOutcome=null;this.record.payloads=[];this.record.publicSnapshot='';
+      this.record.capturedTerminal=false;this.record.executionFailed=false;this.record.yielded=false;delete this.record.latestProgressEvent;this.seen.clear();
+      delete this.record.error;delete this.record.retryAfter;
+      if(legacy){this.record.deliverySettled=false;delete this.record.deliveryCompletion;
+        // Retain the native card identity, but the interruption notice is not
+        // a receipt for the resumed execution's eventual final payload.
+        this.record.sinkState={...this.record.sinkState,deliveredPayloads:0,receipts:[]};
+        const old=this.sink;this.sink=null;void Promise.resolve(old?.cleanup?.()).catch(()=>{});
+      }
+      this.manager.runs.set(params.runId,this);this.manager.save(this.record);
+      void this.partial({text:'已恢复执行，正在继续处理原任务。',phase:'commentary',kind:'status'});
+    }
+    return this.ownsRun(params.runId);
+  }
+  start(model){this.selectModel(model);
+    if(this.record.publicSnapshot===QUEUED_TEXT)void this.partial({text:'正在继续处理请求。',phase:'commentary',kind:'status'});
     return this.enqueue(async()=>{if(this.record.delivered)return;
-    const s=await this.ensureSink();this.record.phase='running';this.manager.save(this.record);await s.start?.(this.record.selectedModel);});}
+    this.record.phase='running';this.manager.save(this.record);
+    if(this.record.source==='subagent-announce'&&!this.record.publicSnapshot&&!this.record.sinkState)return;
+    const s=await this.ensureSink();await s.start?.(this.record.selectedModel);});}
   partial(payload){if(!payload||payload.isReasoning||payload.phase==='analysis'||!clean(payload.text)||this.record.delivered)return;
-    const text=safeText(payload.text).slice(-100000);if(this.record.publicSnapshot===text)return;this.record.publicSnapshot=text;
+    const text=safeText(payload.text).slice(-100000);
+    // Native final-answer streaming arrives before final normalization. Hold
+    // control-token prefixes so a silent turn cannot create a preview card.
+    if(this.record.source==='subagent-announce'&&['NO_REPLY','REPLY_SKIP','ANNOUNCE_SKIP'].some(token=>token.startsWith(clean(text))))return;
+    if(this.record.publicSnapshot===text)return;this.record.publicSnapshot=text;
     if(this.partialQueued)return this.queue;this.partialQueued=true;
     return this.enqueue(async()=>{this.partialQueued=false;this.manager.save(this.record);const s=await this.ensureSink();await s.partial?.({...payload,text:this.record.publicSnapshot});});}
   observe(event){if(!this.ownsRun(event.runId))return;const d=event.data??{};
@@ -189,20 +249,31 @@ class TaskPresentation {
   capture(result){if(!result)return;const payloads=(result.payloads??[]).filter(publicPayload).map(p=>({...p,...p.text?{text:safeText(p.text)}:{}}));
     if(Array.isArray(result.payloads))this.record.payloads=copy(payloads);
     this.record.yielded=result.meta?.yielded===true||result.yielded===true;
-    this.record.executionFailed=result.meta?.aborted===true||payloads.some(p=>p.isError===true);
+    this.record.executionFailed=this.record.executionFailed===true||result.meta?.aborted===true||payloads.some(p=>p.isError===true);
     this.record.capturedTerminal=!this.record.yielded;this.manager.save(this.record);}
   async finish(result,error){if(this.record.delivered)return this.flush();
     if(result?.payloads)this.capture(result);
     if((result?.yielded===true||result?.meta?.yielded===true||(this.record.yielded&&typeof result?.text!=='string'&&typeof result?.result!=='string'))&&!error){this.record.phase='waiting';this.manager.save(this.record);return this.flush();}
     const text=typeof result?.text==='string'?result.text:typeof result?.result==='string'?result.result:undefined;
     let payloads=text!==undefined?[{text:safeText(text)},...this.record.payloads.filter(p=>p.mediaUrl||p.mediaUrls?.length).map(p=>({...p,text:undefined}))]:this.record.payloads;
-    if(error){const detail=String(error?.message??error);const reason=/取消|cancel|abort/iu.test(detail)?'任务已取消。':/超时|timeout/iu.test(detail)?'任务超时，尚未完成。':/重启/iu.test(detail)?'Gateway 重启后无法确认原执行状态，请回到原会话核对。':'任务未完成，请回到原会话查看错误。';payloads=[{text:'⚠️ '+reason,isError:true}];}
-    if(!payloads.length||payloads.every(p=>!p.mediaUrl&&!p.mediaUrls?.length&&(!clean(p.text)||['NO_REPLY','REPLY_SKIP','ANNOUNCE_SKIP'].includes(clean(p.text)))))payloads=[{text:'任务已结束，本轮没有文字结果。'}];
+    if(error){const detail=String(error?.message??error);const reason=/超时|timeout|timed out/iu.test(detail)?'任务超时，尚未完成。':/取消|cancel|abort/iu.test(detail)?'任务已取消。':/重启/iu.test(detail)?'Gateway 重启后无法确认原执行状态，请回到原会话核对。':'任务未完成，请回到原会话查看错误。';payloads=[{text:'⚠️ '+reason,isError:true}];}
+    const silent=p=>!p.mediaUrl&&!p.mediaUrls?.length&&!p.isError&&(!clean(p.text)||['NO_REPLY','REPLY_SKIP','ANNOUNCE_SKIP'].includes(clean(p.text)));
+    const suppress=this.record.source==='subagent-announce'&&!error&&!this.record.executionFailed&&payloads.every(silent);
+    payloads=payloads.filter(p=>!silent(p));
+    if(!payloads.length&&!suppress)payloads=[{text:this.record.executionFailed?'⚠️ 任务未完成，请回到原会话查看错误。':'任务已结束，本轮没有文字结果。',...(this.record.executionFailed?{isError:true}:{})}];
     // First terminal is canonical. Retries replay its exact payload rather than a late caller's result.
-    if(!this.record.executionOutcome){this.record.executionOutcome={result:{payloads:copy(payloads)},error:error?String(error?.message??error):null};
+    if(!this.record.executionOutcome){this.record.executionOutcome={result:{payloads:copy(payloads)},suppressed:suppress,error:error?String(error?.message??error):null};
       this.record.phase=error||this.record.executionFailed?'failed':'completed';this.manager.save(this.record);}
     payloads=this.record.executionOutcome.result.payloads;
-    return this.enqueue(async()=>{if(this.record.delivered)return;const s=await this.ensureSink();await this.factory.authorize?.(this.record.route);await s.start?.();await s.finish(payloads);
+    return this.enqueue(async()=>{if(this.record.delivered)return;
+      if(this.record.executionOutcome.suppressed){
+        // Close an existing preview without inventing a final payload or ACK.
+        // With no public content, do not even construct the native sender.
+        if(this.sink||this.record.sinkState){const s=await this.ensureSink();await s.suppress?.();await s.cleanup?.();}
+        this.record.suppressed=true;this.record.delivered=true;delete this.record.error;delete this.record.retryAfter;
+        this.manager.save(this.record);for(const id of this.record.runIds)if(this.manager.runs.get(id)===this)this.manager.runs.delete(id);return;
+      }
+      const s=await this.ensureSink();await this.factory.authorize?.(this.record.route);await s.start?.();await s.finish(payloads);
       this.record.delivered=true;delete this.record.error;delete this.record.retryAfter;this.manager.save(this.record);await this.settleDelivery();for(const id of this.record.runIds)if(this.manager.runs.get(id)===this)this.manager.runs.delete(id);await s.cleanup?.();});
   }
   flush(){return this.queue;}
@@ -211,7 +282,7 @@ class TaskPresentation {
     if(completion){this.record.deliveryCompletion=copy(completion);this.manager.save(this.record);}
   }
   async settleDelivery(){
-    const r=this.record;if(!r.delivered||!r.deliveryCompletion||r.deliverySettled||!this.manager.current(r))return;
+    const r=this.record;if(r.suppressed||!r.delivered||!r.deliveryCompletion||r.deliverySettled||!this.manager.current(r))return;
     const complete=globalThis[Symbol.for('openclaw.v.boundTaskDeliveryCompletion.v1')]?.complete;
     const receipt=r.sinkState?.receipts?.find(x=>x.visibleReplySent===true&&x.messageId);
     if(!complete||!receipt)return;
@@ -228,7 +299,7 @@ export function registerTaskPresentation(api,{onAgentEvent}={}) {
   if(!manager){manager=new TaskPresentationManager({getEntry:p=>api.runtime.agent.session.getSessionEntry(p),getConfig:()=>api.runtime.config?.loadConfig?.()??api.config,logger:api.logger});globalThis[PRESENTATION_KEY]=manager;}
   api.registerGatewayMethod(PRESENTATION_METHOD,opts=>manager.rpc(opts),{scope:'operator.write'});
   let unsubscribe,retryTimer;
-  api.registerService({id:'feishu-bound-task-presentation',start:async ctx=>{manager.closed=false;manager.directory=path.join(ctx.stateDir??process.env.OPENCLAW_STATE_DIR,'feishu-task-presentation');unsubscribe=onAgentEvent?.(e=>manager.onAgentEvent(e));await manager.recover();
+  api.registerService({id:'feishu-bound-task-presentation',start:async ctx=>{manager.closed=false;manager.listenProgress();manager.directory=path.join(ctx.stateDir??process.env.OPENCLAW_STATE_DIR,'feishu-task-presentation');unsubscribe=onAgentEvent?.(e=>manager.onAgentEvent(e));await manager.recover();
     retryTimer=setInterval(()=>{void manager.retryPending().catch(error=>api.logger.warn?.(String(error?.message??error)));},5000);retryTimer.unref?.();
   },stop:async()=>{clearInterval(retryTimer);unsubscribe?.();await manager.close();}});
 }
