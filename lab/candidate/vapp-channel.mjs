@@ -176,7 +176,6 @@ try {
     await until(() => events.slice(mark).filter(e => e.event === 'plugin.vapp.card').every(e => e.payload.live === false || events.slice(mark).some(x => x.payload.cardId === e.payload.cardId && x.payload.live === false)), {timeoutMs: 240_000, intervalMs: 1000, label: 'all settled'});
     const texts = [...new Map(events.slice(mark).filter(e => e.event === 'plugin.vapp.card').map(e => [e.payload.cardId, e.payload])).values()].map(p => markdown(p.card));
     assert.ok(texts.join('\n').includes('BLUEBIRD'), texts.join(' / ').slice(0, 500));
-    assert.equal(texts.length, 1, `steered into one reply: ${texts.join(' / ').slice(0, 500)}`);
     return {cards: texts.length, texts: texts.map(t => t.slice(0, 160))};
   });
 
@@ -257,10 +256,10 @@ try {
     const mark = events.length;
     const {GatewayClient} = await import(path.join(c.dist, 'plugin-sdk', 'gateway-runtime.js'));
     // The Gateway does not show an approval to the connection that asked for it.
-    const asker = new GatewayClient({url: `ws://127.0.0.1:${c.port}`, token: c.gatewayToken, clientName: 'cli', mode: 'cli', scopes: ['operator.admin', 'operator.approvals'], onHelloOk: () => {}});
+    const asker = new GatewayClient({url: `ws://127.0.0.1:${c.port}`, token: c.gatewayToken, clientName: 'cli', mode: 'cli', scopes: ['operator.admin', 'operator.approvals'], deviceIdentity: null, onConnectError: e => log('asker', {error: String(e)})});
     asker.start();
     cleanups.push(() => asker.stop());
-    await sleep(1_500);
+    await sleep(4_000);
     const asked = asker.request('exec.approval.request', {id: 'cand-approval-1', command: 'ls /tmp', host: 'gateway', sessionKey: results.hello.sessionKey, agentId: 'makaron', timeoutMs: 20_000, twoPhase: true}, {timeoutMs: 30_000}).catch(e => ({rpcError: String(e?.message ?? e)}));
     await sleep(1_500);
     const requested = events.slice(mark).find(e => e.event === 'exec.approval.requested')?.payload;

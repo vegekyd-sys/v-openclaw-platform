@@ -20,6 +20,7 @@ function harness(script) {
     updateMs: 0,
     call: async (method, params) => {
       if (method === "question.resolve") { resolved.push(params); return { ok: true }; }
+      if (method === "chat.history") return { messages: [{ role: "assistant", content: [{ type: "text", text: "读回的答案" }] }] };
       throw new Error(`unexpected ${method}`);
     },
     inbound: {
@@ -260,6 +261,15 @@ test("work on the chat that no vapp.send started gets a live card, and no duplic
   h.vapp.deliver({ to: "vapp:tianyi", text: "子任务结果" });
   await sleep(1600);
   assert.equal(h.cards().at(-1).removed, true, "the core delivered it as a message");
+});
+
+test("a run that streamed nothing still shows its answer", async () => {
+  const h = harness(async () => {});
+  await h.vapp.hello({ client: phone, context: h.context });
+  h.vapp.observeAgentEvent({ runId: "r3", sessionKey: "agent:makaron:vapp:direct:tianyi", stream: "lifecycle", data: { phase: "end" } });
+  await sleep(1600);
+  assert.ok(markdown(h.cards().at(-1).card).join().includes("读回的答案"));
+  assert.equal(h.cards().at(-1).live, false);
 });
 
 test("a run started by vapp.send is not observed twice", async () => {

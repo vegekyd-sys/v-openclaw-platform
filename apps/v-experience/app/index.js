@@ -25,7 +25,7 @@ const IN_WORKER = process.env.VLAB_WORKER_CHILD === "1";
 let runtime;
 let currentConfig;
 const getConfig = () => runtime?.config?.current?.() ?? currentConfig ?? {};
-const callGateway = (method, params, scopes = ["operator.questions"]) =>
+const callGateway = (method, params, scopes = ["operator.questions", "operator.read"]) =>
   callGatewayFromCli(method, { config: getConfig() }, params, { scopes, progress: false, timeoutMs: 10_000 });
 
 // Turns start from the channel account's own task (gateway.startAccount), as a

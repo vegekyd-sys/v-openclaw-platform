@@ -495,10 +495,11 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
 
   function observeAgentEvent(event) {
     const { runId, stream, sessionKey, data = {} } = event ?? {};
-    if (!runId || !sessionKey || event.isHeartbeat) return;
-    if (stream === "lifecycle") log(`vapp: run ${runId} ${data.phase} on ${sessionKey}`);
+    if (!runId || !sessionKey || event.isHeartbeat || ownRuns.has(runId)) return;
     let entry = observed.get(runId);
-    if (stream === "lifecycle" && data.phase === "start" && !entry) {
+    if (!entry) {
+      // Lifecycle start may come before the run has its session, so the first
+      // event that names this chat decides whose run it is.
       const user = userOfSession(sessionKey);
       if (!user) return;
       const own = [...(running.get(user.id) ?? [])].find((turn) => !turn.runId);
@@ -508,13 +509,10 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
         while (ownRuns.size > 200) ownRuns.delete(ownRuns.values().next().value);
         return;
       }
-      if (ownRuns.has(runId)) return;
-      entry = { turn: createTurn({ user, sessionKey }), user, startedAt: Date.now() };
+      entry = { turn: createTurn({ user, sessionKey }), user, sessionKey, startedAt: Date.now() };
       entry.turn.paintNow();
       observed.set(runId, entry);
-      return;
     }
-    if (!entry) return;
     const { turn } = entry;
     if (stream === "assistant") turn.partial(data.text);
     else if (stream === "tool" && data.phase === "start") turn.view.toolStart(data);
@@ -523,14 +521,29 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     else if (stream === "lifecycle" && (data.phase === "end" || data.phase === "error")) {
       observed.delete(runId);
       // The core's delivery of the same reply lands just after the run ends.
-      const timer = setTimeout(() => {
-        const answer = turn.answerText().trim();
-        const sent = recentSends.some((m) => m.userId === entry.user.id && m.at >= entry.startedAt && m.text && (!answer || m.text === answer || answer.includes(m.text)));
-        if (sent || !answer || vx.isSilentReply?.(answer) || /^NO_REPLY$/u.test(answer)) turn.discard();
-        else turn.finish({ failed: data.phase === "error" });
-      }, 1500);
+      const timer = setTimeout(() => { settleObserved(entry, data.phase === "error"); }, 1500);
       timer.unref?.();
     }
+  }
+
+  /** A run that streamed no text (Worker runs may not) still shows its answer, from the session's tail. */
+  async function settleObserved(entry, failed) {
+    const { turn, user, sessionKey, startedAt } = entry;
+    let answer = turn.answerText().trim();
+    if (!answer) {
+      try {
+        const { messages = [] } = (await call("chat.history", { sessionKey, limit: 2 })) ?? {};
+        const last = messages.at(-1);
+        const parts = Array.isArray(last?.content) ? last.content : [{ type: "text", text: last?.content }];
+        if (last?.role === "assistant") answer = parts.filter((p) => p?.type === "text").map((p) => text(p.text)).join("\n").trim();
+        if (answer) turn.partial(answer);
+      } catch (error) {
+        log(`vapp: last reply of ${sessionKey} unavailable: ${String(error?.message ?? error)}`);
+      }
+    }
+    const sent = recentSends.some((m) => m.userId === user.id && m.at >= startedAt && m.text && (!answer || m.text === answer || answer.includes(m.text)));
+    if (sent || !answer || /^NO_REPLY$/u.test(answer)) turn.discard();
+    else turn.finish({ failed });
   }
 
   // ---------------------------------------------------------- gateway methods
