@@ -586,6 +586,13 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     return { messageId, sessionKey: resolved.sessionKey };
   }
 
+  /** A card from outside a turn (an approval), rewritten by its id. */
+  function showCard(userId, { cardId, card, live, note }) {
+    const { route: resolved } = route(getConfig(), { id: userId });
+    publishCard(userId, { sessionKey: resolved.sessionKey, turnId: cardId, cardId, seq: Date.now(), final: !live, live, card });
+    if (note) notify(userId, { sessionKey: resolved.sessionKey, body: note });
+  }
+
   /** Stops the user's running turns with the channel's own /stop. */
   async function stop({ client, context }) {
     const user = requireUser(client);
@@ -632,6 +639,16 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     const user = requireUser(client);
     attach(user, client, context);
     const value = params?.value ?? {};
+    if (value.kind === "vapp-approval") {
+      if (!user.owner) return { ok: false, toast: "只有主人可以审批" };
+      try {
+        await inbound.resolveApproval?.({ cfg: getConfig(), approvalId: value.id, approvalKind: value.approvalKind, decision: value.decision, channel: CHANNEL_ID, accountId: ACCOUNT_ID, senderId: user.id });
+        return { ok: true };
+      } catch (error) {
+        log(`vapp: approval ${value.id} not resolved: ${String(error?.message ?? error)}`);
+        return { ok: false, toast: "这条审批已经处理过或已过期" };
+      }
+    }
     if (value.kind === "secret") {
       const q = questions.get(value.id);
       if (!q?.secret || q.turn.user.id !== user.id || q.state !== "pending") return { ok: false, toast: "这个请求已经结束了" };
@@ -687,5 +704,5 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     return sendMessage(user, { sessionKey: resolved.sessionKey, text: body, media, card });
   }
 
-  return { hello, send, action, deliver, stop, history, userReact, observeAgentEvent, runTurn, push, connections, questions };
+  return { showCard, hello, send, action, deliver, stop, history, userReact, observeAgentEvent, runTurn, push, connections, questions };
 }

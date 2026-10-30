@@ -10,6 +10,7 @@ import { callGatewayFromCli } from "openclaw/plugin-sdk/gateway-runtime";
 import { saveMediaBuffer } from "openclaw/plugin-sdk/media-store";
 import { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pipeline";
 import { createApns } from "./core/apns.js";
+import { createVappApprovals } from "./approvals.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,6 +42,7 @@ async function runAccount(ctx) {
   ctx.setStatus({ accountId: ctx.accountId, running: true, configured: true, enabled: true, lifecycle: "running" });
   turns.running = true;
   const unobserve = runtime.events.onAgentEvent((event) => vapp.observeAgentEvent(event));
+  approvals.registerContext({ channelRuntime: ctx.channelRuntime, accountId: ctx.accountId, abortSignal: ctx.abortSignal });
   try {
     while (!ctx.abortSignal.aborted) {
       while (turns.queue.length) void turns.queue.shift()();
@@ -100,11 +102,14 @@ const vapp = createVapp({
     dispatch: (params) => runtime.channel.inbound.dispatch(params),
     createPipeline: (params) => createChannelReplyPipeline(params),
     systemEvent: (message, options) => runtime.system.enqueueSystemEvent(message, options),
+    resolveApproval: (params) => approvals.resolve(params),
     saveMedia: saveMediaBuffer,
     toMediaFacts: toInboundMediaFactsWithMetadata,
   },
   log: (message) => console.log(`[vapp] ${message}`),
 });
+
+const approvals = createVappApprovals({ vx, showCard: (...args) => vapp.showCard(...args), log: (message) => console.log(`[vapp] ${message}`) });
 
 const userSchema = {
   type: "object",
@@ -188,6 +193,7 @@ const plugin = createChatChannelPlugin({
     },
     gateway: { startAccount: (ctx) => runAccount(ctx) },
     actions,
+    approvalCapability: approvals.capability,
   },
   outbound: {
     deliveryMode: "direct",

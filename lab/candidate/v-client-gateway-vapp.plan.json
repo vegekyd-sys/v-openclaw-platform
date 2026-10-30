@@ -28,6 +28,10 @@
       "target": "extensions/vapp/core/vapp.js"
     },
     {
+      "source": "apps/v-experience/app/approvals.js",
+      "target": "extensions/vapp/approvals.js"
+    },
+    {
       "source": "apps/v-experience/app/core/apns.js",
       "target": "extensions/vapp/core/apns.js"
     },

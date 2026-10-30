@@ -369,6 +369,53 @@ const SECRET_CARD_STATES = {
   cancelled: { title: "凭据请求已取消", template: "grey", line: "这次请求已取消，没有保存任何值。" },
 };
 
+const APPROVAL_KIND_LABEL = { exec: "命令", plugin: "插件操作", "system-agent": "系统操作" };
+const APPROVAL_DECISION_LABEL = { "allow-once": "允许一次", "allow-always": "总是允许", deny: "拒绝" };
+
+function approvalSubject(view) {
+  if (view.approvalKind === "exec") {
+    const lines = ["```", String(view.commandPreview || view.commandText || "").replaceAll("```", "``"), "```"];
+    if (view.cwd) lines.push(`目录：${view.cwd}`);
+    if (view.warningText) lines.push(`⚠️ ${String(view.warningText).slice(0, 400)}`);
+    return lines.join("\n");
+  }
+  if (view.approvalKind === "system-agent") return String(view.operationSummary || view.commandText || view.title || "").slice(0, 1200);
+  return [`**${String(view.title ?? "").slice(0, 200)}**`, view.description && String(view.description).slice(0, 1000), view.toolName && `工具：${view.toolName}`].filter(Boolean).join("\n");
+}
+
+/**
+ * An approval as a V card, the Feishu owner-DM layout. `view` is the Gateway's
+ * native approval view; a pending one has decision buttons posting
+ * `{kind: "vapp-approval", id, approvalKind, decision}`.
+ */
+export function approvalCard({ request, view, nowMs }) {
+  const kind = APPROVAL_KIND_LABEL[view.approvalKind] ?? "操作";
+  const elements = [cardMarkdown(approvalSubject(view))];
+  const meta = [view.agentId && `agent：${view.agentId}`];
+  const pending = view.phase === "pending" || (!view.phase && nowMs !== undefined);
+  if (pending) {
+    const expires = view.expiresAtMs ?? request?.expiresAtMs;
+    if (Number.isFinite(expires)) meta.push(`${Math.max(1, Math.round((expires - (nowMs ?? Date.now())) / 60000))} 分钟内有效`);
+    if (meta.some(Boolean)) elements.push(cardMarkdown(meta.filter(Boolean).join(" · "), "notation"));
+    const buttons = (view.actions ?? []).filter((a) => a?.action?.type === "approval" && a.action.approvalId && APPROVAL_DECISION_LABEL[a.action.decision]).map((a) => ({
+      tag: "button",
+      text: { tag: "plain_text", content: APPROVAL_DECISION_LABEL[a.action.decision] },
+      type: a.action.decision === "deny" ? "danger" : a.action.decision === "allow-once" ? "primary_filled" : "default",
+      behaviors: [{ type: "callback", value: { kind: "vapp-approval", id: a.action.approvalId, approvalKind: a.action.approvalKind, decision: a.action.decision } }],
+    }));
+    if (buttons.length) elements.push({ tag: "column_set", flex_mode: "flow", columns: buttons.map((button) => ({ tag: "column", width: "auto", elements: [button] })) });
+    return vCard(elements, cardHeader(`需要你审批：${kind}`, "blue"));
+  }
+  const timedOut = view.phase === "resolved" && view.decision === "deny" && !view.resolvedBy;
+  let title; let status; let template = "grey";
+  if (view.phase === "expired" || view.terminalStatus === "expired" || timedOut) { title = `已过期：${kind}`; status = "没有在时限内审批，什么也没有执行。"; }
+  else if (view.terminalStatus === "cancelled") { title = `已取消：${kind}`; status = "这条审批已取消，什么也没有执行。"; }
+  else if (view.decision === "deny") { title = `已拒绝：${kind}`; status = "已拒绝，什么也没有执行。"; }
+  else { title = `已批准：${kind}`; template = "blue"; status = view.decision === "allow-always" ? "已设为总是允许。" : "已批准。"; }
+  elements.push(cardMarkdown(status));
+  return vCard(elements, cardHeader(title, template));
+}
+
 export const SECRET_FIELD = "secret_value";
 
 /**

@@ -261,12 +261,18 @@ try {
     asker.start();
     cleanups.push(() => asker.stop());
     await sleep(4_000);
-    const asked = asker.request('exec.approval.request', {id: 'cand-approval-1', command: 'ls /tmp', host: 'gateway', sessionKey: results.hello.sessionKey, agentId: 'makaron', timeoutMs: 20_000, twoPhase: true}, {timeoutMs: 30_000}).catch(e => ({rpcError: String(e?.message ?? e)}));
+    const asked = asker.request('exec.approval.request', {id: 'cand-approval-1', command: 'ls /tmp', host: 'gateway', sessionKey: results.hello.sessionKey, agentId: 'makaron', timeoutMs: 60_000, twoPhase: true}, {timeoutMs: 30_000}).catch(e => ({rpcError: String(e?.message ?? e)}));
     await sleep(1_500);
-    const requested = events.slice(mark).find(e => e.event === 'exec.approval.requested')?.payload;
-    const resolved = requested ? await call('exec.approval.resolve', {id: requested.id, decision: 'deny'}).catch(e => ({rpcError: String(e?.message ?? e)})) : null;
-    await sleep(500);
-    return {asked: JSON.stringify(await Promise.race([asked, sleep(200)])).slice(0, 200), requested: JSON.stringify(requested ?? null).slice(0, 600), resolved: JSON.stringify(resolved).slice(0, 200), resolvedEvent: JSON.stringify(events.slice(mark).find(e => e.event === 'exec.approval.resolved')?.payload ?? null).slice(0, 300), names: events.slice(mark).map(e => e.event)};
+    const pending = turnSince(mark).all.find(p => p.cardId === 'a:cand-approval-1');
+    assert.ok(pending, `an approval card: ${JSON.stringify(await Promise.race([asked, sleep(200)])).slice(0, 200)}`);
+    const buttons = JSON.stringify(pending.card).match(/"kind":"vapp-approval"[^}]*/g) ?? [];
+    const deny = [...pending.card.body.elements].flatMap(e => e.columns ?? []).flatMap(col => col.elements).find(b => b.behaviors?.[0]?.value?.decision === 'deny');
+    const tap = await call('vapp.action', {value: deny.behaviors[0].value});
+    assert.equal(tap.ok, true, JSON.stringify(tap));
+    await until(() => turnSince(mark).all.filter(p => p.cardId === 'a:cand-approval-1').at(-1)?.live === false, {timeoutMs: 15_000, intervalMs: 200, label: 'approval card settled'});
+    const last = turnSince(mark).all.filter(p => p.cardId === 'a:cand-approval-1').at(-1);
+    assert.match(last.card.header.title.content, /已拒绝/);
+    return {buttons: buttons.length, title: last.card.header.title.content};
   });
 
   await scenario('history', async () => {
