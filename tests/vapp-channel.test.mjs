@@ -341,3 +341,35 @@ test("the app's session list has chats only, small rows, and is shared for a whi
   const other = { connId: "c2", connect: { device: { id: "dev-xinyi" } } };
   assert.deepEqual((await h.vapp.sessions({ client: other, context: h.context })).sessions, [], "not for other users");
 });
+
+test("Feishu pictures: groups from the bot's chat list, people when readable, nothing else", async () => {
+  const { createFeishuAvatars, sharpAvatar } = await import("../apps/v-experience/app/core/feishu-avatars.js");
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(String(url));
+    const json = (body) => ({ json: async () => ({ code: 0, ...body }) });
+    if (url.includes("tenant_access_token")) return json({ tenant_access_token: "t", expire: 7200 });
+    if (url.includes("/im/v1/chats?") && !url.includes("page_token")) return json({ data: { has_more: true, page_token: "p2", items: [{ chat_id: "oc_a", avatar: "https://s1-imfile.feishucdn.com/x~?image_size=100x100&format=jpeg" }] } });
+    if (url.includes("/im/v1/chats?")) return json({ data: { has_more: false, items: [{ chat_id: "oc_evil", avatar: "http://evil.example/x.png" }] } });
+    if (url.includes("/contact/v3/users/ou_ok")) return json({ data: { user: { avatar: { avatar_240: "https://s1-imfile.feishucdn.com/p~" } } } });
+    return { json: async () => ({ code: 41050, msg: "no permission" }) };
+  };
+  const avatars = createFeishuAvatars({ getConfig: () => ({ channels: { feishu: { appId: "a", appSecret: "s" } } }), fetchImpl });
+  await avatars.ready();
+  assert.match(avatars.lookup("agent:m:feishu:group:oc_a"), /image_size=240x240/);
+  assert.equal(avatars.lookup("agent:m:feishu:group:oc_evil"), undefined, "only Feishu's CDN");
+  assert.equal(avatars.lookup("agent:m:feishu:group:oc_missing"), undefined);
+  assert.equal(avatars.lookup("agent:m:vapp:direct:tianyi"), undefined);
+  assert.equal(avatars.lookup("agent:m:feishu:direct:ou_ok"), undefined, "fills in the background");
+  await sleep(10);
+  assert.equal(avatars.lookup("agent:m:feishu:direct:ou_ok"), "https://s1-imfile.feishucdn.com/p~");
+  avatars.lookup("agent:m:feishu:direct:ou_no");
+  await sleep(10);
+  const contactCalls = calls.filter((c) => c.includes("ou_no")).length;
+  avatars.lookup("agent:m:feishu:direct:ou_no");
+  await sleep(10);
+  assert.equal(calls.filter((c) => c.includes("ou_no")).length, contactCalls, "a refusal is remembered");
+  assert.equal(calls.filter((c) => c.includes("tenant_access_token")).length, 1);
+  assert.equal(sharpAvatar("javascript:alert(1)"), undefined);
+  assert.equal(sharpAvatar("https://s1-imfile.feishucdn.com/static-resource/v1/default-avatar_v3_1~?image_size=100x100"), undefined, "a generated placeholder is no picture");
+});

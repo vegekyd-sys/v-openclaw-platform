@@ -119,7 +119,7 @@ function createChatLog(store, log) {
  * @param {object} deps.inbound     {resolveRoute, buildContext, dispatch, saveMedia, toMediaFacts}
  * @param {(msg: string) => void} [deps.log]
  */
-export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updateMs = UPDATE_MS, startTurn = (job) => job(), store = memoryStore(), notify = () => {} }) {
+export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updateMs = UPDATE_MS, startTurn = (job) => job(), store = memoryStore(), notify = () => {}, avatars }) {
   const chatLog = createChatLog(store, log);
   const liveCards = new Map(); // userId -> Map(cardId -> payload) of cards still changing
   const running = new Map(); // userId -> Set of turns
@@ -615,7 +615,13 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
       sessionsCache = { at: Date.now(), pending };
       pending.catch(() => { sessionsCache = undefined; });
     }
-    return { sessions: await sessionsCache.pending };
+    const rows = await sessionsCache.pending;
+    await avatars?.ready();
+    // Pictures are looked up per request: they arrive later than the rows.
+    return { sessions: rows.map((row) => {
+      const avatar = avatars?.lookup(row.key);
+      return avatar ? { ...row, avatar } : row;
+    }) };
   }
 
   /** Stops the user's running turns with the channel's own /stop. */

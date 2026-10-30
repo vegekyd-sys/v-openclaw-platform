@@ -11,6 +11,7 @@ import { saveMediaBuffer } from "openclaw/plugin-sdk/media-store";
 import { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pipeline";
 import { createApns } from "./core/apns.js";
 import { createVappApprovals } from "./approvals.js";
+import { createFeishuAvatars } from "./core/feishu-avatars.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -93,6 +94,7 @@ const vapp = createVapp({
   vx,
   store: fileStore,
   notify: (userId, note) => { apns.notify(userId, note); },
+  avatars: createFeishuAvatars({ getConfig, log: (message) => console.log(`[vapp] ${message}`) }),
   startTurn,
   getConfig,
   call: (method, params) => callGateway(method, params),
