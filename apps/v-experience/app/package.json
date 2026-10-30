@@ -1,0 +1,31 @@
+{
+  "name": "@versa/openclaw-vapp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "core/",
+    "index.js",
+    "v-experience.mjs",
+    "openclaw.plugin.json"
+  ],
+  "peerDependencies": {
+    "openclaw": ">=2026.9.1"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ],
+    "channel": {
+      "id": "vapp",
+      "label": "V App",
+      "selectionLabel": "V App",
+      "docsPath": "/channels/vapp",
+      "blurb": "V 的 iOS App"
+    },
+    "compat": {
+      "pluginApi": ">=2026.9.1",
+      "minGatewayVersion": "2026.9.1"
+    }
+  }
+}

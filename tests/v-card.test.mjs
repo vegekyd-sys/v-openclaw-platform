@@ -56,6 +56,18 @@ test("question card: options post the record id, staging adds 确认, answered c
   assert.equal(fixtures["question-answered"].body.elements[0].content, "✓ 已选择：火锅、寿司");
 });
 
+test("link card: url buttons open, command buttons post the command", () => {
+  const secret = fixtures["link-secret"];
+  assert.equal(secret.header.title.content, "🔑 V 需要凭据 GITHUB_TOKEN");
+  assert.deepEqual(secret.body.elements.at(-1).behaviors[0], { type: "open_url", default_url: "https://secrets.example/e/abc" });
+
+  const handoff = fixtures["link-handoff"].body.elements;
+  assert.equal(handoff[0].tag, "img");
+  const buttons = handoff.filter((e) => e.tag === "button");
+  assert.deepEqual(buttons.map((b) => b.text.content), ["接管电脑", "我完成了", "跳过"]);
+  assert.deepEqual(buttons[1].behaviors[0].value, { kind: "command", command: "/v-handback h_1a2b" });
+});
+
 test("work view snapshot carries what compose() renders", () => {
   const view = vx.createWorkView({ sessionKey: "agent:main:vapp:direct:u1" });
   view.itemEvent({ kind: "preamble", itemId: "i1", progressText: "先查一下记录" });

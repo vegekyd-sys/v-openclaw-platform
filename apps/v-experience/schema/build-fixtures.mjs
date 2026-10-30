@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { questionCard, workCard } from "../v-experience.mjs";
+import { linkVCard, questionCard, workCard } from "../v-experience.mjs";
 
 const plan = [
   { step: "读取上周的停顿记录", status: "completed" },
@@ -38,6 +38,17 @@ export const fixtures = {
   "question-multi": questionCard(meal, { staged: { 0: ["寿司"] } }),
   "question-two": questionCard(trip),
   "question-answered": questionCard(meal, { state: "answered", answers: { answers: { meal: ["火锅", "寿司"] } } }),
+  "link-secret": linkVCard({
+    title: "🔑 V 需要凭据 GITHUB_TOKEN",
+    lines: ["用来读取私有仓库", "只用于：api.github.com", "链接只能用一次、10 分钟内有效；值不会出现在聊天记录里。"],
+    buttons: [{ label: "填写凭据", url: "https://secrets.example/e/abc" }],
+  }),
+  "link-handoff": linkVCard({
+    title: "电脑 · 需要你操作",
+    lines: ["登录页需要扫码，请接管 V 的电脑完成。"],
+    image: { alt: "V 的电脑", ref: "/home/openclaw/w/desktop/v-desktop-handoff-h_1a2b.jpg" },
+    buttons: [{ label: "接管电脑", url: "https://desk.example/h_1a2b" }, { label: "我完成了", command: "/v-handback h_1a2b" }, { label: "跳过", command: "/v-skip h_1a2b" }],
+  }),
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

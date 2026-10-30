@@ -345,6 +345,24 @@ export function questionCard(record, { state = "pending", staged = {}, answers }
   return vCard(elements, cardHeader("V 想问你", "blue"));
 }
 
+/**
+ * A link card (`{title, lines, buttons, image?}`: the credential link, V's
+ * 「电脑」 handoff card) as a V card. URL buttons open the link; command
+ * buttons post `{kind: "command", command}`, which the channel sends as the
+ * tapper's message, as DingTalk and WeCom do.
+ */
+export function linkVCard(card, { template = "blue" } = {}) {
+  const elements = [];
+  if (card.image?.ref) elements.push({ tag: "img", img_key: card.image.ref, alt: { tag: "plain_text", content: card.image.alt ?? "" } });
+  if (card.lines?.length) elements.push(cardMarkdown(card.lines.join("\n")));
+  for (const [i, b] of (card.buttons ?? []).entries()) {
+    const behavior = b.url ? { type: "open_url", default_url: b.url } : b.command ? { type: "callback", value: { kind: "command", command: b.command } } : undefined;
+    if (!behavior) continue;
+    elements.push({ tag: "button", text: { tag: "plain_text", content: b.label }, type: i === 0 ? "primary_filled" : "default", width: "fill", behaviors: [behavior] });
+  }
+  return vCard(elements, card.title ? cardHeader(card.title, template) : undefined);
+}
+
 // v-experience-session-kind-v1: 「会话请求」 is a sessions_send request another session is working on.
 const KIND_ORDER = ["会话请求", "子 agent", "后台命令", "生图", "生成视频", "生成音乐", "自动化", "后台任务"];
 
