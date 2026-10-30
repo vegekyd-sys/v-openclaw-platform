@@ -49,7 +49,7 @@ export function resolveUser(cfg, client) {
  * @param {object} deps.inbound     {resolveRoute, buildContext, dispatch, saveMedia, toMediaFacts}
  * @param {(msg: string) => void} [deps.log]
  */
-export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updateMs = UPDATE_MS }) {
+export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updateMs = UPDATE_MS, startTurn = (job) => job() }) {
   const connections = new Map(); // userId -> Map(connId -> at)
   let broadcastToConnIds; // set by the first vapp.* request (the Gateway's context)
   const questions = new Map(); // question id -> {turn, record, staged, state, answers}
@@ -376,8 +376,9 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     }
     const media = await inboundMedia(params?.media);
     if (!body && !media.length) throw Object.assign(new Error("消息是空的"), { code: "INVALID_REQUEST" });
-    // The turn runs on; the app follows it through plugin.vapp.card events.
-    void runTurn(user, { body, media, messageId, cfg }).catch((error) => log(`vapp: turn failed: ${String(error?.message ?? error)}`));
+    // The turn runs on (started by the channel account, see index.js); the app
+    // follows it through plugin.vapp.card events.
+    startTurn(() => runTurn(user, { body, media, messageId, cfg }).catch((error) => log(`vapp: turn failed: ${String(error?.message ?? error)}`)));
     const { route: resolved } = route(cfg, user);
     return { messageId, sessionKey: resolved.sessionKey };
   }

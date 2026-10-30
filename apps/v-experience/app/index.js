@@ -23,8 +23,36 @@ const getConfig = () => runtime?.config?.current?.() ?? currentConfig ?? {};
 const callGateway = (method, params, scopes = ["operator.questions"]) =>
   callGatewayFromCli(method, { config: getConfig() }, params, { scopes, progress: false, timeoutMs: 10_000 });
 
+// Turns start from the channel account's own task (gateway.startAccount), as a
+// polling channel's do. Work started from inside a Gateway request outlives
+// the request's admission and the Gateway refuses it as draining.
+const turns = { queue: [], wake: undefined, running: false };
+const startTurn = (job) => {
+  if (!turns.running) throw Object.assign(new Error("V App 渠道还没有启动"), { code: "UNAVAILABLE" });
+  turns.queue.push(job);
+  turns.wake?.();
+};
+async function runAccount(ctx) {
+  ctx.setStatus({ accountId: ctx.accountId, running: true, configured: true, enabled: true, lifecycle: "running" });
+  turns.running = true;
+  try {
+    while (!ctx.abortSignal.aborted) {
+      while (turns.queue.length) void turns.queue.shift()();
+      await new Promise((resolve) => {
+        turns.wake = resolve;
+        ctx.abortSignal.addEventListener("abort", resolve, { once: true });
+      });
+      turns.wake = undefined;
+    }
+  } finally {
+    turns.running = false;
+    ctx.setStatus({ accountId: ctx.accountId, running: false, configured: true, enabled: true, lifecycle: "stopped" });
+  }
+}
+
 const vapp = createVapp({
   vx,
+  startTurn,
   getConfig,
   call: (method, params) => callGateway(method, params),
   inbound: {
@@ -93,6 +121,7 @@ const plugin = createChatChannelPlugin({
         peer: { kind: "direct", id: target }, chatType: "direct", from: `${CHANNEL_ID}:${accountId ?? ACCOUNT_ID}`, to: target,
       }),
     },
+    gateway: { startAccount: (ctx) => runAccount(ctx) },
   },
   outbound: {
     deliveryMode: "direct",

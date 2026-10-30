@@ -86,6 +86,20 @@ App 上线后 `vapp.history` 补齐（以后加推送）。
 
 验收：同一个回合，假飞书收到的卡片和 App 收到的 V 卡片语义一致（答案、清单、后台行、提问）。
 
+## 3.1 第一版实现（2026-10-30）
+
+- 插件：`apps/v-experience/app/`（`index.js` 接 9.1 SDK，`core/vapp.js` 是逻辑，测试 `tests/vapp-channel.test.mjs`）。
+  安装时把 `apps/v-experience/v-experience.mjs` 复制到插件目录覆盖同名转发文件（插件加载器不支持顶层 await）。
+- 配置：`channels.vapp = {defaultUser, users: {<id>: {name, owner, devices: [设备 ID]}}}`；
+  `bindings` 加 `{agentId, match: {channel: "vapp"}}`；`commands.ownerAllowFrom` 加 `vapp:<主人 id>`。
+  没列在 `devices` 里的已配对设备算 `defaultUser`（只有主人用的阶段）。
+- 方法（都是 `operator.write`）：`vapp.hello` → `{userId, sessionKey, cardVersion}`；`vapp.send {text, media?, clientMessageId}`
+  （有待答问题时直接当回答）；`vapp.action {value}`（`question` / `command` 回调）；`vapp.deliver`（Worker 等其他进程的出站转给 Gateway）。
+- 事件：`plugin.vapp.card {sessionKey, turnId, cardId, seq, final, card | removed}`，同一 `cardId` 按 `seq` 原地替换；
+  提问卡 `cardId = q:<questionId>`；问题答完后回复接着出在新卡片 `<turnId>:<n+1>`。`plugin.vapp.message {id, sessionKey, text?, media?, card?}`。
+- App（v-voice `claude/v-client-feishu-cards`）：连上后调 `vapp.hello`，App 私聊走上面这套；其他会话仍是控制台视图。
+- 还没做：`vapp.history`（App 现在用 `chat.history` 补历史）、审批卡、推送、多用户登录。
+
 ## 4. 待确认
 
 - 9.1 的渠道插件最小必需面（`registerChannel` 的哪些适配器可以省）——照钉钉连接器的结构先跑通再删。
