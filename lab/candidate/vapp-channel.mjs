@@ -51,7 +51,9 @@ async function connectApp() {
 }
 const call = (method, params, timeoutMs = 30_000) => app.request(method, params, {timeoutMs});
 
+const ONLY = process.env.VAPP_ONLY ? new Set(process.env.VAPP_ONLY.split(',')) : null;
 async function scenario(name, fn) {
+  if (ONLY && !ONLY.has(name)) return;
   const startedAt = Date.now();
   try {
     results.scenarios[name] = {ok: true, ...(await fn()), ms: Date.now() - startedAt};
@@ -253,7 +255,13 @@ try {
 
   await scenario('approval-events', async () => {
     const mark = events.length;
-    const asked = call('exec.approval.request', {id: 'cand-approval-1', command: 'ls /tmp', host: 'gateway', sessionKey: results.hello.sessionKey, agentId: 'makaron', timeoutMs: 20_000, twoPhase: true}, 30_000).catch(e => ({rpcError: String(e?.message ?? e)}));
+    const {GatewayClient} = await import(path.join(c.dist, 'plugin-sdk', 'gateway-runtime.js'));
+    // The Gateway does not show an approval to the connection that asked for it.
+    const asker = new GatewayClient({url: `ws://127.0.0.1:${c.port}`, token: c.gatewayToken, clientName: 'cli', mode: 'cli', scopes: ['operator.admin', 'operator.approvals'], onHelloOk: () => {}});
+    asker.start();
+    cleanups.push(() => asker.stop());
+    await sleep(1_500);
+    const asked = asker.request('exec.approval.request', {id: 'cand-approval-1', command: 'ls /tmp', host: 'gateway', sessionKey: results.hello.sessionKey, agentId: 'makaron', timeoutMs: 20_000, twoPhase: true}, {timeoutMs: 30_000}).catch(e => ({rpcError: String(e?.message ?? e)}));
     await sleep(1_500);
     const requested = events.slice(mark).find(e => e.event === 'exec.approval.requested')?.payload;
     const resolved = requested ? await call('exec.approval.resolve', {id: requested.id, decision: 'deny'}).catch(e => ({rpcError: String(e?.message ?? e)})) : null;
@@ -270,7 +278,7 @@ try {
   });
 
   results.eventCounts = events.reduce((acc, e) => ({...acc, [e.event]: (acc[e.event] ?? 0) + 1}), {});
-  results.gatewayVappLines = c.lines.filter(l => /\[vapp\]/.test(l.line)).map(l => l.line.slice(0, 300)).slice(-40);
+  results.gatewayVappLines = c.lines.filter(l => /\[vapp\]|queue|steer/i.test(l.line)).map(l => l.line.slice(0, 300)).slice(-40);
 } catch (error) {
   results.fatal = String(error?.stack ?? error).slice(0, 3000);
   results.gatewayTail = c?.lines.slice(-80).map(l => l.line.slice(0, 300));

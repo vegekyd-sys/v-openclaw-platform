@@ -496,6 +496,7 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
   function observeAgentEvent(event) {
     const { runId, stream, sessionKey, data = {} } = event ?? {};
     if (!runId || !sessionKey || event.isHeartbeat) return;
+    if (stream === "lifecycle") log(`vapp: run ${runId} ${data.phase} on ${sessionKey}`);
     let entry = observed.get(runId);
     if (stream === "lifecycle" && data.phase === "start" && !entry) {
       const user = userOfSession(sessionKey);

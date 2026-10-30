@@ -143,8 +143,7 @@ async function sendOut({ cfg, to, text, mediaUrl, payload }) {
   if (cfg) currentConfig = cfg;
   const media = [...new Set([mediaUrl, payload?.mediaUrl, ...(payload?.mediaUrls ?? [])].filter((m) => typeof m === "string" && m.trim()))].map((source) => ({ source }));
   const body = payload?.text ?? text ?? "";
-  const presentation = payload?.presentation ?? payload?.channelData?.presentation;
-  const link = presentation ? await keepCardImage(vx.linkCardFromPresentation(presentation, body, { commands: true })) : undefined;
+  const link = payload?.channelData?.vLinkCard ? await keepCardImage(payload.channelData.vLinkCard) : undefined;
   const message = { to, text: link ? undefined : body, media, ...(link ? { card: vx.linkVCard(link) } : {}) };
   const result = IN_WORKER ? await callGateway("vapp.deliver", message, ["operator.write"]) : vapp.deliver(message);
   return { channel: CHANNEL_ID, messageId: result?.id ?? "" };
@@ -192,6 +191,12 @@ const plugin = createChatChannelPlugin({
   },
   outbound: {
     deliveryMode: "direct",
+    // Buttons as V cards; a command button comes back as the tapper's message (vapp.action).
+    presentationCapabilities: { supported: true, buttons: true, selects: false, context: true, divider: true },
+    renderPresentation: ({ payload, presentation }) => {
+      const card = vx.linkCardFromPresentation(presentation, payload.text, { commands: true });
+      return card ? { ...payload, text: vx.linkCardText(card), channelData: { ...payload.channelData, vLinkCard: card } } : null;
+    },
     sendPayload: (ctx) => sendOut(ctx),
     sendText: (ctx) => sendOut(ctx),
     sendMedia: (ctx) => sendOut(ctx),

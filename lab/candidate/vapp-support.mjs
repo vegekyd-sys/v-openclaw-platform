@@ -16,6 +16,7 @@ export function installVapp(c, {userId = 'tianyi', name = '天懿'} = {}) {
     if (Array.isArray(config.plugins.allow)) config.plugins.allow.push('vapp');
     config.channels = {...(config.channels ?? {}), vapp: {enabled: true, defaultUser: userId, users: {[userId]: {name, owner: true}}}};
     config.bindings = [...(config.bindings ?? []), {agentId: AGENT, match: {channel: 'vapp'}}];
+    config.messages = {...config.messages, queue: {...config.messages?.queue, mode: 'steer'}}; // as on V
     config.commands = {...(config.commands ?? {}), ownerAllowFrom: [...(config.commands?.ownerAllowFrom ?? []), `vapp:${userId}`]};
   };
   const edit = (file, change) => {
