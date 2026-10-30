@@ -2,16 +2,15 @@
 // Design: docs/v-app-channel.md. The logic is in core/vapp.js; this file wires
 // it to the 9.1 plugin SDK.
 //
-// v-experience.mjs is installed next to this file (as the other channels get
-// it); in the repository it is one directory up.
+// v-experience.mjs is copied next to this file when installed, as the other
+// channels get it; in the repository that file only re-exports ../v-experience.mjs.
 import { createChatChannelPlugin, defineChannelPluginEntry, buildChannelOutboundSessionRoute } from "openclaw/plugin-sdk/channel-core";
 import { buildChannelInboundEventContext, resolveChannelInboundRouteEnvelope, toInboundMediaFactsWithMetadata } from "openclaw/plugin-sdk/channel-inbound";
 import { callGatewayFromCli } from "openclaw/plugin-sdk/gateway-runtime";
 import { saveMediaBuffer } from "openclaw/plugin-sdk/media-store";
 
 import { ACCOUNT_ID, CHANNEL_ID, createVapp, vappConfig } from "./core/vapp.js";
-
-const vx = await import("./v-experience.mjs").catch(() => import("../v-experience.mjs"));
+import * as vx from "./v-experience.mjs";
 
 // Turns and connections live in the Gateway. Worker children and CLI processes
 // load the channel too (the message tool resolves its target there); their
