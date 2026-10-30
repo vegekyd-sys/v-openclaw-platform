@@ -41,6 +41,7 @@ async function connectApp() {
     app = new GatewayClient({
       url: `ws://127.0.0.1:${c.port}`, token: c.gatewayToken, clientName: 'openclaw-ios', mode: 'ui', platform: 'ios',
       scopes: ['operator.approvals', 'operator.questions', 'operator.read', 'operator.write'],
+      caps: ['tool-events', 'approvals'],
       onEvent: e => { if (/^plugin\.vapp\.|approval/.test(String(e.event))) events.push({at: Date.now(), event: e.event, payload: e.payload}); },
       onHelloOk: () => { clearTimeout(timer); resolve(); },
       onConnectError: e => { clearTimeout(timer); reject(e); },

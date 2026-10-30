@@ -93,12 +93,33 @@ App 上线后 `vapp.history` 补齐（以后加推送）。
 - 配置：`channels.vapp = {defaultUser, users: {<id>: {name, owner, devices: [设备 ID]}}}`；
   `bindings` 加 `{agentId, match: {channel: "vapp"}}`；`commands.ownerAllowFrom` 加 `vapp:<主人 id>`。
   没列在 `devices` 里的已配对设备算 `defaultUser`（只有主人用的阶段）。
-- 方法（都是 `operator.write`）：`vapp.hello` → `{userId, sessionKey, cardVersion}`；`vapp.send {text, media?, clientMessageId}`
-  （有待答问题时直接当回答）；`vapp.action {value}`（`question` / `command` 回调）；`vapp.deliver`（Worker 等其他进程的出站转给 Gateway）。
-- 事件：`plugin.vapp.card {sessionKey, turnId, cardId, seq, final, card | removed}`，同一 `cardId` 按 `seq` 原地替换；
-  提问卡 `cardId = q:<questionId>`；问题答完后回复接着出在新卡片 `<turnId>:<n+1>`。`plugin.vapp.message {id, sessionKey, text?, media?, card?}`。
+- 方法（都是 `operator.write`）：
+  - `vapp.hello` → `{userId, sessionKey, cardVersion}`
+  - `vapp.send {text, media?, quote?, clientMessageId}`：有待答问题时直接当回答。附件单个不超过 18 MB（一帧 25 MiB）。
+  - `vapp.action {value, form?}`：`question` / `command` / `secret` 回调。`secret` 的值只进 `question.resolve`，不进日志和记录。
+  - `vapp.stop`：用渠道自己的 `/stop` 停掉这个用户进行中的回合。
+  - `vapp.history {before?, limit?}` → `{items, hasMore, live}`：见下面的聊天记录。
+  - `vapp.react {messageId, emoji, remove?}`：用户加表情，V 在下一轮知道。V 这边走 `message` 工具的 `react`。
+  - `vapp.push {token, sandbox?}`：登记 APNs 令牌。
+  - `vapp.deliver`：Worker 等其他进程的出站转给 Gateway。
+- 事件：`plugin.vapp.card {sessionKey, turnId, cardId, seq, at, final, live, card | removed}`，同一 `cardId` 按 `seq` 原地替换，
+  `live` 表示还在变；提问卡 `cardId = q:<questionId>`；问题答完后回复接着出在新卡片 `<turnId>:<n+1>`。
+  `plugin.vapp.message {id, sessionKey, at, text?, media?, card?}`；`plugin.vapp.user`（用户自己发的，多设备同步）；`plugin.vapp.reaction`。
+- 聊天记录：`<state>/vapp/<user>.jsonl`，每人保留最近 600 条（用户消息、定稿卡片、消息、表情），异步写，不碰会话转录，
+  所以大会话也不会卡 Gateway。进行中的卡片只在内存（`live`），断线重连时随 `vapp.history` 补回；App 里还显示进行中、
+  但服务端既没记录也不在 `live` 里的卡片，是 Gateway 重启切断的，App 标为「连接中断」。
+- 其他来源的回合：`runtime.events.onAgentEvent` 看到这个会话上不是 `vapp.send` 发起的回合（跨会话派活、语音委派、
+  定时续接、子 agent 回报、别的设备的操作者消息）也出同样的卡片；核心随后用消息送达同一份回复时，卡片撤掉不重复。
+  生命周期开始事件可能还没有会话键，所以按第一个带会话键的事件认领。Worker 回合可能不流式，结束时从 `chat.history` 尾部取答案。
+- 审批：App 以 `operator.approvals` 收 `exec/plugin.approval.requested`，卡片出现在 App 私聊（和飞书发到 owner 私聊一致）。
+- 推送：`channels.vapp.apns = {keyFile, keyId, teamId, bundleId}`；没配就不发。每个回复、提问、消息都推，
+  因为服务端判断不了 App 是否真在前台（断掉的连接几分钟内看着还活着），由 App 在正在看那个会话时隐藏横幅。
 - App（v-voice `claude/v-client-feishu-cards`）：连上后调 `vapp.hello`，App 私聊走上面这套；其他会话仍是控制台视图。
-- 还没做：`vapp.history`（App 现在用 `chat.history` 补历史）、审批卡、推送、多用户登录。
+- 还没做：多用户登录；`session.identityLinks` 需要部署时配 Tianyi 的飞书 open_id；飞书群的回复只在 App 内（`deliver:false`），
+  要不要代发到飞书群待定。
+
+已知差异：回复中发的第二条消息现在是紧接着的第二条回复，内容不丢，但没有并入当前回合（核心走了 followup 而不是 steer）。
+钉钉的 candidate 要求并入。原因待查。
 
 ## 4. 待确认
 
