@@ -181,7 +181,8 @@
         "tests/prune-openclaw-session-hotset.test.mjs",
         "tests/patch-openclaw91-dingtalk-peer-case.test.mjs",
         "scripts/patch-openclaw91-archive-retention-cutoff.test.mjs",
-        "scripts/patch-openclaw91-workboard-sweep-light.test.mjs"
+        "scripts/patch-openclaw91-workboard-sweep-light.test.mjs",
+        "tests/third-party-v-bytes.test.mjs"
       ]
     },
     {
