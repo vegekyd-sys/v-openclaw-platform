@@ -9,7 +9,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {prepareCandidate, AGENT, until, sleep} from './bound-task-support.mjs';
+import {prepareCandidate, until, sleep} from './bound-task-support.mjs';
+import {installVapp} from './vapp-support.mjs';
 
 const results = {scenarios: {}};
 const cleanups = [];
@@ -73,27 +74,7 @@ async function finalOf(mark, {timeoutMs = 240_000, cardSuffix} = {}) {
 try {
   c = await prepareCandidate({harness: process.env.VAPP_HARNESS ?? 'worker', maxWorkers: 2, registerCleanup: fn => cleanups.push(fn)});
 
-  // ---- vapp: plugin, channel config, binding, owner
-  const runtime = process.env.VLAB_CANDIDATE_RUNTIME;
-  const pluginDir = path.join(runtime, 'extensions', 'vapp');
-  assert(fs.existsSync(path.join(pluginDir, 'v-experience.mjs')), 'vapp plugin installed with v-experience.mjs');
-  const vappChannel = {enabled: true, defaultUser: 'tianyi', users: {tianyi: {name: '天懿', owner: true}}};
-  const addVapp = (config, {channel = true} = {}) => {
-    config.plugins.load.paths.push(pluginDir);
-    config.plugins.entries.vapp = {enabled: true};
-    if (Array.isArray(config.plugins.allow)) config.plugins.allow.push('vapp');
-    if (channel) config.channels = {...(config.channels ?? {}), vapp: vappChannel};
-    config.bindings = [...(config.bindings ?? []), {agentId: AGENT, match: {channel: 'vapp'}}];
-    config.commands = {...(config.commands ?? {}), ownerAllowFrom: [...(config.commands?.ownerAllowFrom ?? []), 'vapp:tianyi']};
-  };
-  const config = JSON.parse(fs.readFileSync(c.configPath, 'utf8'));
-  addVapp(config);
-  fs.writeFileSync(c.configPath, `${JSON.stringify(config, null, 2)}\n`, {mode: 0o600});
-  // The Worker resolves message-tool targets itself: it needs the channel too.
-  const workerConfigPath = config.plugins.entries['vlab-agent-worker-isolation'].config.workerConfigPath;
-  const workerConfig = JSON.parse(fs.readFileSync(workerConfigPath, 'utf8'));
-  addVapp(workerConfig);
-  fs.writeFileSync(workerConfigPath, `${JSON.stringify(workerConfig, null, 2)}\n`, {mode: 0o600});
+  installVapp(c);
 
   const ready = await c.start({timeoutMs: 300_000});
   log('gateway-ready', {readyMs: ready.readyMs, harness: c.harness, model: c.model});

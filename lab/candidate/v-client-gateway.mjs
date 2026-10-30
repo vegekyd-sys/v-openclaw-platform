@@ -11,10 +11,12 @@
 // (mode 0600, server side only). Create /tmp/vclient-gateway/stop, or wait
 // VCLIENT_HOLD_MINUTES, to shut it down. Optional commands can be queued as
 // /tmp/vclient-gateway/inject-<n>.json ({chat:"dm"|"group", text}) to post a
-// Feishu message as the owner while the client watches.
+// Feishu message as the owner while the client watches. With VCLIENT_VAPP=1
+// the plan also installs the vapp channel plugin (vapp-support.mjs).
 import fs from 'node:fs';
 import path from 'node:path';
 import {prepareCandidate, OWNER, DM_CHAT, GROUP_B, dmKey, groupKey, until, sleep} from './bound-task-support.mjs';
+import {installVapp} from './vapp-support.mjs';
 
 const dir = '/tmp/vclient-gateway';
 const holdMs = Number(process.env.VCLIENT_HOLD_MINUTES ?? 120) * 60_000;
@@ -33,6 +35,8 @@ async function post(chat, text) {
 
 try {
   c = await prepareCandidate({harness: process.env.VCLIENT_HARNESS ?? 'worker', maxWorkers: 2, registerCleanup: fn => cleanups.push(fn)});
+  // VCLIENT_VAPP=1: also the vapp channel, so the app gets its own chat with V cards.
+  if (process.env.VCLIENT_VAPP === '1') installVapp(c);
   const ready = await c.start({timeoutMs: 240_000});
   log('gateway-ready', {port: c.port, readyMs: ready.readyMs, harness: c.harness, model: c.model});
 
