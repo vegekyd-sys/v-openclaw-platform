@@ -134,6 +134,18 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
     rpc,
     logs: () => logs.join(""),
     feishu: fakeFeishu,
+    /** Runs the target's CLI against this Gateway's state and config. */
+    cli: (args) =>
+      new Promise((resolve) => {
+        const c = spawn(process.execPath, ["dist/index.js", ...args], {
+          cwd: targetDir,
+          env: { ...process.env, OPENCLAW_STATE_DIR: stateDir, OPENCLAW_CONFIG_PATH: configPath, ...env },
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        let out = "";
+        for (const s of [c.stdout, c.stderr]) s.on("data", (d) => (out += d));
+        c.on("exit", (code) => resolve({ code, out }));
+      }),
     /** Pushes one user message into the Feishu channel. */
     feishuSend: (opts) => sendFeishuEvent(webhookPort, textEvent(opts)),
     feishuEvent: (event, type) => sendFeishuEvent(webhookPort, event, type),

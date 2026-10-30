@@ -49,7 +49,7 @@ export default [
     },
   },
   {
-    id: "E3/deepseek-output-capped-to-room-left",
+    id: "E3/deepseek-over-budget-is-refused",
     ledger: ["E3"],
     boot: {
       config: {
@@ -70,14 +70,12 @@ export default [
     },
     timeoutMs: 120_000,
     async run({ gw, assert }) {
-      // The budget estimates two bytes per token: about 850k tokens, under the 1,048,576 limit
-      // with less room left than the configured 384,000.
-      await gw.turn("x".repeat(1_700_000), { timeoutMs: 100_000 }).catch(() => {});
-      const req = gw.model.requests[0];
-      assert(req, "no model request");
-      const limit = req.body.max_tokens ?? req.body.max_completion_tokens;
-      assert(limit < 384000, `max tokens stayed at ${limit} with a prompt near the context limit`);
-      return `max tokens ${limit}`;
+      // Two bytes per token is V's conservative estimate: this prompt counts as over the
+      // provider's 1,048,576 limit although four characters per token says it fits.
+      const r = await gw.turn("x".repeat(2_200_000), { timeoutMs: 100_000 }).catch((e) => ({ text: `ERR ${e.message}` }));
+      assert(gw.model.requests.length === 0, `the over-budget prompt was sent to the provider ${gw.model.requests.length} time(s)`);
+      assert(/上下文|压缩/.test(r.text), `no Chinese budget notice: ${r.text.slice(0, 200)}`);
+      return r.text.slice(0, 80);
     },
   },
 ];
