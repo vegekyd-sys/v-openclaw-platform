@@ -149,8 +149,8 @@
       "layer": "core",
       "path": "builtin-openclaw-zQV8Wwjr.js",
       "sha256": "a44b846a3a56be86a09e7aa0259a6ec64663d6c92a5861cd67fe4c88a83015f9",
-      "source": "versa:35f7f06f225",
-      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending"
+      "source": "versa:b65dc10193e",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending 2026-10-30 normalized code comparison found translation gaps here; fixed with tests (versa/fix-normdiff-a|b-20261030) and merged at b65dc10193e."
     },
     {
       "layer": "core",
@@ -398,8 +398,8 @@
       "layer": "core",
       "path": "exec-approvals-store-D159_AKa.js",
       "sha256": "231279ca6aeea755bd63eb0c06219a254d11236c39e4a1a51ffe126fc452f5c1",
-      "source": "versa:aea2dae23b4",
-      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending"
+      "source": "versa:b65dc10193e",
+      "note": "M1 2026-09-25 translation on versa/main; 2026-10-29 build ok and its 121 patch test files pass; runtime A/B pending 2026-10-30 normalized code comparison found translation gaps here; fixed with tests (versa/fix-normdiff-a|b-20261030) and merged at b65dc10193e."
     },
     {
       "layer": "core",
@@ -848,8 +848,8 @@
       "layer": "core",
       "path": "server-worker-placement-startup-BvPREvpr.js",
       "sha256": "8e73e9eb1480777d59848279a864694dd11aabba84da49c1ac0dc27979ae10a8",
-      "source": "versa:35f7f06f225",
-      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending"
+      "source": "versa:b65dc10193e",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending 2026-10-30 normalized code comparison found translation gaps here; fixed with tests (versa/fix-normdiff-a|b-20261030) and merged at b65dc10193e."
     },
     {
       "layer": "core",
@@ -1092,8 +1092,8 @@
       "layer": "core",
       "path": "talk-DkFuKRod.js",
       "sha256": "f01a6e7b16cea92da439d1bacda8b6f0159acbc55e9157d130893a3e204fff3c",
-      "source": "versa:3bde236a5ee",
-      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
+      "source": "versa:b65dc10193e",
+      "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending 2026-10-30 normalized code comparison found translation gaps here; fixed with tests (versa/fix-normdiff-a|b-20261030) and merged at b65dc10193e."
     },
     {
       "layer": "core",
@@ -1337,8 +1337,8 @@
       "layer": "feishu",
       "path": "dist/v-feishu-approvals.js",
       "sha256": "2905c12f9bc3cad97416f169ae7a08072878c7ff89a8f33076d710f7282cf71b",
-      "source": "versa:3951d3e691b",
-      "note": "wave-1 backlog (channels group, versa/port-channels-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; feishu chunks re-split so verified by tests and reading; runtime A/B pending"
+      "source": "versa:b65dc10193e",
+      "note": "wave-1 backlog (channels group, versa/port-channels-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; feishu chunks re-split so verified by tests and reading; runtime A/B pending 2026-10-30 normalized code comparison found translation gaps here; fixed with tests (versa/fix-normdiff-a|b-20261030) and merged at b65dc10193e."
     },
     {
       "layer": "feishu",

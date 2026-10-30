@@ -119,6 +119,33 @@ function minified(text) {
 // Same code up to identifier names: every identifier becomes one placeholder.
 const shape = (text) => text.replace(/[A-Za-z_$][\w$]*/g, (m) => (KEYWORDS.has(m) ? m : "ι"));
 
+// Bundler reprint (rolldown): `class X {}` printed as `var X = class {}`, and a
+// name that collides in the chunk renamed with a bare numeric suffix (text ->
+// text2, toolName -> toolName2). A suffixed name is folded back only when it
+// never occurs on the other side and its base name does, in both directions.
+// Statement-level `void` and shorthand properties are already folded by the
+// minified comparison. Applied only to units that otherwise differ.
+const IDENT = /[A-Za-z_$][\w$]*/g;
+function identifiers(text) {
+  return new Set(text.match(IDENT) ?? []);
+}
+function foldCollisionRenames(text, other) {
+  const own = identifiers(text), theirs = identifiers(other);
+  const map = new Map();
+  for (const id of own) {
+    const m = /^([A-Za-z_$][\w$]*?[A-Za-z_$])([2-9]|[1-9]\d)$/.exec(id);
+    if (m && !theirs.has(id) && theirs.has(m[1])) map.set(id, m[1]);
+  }
+  return map.size ? text.replace(IDENT, (id) => map.get(id) ?? id) : text;
+}
+function reprintCanon(text) {
+  return text.replace(/^(\s*)var ([A-Za-z_$][\w$]*) = class\b/m, "$1class $2");
+}
+function sameAfterReprint(vtext, ftext) {
+  const v = reprintCanon(vtext), f = reprintCanon(ftext);
+  return minified(foldCollisionRenames(v, f)) === minified(foldCollisionRenames(f, v));
+}
+
 function tokens(text) {
   return new Set(text.match(/[A-Za-z_$][\w$]{2,}|"[^"]{3,40}"|'[^']{3,40}'/g) ?? []);
 }
@@ -208,7 +235,7 @@ for (const rel of files) {
         u.diff = lineDiff(vtext, best.text);
         u.changed = changedLines(u.diff);
         const mv = minified(vtext), mf = minified(best.text);
-        u.status = mv === mf ? "format-only" : shape(mv) === shape(mf) ? "renamed-only" : "differs";
+        u.status = mv === mf ? "format-only" : shape(mv) === shape(mf) ? "renamed-only" : sameAfterReprint(vtext, best.text) ? "reprint-only" : "differs";
       }
     }
     entry.units.push(u);
@@ -225,7 +252,7 @@ for (const rel of files) {
     if (!fu) continue;
     for (const [key, ft] of fu) {
       const stext = su.get(key);
-      if (stext !== undefined && vu.get(key) === stext && ft !== stext && minified(ft) !== minified(stext)) {
+      if (stext !== undefined && vu.get(key) === stext && ft !== stext && minified(ft) !== minified(stext) && !sameAfterReprint(stext, ft)) {
         const d = lineDiff(stext, ft);
         entry.forkOnly.push({ key, forkFile: path.relative(fork, f), changed: changedLines(d), diff: d });
       }
@@ -240,7 +267,7 @@ const forkOnly = report.reduce((n, e) => n + e.forkOnly.length, 0);
 fs.writeFileSync(path.join(args.out, "report.json"), JSON.stringify(report, null, 1));
 const md = [];
 for (const e of report) {
-  const bad = e.units.filter((u) => !["identical", "identical-renamed", "format-only", "renamed-only"].includes(u.status));
+  const bad = e.units.filter((u) => !["identical", "identical-renamed", "format-only", "renamed-only", "reprint-only"].includes(u.status));
   if (!bad.length && !e.forkOnly.length && !e.error) continue;
   md.push(`## ${e.file}${e.error ? ` (${e.error})` : ""}`);
   for (const u of bad) {
