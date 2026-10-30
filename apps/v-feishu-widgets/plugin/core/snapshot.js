@@ -5,7 +5,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-export function captureWidget({ chromePath = "google-chrome", url, width = 720, height = 900, timeoutMs = 15_000, runner = execFile }) {
+export function captureWidget({ chromePath = "google-chrome", url, width = 720, height = 520, timeoutMs = 15_000, runner = execFile }) {
   return new Promise((resolve) => {
     // Not os.tmpdir(): Chrome's profile socket fails past 108 bytes, and a service's TMPDIR can be long.
     const dir = fs.mkdtempSync("/tmp/v-widget-");

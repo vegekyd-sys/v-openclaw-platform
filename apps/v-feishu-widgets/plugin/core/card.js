@@ -1,5 +1,6 @@
 // The chat-side face of a widget: a Feishu card that opens the live page. A card cannot run
-// HTML, so it carries what can be read without opening (the snapshot) and the way in.
+// HTML, so it carries what can be read without opening (the snapshot) and the way in. The picture
+// is the widget's first screen only, kept short so the button stays on screen next to it.
 const APPLINK = "https://applink.feishu.cn/client/web_url/open";
 
 /** Sidebar next to the chat on desktop; Feishu ignores `mode` on phones and opens its in-app web view. */
