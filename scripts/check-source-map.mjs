@@ -5,6 +5,13 @@
 // in this repository. Changes captured before the cutoff may stay "pending"
 // (the backlog); anything captured later must name its source.
 //
+// A fork commit is only a claim until someone compares what the fork builds
+// with what V runs, so every versa: entry also records that comparison:
+// "normdiff:<fork build sha>" when scripts/normalized-dist-diff.mjs ran on it
+// and every remaining difference has a verdict with no mistranslation left,
+// or "identical:<fork build sha>" when the fork build has the same bytes (or
+// the same JSON) as V.
+//
 // See docs/upgrade-lts/patch-catch-up-plan.md (step 0).
 //
 //   node scripts/check-source-map.mjs            # check, exit 1 on violations
@@ -19,6 +26,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SOURCE_RE = /^(versa:[0-9a-f]{7,40}|upstream:[0-9a-f]{7,40}|platform:\S+|pending:\S+)$/;
+const EQUIVALENCE_RE = /^(normdiff|identical):[0-9a-f]{7,40}$/;
 
 export function layerOfRelease(release, layers) {
   const suffix = release.split(".").pop();
@@ -76,7 +84,16 @@ export function checkSourceMap({ map, captures, readBase }) {
       continue;
     }
     const base = spec.base ? readBase(spec.base) : null;
-    const counts = { release: latest.release, patched: 0, versa: 0, upstream: 0, platform: 0, pending: 0, unmapped: 0 };
+    const counts = {
+      release: latest.release,
+      patched: 0,
+      versa: 0,
+      compared: 0,
+      upstream: 0,
+      platform: 0,
+      pending: 0,
+      unmapped: 0,
+    };
     for (const f of latest.files) {
       if (base && base[f.path] === f.sha256) continue;
       counts.patched += 1;
@@ -90,6 +107,13 @@ export function checkSourceMap({ map, captures, readBase }) {
       used.add(key);
       const kind = e.source.split(":")[0];
       counts[kind] += 1;
+      if (kind === "versa") {
+        if (EQUIVALENCE_RE.test(e.equivalence ?? "")) counts.compared += 1;
+        else
+          errors.push(
+            `${layer} ${f.path} maps to ${e.source} but records no comparison with V: run scripts/normalized-dist-diff.mjs, give every difference a verdict, then set "equivalence": "normdiff:<fork build sha>"`,
+          );
+      }
       if (kind === "pending" && !seenBeforeCutoff.has(key)) {
         errors.push(
           `${layer} ${f.path} changed after ${map.since} but its source is "${e.source}": add the fork commit (versa:<sha>) or module source (platform:<path>)`,
@@ -113,10 +137,10 @@ function main() {
   const args = new Set(process.argv.slice(2));
 
   if (args.has("--report")) {
-    console.log("layer           patched  versa  upstream  platform  pending  unmapped  release");
+    console.log("layer           patched  versa  compared  upstream  platform  pending  unmapped  release");
     for (const [layer, c] of Object.entries(result.report)) {
       console.log(
-        `${layer.padEnd(15)} ${String(c.patched).padStart(7)} ${String(c.versa).padStart(6)} ${String(c.upstream).padStart(9)} ${String(c.platform).padStart(9)} ${String(c.pending).padStart(8)} ${String(c.unmapped).padStart(9)}  ${c.release}`,
+        `${layer.padEnd(15)} ${String(c.patched).padStart(7)} ${String(c.versa).padStart(6)} ${String(c.compared).padStart(9)} ${String(c.upstream).padStart(9)} ${String(c.platform).padStart(9)} ${String(c.pending).padStart(8)} ${String(c.unmapped).padStart(9)}  ${c.release}`,
       );
     }
   }
