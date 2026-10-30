@@ -225,6 +225,16 @@ export function createWorkView({ sessionKey, onChange = () => {}, log, formatToo
     clearWorking() { commentary.clear(); statusLine = ""; },
     /** The reply up to and including the question was sent and closed; what follows starts after it. */
     closedAtQuestion() { if (q) { q.prefix = ""; q.closed = true; } commentary.clear(); statusLine = ""; },
+    /** What the view shows right now as data, for channels that draw their own layout (the V app). */
+    snapshot() {
+      return {
+        question: q ? { record: q.record, state: q.state, staged: q.staged, answers: q.answers } : null,
+        commentary: [...commentary.values()],
+        status: statusLine,
+        plan: steps.map((s) => ({ step: s.step, status: s.status })),
+        waitingElsewhere: elsewhere,
+      };
+    },
     waitingForAnswer: () => elsewhere || q?.state === "pending",
     hasContent: () => steps.length > 0 || Boolean(statusLine) || commentary.size > 0 || Boolean(q) || elsewhere,
     /** The reply while working. */
@@ -256,6 +266,84 @@ function escapeMarkdown(text) {
 }
 
 // -------------------------------------------------------------- background
+
+// v-card-v1: cards for channels that draw Feishu card JSON 2.0 themselves (the V app).
+// The subset and the callback shapes are in apps/v-experience/schema/README.md.
+export const V_CARD_VERSION = 1;
+
+const cardMarkdown = (content, size) => ({ tag: "markdown", content, ...(size ? { text_size: size } : {}) });
+const vCard = (elements, header) => ({ schema: "2.0", v_card: V_CARD_VERSION, ...(header ? { header } : {}), body: { elements } });
+const cardHeader = (title, template) => ({ title: { tag: "plain_text", content: title }, template });
+
+/**
+ * V's reply as a card: the answer so far, then a rule and the work view
+ * (💬 commentary, status, ☑️/▶️/◻️ plan, background line) while V works;
+ * only the answer and a quiet footer once the run is over — the Feishu layout.
+ * `view` is `createWorkView().snapshot()`.
+ */
+export function workCard({ answer = "", view = null, phase = "working", background = "", footer = "" } = {}) {
+  const text = String(answer ?? "").trim();
+  const active = phase === "thinking" || phase === "working" || phase === "waiting";
+  const elements = [];
+  if (active) {
+    const commentary = view?.commentary ?? [];
+    const body = text || commentary.join("\n\n");
+    if (body) elements.push(cardMarkdown(body));
+    const status = view?.waitingElsewhere ? "❓ 请在下方卡片中回答" : view?.status || (phase === "thinking" && !body ? "💭 正在思考" : "");
+    const plan = planMarkdown(view?.plan ?? []);
+    if ((status || plan || background) && elements.length) elements.push({ tag: "hr" });
+    if (status) elements.push(cardMarkdown(status, "notation"));
+    if (plan) elements.push(cardMarkdown(plan));
+    if (background) elements.push(cardMarkdown(background, "notation"));
+  } else {
+    const ending = phase === "aborted" ? "这一轮已停止。" : phase === "failed" ? "这一轮没有完成。" : "";
+    if (text) elements.push(cardMarkdown(text));
+    else if (ending) elements.push(cardMarkdown(ending, "notation"));
+    if (background) elements.push(cardMarkdown(background, "notation"));
+    if (footer) elements.push(cardMarkdown(footer, "notation"));
+  }
+  return vCard(elements);
+}
+
+/**
+ * An `ask_user` record as a card with tappable options. Buttons post
+ * `{kind: "question", id, question, option}`; several choices or several
+ * questions add a 确认 button posting `{kind: "question", id, submit: true}`.
+ * Answered, expired or cancelled questions collapse to their record line.
+ */
+export function questionCard(record, { state = "pending", staged = {}, answers } = {}) {
+  if (state !== "pending") {
+    return vCard([cardMarkdown(questionRecordLine(record, state, answers))], cardHeader("V 的问题", "grey"));
+  }
+  const numbered = record.questions.length > 1;
+  const staging = numbered || record.questions.some((q) => q.multiSelect);
+  const elements = [];
+  record.questions.forEach((q, i) => {
+    const picked = new Set(staged[i] ?? []);
+    elements.push(cardMarkdown(`**${numbered ? `${i + 1}. ` : ""}${escapeMarkdown(q.question)}**${q.multiSelect ? "（可多选）" : ""}`));
+    for (const o of q.options) {
+      elements.push({
+        tag: "button",
+        text: { tag: "plain_text", content: o.label },
+        type: picked.has(o.label) ? "primary_filled" : "default",
+        width: "fill",
+        behaviors: [{ type: "callback", value: { kind: "question", id: record.id, question: i, option: o.label } }],
+      });
+      if (o.description) elements.push(cardMarkdown(escapeMarkdown(o.description), "notation"));
+    }
+  });
+  if (staging) {
+    elements.push({
+      tag: "button",
+      text: { tag: "plain_text", content: "确认" },
+      type: "primary_filled",
+      width: "fill",
+      behaviors: [{ type: "callback", value: { kind: "question", id: record.id, submit: true } }],
+    });
+  }
+  elements.push(cardMarkdown("也可以直接在聊天中回复答案", "notation"));
+  return vCard(elements, cardHeader("V 想问你", "blue"));
+}
 
 // v-experience-session-kind-v1: 「会话请求」 is a sessions_send request another session is working on.
 const KIND_ORDER = ["会话请求", "子 agent", "后台命令", "生图", "生成视频", "生成音乐", "自动化", "后台任务"];
