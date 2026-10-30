@@ -608,7 +608,7 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
         .slice(0, 120)
         .map((row) => ({
           ...Object.fromEntries(SESSION_FIELDS.filter((field) => row[field] !== undefined).map((field) => [field, typeof row[field] === "string" ? row[field].slice(0, 300) : row[field]])),
-          ...(row.origin?.provider ? { origin: { provider: row.origin.provider } } : {}),
+          ...(row.origin ? { origin: { provider: row.origin.provider, label: row.origin.label } } : {}),
         })));
       sessionsCache = { at: Date.now(), pending };
       pending.catch(() => { sessionsCache = undefined; });
