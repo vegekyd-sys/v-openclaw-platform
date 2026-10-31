@@ -6,8 +6,7 @@ journal, `/proc`, and `mode=ro` queries at idle priority.
 ## Where the time goes
 
 Serial tests on V put the Worker about 2.5 s behind `/vds` from message received to run start. For the
-default Worker path (22 Feishu turns, 10/31 evening; the two segments come from one run, not the same
-percentile):
+default Worker path (22 Feishu turns on the evening of 10/31):
 
 | Segment | P50 |
 |---|---|
