@@ -25,6 +25,10 @@
     "session-relay": {
       "exempt": true,
       "note": "our own plugin; source is this repo"
+    },
+    "ai": {
+      "base": null,
+      "package": "npm:@openclaw/ai@2026.9.1"
     }
   },
   "entries": [
@@ -1814,6 +1818,30 @@
       "sha256": "fb2bbf0e3abd3c4e28e6c9e6b8a1efec3f50ceb0a0d80fe3bcb5a7db0bfcc28d",
       "source": "platform:lab/release-files/wecom-vlab2/patch.mjs",
       "note": "rebuilt byte for byte from the npm package by tests/third-party-v-bytes.test.mjs"
+    },
+    {
+      "layer": "ai",
+      "path": "dist/transports.mjs",
+      "sha256": "7d7ae7a8d8441f11204f4edb8476f00a14ab2cbecdff6a4fcd4dc2c7de2b6d4a",
+      "source": "versa:caf99779ff0",
+      "note": "V patched this dependency in place; found 2026-10-31 when its bytes were first compared",
+      "equivalence": "normdiff:b3933cc3142"
+    },
+    {
+      "layer": "ai",
+      "path": "dist/openai-completions-D0QZ0AyB.mjs",
+      "sha256": "915ac13d0d60cf031a82cabd951eea22d61a093f55cfc28a205d8c97467f5f80",
+      "source": "versa:caf99779ff0",
+      "note": "V patched this dependency in place; found 2026-10-31 when its bytes were first compared",
+      "equivalence": "normdiff:b3933cc3142"
+    },
+    {
+      "layer": "ai",
+      "path": "dist/openai-chatgpt-responses-BAJ4gq3i.mjs",
+      "sha256": "c79575722e992eec5ba5a58c799ec3399f831fa6442668824bc5024f2a902977",
+      "source": "versa:1153825acfc",
+      "note": "V patched this dependency in place; found 2026-10-31 when its bytes were first compared",
+      "equivalence": "normdiff:b3933cc3142"
     }
   ]
 }

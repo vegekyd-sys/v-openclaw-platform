@@ -28,9 +28,12 @@ export default [
     id: "FEISHU-queue-10min/turn-keeps-its-place-past-five-minutes",
     ledger: ["FEISHU-queue-10min"],
     slow: true,
+    // Stock also held the second message here: the session lane queues it even after the
+    // per-chat queue lets go. So this compares V and the fork, and does not reach the patch.
+    parity: true,
     timeoutMs: 420_000,
     boot: { feishu: true },
-    async run({ gw, assert }) {
+    async run({ gw }) {
       let release;
       const held = new Promise((r) => (release = r));
       gw.script.current = async (body, i) => {
@@ -44,9 +47,8 @@ export default [
       await new Promise((r) => setTimeout(r, 6000));
       const concurrent = gw.model.requests.length;
       release();
-      assert(concurrent === 1, "the second message started a concurrent turn after five minutes");
       await gw.until(() => gw.model.requests.length === 2, { what: "second turn after the first" });
-      return "second message waited";
+      return { modelCallsWhileFirstHeld: concurrent };
     },
   },
 ];
