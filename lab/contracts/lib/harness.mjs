@@ -10,6 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { FEISHU_SECRETS, sendFeishuEvent, startFakeFeishu, textEvent } from "./fake-feishu.mjs";
 import { startFakeModel } from "./fake-model.mjs";
+import { startFakeTelegram } from "./fake-telegram.mjs";
 
 const TOKEN = "contract-token";
 
@@ -28,7 +29,7 @@ function merge(base, over) {
   return out;
 }
 
-export async function boot(targetDir, { config = {}, env = {}, modelScript, feishu, feishuApi } = {}) {
+export async function boot(targetDir, { config = {}, env = {}, modelScript, feishu, feishuApi, telegram, setup } = {}) {
   const dir = mkdtempSync(path.join(os.tmpdir(), "c2-"));
   const stateDir = path.join(dir, "state");
   const workspace = path.join(dir, "ws");
@@ -39,6 +40,7 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
   const port = await freePort();
   const fakeFeishu = feishu ? await startFakeFeishu(feishuApi) : null;
   const webhookPort = feishu ? await freePort() : null;
+  const fakeTelegram = telegram ? await startFakeTelegram() : null;
   const fullConfig = merge(
     {
       gateway: { mode: "local", port, bind: "loopback", auth: { mode: "token", token: TOKEN } },
@@ -62,6 +64,16 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
   for (const provider of Object.values(fullConfig.models.providers)) {
     if (provider.baseUrl === "FAKE_MODEL_URL") provider.baseUrl = `http://127.0.0.1:${model.port}/v1`;
   }
+  const remote = fullConfig.agents.defaults.memorySearch?.remote;
+  if (remote?.baseUrl === "FAKE_MODEL_URL") remote.baseUrl = `http://127.0.0.1:${model.port}/v1`;
+  if (telegram) {
+    fullConfig.plugins = merge(fullConfig.plugins, { entries: { telegram: { enabled: true } } });
+    fullConfig.channels = merge(
+      { telegram: { botToken: "123456:contract", apiRoot: `http://127.0.0.1:${fakeTelegram.port}`, dmPolicy: "open", allowFrom: ["*"], groupPolicy: "open", network: { dangerouslyAllowPrivateNetwork: true } } },
+      fullConfig.channels,
+    );
+  }
+  if (setup) env = { ...env, ...setup(dir) };
   if (feishu) {
     fullConfig.plugins = merge(fullConfig.plugins, { entries: { feishu: { enabled: true } } });
     fullConfig.channels = merge(
@@ -98,7 +110,7 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
       ...process.env,
       OPENCLAW_STATE_DIR: stateDir,
       OPENCLAW_CONFIG_PATH: configPath,
-      ...(feishu ? { NODE_TLS_REJECT_UNAUTHORIZED: "0" } : { OPENCLAW_SKIP_CHANNELS: "1" }),
+      ...(feishu ? { NODE_TLS_REJECT_UNAUTHORIZED: "0" } : telegram ? {} : { OPENCLAW_SKIP_CHANNELS: "1" }),
       OPENCLAW_DISABLE_BONJOUR: "1",
       ...env,
     },
@@ -126,6 +138,7 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
     child.kill("SIGKILL");
     await model.stop();
     await fakeFeishu?.stop();
+    await fakeTelegram?.stop();
     throw e;
   }
   return {
@@ -139,6 +152,7 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
     rpc,
     logs: () => logs.join(""),
     feishu: fakeFeishu,
+    telegram: fakeTelegram,
     /** Runs the target's CLI against this Gateway's state and config. */
     cli: (args) =>
       new Promise((resolve) => {
@@ -185,6 +199,7 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
       }
       await model.stop();
       await fakeFeishu?.stop();
+      await fakeTelegram?.stop();
       writeFileSync(logPath, logs.join(""));
       if (!process.env.C2_KEEP) rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
     },

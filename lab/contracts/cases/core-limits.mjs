@@ -30,6 +30,25 @@ const imageBytes = (body) =>
 
 export default [
   {
+    // Compares only: the fake never reaches the patch's recovery path, so this proves V and the
+    // fork agree on a full context, not that recovery works. The unit tests cover the path.
+    id: "PARITY/E3c-full-context",
+    ledger: ["E3c-completions-overflow-signal"],
+    parity: true,
+    boot: {
+      config: { models: { providers: { fake: { models: [{ id: "m1", name: "m1", contextWindow: 16000, maxTokens: 8000, input: ["text"], reasoning: false, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } } },
+      // A provider given max_tokens=1 stops at length with nothing to show.
+      modelScript: (body) => ((body.max_tokens ?? body.max_completion_tokens) <= 1 ? { text: "", finishReason: "length" } : { text: "压缩后回答" }),
+    },
+    timeoutMs: 150_000,
+    async run({ gw }) {
+      await gw.turn("字".repeat(3000), { timeoutMs: 60_000 }).catch(() => {});
+      const r = await gw.turn("字".repeat(40000), { timeoutMs: 120_000 }).catch((e) => ({ text: `ERR ${e.message}` }));
+      const limits = gw.model.requests.map((q) => q.body.max_tokens ?? q.body.max_completion_tokens);
+      return { limits, text: r.text };
+    },
+  },
+  {
     id: "VDS-VIEW-IMAGE/native-result-capped-at-1mb",
     ledger: ["VDS-VIEW-IMAGE"],
     boot: {
