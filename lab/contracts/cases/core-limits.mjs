@@ -30,6 +30,42 @@ const imageBytes = (body) =>
 
 export default [
   {
+    id: "E3c/full-context-compacts-instead-of-max-tokens-1",
+    ledger: ["E3c-completions-overflow-signal"],
+    boot: {
+      config: { models: { providers: { fake: { models: [{ id: "m1", name: "m1", contextWindow: 70000, maxTokens: 8000, input: ["text"], reasoning: false, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } } },
+      // A provider given almost no output room stops at length with nothing to show.
+      modelScript: (body) => ((body.max_tokens ?? body.max_completion_tokens) < 100 ? { text: "", finishReason: "length" } : { text: "压缩后回答" }),
+    },
+    timeoutMs: 180_000,
+    async run({ gw, assert }) {
+      const r = await gw.turn("字".repeat(90000), { timeoutMs: 150_000 }).catch((e) => ({ text: `ERR ${e.message}` }));
+      const limits = gw.model.requests.map((q) => q.body.max_tokens ?? q.body.max_completion_tokens);
+      assert(!limits.some((l) => l < 100), `a request went out with almost no output room (limits ${limits.join(",")}): ${r.text.slice(0, 160)}`);
+      return `limits ${limits.join(",")}, ${r.text.slice(0, 60)}`;
+    },
+  },
+  {
+    // Stock has no budget at all and sends this too, so this one compares V and the fork.
+    id: "PARITY/E3b-inline-image-budget",
+    ledger: ["E3b-deepseek-budget-image"],
+    parity: true,
+    boot: {
+      config: {
+        models: { providers: { ds: { baseUrl: "FAKE_MODEL_URL", apiKey: "contract", api: "openai-completions", request: { allowPrivateNetwork: true }, models: [{ id: "deepseek-v4-flash", name: "ds", contextWindow: 1048576, maxTokens: 384000, input: ["text", "image"], reasoning: false, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }] } } },
+        agents: { defaults: { model: { primary: "ds/deepseek-v4-flash" } } },
+      },
+      modelScript: (body) => (lastToolResult(body) ? { text: "看到了" } : { toolCalls: [{ name: "view_image", args: { path: "noise.png" } }] }),
+    },
+    timeoutMs: 120_000,
+    async run({ gw }) {
+      writeFileSync(path.join(gw.workspace, "noise.png"), noisePng(800));
+      // 600k tokens of text: counting the image by its base64 length would overflow the limit.
+      const r = await gw.turn("x".repeat(1_200_000), { timeoutMs: 100_000 }).catch((e) => ({ text: `ERR ${e.message}` }));
+      return { reply: r.text, requests: gw.model.requests.length };
+    },
+  },
+  {
     id: "VDS-VIEW-IMAGE/native-result-capped-at-1mb",
     ledger: ["VDS-VIEW-IMAGE"],
     boot: {

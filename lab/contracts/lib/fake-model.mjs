@@ -18,6 +18,13 @@ export async function startFakeModel(script) {
     try {
       body = JSON.parse(raw.toString("utf8"));
     } catch {}
+    if (req.url.includes("/embeddings")) {
+      if (script.embeddingsHang) await script.embeddingsHang;
+      const inputs = Array.isArray(body.input) ? body.input : [body.input];
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ object: "list", model: body.model, data: inputs.map((_, index) => ({ object: "embedding", index, embedding: [0.1, 0.2, 0.3, 0.4] })), usage: { prompt_tokens: 1, total_tokens: 1 } }));
+      return;
+    }
     if (!req.url.includes("/chat/completions")) {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ data: [{ id: "m1", object: "model" }] }));
@@ -37,6 +44,10 @@ export async function startFakeModel(script) {
     res.writeHead(200, { "content-type": "text/event-stream" });
     res.write(frame({ role: "assistant" }));
     if (out.text) res.write(frame({ content: out.text }));
+    for (const chunk of out.chunks ?? []) {
+      res.write(frame({ content: chunk }));
+      await new Promise((r) => setTimeout(r, out.chunkDelayMs ?? 30));
+    }
     (out.toolCalls ?? []).forEach((tc, index) => {
       res.write(
         frame({

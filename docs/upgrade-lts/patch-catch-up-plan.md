@@ -247,46 +247,45 @@ C5 之后，V 跑的就是 fork 构建，这三层就成了每次发版的回归
 
 **换到新版本时**：RTC 聊天包要按新版本重新生成，这一点之前已经记录。
 
-### C2 契约（10/31 首轮，只在 Mac 上跑过）
+### C2 契约（10/31，Mac 和 Linux 都跑过）
 
-工具和用法见 `lab/contracts/README.md`。四份产物、假模型、假飞书，全部在本机私有端口上跑，没碰 V 和共享 VLab。
+工具和用法见 `lab/contracts/README.md`。四份产物、假模型、假飞书、假 Telegram，全部在私有端口上跑，没碰 V 和共享 VLab。
 
-**结果：35 条。** 27 条反向对照（`v` 和 `fork-c5` 通过，`stock` 因断言失败），8 条对照型（`v` 和 `fork-c5` 的值完全相同）。
+**结果：55 条。** 34 条反向对照（`v` 和 `fork-c5` 通过，`stock` 因断言失败），21 条对照型（`v` 和 `fork-c5` 的值完全相同）。
 
 | 运行 | 结果 |
 |---|---|
-| 第一遍完整矩阵 | 35/35 |
-| 第二遍完整矩阵 | 34/35：`PARITY/plugins-loaded` 在 `v` 和 `fork-c5` 上启动超时（耗时约 5 分钟），同一时段 `stock` 这条花了 32 秒，正常约 3 秒 |
-| 这一条单独重跑 5 遍 | 5/5 |
+| Mac 完整矩阵（含 5 分半的队列契约） | 54/55。没成立的是队列那条：`stock` 也通过，已改成对照型 |
+| Linux（演练机）完整矩阵，不含队列契约 | 反向对照全部成立；对照型因临时目录名不成立，修掉归一化后重跑 20/20 |
+| 首轮的一次启动超时（`PARITY/plugins-loaded`） | 当时系统负载 56，单跑 5/5；后面 Mac 和 Linux 的完整矩阵都没再出现 |
 
-超时原因没有直接证据。查的时候系统负载 56，更像本机别的任务抢资源，所以 C3 要在演练机上再跑完整矩阵确认。
+**对照型比了什么**：RPC 和事件列表、模型目录、已加载插件；第一轮、飞书群聊和私聊、子会话、定时任务发给模型的完整请求（系统提示、工具定义、参数）；飞书 10 多个场景的完整调用序列（普通回复、工具后回复、5xx、截断、NO_REPLY、群聊、`/status`、非 owner 的 `/model` 和 `/new`、进度清单、`ask_user` 点击、凭据卡片、子任务汇报）。
 
-**对照型契约实际比了什么**：RPC 和事件列表、模型目录、已加载插件、第一轮发给模型的完整请求（系统提示、全部工具定义、参数）、飞书四个场景（普通回复、工具后回复、5xx、截断）的完整调用序列。全部相同。
+**只比了一致性、没走到补丁路径的**：E5（回到基线的配置事件）、FEISHU-queue-10min，这两项 `stock` 也通过，单测仍是唯一直接证明。
 
-**已覆盖的台账项**
+**这轮查出的真实缺口：fork 少了 V 在 `@openclaw/ai` 里的两段逻辑。**
 
-| 范围 | 契约 |
-|---|---|
-| 回复文案和回合收尾 | E6、E3（无正文停止）、NO-REPLY-AFTER-TOOL、5xx 中文文案 |
-| 故障切换 | #375（重试一次后切备用）、5xx 后从 transcript 继续 |
-| 上限 | VDS-VIEW-IMAGE（1 MB）、E3（DeepSeek 超预算拒发）、D2（长笔记、同 owner 多卡） |
-| 记忆和会话 | MEMSEARCH-QUALITY（稀有词排序）、#506（群聊带 MEMORY.md）、C（共享定时任务）、A21 |
-| 飞书 | F4、F5/B5、F6、F7、FEISHU-card-precreate、FEISHU-empty-card-discard、FEISHU-steer-lane、FEISHU-ask-user、FEISHU-secret-entry/SEC、FEISHU-dm-approvals、FEISHU-task-status、MSR/FEISHU-model-switch-roles |
-| 语音页面 | VOICE-RTC（模块加载） |
+- `@openclaw/ai` 是 core 依赖的独立包，V 改了它的 3 个文件。这个包不在发版捕获、不在 `source-map.json`、也不在 C1 对照范围内，所以之前的「翻错 0」没有覆盖它。
+- 少的两段：DeepSeek 预算把内联图片算作 8192 token（E3b）；代理类端点上下文满了报 overflow 而不是发 `max_tokens=1`（E3c）。fork 已补（`caf99779ff0`，汇总分支 `b3933cc3142`）。对照后这 3 个文件只剩结构写法差异，全部等价。
+- 同时核对了 V 的整个 `node_modules`：真正打过补丁的只有这个包，其余 9 个包的差异都是小版本不同（hono、jose 等）。C5 只换 dist，不动它们。
+- 已加捕获 `release/captured/v-desktop-handback-progress-20261030.ai`、台账 `ai` 层和 `scripts/lib/runtime-components.mjs` 的 `ai` 组件（暂时不阻塞）。这些只在升级分支上，dev 的发版工具还不知道这一层。**C5 要在发布时一起替换这个包的 dist。**
+
+另外 `dist/extensions` 这边也有一点要记：fork 的飞书插件清单多声明了 `visibleProgressRuntimes` 等配置键，V 的清单没有，C5 要连清单一起发。
+
+**构建确定性（10/31 演练机实测）**：Mac 和 Linux 两边 10,359 个文件，服务端代码逐字节相同；只有 Control UI 的 1136 个文件和 3 个时间戳不同，所以 Control UI 本身不是确定性构建，C5 用官方文件是对的。
 
 **还没覆盖的，以及放在哪验证**
 
 | 台账项 | 验证位置 | 原因 |
 |---|---|---|
-| CX-*（Codex 插件 8 项） | C3 | 要真实 Codex app-server，这套假模型还没接 Responses API |
-| worker 相关（B1–B10、WORKER-fast-compaction 等） | C3 | 对照时排除了 worker，这里也没有加载 |
-| GPT-LIVE/*、VOICE-*（除页面加载） | C4 | 要真实通话 |
-| 性能类（A 系列、D1/D3 等） | C3 | 不是行为差异，要同口径 A/B |
+| CX-*、visible-progress、codex-commentary、BG-WORK | C3 | 要真实 Codex app-server |
+| worker 相关（B1–B10、WORKER-fast-compaction 等）、LOOPBACK-SENDER | C3 | 这里没有加载 worker，也没有 claude-cli |
+| GPT-LIVE/*、VOICE-*（除页面加载）、语音确认卡 | C4 | 要真实通话 |
+| 性能类（A 系列、D1/D3、#454 等） | C3 | 不是行为差异，要同口径 A/B |
+| COMPUTER-*、E1、漏消息补拉（只有 WebSocket 模式有） | 单测；上线后观察 | 要 node 或真实断线；E1 的触发条件在假服务上走不到 |
 | 钉钉、企微 | 不比 V 和 fork | 平台补丁按字节重建，两边字节相同，没有翻译风险 |
-| 飞书：queue-10min、stream-coalesce、visible-progress、codex-commentary、漏消息补拉（只有 WebSocket 模式有）、电话入口和语音确认、任务绑定卡片 | 待写 | 假飞书能做一部分；补拉要真实飞书或 WebSocket 假服务 |
-| core：E1、E3b、E3c、E5、COMPUTER-*、BG-WORK、LOOPBACK-SENDER、V-EXPERIENCE（Telegram）、Skill Workshop apply | 待写 | Telegram 要另写假服务；COMPUTER 要 node |
 
-计划里写的是约 60 条，现在 35 条，所以 C2 **还没完成**。
+Telegram 的假服务上，`ask_user` 和凭据请求展示都对，但工具结果报 `prompt delivery failed`，V 和 fork 表现相同，原因没查清，C3 之后用真实 Telegram 环境确认。
 
 ### 分支安排：升级在单独的分支上验证（10/30 Tianyi 拍板）
 
@@ -328,7 +327,7 @@ C5 之后，V 跑的就是 fork 构建，这三层就成了每次发版的回归
 | B0′ 第二轮对照（10/30 完成） | 10/30 | 修复后重跑；补上没比过的已源码化文件（飞书主文件、Control UI、Codex 数据文件）；台账全部记上 `equivalence`，升级分支上门禁改为强制（PR #515） | 翻错 = 0；166 条 `versa:` 全部带对照结论 |
 | B 补完欠账（台账部分 10/30 完成） | 10/30 | 第二波 3 次发版、46 个文件，**逐字翻**；钉钉/企微 13 个文件按字节重建（PR #516）；黑盒契约场景还没写 | 台账不剩 pending（已达成）；待判条目全部有结论、翻错 = 0（已达成） |
 | C1 构建对照（10/30 在 Mac 上跑过一次） | 10/30；V 有新发版时重跑 | 构建 fork 9.1，对 V 最新捕获重跑归一化对照（含新发版）。演练机构建放到 C3 一起做 | 同 B0 标准（已达成：212 个文件，翻错 0） |
-| C2 契约基线（10/31 首轮 35 条，未完成） | 11/6–11/9 | 约 60 条黑盒契约，在 V 现字节上定基线，在原版 9.1 上跑反向对照 | 基线记录在案；反向对照全部失败。结果和缺口见上面「C2 契约」一节 |
+| C2 契约基线（10/31 完成，55 条） | 10/31 | 黑盒契约，在 V 现字节上定基线，在原版 9.1 上跑反向对照，Mac 和 Linux 各跑一遍 | 结果和缺口见上面「C2 契约」一节 |
 | C3 同版本 A/B | 11/10–11/13 | VLab candidate 上 fork 构建对 V 字节：同一套契约，同口径的首字、重启时间和内存，稳态后测 | 契约一致；性能在噪声内 |
 | C4 真实通话 | 同周 | GPT Live 在 fork 构建上打真实电话 | 通话、打断、挂断正常 |
 | C4′ 新版本演练 | C3 之后 | 在演练机上把提交栈合到目标版本，跑同一套单测、契约和门禁 | 契约一致；门禁通过 |
