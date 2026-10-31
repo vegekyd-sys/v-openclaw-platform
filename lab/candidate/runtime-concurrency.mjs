@@ -614,7 +614,7 @@ function startGateway() {
   gatewayStartedAt = Date.now();
   // GATEWAY_CPU_PROF=1: a V8 CPU profile of the whole run (5 ms sampling), written to OUT_DIR on exit
   const prof = process.env.GATEWAY_CPU_PROF === "1" ? ["--cpu-prof", `--cpu-prof-dir=${OUT_DIR}`, "--cpu-prof-interval=5000"] : [];
-  gateway = spawn(process.execPath, [`--import=${lagProbe}`, ...prof, "--experimental-async-context-frame", "--max-old-space-size=12288", `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
+  gateway = spawn(process.execPath, [`--import=${lagProbe}`, ...prof, "--experimental-async-context-frame", "--max-old-space-size=12288", `${dist}/index.js`, "gateway", "--port", String(port)], { env: PROFILE_DIR ? { ...env, LT_PROFILE_DIR: PROFILE_DIR } : env, stdio: ["ignore", "pipe", "pipe"] });
   for (const s of [gateway.stdout, gateway.stderr]) {
     s.setEncoding("utf8");
     let rest = "";
@@ -870,9 +870,38 @@ function lastEvents(key, n = 8) {
     return db.prepare("SELECT json_extract(event_json,'$.type') AS t, json_extract(event_json,'$.message.role') AS role, substr(json_extract(event_json,'$.customType'),1,40) AS ct, substr(json_extract(event_json,'$.message.content'),1,220) AS c FROM transcript_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?").all(w.sid, n);
   } catch (error) { return String(error?.message ?? error).slice(0, 200); } finally { db.close(); }
 }
+// PROFILE=1: where the Gateway's own CPU goes, per thread, plus reaped children; the lag probe adds a
+// main-thread profile and live heap sample for each level.
+const PROFILE_DIR = process.env.PROFILE === "1" ? path.join(OUT_DIR, "profiles") : null;
+if (PROFILE_DIR) fs.mkdirSync(PROFILE_DIR, { recursive: true });
+let profileN = 0;
+function gatewayThreads() {
+  const out = { threads: {}, childrenSec: 0 };
+  const pid = String(gateway.pid);
+  try {
+    const main = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+    const mf = main.slice(main.lastIndexOf(")") + 2).split(" ");
+    out.childrenSec = (Number(mf[13]) + Number(mf[14])) / TICK;
+    for (const tid of fs.readdirSync(`/proc/${pid}/task`)) {
+      const st = fs.readFileSync(`/proc/${pid}/task/${tid}/stat`, "utf8");
+      const f = st.slice(st.lastIndexOf(")") + 2).split(" ");
+      const comm = tid === pid ? "main" : st.slice(st.indexOf("(") + 1, st.lastIndexOf(")"));
+      out.threads[`${comm}#${tid}`] = (Number(f[11]) + Number(f[12])) / TICK;
+    }
+  } catch {}
+  return out;
+}
+function threadsDiff(a, b) {
+  const byComm = {};
+  for (const [k, v] of Object.entries(b.threads)) { const comm = k.split("#")[0]; byComm[comm] = (byComm[comm] ?? 0) + Math.max(0, v - (a.threads[k] ?? 0)); }
+  return { byComm: Object.fromEntries(Object.entries(byComm).sort((x, y) => y[1] - x[1]).slice(0, 10).map(([k, v]) => [k, Math.round(v * 10) / 10])), childrenSec: Math.round((b.childrenSec - a.childrenSec) * 10) / 10 };
+}
 async function level(arm, size, c, task = "sha") {
   const plan = await sessionsFor(arm, size, c);
   const cpuFrom = cpuTable();
+  const threadsFrom = gatewayThreads();
+  const profName = `${arm}-${size}-${task}-c${c}-${profileN++}`;
+  if (PROFILE_DIR) { fs.writeFileSync(path.join(PROFILE_DIR, `start.${profName}`), ""); await sleep(1_000); }
   const from = Date.now();
   const jobs = plan.map((p, i) => send(p.key, p.rt, `${arm}-${size}-${task}-c${c}-${i}-${randomBytes(3).toString("hex")}`, task));
   const canary = CANARY ? send(await canaryKey(), "flash", `canary-${arm}-${size}-c${c}-${canaryN++}`) : null;
@@ -880,6 +909,8 @@ async function level(arm, size, c, task = "sha") {
   const canaryResult = canary ? await canary : null;
   const to = Date.now();
   const cpuByCmd = cpuDiff(cpuFrom, cpuTable());
+  const threadCpu = threadsDiff(threadsFrom, gatewayThreads());
+  if (PROFILE_DIR) fs.writeFileSync(path.join(PROFILE_DIR, `stop.${profName}`), "");
   for (const r of results.filter((x) => !x.correct).slice(0, 2)) emit({ phase: "failed-turn", label: r.label, events: lastEvents(`agent:makaron:explicit:${r.key}`), logs: lines.filter((l) => l.at >= from && /memory.?flush|read.*write|tool.*(?:deny|filter)|toolsAllow/iu.test(l.line)).slice(-8).map((l) => redact(l.line).slice(0, 260)) });
   await sleep(SETTLE_MS);
   const m = windowMetrics(from, Date.now());
@@ -896,7 +927,7 @@ async function level(arm, size, c, task = "sha") {
   const h = hostContext();
   const host = { gcSwap: h.gcSwapExperiment.length > 0, sharedGatewayInspect: h.sharedGatewayInspect.some((g) => g.inspect), otherCandidates: h.otherCandidates.length, load: h.load };
   const ran = actualRuntime([...plan.map((p) => p.key), ...(CANARY ? [await canaryKey()] : [])]);
-  return { arm, size, task, c, cpuByCmd, host, ran, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
+  return { arm, size, task, c, cpuByCmd, threadCpu, host, ran, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
 }
 
 async function waitSteady(label, minUptimeMin) {
