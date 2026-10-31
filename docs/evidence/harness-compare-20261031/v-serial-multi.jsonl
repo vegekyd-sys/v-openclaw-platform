@@ -1,0 +1,16 @@
+{"arm": "vds", "block": 0, "i": 0, "ok": true, "seen": 23.13594079017639}
+{"arm": "vds", "block": 0, "i": 1, "ok": true, "seen": 19.186596155166626}
+{"arm": "vds", "block": 0, "i": 2, "ok": true, "seen": 18.953693866729736}
+{"arm": "vds", "block": 0, "i": 3, "ok": true, "seen": 18.899450063705444}
+{"arm": "deepseek", "block": 1, "i": 0, "ok": true, "seen": 25.190207958221436}
+{"arm": "deepseek", "block": 1, "i": 1, "ok": true, "seen": 16.98663091659546}
+{"arm": "deepseek", "block": 1, "i": 2, "ok": true, "seen": 16.999573945999146}
+{"arm": "deepseek", "block": 1, "i": 3, "ok": true, "seen": 16.85861110687256}
+{"arm": "vds", "block": 2, "i": 0, "ok": true, "seen": 19.114120960235596}
+{"arm": "vds", "block": 2, "i": 1, "ok": true, "seen": 19.00947403907776}
+{"arm": "vds", "block": 2, "i": 2, "ok": true, "seen": 17.89349341392517}
+{"arm": "vds", "block": 2, "i": 3, "ok": true, "seen": 16.95524787902832}
+{"arm": "deepseek", "block": 3, "i": 0, "ok": true, "seen": 19.256305932998657}
+{"arm": "deepseek", "block": 3, "i": 1, "ok": true, "seen": 18.821019887924194}
+{"arm": "deepseek", "block": 3, "i": 2, "ok": true, "seen": 18.802084922790527}
+{"arm": "deepseek", "block": 3, "i": 3, "ok": true, "seen": 16.726489067077637}
