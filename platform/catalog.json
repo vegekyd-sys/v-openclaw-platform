@@ -473,6 +473,7 @@
         "lab/nightshift-throughput.test.mjs",
         "lab/sessions-resolve-exact-read.test.mjs",
         "lab/sessions-search-exact-read.test.mjs",
+        "lab/subagent-active-precheck.test.mjs",
         "lab/doctor-subprocess.test.mjs",
         "lab/sessions-search-candidate-rows.test.mjs",
         "lab/gateway-freeze-lookups.test.mjs",

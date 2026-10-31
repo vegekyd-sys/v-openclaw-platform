@@ -48,6 +48,9 @@ import { t as filterHeartbeatTranscriptArtifacts } from "./heartbeat-filter-D8ks
 import { n as resolveHeartbeatSummaryForAgent } from "./heartbeat-summary-_n0hwz8v.js";
 import { m as resolveMainSessionAlias, p as resolveInternalSessionKey } from "./sessions-helpers-Bn_vDNby.js";
 import { c as listControlledSubagentRuns } from "./subagent-control-scope-DA4oSvgr.js";
+import { i as openOpenClawStateDatabase } from "./openclaw-state-db-Bh3Bq87y.js";
+import { w as subagentRuns } from "./subagent-registry.store.sqlite-hzGu4QSk.js";
+import { mayHaveActiveSubagentRuns } from "./v-subagent-active-precheck.mjs";
 import "./subagent-control-BgOQkv41.js";
 import { t as buildSubagentList } from "./subagent-list-BS8F5xN_.js";
 import "./session-tool-result-guard-wrapper-cNIJYD6J.js";
@@ -546,6 +549,10 @@ function buildActiveSubagentSystemPromptAddition(params) {
 		alias,
 		mainKey
 	});
+	// subagent-active-precheck: only read the whole registry when something here can be active.
+	if (process.env.OPENCLAW_V_SUBAGENT_ACTIVE_PRECHECK !== "0") try {
+		if (!mayHaveActiveSubagentRuns(openOpenClawStateDatabase().db, subagentRuns, controllerSessionKey)) return;
+	} catch {}
 	const runs = listControlledSubagentRuns(controllerSessionKey, params.controllerAgentId, params.cfg);
 	if (runs.length === 0) return;
 	const list = buildSubagentList({
