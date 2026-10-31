@@ -1,0 +1,29 @@
+:root { --ink:#1f2329; --sub:#646a73; --faint:#8f959e; --line:#eff0f1; --accent:#3370ff; --warn:#d46b08; --bg:#fff; --soft:#f0f4ff; --button:#fff; --edge:#dee0e3; }
+@media (prefers-color-scheme: dark) {
+  :root { --ink:#ebebeb; --sub:#a6a6a6; --faint:#7d7d7d; --line:#303236; --accent:#6c9bff; --warn:#f0a35e; --bg:#141517; --soft:#1e2433; --button:#1e1f22; --edge:#3a3c40; }
+}
+* { box-sizing:border-box; }
+html, body { background:var(--bg); }
+body { margin:0; color:var(--ink); font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif; }
+main { max-width:560px; margin:0 auto; padding:16px 16px 96px; }
+[hidden] { display:none !important; }
+.notice { color:var(--sub); margin:48px 0; text-align:center; }
+.notice:empty { display:none; }
+.meta { color:var(--faint); font-size:12px; }
+h1 { font-size:19px; line-height:1.45; margin:10px 0 18px; font-weight:600; }
+h2 { font-size:13px; color:var(--sub); font-weight:600; margin:22px 0 6px; letter-spacing:.02em; }
+ul { list-style:none; margin:0; padding:0; }
+li { padding:5px 0; overflow-wrap:anywhere; }
+.need { background:var(--soft); border-radius:8px; padding:10px 12px; }
+.need li { padding:3px 0; }
+.need b { color:var(--accent); font-weight:600; }
+.done { color:var(--faint); }
+.risk { color:var(--warn); }
+details { margin-top:22px; color:var(--sub); font-size:14px; }
+summary { color:var(--sub); font-size:13px; font-weight:600; cursor:pointer; }
+details li { display:flex; gap:10px; }
+details time { color:var(--faint); flex:none; min-width:42px; }
+footer { position:fixed; left:0; right:0; bottom:0; background:var(--bg); border-top:1px solid var(--line); padding:10px 16px calc(10px + env(safe-area-inset-bottom)); }
+footer div { max-width:560px; margin:0 auto; display:flex; gap:10px; }
+footer .button, footer button { flex:1; height:40px; border-radius:8px; font:inherit; border:1px solid var(--edge); background:var(--button); color:var(--ink); display:flex; align-items:center; justify-content:center; text-decoration:none; cursor:pointer; }
+footer button:disabled { color:var(--faint); cursor:default; }
