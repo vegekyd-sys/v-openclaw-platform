@@ -24,6 +24,7 @@ test('V directories: core from ExecStart, Worker beside it, Feishu fixed, Codex 
     dingtalk: V_DT,
     wecom: '/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin',
     'session-relay': '/home/openclaw/.openclaw/extensions/v-session-relay',
+    ai: `${V_CORE}/node_modules/@openclaw/ai`,
     handoff: '/opt/v-desktop-handoff',
     'secret-entry': '/opt/v-secret-entry',
     'browser-fill': '/opt/v-browser-fill',
@@ -73,7 +74,7 @@ test('promote mapping: existing targets map exactly as before; new channel plugi
 
 test('captures: the three existing runs are unchanged, Codex, DingTalk, WeCom and the session relay are whole-directory captures', () => {
   const runs = captureRuns('rel', vDirs);
-  assert.deepEqual(runs.map((r) => r.suffix), ['', '.worker', '.feishu', '.codex', '.dingtalk', '.wecom', '.session-relay']);
+  assert.deepEqual(runs.map((r) => r.suffix), ['', '.worker', '.feishu', '.codex', '.dingtalk', '.wecom', '.session-relay', '.ai']);
   // Exactly the arguments promote-to-v.mjs passed before.
   assert.deepEqual(runs.slice(0, 3).map((r) => [r.release, r.runtime, r.args, r.out]), [
     ['rel', `${V_CORE}/dist`, ['--base', 'npm:openclaw@2026.9.1', '--upstream', '2026.9.1', '--sourceCheckout', '/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/source'], 'release/captured/rel'],
@@ -88,15 +89,15 @@ test('captures: the three existing runs are unchanged, Codex, DingTalk, WeCom an
   assert.deepEqual([runs[6].release, runs[6].runtime, runs[6].args, runs[6].out, runs[6].optional], ['rel.session-relay',
     '/home/openclaw/.openclaw/extensions/v-session-relay', ['--base', 'none', '--exclude', 'node_modules', '--sudo'], 'release/captured/rel.session-relay', true]);
   assert.deepEqual(runs.filter((r) => r.optional).map((r) => r.id), ['session-relay'], 'only the session relay may be missing on V');
-  assert.deepEqual(captureSuffixes(), ['.worker', '.feishu', '.codex', '.dingtalk', '.wecom', '.session-relay']);
-  assert.deepEqual(releaseNoteComponents(), [['core', ''], ['worker', '.worker'], ['feishu', '.feishu'], ['codex', '.codex'], ['dingtalk', '.dingtalk'], ['wecom', '.wecom'], ['session-relay', '.session-relay']]);
+  assert.deepEqual(captureSuffixes(), ['.worker', '.feishu', '.codex', '.dingtalk', '.wecom', '.session-relay', '.ai']);
+  assert.deepEqual(releaseNoteComponents(), [['core', ''], ['worker', '.worker'], ['feishu', '.feishu'], ['codex', '.codex'], ['dingtalk', '.dingtalk'], ['wecom', '.wecom'], ['session-relay', '.session-relay'], ['@openclaw/ai', '.ai']]);
 });
 
 test('captures: a promotion before the session relay release skips its capture; afterwards it is captured', () => {
   const runs = captureRuns('rel', vDirs);
   const asked = [];
   const before = presentCaptureRuns(runs, (dir) => { asked.push(dir); return false; });
-  assert.deepEqual(before.map((r) => r.suffix), ['', '.worker', '.feishu', '.codex', '.dingtalk', '.wecom']);
+  assert.deepEqual(before.map((r) => r.suffix), ['', '.worker', '.feishu', '.codex', '.dingtalk', '.wecom', '.ai']);
   assert.deepEqual(asked, ['/home/openclaw/.openclaw/extensions/v-session-relay'], 'only optional components are looked up on V');
   assert.deepEqual(presentCaptureRuns(runs, () => true), runs);
   // A required component that is missing still fails loudly in the capture itself, never silently.
@@ -148,6 +149,7 @@ test('parity pairs: existing three unchanged; DingTalk/WeCom follow VLab\'s load
     ['session-relay', 'extensions/v-session-relay', '/home/openclaw/.openclaw/extensions/v-session-relay', `${VLAB_RUNTIME}/extensions/v-session-relay`, true, true]);
   assert.equal(after.slice(0, 7).some((p) => p.optional), false, 'every other runtime directory must exist');
   assert.deepEqual(after.slice(8).map((p) => [p.component, p.prefix, p.v, p.vlab, p.blocking]), [
+    ['ai', 'openclaw/node_modules/@openclaw/ai', `${V_CORE}/node_modules/@openclaw/ai`, `${VLAB_RUNTIME}/openclaw/node_modules/@openclaw/ai`, false],
     ['handoff', 'sidecar:handoff/plugin', '/opt/v-desktop-handoff/plugin', '/opt/vlab-v-desktop-handoff/plugin', false],
     ['handoff', 'sidecar:handoff/service', '/opt/v-desktop-handoff/service', '/opt/vlab-v-desktop-handoff/service', false],
     ['handoff', 'sidecar:handoff/desktop', '/opt/v-desktop-handoff/desktop', '/opt/vlab-v-desktop-handoff/desktop', false],
@@ -294,7 +296,7 @@ test('release notes: a component missing from the previous release is a first ap
 });
 
 test('captures of V channel plugins read as root (they live under /home/openclaw/.openclaw)', () => {
-  const vDirs = { core: '/opt/x/core', worker: '/opt/w', feishu: '/opt/f', codex: V_CODEX, dingtalk: '/home/openclaw/.openclaw/npm/projects/d/node_modules/@dingtalk-real-ai/dingtalk-connector', wecom: '/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin',
+  const vDirs = { ai: '/opt/x/core/node_modules/@openclaw/ai', core: '/opt/x/core', worker: '/opt/w', feishu: '/opt/f', codex: V_CODEX, dingtalk: '/home/openclaw/.openclaw/npm/projects/d/node_modules/@dingtalk-real-ai/dingtalk-connector', wecom: '/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin',
     'session-relay': '/home/openclaw/.openclaw/extensions/v-session-relay' };
   const runs = Object.fromEntries(captureRuns('r', vDirs).map((r) => [r.id, r.args]));
   assert(runs.codex.includes('--sudo') && runs.dingtalk.includes('--sudo') && runs.wecom.includes('--sudo') && runs['session-relay'].includes('--sudo'));

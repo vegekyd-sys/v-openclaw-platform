@@ -48,7 +48,7 @@ export const COMPONENTS = [
   {
     id: 'core', kind: 'runtime', label: 'core', suffix: '', blocking: true,
     // Stage target -> [prefix, rest]. Capture and sync cover dist/ only.
-    target: /^(openclaw)\/(.+)$/,
+    target: /^(openclaw)\/(?!node_modules\/@openclaw\/ai\/)(.+)$/,
     v: { from: 'core' },
     vlab: { fixed: 'openclaw' },
     capture: { sub: 'dist', base: 'npm:openclaw@2026.9.1', upstream: '2026.9.1', sourceCheckout: true },
@@ -126,6 +126,18 @@ export const COMPONENTS = [
     capture: { base: 'none', sudo: true },
   },
   {
+    // Core's own dependency, a separate package in the published layout. V patches three
+    // files of it in place (E3, E7). Found 2026-10-31: it was outside every capture, so
+    // no comparison covered it.
+    // Advisory until a release has shipped it through this table.
+    id: 'ai', kind: 'runtime', label: '@openclaw/ai', suffix: '.ai', blocking: false,
+    target: /^(openclaw\/node_modules\/@openclaw\/ai)\/(.+)$/,
+    v: { fromCore: 'node_modules/@openclaw/ai' },
+    vlab: { fixed: 'openclaw/node_modules/@openclaw/ai' },
+    capture: { sub: 'dist', base: 'npm:@openclaw/ai@2026.9.1', upstream: '@openclaw/ai 2026.9.1' },
+    syncPrefix: 'openclaw/node_modules/@openclaw/ai/dist/',
+  },
+  {
     // 2026-10-05: V was installed from a newer commit than VLab (V has
     // service/build-viewer.mjs and service/vendor/novnc-1.3.0, VLab does not).
     // Advisory until the multi-channel release reinstalls VLab's copy from the
@@ -198,6 +210,7 @@ export function resolveVDirs(vCore, list, overrides = {}) {
   for (const c of COMPONENTS) {
     if (overrides[c.id]) { out[c.id] = overrides[c.id]; continue; }
     if (c.v.from === 'core') out[c.id] = vCore;
+    else if (c.v.fromCore) out[c.id] = `${vCore}/${c.v.fromCore}`;
     else if (c.v.from === 'worker') out[c.id] = vCore.replace(/\/core$/, '/worker');
     else if (c.v.fixed) out[c.id] = c.v.fixed;
     else if (c.v.glob) {

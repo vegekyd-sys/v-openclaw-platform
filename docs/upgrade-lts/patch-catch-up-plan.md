@@ -268,7 +268,7 @@ C5 之后，V 跑的就是 fork 构建，这三层就成了每次发版的回归
 - `@openclaw/ai` 是 core 依赖的独立包，V 改了它的 3 个文件。这个包不在发版捕获、不在 `source-map.json`、也不在 C1 对照范围内，所以之前的「翻错 0」没有覆盖它。
 - 少的两段：DeepSeek 预算把内联图片算作 8192 token（E3b）；代理类端点上下文满了报 overflow 而不是发 `max_tokens=1`（E3c）。fork 已补（`caf99779ff0`，汇总分支 `b3933cc3142`）。对照后这 3 个文件只剩结构写法差异，全部等价。
 - 同时核对了 V 的整个 `node_modules`：真正打过补丁的只有这个包，其余 9 个包的差异都是小版本不同（hono、jose 等）。C5 只换 dist，不动它们。
-- 已加捕获 `release/captured/v-desktop-handback-progress-20261030.ai` 和台账 `ai` 层。**发版工具（`scripts/lib/runtime-components.mjs`）还不捕获这一层，C5 要把它加进去，并在发布时一起替换这个包的 dist。**
+- 已加捕获 `release/captured/v-desktop-handback-progress-20261030.ai`、台账 `ai` 层和 `scripts/lib/runtime-components.mjs` 的 `ai` 组件（暂时不阻塞）。这些只在升级分支上，dev 的发版工具还不知道这一层。**C5 要在发布时一起替换这个包的 dist。**
 
 另外 `dist/extensions` 这边也有一点要记：fork 的飞书插件清单多声明了 `visibleProgressRuntimes` 等配置键，V 的清单没有，C5 要连清单一起发。
 
