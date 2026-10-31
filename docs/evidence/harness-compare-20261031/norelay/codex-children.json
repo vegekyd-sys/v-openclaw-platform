@@ -1,0 +1,74 @@
+[
+ {
+  "cmd": "hooks relay",
+  "n": 312,
+  "cpuSec": 387.0,
+  "lifeP50": 7.3
+ },
+ {
+  "cmd": "codex -c model_catalog_json=\"v-deepseek-m",
+  "n": 18,
+  "cpuSec": 190.3,
+  "lifeP50": 0.16
+ },
+ {
+  "cmd": "/usr/lib/git-core/git --shallow-file shallow.lock index-pack",
+  "n": 1,
+  "cpuSec": 1.0,
+  "lifeP50": 1.53
+ },
+ {
+  "cmd": "/usr/bin/bash -c __CODEX_SNAPSHOT_OVERRIDE_SET_0=\"${CODEX_AP",
+  "n": 182,
+  "cpuSec": 0.7,
+  "lifeP50": 0.0
+ },
+ {
+  "cmd": "/usr/bin/git -c safe.bareRepository=explicit -C plugins-clon",
+  "n": 2,
+  "cpuSec": 0.7,
+  "lifeP50": 2.2
+ },
+ {
+  "cmd": "",
+  "n": 201,
+  "cpuSec": 0.3,
+  "lifeP50": 0.0
+ },
+ {
+  "cmd": "/usr/lib/git-core/git-remote-https https://github.com/openai",
+  "n": 2,
+  "cpuSec": 0.2,
+  "lifeP50": 1.99
+ },
+ {
+  "cmd": "loginctl enable-linger lab-db91-parity ",
+  "n": 171,
+  "cpuSec": 0.1,
+  "lifeP50": 0.0
+ },
+ {
+  "cmd": "/usr/bin/bash -c ls /tmp | wc -l ",
+  "n": 29,
+  "cpuSec": 0.1,
+  "lifeP50": 0.0
+ },
+ {
+  "cmd": "/proc/self/exe --codex-run-as-process-setup 113 # pipe  maka",
+  "n": 12,
+  "cpuSec": 0.1,
+  "lifeP50": 0.05
+ },
+ {
+  "cmd": "/usr/bin/bash -c sed -n '1,5p' AGENTS.md ",
+  "n": 6,
+  "cpuSec": 0.1,
+  "lifeP50": 0.0
+ },
+ {
+  "cmd": "/proc/self/exe --codex-run-as-process-setup 80 # pipe  makar",
+  "n": 5,
+  "cpuSec": 0.1,
+  "lifeP50": 0.08
+ }
+]

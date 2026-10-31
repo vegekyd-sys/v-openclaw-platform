@@ -86,3 +86,18 @@ if (profileDir && process.argv.some((a) => a === "gateway")) {
     fs.writeFileSync(path.join(profileDir, `summary.${name}.json`), JSON.stringify({ name, wallMs: Math.round(total / 1000), topFn: ms(byFn, 60), topFile: ms(byFile, 30), liveHeapMB: mb }));
   }, 300).unref();
 }
+
+// CODEX_SHARDS: sessions of the vdsp arm pick an app-server by session key; everything else keeps the
+// one shared process. The patched Codex plugin calls these two hooks.
+const codexShards = Number(process.env.LT_CODEX_SHARDS ?? 0);
+if (codexShards > 0 && process.argv.some((a) => a === "gateway")) {
+  const { AsyncLocalStorage } = await import("node:async_hooks");
+  const { createHash } = await import("node:crypto");
+  const als = new AsyncLocalStorage();
+  globalThis.__ltCodexRun = (params, run) => {
+    const key = String(params?.sessionKey ?? "");
+    if (!key.includes("lt-vdsp-")) return run();
+    return als.run(1 + (createHash("sha256").update(key).digest()[0] % codexShards), run);
+  };
+  globalThis.__ltCodexShard = () => als.getStore();
+}
