@@ -13,6 +13,7 @@ const normalize = (value, gw) =>
       .replace(/\/(?:private\/)?var\/folders\/[^"\\ ]+/g, "<tmp>")
       .replace(/\b\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?[^"\\ ]*/g, "<time>")
       .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, "<uuid>")
+      .replace(/c2-[A-Za-z0-9]{6}/g, "<boot>")
       .replace(/om_in_\d+_\d+/g, "<msg>")
       .replace(/ask_[0-9a-f]{16,}/g, "ask_<hex>")
       .replace(/\b(?=[0-9]*[a-f])[0-9a-f]{16,}\b/g, "<hex>")
