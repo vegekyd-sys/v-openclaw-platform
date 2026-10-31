@@ -13,3 +13,4 @@ Worker (`deepseek/deepseek-flash`) against Codex (`/vds`), measured with
 VLab has 4 cores and other jobs ran on it during the tests; V has 16. These results show mechanism,
 not production gain. Session content was removed from `failed-turn` records.
 - `v-load-progress.jsonl`, `hc-v.mjs`: stepped load on production V at Tianyi's request, 2026-10-31 23:02–23:26. Do not reuse as is: its gate misses Gateway heap, and its `sessions.delete` cleanup stalled the Gateway (22–30 s per call).
+- `profile-progress.jsonl`, `profile-vds-c15.json`: Gateway thread CPU and main-thread profile for one /vds c15 five-step level on a busy VLab, 2026-11-01. The run stopped on host memory before the Worker arm.
