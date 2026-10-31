@@ -48,7 +48,19 @@ const here = path.dirname(new URL(import.meta.url).pathname);
 const scratch = process.env.VLAB_CANDIDATE_DATA ?? stateDir;
 
 const num = (k, d) => (process.env[k] === undefined || process.env[k] === "" ? d : Number(process.env[k]));
-const ARMS = (process.env.ARMS ?? "vds:small,vcc:small,mix:small,vds:big,vcc:big,mix:big").split(",").map((s) => { const [arm, size] = s.split(":"); return { arm, size }; });
+// arm:size[:task]. arm flash = V's default (deepseek-flash on the Worker runtime); task sha = one shell
+// call, multi = three shell calls, a read, an OpenClaw tool (session_status), then the hash.
+const ARMS = (process.env.ARMS ?? "vds:small,vcc:small,mix:small,vds:big,vcc:big,mix:big").split(",").map((s) => { const [arm, size, task = "sha"] = s.split(":"); return { arm, size, task }; });
+// PAIRED=1: every arm runs one level before any arm moves to the next, so arms share the host's drift
+const PAIRED = process.env.PAIRED === "1";
+// SCENARIOS=1: instead of load levels, run the default-model switch checks: /vds as the configured
+// default with the Worker default as its fallback, inheritance by subagent and cron, and the
+// fallback path under DeepSeek faults injected by a local proxy in front of Codex only.
+const SCENARIOS = process.env.SCENARIOS === "1";
+// CHANNEL_GRAY=1 (with SCENARIOS): the default stays on the Worker; only one Feishu group gets /vds
+// through channels.modelByChannel, the way a gradual rollout would.
+const CHANNEL_GRAY = process.env.CHANNEL_GRAY === "1";
+const GRAY_GROUP = "oc_candidategraygroup";
 const LEVELS = (process.env.LEVELS ?? "1,3,5,10,15").split(",").map(Number);
 const MAXC = Math.max(...LEVELS);
 const STEADY_MIN = num("STEADY_MIN", 20);
@@ -68,8 +80,10 @@ const INFLATE = num("INFLATE", 4);
 const TRIM_TOOL_CHARS = num("TRIM_TOOL_CHARS", 600);
 const BIG_MB = num("BIG_MB", 80);
 const BIG_COUNT = num("BIG_COUNT", ARMS.some((a) => a.size === "big") ? MAXC : 0);
+const WORKER_POOL = { minWorkers: num("WORKER_MIN", 1), maxWorkers: num("WORKER_MAX", 2), sessionsPerWorker: num("WORKER_SESSIONS", 3) };
 const READ_PROBE_MS = num("READ_PROBE_MS", 200);
 const HOLD_PROBE_MS = num("HOLD_PROBE_MS", 500);
+const FAULT_PORT = num("FAULT_PORT", 29871);
 const VDS_REF = "deepseek/vds-deepseek-flash";
 const FLASH_REF = "deepseek/deepseek-flash";
 const VCC_REF = process.env.VCC_MODEL ?? "anthropic/claude-haiku-5-5";
@@ -246,8 +260,8 @@ const port = Number(config.gateway?.port);
 assert(Number.isInteger(port) && port > 0, "candidate Gateway port is missing");
 config.channels = {};
 config.bindings = [];
-config.cron = { ...(config.cron ?? {}), enabled: false };
-const shape = { reasoning: true, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 1_000_000, maxTokens: 384000, api: "openai-completions", compat: { supportsUsageInStreaming: true, supportsReasoningEffort: true, maxTokensField: "max_tokens", thinkingFormat: "deepseek" } };
+config.cron = { ...(config.cron ?? {}), enabled: SCENARIOS };
+const shape = { reasoning: true, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 980_000, maxTokens: 64_000, api: "openai-completions", compat: { supportsUsageInStreaming: true, supportsReasoningEffort: true, maxTokensField: "max_tokens", thinkingFormat: "deepseek" } };
 for (const [id, name] of [["deepseek-flash", "DeepSeek V4.1 Flash"], ["vds-deepseek-flash", "DeepSeek V4.1 Flash (Codex vds alias)"]]) {
   config.models.providers.deepseek.models = (config.models.providers.deepseek.models ?? []).filter((m) => m.id !== id).concat([{ id, name, ...shape }]);
 }
@@ -262,7 +276,9 @@ for (const [ref, entry] of Object.entries(entries)) {
   config.agents.defaults.models[ref] = entry;
   config.agents.entries.makaron.models[ref] = entry;
 }
-const defaultModel = { primary: FLASH_REF, fallbacks: [] };
+const defaultModel = CHANNEL_GRAY ? { primary: FLASH_REF, fallbacks: ["openai/gpt-6-luna"] } : SCENARIOS ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : { primary: FLASH_REF, fallbacks: [] };
+// chat.send arrives as channel "webchat" with no group, so the wildcard entry is what a candidate can reach
+if (CHANNEL_GRAY) config.channels.modelByChannel = { webchat: { "*": VDS_REF } };
 config.agents.defaults.model = defaultModel;
 config.agents.entries.makaron.model = defaultModel;
 // every allow list that can apply to makaron (an agent-level one takes precedence over defaults)
@@ -272,13 +288,13 @@ emit({ phase: "model-policy", lists: allowLists.length, makaronPolicy: config.ag
 // V's plugins.entries.codex (2026-10-17), with this run's Codex binary
 config.plugins.entries.codex = { enabled: true, config: {
   codexPlugins: { enabled: false, allow_destructive_actions: true, plugins: { canva: { enabled: true, marketplaceName: "openai-curated", pluginName: "canva", allow_destructive_actions: true } } },
-  codexDynamicToolsLoading: "searchable", codexDynamicToolsExclude: [],
+  codexDynamicToolsLoading: "searchable", codexDynamicToolsExclude: ["openclaw"],
   appServer: { mode: "yolo", serviceTier: "priority", approvalPolicy: "never", sandbox: "danger-full-access", command: codexBin },
 } };
 if (Array.isArray(config.plugins.allow) && !config.plugins.allow.includes("codex")) config.plugins.allow.push("codex");
 const workerPlugin = config.plugins.entries["vlab-agent-worker-isolation"]?.config;
 assert(workerPlugin, "worker isolation plugin is not configured");
-Object.assign(workerPlugin, { minWorkers: 1, maxWorkers: 2, warmSpareWorkers: 0 });
+Object.assign(workerPlugin, WORKER_POOL, { warmSpareWorkers: 0 });
 {
   const rel = path.relative(stateDir, workerPlugin.workerConfigPath);
   assert(!rel.startsWith(".."), "candidate Worker config escaped state");
@@ -286,14 +302,15 @@ Object.assign(workerPlugin, { minWorkers: 1, maxWorkers: 2, warmSpareWorkers: 0 
   workerConfig.channels = {};
   workerConfig.models.providers.deepseek.models = (workerConfig.models.providers.deepseek.models ?? []).filter((m) => m.id !== "deepseek-flash").concat([{ id: "deepseek-flash", name: "DeepSeek V4.1 Flash", ...shape }]);
   const workerEntry = { alias: "deepseek", agentRuntime: { id: "openclaw" }, params: { thinking: "high" } };
-  workerConfig.agents.defaults.models = { ...(workerConfig.agents.defaults.models ?? {}), [FLASH_REF]: workerEntry };
+  workerConfig.models.providers.deepseek.models = workerConfig.models.providers.deepseek.models.filter((m) => m.id !== "vds-deepseek-flash").concat([{ id: "vds-deepseek-flash", name: "DeepSeek V4.1 Flash (Codex vds alias)", ...shape }]);
+  workerConfig.agents.defaults.models = { ...(workerConfig.agents.defaults.models ?? {}), [FLASH_REF]: workerEntry, [VDS_REF]: entries[VDS_REF] };
   workerConfig.agents.defaults.model = defaultModel;
   if (workerConfig.agents.entries?.makaron) {
-    workerConfig.agents.entries.makaron.models = { ...(workerConfig.agents.entries.makaron.models ?? {}), [FLASH_REF]: workerEntry };
+    workerConfig.agents.entries.makaron.models = { ...(workerConfig.agents.entries.makaron.models ?? {}), [FLASH_REF]: workerEntry, [VDS_REF]: entries[VDS_REF] };
     workerConfig.agents.entries.makaron.model = defaultModel;
   }
   const wallow = workerConfig.agents.defaults.modelPolicy?.allow;
-  if (Array.isArray(wallow) && !wallow.includes(FLASH_REF)) wallow.push(FLASH_REF);
+  if (Array.isArray(wallow)) for (const ref of [FLASH_REF, VDS_REF]) if (!wallow.includes(ref)) wallow.push(ref);
   fs.mkdirSync(path.dirname(workerPlugin.workerConfigPath), { recursive: true });
   fs.writeFileSync(workerPlugin.workerConfigPath, `${JSON.stringify(workerConfig, null, 2)}\n`, { mode: 0o600 });
   workerPlugin.gatewayConfigPath = configPath;
@@ -314,7 +331,7 @@ trust_level = "trusted"
 
 [model_providers.deepseek]
 name = "DeepSeek"
-base_url = "https://api.deepseek.com/v1"
+base_url = "${SCENARIOS ? `http://127.0.0.1:${FAULT_PORT}/v1` : "https://api.deepseek.com/v1"}"
 wire_api = "responses"
 env_key = "DEEPSEEK_API_KEY"
 `, { mode: 0o600 });
@@ -332,7 +349,7 @@ const SESSION_TABLES = ["transcript_events", "transcript_event_identities", "ses
 // explicit keys, as vlab.mjs test uses: an operator-admin chat.send on them gets the owner's tools
 // (a feishu:direct key for an unknown peer is filtered to read/write/apply_patch)
 const keyFor = (runtimeId, size, i) => `agent:makaron:explicit:lt-${runtimeId}-${size}-${String(i).padStart(2, "0")}`;
-const harnessOf = { vds: { model: "vds-deepseek-flash", provider: "deepseek", harness: "codex" }, vcc: { model: VCC_REF.split("/")[1], provider: VCC_REF.split("/")[0], harness: "claude-cli" } };
+const harnessOf = { flash: { model: "deepseek-flash", provider: "deepseek", harness: "vlab-worker" }, vds: { model: "vds-deepseek-flash", provider: "deepseek", harness: "codex" }, vcc: { model: VCC_REF.split("/")[1], provider: VCC_REF.split("/")[0], harness: "claude-cli" } };
 function buildDatabase() {
   const vec = path.join(runtime, "openclaw", "node_modules", "sqlite-vec-linux-x64", "vec0.so");
   const src = new DatabaseSync(path.join(sharedState, dbRel), { readOnly: true, allowExtension: true });
@@ -478,9 +495,9 @@ function buildDatabase() {
     const cols = Object.keys(row);
     db.prepare(`INSERT INTO "${table}" (${cols.map((c) => `"${c}"`).join(",")}) VALUES (${cols.map(() => "?").join(",")})`).run(...cols.map((c) => row[c]));
   };
-  const clones = { vds: [], vcc: [] };
-  const needed = { vds: ARMS.some((a) => a.size === "big" && (a.arm === "vds" || a.arm === "mix")), vcc: ARMS.some((a) => a.size === "big" && (a.arm === "vcc" || a.arm === "mix")) };
-  for (const rt of ["vds", "vcc"]) {
+  const clones = { flash: [], vds: [], vcc: [] };
+  const needed = { flash: ARMS.some((a) => a.size === "big" && a.arm === "flash"), vds: ARMS.some((a) => a.size === "big" && (a.arm === "vds" || a.arm === "mix")), vcc: ARMS.some((a) => a.size === "big" && (a.arm === "vcc" || a.arm === "mix")) };
+  for (const rt of ["flash", "vds", "vcc"]) {
     if (!needed[rt]) continue;
     for (let i = 0; i < BIG_COUNT; i++) {
       const newSid = randomUUID();
@@ -509,7 +526,7 @@ function buildDatabase() {
   db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
   const fileMB = Math.round(fs.statSync(dbPath).size / 1e6);
   db.close();
-  return { big: { source: sid.slice(0, 8), events: size.rows, mb: Math.round(size.bytes / 1e5) / 10, textMB: Math.round(textBytes / 1e5) / 10, imagesPerRow, imageChars, rowsPadded: rowsN, clones: { vds: clones.vds.length, vcc: clones.vcc.length }, dbFileMB: fileMB } };
+  return { big: { source: sid.slice(0, 8), events: size.rows, mb: Math.round(size.bytes / 1e5) / 10, textMB: Math.round(textBytes / 1e5) / 10, imagesPerRow, imageChars, rowsPadded: rowsN, clones: { flash: clones.flash.length, vds: clones.vds.length, vcc: clones.vcc.length }, dbFileMB: fileMB } };
 }
 const built = buildDatabase();
 emit({ phase: "database", ...built });
@@ -553,13 +570,37 @@ const env = {
 };
 const token = String(config.gateway?.auth?.token ?? "").replace(/\$\{([^}]+)\}/gu, (_, k) => env[k] ?? secrets[k] ?? "");
 const lagProbe = path.join(here, "runtime-concurrency-lag.mjs");
+// the fault proxy: passes Codex's DeepSeek requests through, or fails them as faultMode says
+let faultMode = "ok";
+const faultLog = [];
+if (SCENARIOS) {
+  const http = await import("node:http");
+  const https = await import("node:https");
+  http.createServer((req, res) => {
+    const mode = faultMode;
+    faultLog.push({ at: Date.now(), mode, url: req.url });
+    const fail = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
+    if (mode === "503") return fail(503, { error: { message: "Service is too busy", type: "service_unavailable_error", code: "service_unavailable" } });
+    if (mode === "429") return fail(429, { error: { message: "Rate limit reached", type: "rate_limit_error", code: "rate_limit_exceeded" } });
+    if (mode === "402") return fail(402, { error: { message: "Insufficient Balance", type: "insufficient_balance", code: "invalid_request_error" } });
+    if (mode === "hang") { req.resume(); return undefined; }
+    const up = https.request(`https://api.deepseek.com${req.url}`, { method: req.method, headers: { ...req.headers, host: "api.deepseek.com" } }, (r) => {
+      res.writeHead(r.statusCode, r.headers);
+      if (mode === "cut") { r.once("data", (chunk) => { res.write(chunk); setTimeout(() => { res.destroy(); r.destroy(); }, 500); }); return; }
+      r.pipe(res);
+    });
+    up.on("error", () => res.destroy());
+    req.pipe(up);
+    return undefined;
+  }).listen(FAULT_PORT, "127.0.0.1").unref();
+}
 const lines = [];
 let gateway;
 let gatewayStartedAt;
 let gatewayStarts = 0;
 const plain = (s) => s.replace(/\u001b\[[0-9;]*m/gu, "");
 // lag and signal lines are appended to OUT_DIR every 15 s, so a stopped run still leaves them
-const SIGNAL = /liveness|stream acknowledgement|Cannot inspect Codex|Process inspection|Cannot reap|orphan cleanup|\[read-probe\]|\[hold-probe\]|\b429\b|rate.?limit|overloaded|harness failed|lane task error|startup maintenance failed|Gateway failed/iu;
+const SIGNAL = /liveness|stream acknowledgement|Cannot inspect Codex|Process inspection|Cannot reap|orphan cleanup|\[read-probe\]|\[hold-probe\]|\b429\b|rate.?limit|overloaded|harness failed|lane task error|SQLITE_BUSY|database is locked|lock timeout|coordinator timed? ?out|Dispatcher could not start worker|startup maintenance failed|Gateway failed/iu;
 const pendingLag = [];
 const pendingSignal = [];
 function flushLogs() {
@@ -573,7 +614,7 @@ function startGateway() {
   gatewayStartedAt = Date.now();
   // GATEWAY_CPU_PROF=1: a V8 CPU profile of the whole run (5 ms sampling), written to OUT_DIR on exit
   const prof = process.env.GATEWAY_CPU_PROF === "1" ? ["--cpu-prof", `--cpu-prof-dir=${OUT_DIR}`, "--cpu-prof-interval=5000"] : [];
-  gateway = spawn(process.execPath, [`--import=${lagProbe}`, ...prof, "--experimental-async-context-frame", "--max-old-space-size=12288", `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
+  gateway = spawn(process.execPath, [`--import=${lagProbe}`, ...prof, "--experimental-async-context-frame", "--max-old-space-size=12288", `${dist}/index.js`, "gateway", "--port", String(port)], { env: PROFILE_DIR ? { ...env, LT_PROFILE_DIR: PROFILE_DIR } : env, stdio: ["ignore", "pipe", "pipe"] });
   for (const s of [gateway.stdout, gateway.stderr]) {
     s.setEncoding("utf8");
     let rest = "";
@@ -600,6 +641,7 @@ function onEvent(e) {
   const now = Date.now();
   if (e.event === "agent" && p.stream === "assistant" && typeof p.data?.text === "string" && p.data.text.trim() && !r.firstTextAt) r.firstTextAt = now;
   if (e.event === "agent" && p.stream === "tool" && !r.firstToolAt) r.firstToolAt = now;
+  if (e.event === "agent" && p.stream === "tool" && p.data?.phase === "start") (r.tools ??= []).push(String(p.data?.name ?? "?"));
   if (e.event === "chat" && p.state === "delta" && !r.firstTextAt) r.firstTextAt = now;
   if (e.event === "chat" && ["final", "error", "aborted"].includes(p.state) && !r.terminal) {
     r.terminal = p.state;
@@ -678,7 +720,8 @@ setInterval(() => {
   const s = { at, gwCpuPct: lastSample ? Math.round(100 * (g.cpu - lastSample.cpu) / ((at - lastSample.at) / 1000)) : null, gwRssMB: g.rssMB,
     codexN: sum("codex").length, codexRssMB: sum("codex").reduce((a, k) => a + (k.rssMB ?? 0), 0),
     claudeN: sum("claude").length, claudeRssMB: sum("claude").reduce((a, k) => a + (k.rssMB ?? 0), 0),
-    workerN: sum("worker").length, ...hostMem() };
+    workerN: sum("worker").length, workerRssMB: sum("worker").reduce((a, k) => a + (k.rssMB ?? 0), 0),
+    otherN: sum("other").length, otherRssMB: sum("other").reduce((a, k) => a + (k.rssMB ?? 0), 0), treeRssMB: g.rssMB + kids.reduce((a, k) => a + (k.rssMB ?? 0), 0), ...hostMem() };
   lastSample = { at, cpu: g.cpu };
   samples.push(s);
   if (samples.length > 50_000) samples.splice(0, 10_000);
@@ -703,6 +746,7 @@ function windowMetrics(from, to) {
     eluAvg: lag.length ? Math.round(1000 * lag.reduce((a, x) => a + x.elu, 0) / lag.length) / 1000 : null, heapMaxMB: max(lag, "heapMB"),
     liveness: overdue.length + count(/liveness (?:warning|stalled|stall)/iu), livenessOverdueMaxMs: overdue.length ? Math.max(...overdue) : 0,
     streamAckTimeouts: count(/stream acknowledgement timed out/iu),
+    lockTimeouts: count(/SQLITE_BUSY|database is locked|lock timeout|coordinator timed? ?out/iu), workerStartFailures: count(/could not start worker|worker (?:exited|crashed)/iu), workerProcMax: max(ss, "workerN"), workerRssMaxMB: max(ss, "workerRssMB"), otherProcMax: max(ss, "otherN"), otherRssMaxMB: max(ss, "otherRssMB"), treeRssMaxMB: max(ss, "treeRssMB"),
     codexInspection: count(/Cannot inspect Codex processes/u), codexInspectionDeadline: count(/Process inspection exceeded its deadline/u),
     codexReap: count(/Cannot reap registered Codex process|orphan cleanup (?:failed|exceeded)/u),
     rateLimited: count(/\b429\b|rate.?limit|overloaded/iu),
@@ -723,13 +767,15 @@ async function prepareSession(key, ref) {
   try { await client.request("sessions.patch", { key, model: ref }); } catch (error) { return redact(error?.message ?? error).slice(0, 200); }
   return null;
 }
-async function send(key, runtimeId, label) {
+async function send(key, runtimeId, label, task = "sha") {
   const id = randomUUID();
   const r = { id, key, runtime: runtimeId, label, sentAt: Date.now() };
   runs.set(id, r);
   // the answer is only known by running the command (the model cannot compute a sha256), so a
   // correct reply proves the tool ran
-  const message = `（自动化并发压测）用 shell 执行一次 \`printf %s ${label} | sha256sum | cut -c1-12\`，然后只回复它输出的那 12 个字符，不要别的文字。`;
+  const message = task === "multi"
+    ? `（自动化并发压测）按顺序做，一步也不要省：1) 用 shell 执行 \`uname -r\`；2) 用 shell 执行 \`ls /tmp | wc -l\`；3) 用读文件工具读工作区 AGENTS.md（只需前 5 行）；4) 调用 session_status 工具；5) 用 shell 执行 \`printf %s ${label} | sha256sum | cut -c1-12\`。全部做完后只回复第 5 步输出的那 12 个字符，不要别的文字。`
+    : `（自动化并发压测）用 shell 执行一次 \`printf %s ${label} | sha256sum | cut -c1-12\`，然后只回复它输出的那 12 个字符，不要别的文字。`;
   r.expected = createHash("sha256").update(label).digest("hex").slice(0, 12);
   try {
     await client.request("chat.send", { agentId: "makaron", sessionKey: key, message, deliver: false, idempotencyKey: id, timeoutMs: TURN_TIMEOUT_MS }, { timeoutMs: 120_000 });
@@ -752,7 +798,7 @@ async function send(key, runtimeId, label) {
     } catch {}
   }
   r.correct = r.terminal === "final" && (r.text ?? "").includes(r.expected);
-  return { label, runtime: runtimeId, key: key.split(":").pop(), terminal: r.terminal, correct: r.correct, tool: Boolean(r.firstToolAt),
+  return { label, runtime: runtimeId, key: key.split(":").pop(), terminal: r.terminal, correct: r.correct, tool: Boolean(r.firstToolAt), tools: r.tools,
     firstMs: r.firstTextAt ? r.firstTextAt - r.sentAt : null, doneMs: r.endAt - r.sentAt, error: r.error, text: r.correct ? undefined : redact(r.text ?? "").slice(0, 160) };
 }
 const REF = { vds: VDS_REF, vcc: VCC_REF, flash: FLASH_REF };
@@ -798,14 +844,74 @@ function actualRuntime(keys) {
   } catch (error) { return { error: String(error?.message ?? error).slice(0, 200) }; } finally { db.close(); }
 }
 
-async function level(arm, size, c) {
+// host CPU seconds by command during a window, to see who burns the cores at a level
+function cpuTable() {
+  const t = new Map();
+  for (const p of fs.readdirSync("/proc").filter((d) => /^\d+$/u.test(d))) {
+    try {
+      const stat = fs.readFileSync(`/proc/${p}/stat`, "utf8");
+      const f = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+      t.set(p, { cpu: (Number(f[11]) + Number(f[12]) + Number(f[13]) + Number(f[14])) / TICK, cmd: fs.readFileSync(`/proc/${p}/cmdline`, "utf8").split("\0").join(" ").replace(/\/srv\/\S*\/|\/opt\/\S*\/|\/tmp\/\S*\//gu, "").slice(0, 70) });
+    } catch {}
+  }
+  return t;
+}
+const cpuDiff = (a, b) => {
+  const by = {};
+  for (const [p, v] of b) { const d = v.cpu - (a.get(p)?.cpu ?? 0); if (d > 0) { const k = v.cmd || "?"; by[k] = (by[k] ?? 0) + d; } }
+  return Object.fromEntries(Object.entries(by).sort((x, y) => y[1] - x[1]).slice(0, 8).map(([k, v]) => [k, Math.round(v * 10) / 10]));
+};
+const countProc = () => { let n = 0; for (const d of fs.readdirSync("/proc")) if (/^\d+$/u.test(d)) n++; return n; };
+let procSpawned = null;
+function lastEvents(key, n = 8) {
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const w = db.prepare("SELECT current_session_id AS sid FROM session_nodes WHERE session_key = ?").get(key);
+    return db.prepare("SELECT json_extract(event_json,'$.type') AS t, json_extract(event_json,'$.message.role') AS role, substr(json_extract(event_json,'$.customType'),1,40) AS ct, substr(json_extract(event_json,'$.message.content'),1,220) AS c FROM transcript_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?").all(w.sid, n);
+  } catch (error) { return String(error?.message ?? error).slice(0, 200); } finally { db.close(); }
+}
+// PROFILE=1: where the Gateway's own CPU goes, per thread, plus reaped children; the lag probe adds a
+// main-thread profile and live heap sample for each level.
+const PROFILE_DIR = process.env.PROFILE === "1" ? path.join(OUT_DIR, "profiles") : null;
+if (PROFILE_DIR) fs.mkdirSync(PROFILE_DIR, { recursive: true });
+let profileN = 0;
+function gatewayThreads() {
+  const out = { threads: {}, childrenSec: 0 };
+  const pid = String(gateway.pid);
+  try {
+    const main = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+    const mf = main.slice(main.lastIndexOf(")") + 2).split(" ");
+    out.childrenSec = (Number(mf[13]) + Number(mf[14])) / TICK;
+    for (const tid of fs.readdirSync(`/proc/${pid}/task`)) {
+      const st = fs.readFileSync(`/proc/${pid}/task/${tid}/stat`, "utf8");
+      const f = st.slice(st.lastIndexOf(")") + 2).split(" ");
+      const comm = tid === pid ? "main" : st.slice(st.indexOf("(") + 1, st.lastIndexOf(")"));
+      out.threads[`${comm}#${tid}`] = (Number(f[11]) + Number(f[12])) / TICK;
+    }
+  } catch {}
+  return out;
+}
+function threadsDiff(a, b) {
+  const byComm = {};
+  for (const [k, v] of Object.entries(b.threads)) { const comm = k.split("#")[0]; byComm[comm] = (byComm[comm] ?? 0) + Math.max(0, v - (a.threads[k] ?? 0)); }
+  return { byComm: Object.fromEntries(Object.entries(byComm).sort((x, y) => y[1] - x[1]).slice(0, 10).map(([k, v]) => [k, Math.round(v * 10) / 10])), childrenSec: Math.round((b.childrenSec - a.childrenSec) * 10) / 10 };
+}
+async function level(arm, size, c, task = "sha") {
   const plan = await sessionsFor(arm, size, c);
+  const cpuFrom = cpuTable();
+  const threadsFrom = gatewayThreads();
+  const profName = `${arm}-${size}-${task}-c${c}-${profileN++}`;
+  if (PROFILE_DIR) { fs.writeFileSync(path.join(PROFILE_DIR, `start.${profName}`), ""); await sleep(1_000); }
   const from = Date.now();
-  const jobs = plan.map((p, i) => send(p.key, p.rt, `${arm}-${size}-c${c}-${i}`));
+  const jobs = plan.map((p, i) => send(p.key, p.rt, `${arm}-${size}-${task}-c${c}-${i}-${randomBytes(3).toString("hex")}`, task));
   const canary = CANARY ? send(await canaryKey(), "flash", `canary-${arm}-${size}-c${c}-${canaryN++}`) : null;
   const results = await Promise.all(jobs);
   const canaryResult = canary ? await canary : null;
   const to = Date.now();
+  const cpuByCmd = cpuDiff(cpuFrom, cpuTable());
+  const threadCpu = threadsDiff(threadsFrom, gatewayThreads());
+  if (PROFILE_DIR) fs.writeFileSync(path.join(PROFILE_DIR, `stop.${profName}`), "");
+  for (const r of results.filter((x) => !x.correct).slice(0, 2)) emit({ phase: "failed-turn", label: r.label, events: lastEvents(`agent:makaron:explicit:${r.key}`), logs: lines.filter((l) => l.at >= from && /memory.?flush|read.*write|tool.*(?:deny|filter)|toolsAllow/iu.test(l.line)).slice(-8).map((l) => redact(l.line).slice(0, 260)) });
   await sleep(SETTLE_MS);
   const m = windowMetrics(from, Date.now());
   const failed = results.filter((r) => !r.correct);
@@ -821,7 +927,7 @@ async function level(arm, size, c) {
   const h = hostContext();
   const host = { gcSwap: h.gcSwapExperiment.length > 0, sharedGatewayInspect: h.sharedGatewayInspect.some((g) => g.inspect), otherCandidates: h.otherCandidates.length, load: h.load };
   const ran = actualRuntime([...plan.map((p) => p.key), ...(CANARY ? [await canaryKey()] : [])]);
-  return { arm, size, c, host, ran, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
+  return { arm, size, task, c, cpuByCmd, threadCpu, host, ran, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
 }
 
 async function waitSteady(label, minUptimeMin) {
@@ -843,6 +949,111 @@ async function waitSteady(label, minUptimeMin) {
   }
 }
 
+
+// ---- default-model switch checks ----
+function sessionsLike(pattern) {
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    return db.prepare("SELECT n.session_key AS key, w.agent_harness_id AS harness, w.model AS model, w.model_provider AS provider FROM session_nodes n LEFT JOIN session_windows w ON w.session_id = n.current_session_id WHERE n.session_key LIKE ? ORDER BY n.updated_at DESC LIMIT 8").all(pattern);
+  } catch (error) { return { error: String(error?.message ?? error).slice(0, 200) }; } finally { db.close(); }
+}
+const fallbackLines = (from) => lines.filter(inWin(from, Date.now())).filter((l) => /model-fallback|model fallback decision|harness failed|codexAppServerFailure|app-server.*fail/iu.test(l.line)).map((l) => redact(l.line).slice(0, 320)).slice(-12);
+async function scenario(name, key, opts = {}) {
+  const from = Date.now();
+  faultLog.length = 0;
+  const r = await send(key, opts.rt ?? "vds", `${name}-${randomBytes(3).toString("hex")}`, "sha");
+  const out = { phase: "scenario", name, key: key.split(":").pop(), fault: faultMode, ...r, proxyRequests: faultLog.length, ran: actualRuntime([key]), fallback: fallbackLines(from) };
+  emit(out);
+  return out;
+}
+async function runScenarios() {
+  const key = (n) => `agent:makaron:explicit:scn-${n}`;
+  if (CHANNEL_GRAY) {
+    const group = key("gray");
+    await scenario("gray-chat", group);
+    // a cron turn does not come through a channel, so it must stay on the default
+    {
+      const label = `cron-${randomBytes(3).toString("hex")}`;
+      const job = await client.request("cron.add", { name: label, agentId: "makaron", deleteAfterRun: false, schedule: { kind: "at", at: new Date(Date.now() + 15_000).toISOString() }, sessionTarget: "isolated", wakeMode: "now", payload: { kind: "agentTurn", message: `（自动化验证）用 shell 执行 \`printf %s ${label} | sha256sum | cut -c1-12\`，只回复输出。` }, delivery: { mode: "none" } }, { timeoutMs: 60_000 });
+      await sleep(60_000);
+      const got = await client.request("cron.get", { id: job.id ?? job.job?.id }, { timeoutMs: 60_000 }).catch((e) => ({ error: String(e?.message ?? e).slice(0, 200) }));
+      emit({ phase: "scenario", name: "gray-cron", state: got?.state ?? got, sessions: sessionsLike("%cron%") });
+    }
+    faultMode = "503";
+    await scenario("gray-fault-503", group);
+    faultMode = "ok";
+    await scenario("gray-recovered", group);
+    // does dropping the entry need a restart?
+    const pidBefore = gateway.pid;
+    const from = Date.now();
+    const cfg = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    delete cfg.channels.modelByChannel;
+    fs.writeFileSync(configPath, `${JSON.stringify(cfg, null, 2)}\n`, { mode: 0o600 });
+    await sleep(25_000);
+    emit({ phase: "scenario", name: "gray-config-removed", pidBefore, pidAfter: gateway.pid, exited: gateway.exitCode, reloadLines: lines.filter(inWin(from, Date.now())).filter((l) => /reload|restart/iu.test(l.line)).map((l) => redact(l.line).slice(0, 260)).slice(-10) });
+    if (gateway.exitCode === null) await scenario("gray-after-removal", key("after"), { rt: "flash" });
+    return;
+  }
+  if (process.env.RECOVERY === "1") {
+    for (const fault of ["503", "429"]) {
+      const k = key(`rec-${fault}`);
+      await scenario(`warm-${fault}`, k);
+      faultMode = fault;
+      await scenario(`fault-${fault}`, k);
+      faultMode = "ok";
+      for (const w of [0, 30, 120, 300]) {
+        await sleep(w * 1000);
+        const r = await scenario(`recover-${fault}-after-${w}s`, k);
+        emit({ phase: "recovery", fault, waitS: w, ok: r.correct, error: r.error, ran: r.ran });
+        if (r.correct) { await scenario(`recover-${fault}-next`, k); break; }
+      }
+    }
+    return;
+  }
+  // 1. a session that never chose a model runs what the default says
+  await scenario("default-new-session", key("default"));
+  // 2. subagent inherits the default
+  {
+    const label = `sub-${randomBytes(3).toString("hex")}`;
+    const from = Date.now();
+    const id = randomUUID();
+    const r = { id, key: key("parent"), runtime: "vds", label, sentAt: from };
+    runs.set(id, r);
+    await client.request("chat.send", { agentId: "makaron", sessionKey: key("parent"), message: `（自动化验证）用 sessions_spawn 派一个子 agent，让它用 shell 执行 \`printf %s ${label} | sha256sum | cut -c1-12\` 并把输出的 12 个字符告诉你。拿到结果后只回复那 12 个字符。`, deliver: false, idempotencyKey: id, timeoutMs: 300_000 }, { timeoutMs: 120_000 });
+    for (let i = 0; i < 480 && !r.terminal; i++) await sleep(250);
+    await sleep(60_000);
+    emit({ phase: "scenario", name: "subagent", terminal: r.terminal, tools: r.tools, doneMs: r.endAt ? r.endAt - from : null, text: r.text?.slice(0, 200), children: sessionsLike("%subagent%"), parent: actualRuntime([key("parent")]) });
+  }
+  // 3. an isolated cron turn inherits the default
+  try {
+    const label = `cron-${randomBytes(3).toString("hex")}`;
+    const job = await client.request("cron.add", { name: label, agentId: "makaron", deleteAfterRun: false, schedule: { kind: "at", at: new Date(Date.now() + 20_000).toISOString() }, sessionTarget: "isolated", wakeMode: "now", payload: { kind: "agentTurn", message: `（自动化验证）用 shell 执行 \`printf %s ${label} | sha256sum | cut -c1-12\`，只回复输出。` }, delivery: { mode: "none" } }, { timeoutMs: 60_000 });
+    await sleep(100_000);
+    const got = await client.request("cron.get", { id: job.id ?? job.job?.id }, { timeoutMs: 60_000 }).catch((e) => ({ error: String(e?.message ?? e).slice(0, 200) }));
+    emit({ phase: "scenario", name: "cron", state: got?.state ?? got, sessions: sessionsLike("%cron%"), logs: lines.filter((l) => l.line.includes(label) || /\bcron\b.*(model|harness)/iu.test(l.line)).slice(-5).map((l) => redact(l.line).slice(0, 300)) });
+  } catch (error) { emit({ phase: "scenario", name: "cron", error: redact(error?.message ?? error).slice(0, 400) }); }
+  // 4. faults on sessions already bound to a Codex thread, and on new ones
+  for (const fault of (process.env.FAULTS ?? "503,429,402,cut,hang").split(",")) {
+    const k = key(`bound-${fault}`);
+    await scenario(`warm-${fault}`, k);
+    faultMode = fault;
+    await scenario(`fault-${fault}-bound`, k);
+    await scenario(`fault-${fault}-new`, key(`new-${fault}`));
+    faultMode = "ok";
+    await scenario(`recovered-${fault}`, k);
+    await sleep(5_000);
+  }
+  // 5. a user's explicit /vds has no fallback
+  {
+    const k = key("manual");
+    await prepareSession(k, VDS_REF);
+    await scenario("manual-warm", k);
+    faultMode = "503";
+    await scenario("fault-503-manual-override", k);
+    faultMode = "ok";
+  }
+}
+
 // ---- run ----
 startGateway();
 const summary = { built, probes, models: { vds: VDS_REF, vcc: VCC_REF, canary: FLASH_REF }, levels: [], stoppedAt: {} };
@@ -851,16 +1062,21 @@ try {
   emit({ phase: "gateway-ready", pid: gateway.pid, readyS: Math.round((Date.now() - gatewayStartedAt) / 1000) });
   // warm each runtime once (app-server, claude, worker spawn), then every big session once so its
   // Codex thread / Claude session exists, as on V where big sessions are in use
+  if (SCENARIOS) {
+    await runScenarios();
+    summary.scenarios = true;
+    throw Object.assign(new Error("scenarios done"), { done: true });
+  }
   const warm = [];
-  for (const rt of ["vds", "vcc"]) if (ARMS.some((a) => a.arm === rt || a.arm === "mix")) {
+  for (const rt of ["flash", "vds", "vcc"]) if (ARMS.some((a) => a.arm === rt || (a.arm === "mix" && rt !== "flash"))) {
     const key = keyFor(rt, "warm", 0);
     await prepareSession(key, REF[rt]);
     warm.push(await send(key, rt, `warm-${rt}`));
   }
   if (CANARY) warm.push(await send(await canaryKey(), "flash", "warm-canary"));
-  emit({ phase: "warm", warm, ran: actualRuntime([keyFor("vds", "warm", 0), ...(NEEDS_CLAUDE ? [keyFor("vcc", "warm", 0)] : []), keyFor("flash", "canary", 0)]) });
+  emit({ phase: "warm", warm, ran: actualRuntime([...(ARMS.some((a) => a.arm === "flash") ? [keyFor("flash", "warm", 0)] : []), keyFor("vds", "warm", 0), ...(NEEDS_CLAUDE ? [keyFor("vcc", "warm", 0)] : []), keyFor("flash", "canary", 0)]) });
   if (WARM_BIG && BIG_COUNT > 0) {
-    for (const rt of ["vds", "vcc"]) {
+    for (const rt of ["flash", "vds", "vcc"]) {
       const keys = ARMS.some((a) => a.size === "big" && (a.arm === rt || a.arm === "mix")) ? Array.from({ length: BIG_COUNT }, (_, i) => keyFor(rt, "big", i)) : [];
       for (let i = 0; i < keys.length; i += 3) {
         const from = Date.now();
@@ -872,20 +1088,34 @@ try {
   summary.steady = await waitSteady("initial", STEADY_MIN);
   summary.hostAtStart = hostContext();
   emit({ phase: "steady", ...summary.steady, host: summary.hostAtStart });
-  for (const { arm, size } of ARMS) {
+  const runLevel = async ({ arm, size, task }, c) => {
+    const res = await level(arm, size, c, task);
+    const { runs: levelRuns, ...head } = res;
+    emit({ phase: "level", ...head });
+    emit({ phase: "level-runs", arm, size, task, c, runs: levelRuns });
+    summary.levels.push(res);
+    const stop = (res.stallMaxMs ?? 0) > GATE_STALL_MS ? `stall ${res.stallMaxMs} ms` : res.failRate > GATE_FAIL_RATE ? `failures ${res.failed}/${c}` : null;
+    if (res.hostAvailMinMB !== null && res.hostAvailMinMB < HOST_MIN_AVAILABLE_MB) summary.abort = `host MemAvailable ${res.hostAvailMinMB} MB`;
+    if (stop) { summary.stoppedAt[`${arm}:${size}:${task}`] = { c, reason: stop }; emit({ phase: "gate", arm, size, task, c, stop }); }
+    await sleep(COOLDOWN_MS);
+    return Boolean(stop);
+  };
+  const levelsFor = (a) => LEVELS.filter((c) => a.size !== "big" || c <= BIG_COUNT).filter((c) => a.task === "sha" || c <= num("MULTI_MAX", MAXC));
+  if (PAIRED) {
     for (const c of LEVELS) {
-      const res = await level(arm, size, c);
-      const { runs: levelRuns, ...head } = res;
-      emit({ phase: "level", ...head });
-      emit({ phase: "level-runs", arm, size, c, runs: levelRuns });
-      summary.levels.push(res);
-      const stop = (res.stallMaxMs ?? 0) > GATE_STALL_MS ? `stall ${res.stallMaxMs} ms` : res.failRate > GATE_FAIL_RATE ? `failures ${res.failed}/${c}` : null;
-      if (res.hostAvailMinMB !== null && res.hostAvailMinMB < HOST_MIN_AVAILABLE_MB) { summary.abort = `host MemAvailable ${res.hostAvailMinMB} MB`; break; }
-      if (stop) { summary.stoppedAt[`${arm}:${size}`] = { c, reason: stop }; emit({ phase: "gate", arm, size, c, stop }); break; }
-      await sleep(COOLDOWN_MS);
+      for (const a of ARMS) {
+        if (!levelsFor(a).includes(c) || summary.stoppedAt[`${a.arm}:${a.size}:${a.task}`] || summary.abort) continue;
+        await runLevel(a, c);
+        if (!summary.abort) await waitSteady(`after-${a.arm}-${a.size}-${a.task}-c${c}`, 0);
+      }
+    }
+    if (summary.abort) emit({ phase: "abort", reason: summary.abort });
+  } else for (const a of ARMS) {
+    for (const c of levelsFor(a)) {
+      if (await runLevel(a, c) || summary.abort) break;
     }
     if (summary.abort) { emit({ phase: "abort", reason: summary.abort }); break; }
-    await waitSteady(`after-${arm}-${size}`, 0);
+    await waitSteady(`after-${a.arm}-${a.size}`, 0);
   }
   summary.codexAppServersSpawned = seenCodexPids.size;
   summary.gatewayStarts = gatewayStarts;
@@ -893,9 +1123,11 @@ try {
   console.log(JSON.stringify(out, null, 1));
   fs.writeFileSync(path.join(OUT_DIR, "summary.json"), JSON.stringify({ ...out, levels: summary.levels }, null, 1));
 } catch (error) {
+  if (error?.done) { console.log("scenarios done"); } else {
   console.error(redact(error?.stack ?? error));
   console.error(redact(lines.slice(-120).map((l) => l.line).join("\n")));
   process.exitCode = 1;
+  }
 } finally {
   client?.stop();
   gateway.kill("SIGTERM");
