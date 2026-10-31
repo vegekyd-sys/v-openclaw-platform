@@ -201,6 +201,11 @@ const V_CODEX_DIST_SHA = process.env.V_CODEX_DIST_SHA ?? "e56145ed44f74a48560d67
   const after = [...codexDists(stateDir), ...codexDists(runtime)].map((d) => distSha(d) === V_CODEX_DIST_SHA);
   emit({ phase: "codex-plugin", source: vDist.startsWith(stateDir) ? "state/npm" : vDist.replace(baselines, "baselines").slice(0, 60), allV: after.every(Boolean), copies: after.length, replacedWithV: replaced });
   assert(after.every(Boolean), "a Codex plugin copy still differs from V's bytes");
+  // CODEX_PATCHES: comma-separated scripts, each run on every loaded copy's dist, on top of V's bytes
+  for (const script of (process.env.CODEX_PATCHES ?? "").split(",").filter(Boolean)) {
+    for (const dir of [...codexDists(stateDir), ...codexDists(runtime)]) execFileSync(process.execPath, [path.resolve(script), dir], { stdio: "inherit" });
+    emit({ phase: "codex-patch", script });
+  }
 }
 
 // ---- probes in the private runtime copy (optional: absent markers are reported, not fatal) ----
@@ -276,7 +281,14 @@ for (const [ref, entry] of Object.entries(entries)) {
   config.agents.defaults.models[ref] = entry;
   config.agents.entries.makaron.models[ref] = entry;
 }
-const defaultModel = CHANNEL_GRAY ? { primary: FLASH_REF, fallbacks: ["openai/gpt-6-luna"] } : SCENARIOS ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : { primary: FLASH_REF, fallbacks: [] };
+const HANG_COMPARE = process.env.HANG_COMPARE === "1";
+if (HANG_COMPARE) config.models.providers.deepseek.baseUrl = `http://127.0.0.1:${FAULT_PORT}/v1`;
+// V's value is 90; shared VLab's is 300, and a hang's duration follows it
+const PROVIDER_TIMEOUT = process.env.PROVIDER_TIMEOUT_S ? Number(process.env.PROVIDER_TIMEOUT_S) : null;
+if (PROVIDER_TIMEOUT) config.models.providers.deepseek.timeoutSeconds = PROVIDER_TIMEOUT;
+const HANG_RT = process.env.HANG_PRIMARY ?? "flash";
+// a session on the default model keeps its fallback; a sessions.patch override would not
+const defaultModel = HANG_COMPARE ? (HANG_RT === "vds" ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : { primary: FLASH_REF, fallbacks: [VDS_REF] }) : CHANNEL_GRAY ? { primary: FLASH_REF, fallbacks: ["openai/gpt-6-luna"] } : SCENARIOS ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : { primary: FLASH_REF, fallbacks: [] };
 // chat.send arrives as channel "webchat" with no group, so the wildcard entry is what a candidate can reach
 if (CHANNEL_GRAY) config.channels.modelByChannel = { webchat: { "*": VDS_REF } };
 config.agents.defaults.model = defaultModel;
@@ -300,6 +312,8 @@ Object.assign(workerPlugin, WORKER_POOL, { warmSpareWorkers: 0 });
   assert(!rel.startsWith(".."), "candidate Worker config escaped state");
   const workerConfig = JSON.parse(fs.readFileSync(path.join(sharedState, rel), "utf8").replaceAll(sharedState, stateDir).replaceAll("/srv/vlab-production-mirror/labs/instances/db91-parity/runtime", runtime));
   workerConfig.channels = {};
+  if (HANG_COMPARE) workerConfig.models.providers.deepseek.baseUrl = `http://127.0.0.1:${FAULT_PORT}/v1`;
+  if (PROVIDER_TIMEOUT) workerConfig.models.providers.deepseek.timeoutSeconds = PROVIDER_TIMEOUT;
   workerConfig.models.providers.deepseek.models = (workerConfig.models.providers.deepseek.models ?? []).filter((m) => m.id !== "deepseek-flash").concat([{ id: "deepseek-flash", name: "DeepSeek V4.1 Flash", ...shape }]);
   const workerEntry = { alias: "deepseek", agentRuntime: { id: "openclaw" }, params: { thinking: "high" } };
   workerConfig.models.providers.deepseek.models = workerConfig.models.providers.deepseek.models.filter((m) => m.id !== "vds-deepseek-flash").concat([{ id: "vds-deepseek-flash", name: "DeepSeek V4.1 Flash (Codex vds alias)", ...shape }]);
@@ -334,6 +348,7 @@ name = "DeepSeek"
 base_url = "${SCENARIOS ? `http://127.0.0.1:${FAULT_PORT}/v1` : "https://api.deepseek.com/v1"}"
 wire_api = "responses"
 env_key = "DEEPSEEK_API_KEY"
+${(process.env.CODEX_PROVIDER_TOML ?? "").replaceAll(";", "\n")}
 `, { mode: 0o600 });
   for (const entry of ["plugins", "cache", "skills", "models_cache.json"]) {
     if (fs.existsSync(path.join(src, entry))) fs.cpSync(path.join(src, entry), path.join(dst, entry), { recursive: true });
@@ -573,11 +588,12 @@ const lagProbe = path.join(here, "runtime-concurrency-lag.mjs");
 // the fault proxy: passes Codex's DeepSeek requests through, or fails them as faultMode says
 let faultMode = "ok";
 const faultLog = [];
+let faultPath = null;
 if (SCENARIOS) {
   const http = await import("node:http");
   const https = await import("node:https");
   http.createServer((req, res) => {
-    const mode = faultMode;
+    const mode = !faultPath || req.url.includes(faultPath) ? faultMode : "ok";
     faultLog.push({ at: Date.now(), mode, url: req.url });
     const fail = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
     if (mode === "503") return fail(503, { error: { message: "Service is too busy", type: "service_unavailable_error", code: "service_unavailable" } });
@@ -586,6 +602,7 @@ if (SCENARIOS) {
     if (mode === "hang") { req.resume(); return undefined; }
     const up = https.request(`https://api.deepseek.com${req.url}`, { method: req.method, headers: { ...req.headers, host: "api.deepseek.com" } }, (r) => {
       res.writeHead(r.statusCode, r.headers);
+      if (mode === "stall") { r.once("data", (chunk) => { res.write(chunk); r.destroy(); }); return; }
       if (mode === "cut") { r.once("data", (chunk) => { res.write(chunk); setTimeout(() => { res.destroy(); r.destroy(); }, 500); }); return; }
       r.pipe(res);
     });
@@ -963,20 +980,66 @@ async function runScenarios() {
     if (gateway.exitCode === null) await scenario("gray-after-removal", key("after"), { rt: "flash" });
     return;
   }
+  if (HANG_COMPARE) {
+    // the primary hangs on its own API; the other still answers, so a fallback is visible
+    const api = HANG_RT === "vds" ? "/responses" : "/chat/completions";
+    for (const fault of (process.env.FAULTS ?? "hang,stall").split(",")) {
+      const k = key(`hang-${HANG_RT}-${fault}`);
+      await scenario(`warm-${HANG_RT}-${fault}`, k, { rt: HANG_RT });
+      faultPath = api;
+      faultMode = fault;
+      await scenario(`fault-${HANG_RT}-${fault}`, k, { rt: HANG_RT });
+      faultMode = "ok";
+      faultPath = null;
+      await scenario(`after-${HANG_RT}-${fault}`, k, { rt: HANG_RT });
+    }
+    return;
+  }
   if (process.env.RECOVERY === "1") {
-    for (const fault of ["503", "429"]) {
+    const emitDiag = () => emit({ phase: "thread-diag", lines: lines.filter((l) => l.line.includes("[codex-thread-diag]")).map((l) => l.line.slice(l.line.indexOf("{")).slice(0, 500)) });
+    for (const fault of (process.env.FAULTS ?? "503,429").split(",").filter(Boolean)) {
       const k = key(`rec-${fault}`);
       await scenario(`warm-${fault}`, k);
       faultMode = fault;
       await scenario(`fault-${fault}`, k);
       faultMode = "ok";
-      for (const w of [0, 30, 120, 300]) {
+      for (const w of (process.env.RECOVERY_WAITS ?? "0,30,120,300").split(",").map(Number)) {
         await sleep(w * 1000);
         const r = await scenario(`recover-${fault}-after-${w}s`, k);
         emit({ phase: "recovery", fault, waitS: w, ok: r.correct, error: r.error, ran: r.ran });
         if (r.correct) { await scenario(`recover-${fault}-next`, k); break; }
       }
     }
+    // FAILED_RESUME_CASES=1: the paths around the fix, not only the plain next message
+    if (process.env.FAILED_RESUME_CASES === "1") {
+      const once = async (name, k, fault) => { faultMode = fault; await scenario(`fault-${name}`, k); faultMode = "ok"; };
+      // a session whose very first turn failed
+      {
+        const k = key("rec-new");
+        await once("new", k, "503");
+        await scenario("recover-new-after-0s", k);
+      }
+      // failing twice in a row on the reused thread
+      {
+        const k = key("rec-twice");
+        await scenario("warm-twice", k);
+        await once("twice-1", k, "429");
+        await once("twice-2", k, "429");
+        await scenario("recover-twice-after-0s", k);
+      }
+      // the config changes right after the failure, so the thread must really resume
+      {
+        const k = key("rec-config");
+        await scenario("warm-config", k);
+        await once("config", k, "429");
+        fs.writeFileSync(process.env.CODEX_FORCE_RESUME_FILE, "");
+        const r = await scenario("recover-config-changed", k);
+        fs.rmSync(process.env.CODEX_FORCE_RESUME_FILE);
+        emit({ phase: "recovery", fault: "429+config", ok: r.correct, doneMs: r.doneMs, error: r.error });
+        await scenario("recover-config-next", k);
+      }
+    }
+    emitDiag();
     return;
   }
   // 1. a session that never chose a model runs what the default says
@@ -1102,7 +1165,8 @@ try {
   gateway.kill("SIGTERM");
   for (let i = 0; i < 60 && gateway.exitCode === null; i++) await sleep(1_000); // a CPU profile is written on exit
   if (gateway.exitCode === null) gateway.kill("SIGKILL");
-  fs.rmSync(shortTmp, { recursive: true, force: true });
+  // a Gateway child can still be writing its compile cache here
+  fs.rmSync(shortTmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
   if (fs.existsSync(claudeProjects)) for (const d of fs.readdirSync(claudeProjects)) if (!claudeProjectsBefore.has(d)) fs.rmSync(path.join(claudeProjects, d), { recursive: true, force: true });
   flushLogs();
   fs.writeFileSync(path.join(OUT_DIR, "samples.jsonl"), samples.map((s) => JSON.stringify(s)).join("\n"));
