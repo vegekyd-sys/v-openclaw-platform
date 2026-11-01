@@ -1,0 +1,327 @@
+ready
+ 09:55:39 up 114 days,  9:29, 14 users,  load average: 9.05, 8.71, 6.31
+thin relay wall=0.12 cpu=0.09+0.01 rss_kb=58356
+thin relay wall=0.10 cpu=0.08+0.02 rss_kb=58364
+thin relay wall=0.12 cpu=0.10+0.02 rss_kb=58368
+thin relay wall=0.12 cpu=0.09+0.02 rss_kb=58240
+thin relay wall=0.16 cpu=0.08+0.03 rss_kb=58620
+thin relay wall=0.11 cpu=0.09+0.02 rss_kb=58360
+thin relay wall=0.13 cpu=0.10+0.02 rss_kb=58240
+thin relay wall=0.18 cpu=0.11+0.03 rss_kb=58572
+thin relay wall=0.16 cpu=0.11+0.03 rss_kb=58496
+thin relay wall=0.15 cpu=0.08+0.02 rss_kb=58484
+thin relay wall=0.09 cpu=0.07+0.02 rss_kb=58692
+thin relay wall=0.12 cpu=0.10+0.01 rss_kb=58624
+base0 relay wall=1.47 cpu=1.20+0.24 rss_kb=135012
+base0 relay wall=1.32 cpu=1.04+0.21 rss_kb=135264
+base0 relay wall=1.18 cpu=1.05+0.19 rss_kb=136256
+base0 relay wall=1.15 cpu=1.05+0.20 rss_kb=136544
+base0 relay wall=1.07 cpu=0.90+0.14 rss_kb=136300
+base0 relay wall=1.59 cpu=1.25+0.27 rss_kb=135408
+base0 relay wall=1.43 cpu=1.09+0.19 rss_kb=135540
+base0 relay wall=1.52 cpu=1.16+0.24 rss_kb=135436
+base0 relay wall=1.47 cpu=1.17+0.20 rss_kb=135828
+base0 relay wall=0.98 cpu=0.99+0.17 rss_kb=135348
+base0 relay wall=1.44 cpu=1.31+0.32 rss_kb=135904
+base0 relay wall=1.11 cpu=1.00+0.19 rss_kb=136524
+base0 cron_status wall=2.32 cpu=2.45+0.41 rss_kb=174684
+base0 cron_status wall=2.37 cpu=2.45+0.40 rss_kb=174904
+base0 cron_status wall=3.12 cpu=3.04+0.58 rss_kb=176872
+base0 cron_status wall=2.41 cpu=2.51+0.46 rss_kb=177944
+base0 cron_status wall=2.41 cpu=2.51+0.41 rss_kb=177512
+base0 cron_status wall=2.90 cpu=2.80+0.56 rss_kb=179612
+base0 cron_status wall=2.26 cpu=2.42+0.40 rss_kb=175508
+base0 cron_status wall=2.53 cpu=2.76+0.45 rss_kb=178808
+base0 cron_status wall=2.74 cpu=2.65+0.45 rss_kb=179040
+base0 cron_status wall=2.76 cpu=2.76+0.52 rss_kb=179672
+base0 cron_status wall=2.61 cpu=2.75+0.46 rss_kb=172952
+base0 cron_status wall=2.31 cpu=2.41+0.42 rss_kb=174768
+base0 config_get wall=4.81 cpu=4.91+0.61 rss_kb=255024
+base0 config_get wall=5.49 cpu=5.41+0.72 rss_kb=255016
+base0 config_get wall=4.62 cpu=4.92+0.58 rss_kb=255108
+base0 config_get wall=4.92 cpu=5.23+0.61 rss_kb=257628
+base0 config_get wall=5.26 cpu=5.53+0.80 rss_kb=256044
+base0 config_get wall=4.18 cpu=4.55+0.58 rss_kb=255420
+base0 config_get wall=4.39 cpu=4.71+0.60 rss_kb=252244
+base0 config_get wall=4.92 cpu=5.10+0.76 rss_kb=258080
+base0 config_get wall=5.82 cpu=5.61+0.92 rss_kb=259960
+base0 config_get wall=6.34 cpu=5.66+0.82 rss_kb=251496
+base0 config_get wall=5.69 cpu=5.27+0.72 rss_kb=256652
+base0 config_get wall=5.05 cpu=4.87+0.60 rss_kb=257856
+base0 sessions wall=5.24 cpu=4.73+0.63 rss_kb=216444
+base0 sessions wall=5.12 cpu=4.41+0.64 rss_kb=218900
+base0 sessions wall=4.94 cpu=4.34+0.67 rss_kb=218460
+base0 sessions wall=4.88 cpu=4.55+0.66 rss_kb=218984
+base0 sessions wall=5.76 cpu=4.60+0.74 rss_kb=222492
+base0 sessions wall=4.88 cpu=4.25+0.64 rss_kb=217912
+base0 sessions wall=4.59 cpu=4.28+0.61 rss_kb=222200
+base0 sessions wall=5.15 cpu=4.49+0.66 rss_kb=224700
+base0 sessions wall=4.87 cpu=4.33+0.66 rss_kb=223292
+base0 sessions wall=4.66 cpu=4.24+0.64 rss_kb=220840
+base0 sessions wall=5.02 cpu=4.37+0.85 rss_kb=221004
+base0 sessions wall=5.00 cpu=4.65+0.67 rss_kb=221852
+ready relay wall=1.60 cpu=1.29+0.32 rss_kb=135940
+ready relay wall=1.36 cpu=1.19+0.23 rss_kb=135956
+ready relay wall=1.33 cpu=1.05+0.23 rss_kb=135548
+ready relay wall=1.20 cpu=1.01+0.20 rss_kb=136316
+ready relay wall=1.29 cpu=1.07+0.22 rss_kb=135988
+ready relay wall=1.88 cpu=1.53+0.34 rss_kb=135572
+ready relay wall=1.39 cpu=1.20+0.27 rss_kb=135560
+ready relay wall=1.03 cpu=0.94+0.15 rss_kb=135380
+ready relay wall=1.12 cpu=1.02+0.21 rss_kb=135700
+ready relay wall=1.01 cpu=0.92+0.14 rss_kb=135716
+ready relay wall=1.43 cpu=1.24+0.27 rss_kb=136072
+ready relay wall=1.13 cpu=1.08+0.17 rss_kb=136940
+ready cron_status wall=2.02 cpu=2.00+0.33 rss_kb=175036
+ready cron_status wall=1.82 cpu=1.83+0.24 rss_kb=176644
+ready cron_status wall=2.93 cpu=2.71+0.65 rss_kb=176876
+ready cron_status wall=2.11 cpu=2.02+0.38 rss_kb=177472
+ready cron_status wall=1.78 cpu=1.95+0.30 rss_kb=179956
+ready cron_status wall=2.50 cpu=2.24+0.46 rss_kb=175204
+ready cron_status wall=2.37 cpu=2.27+0.45 rss_kb=174144
+ready cron_status wall=2.39 cpu=2.17+0.49 rss_kb=171620
+ready cron_status wall=2.60 cpu=2.48+0.53 rss_kb=177704
+ready cron_status wall=2.70 cpu=2.63+0.65 rss_kb=181152
+ready cron_status wall=2.02 cpu=1.97+0.39 rss_kb=176712
+ready cron_status wall=1.71 cpu=1.76+0.30 rss_kb=177236
+ready config_get wall=4.67 cpu=5.07+0.64 rss_kb=256772
+ready config_get wall=3.72 cpu=4.28+0.50 rss_kb=255680
+ready config_get wall=4.57 cpu=4.90+0.76 rss_kb=257808
+ready config_get wall=4.87 cpu=5.06+0.69 rss_kb=254944
+ready config_get wall=3.79 cpu=4.19+0.55 rss_kb=257776
+ready config_get wall=4.76 cpu=5.12+0.71 rss_kb=255060
+ready config_get wall=4.83 cpu=5.11+0.75 rss_kb=258816
+ready config_get wall=4.65 cpu=4.96+0.78 rss_kb=260648
+ready config_get wall=4.24 cpu=4.70+0.64 rss_kb=257888
+ready config_get wall=4.36 cpu=4.93+0.69 rss_kb=236748
+ready config_get wall=4.58 cpu=4.95+0.75 rss_kb=257148
+ready config_get wall=5.12 cpu=5.19+0.86 rss_kb=253984
+ready sessions wall=3.06 cpu=3.47+0.44 rss_kb=219536
+ready sessions wall=3.97 cpu=4.15+0.66 rss_kb=223064
+ready sessions wall=3.48 cpu=3.80+0.59 rss_kb=222116
+ready sessions wall=2.97 cpu=3.42+0.47 rss_kb=222040
+ready sessions wall=3.01 cpu=3.35+0.48 rss_kb=218220
+ready sessions wall=3.24 cpu=3.55+0.54 rss_kb=218324
+ready sessions wall=3.65 cpu=4.01+0.64 rss_kb=223892
+ready sessions wall=3.48 cpu=3.65+0.52 rss_kb=222204
+ready sessions wall=3.59 cpu=3.86+0.64 rss_kb=225784
+ready sessions wall=3.43 cpu=3.75+0.61 rss_kb=218168
+ready sessions wall=3.03 cpu=3.43+0.50 rss_kb=221708
+ready sessions wall=2.96 cpu=3.33+0.53 rss_kb=219848
+-- sanity ready
+44893
+ rc=0 stderr_bytes=0
+{"mock":1}
+relay rc=0
+  ! plugins.entries.codex: plugin not installed: codex — install the official external plugin with: openclaw plugins i
+{
+  "ok": false,
+  "error": {
+    "type": "cli_error",
+    "
+patched ansi
+ready+ansi relay wall=1.30 cpu=1.29+0.35 rss_kb=135820
+ready+ansi relay wall=1.15 cpu=1.08+0.23 rss_kb=135364
+ready+ansi relay wall=0.95 cpu=0.95+0.17 rss_kb=135776
+ready+ansi relay wall=1.07 cpu=1.05+0.20 rss_kb=136692
+ready+ansi relay wall=1.23 cpu=1.20+0.27 rss_kb=135888
+ready+ansi relay wall=0.98 cpu=0.98+0.19 rss_kb=135688
+ready+ansi relay wall=0.98 cpu=0.97+0.21 rss_kb=135340
+ready+ansi relay wall=0.86 cpu=0.89+0.17 rss_kb=135508
+ready+ansi relay wall=0.90 cpu=0.89+0.20 rss_kb=134948
+ready+ansi relay wall=0.86 cpu=0.89+0.17 rss_kb=135828
+ready+ansi relay wall=1.05 cpu=0.99+0.22 rss_kb=135764
+ready+ansi relay wall=0.86 cpu=0.92+0.16 rss_kb=135592
+ready+ansi cron_status wall=1.80 cpu=1.85+0.27 rss_kb=175048
+ready+ansi cron_status wall=1.94 cpu=1.78+0.30 rss_kb=175792
+ready+ansi cron_status wall=2.12 cpu=2.12+0.38 rss_kb=174168
+ready+ansi cron_status wall=1.81 cpu=1.78+0.28 rss_kb=175024
+ready+ansi cron_status wall=2.44 cpu=2.10+0.54 rss_kb=173652
+ready+ansi cron_status wall=2.21 cpu=2.14+0.41 rss_kb=176680
+ready+ansi cron_status wall=1.85 cpu=1.95+0.36 rss_kb=176508
+ready+ansi cron_status wall=2.29 cpu=2.09+0.41 rss_kb=176516
+ready+ansi cron_status wall=2.28 cpu=2.17+0.44 rss_kb=178612
+ready+ansi cron_status wall=1.83 cpu=1.84+0.33 rss_kb=173516
+ready+ansi cron_status wall=2.35 cpu=2.15+0.47 rss_kb=173188
+ready+ansi cron_status wall=2.19 cpu=2.11+0.46 rss_kb=174616
+ready+ansi config_get wall=4.16 cpu=4.56+0.67 rss_kb=248080
+ready+ansi config_get wall=4.50 cpu=4.83+0.81 rss_kb=252344
+ready+ansi config_get wall=3.65 cpu=4.11+0.57 rss_kb=261856
+ready+ansi config_get wall=4.17 cpu=4.74+0.65 rss_kb=255852
+ready+ansi config_get wall=3.55 cpu=4.04+0.54 rss_kb=251432
+ready+ansi config_get wall=3.31 cpu=3.88+0.41 rss_kb=250592
+ready+ansi config_get wall=4.04 cpu=4.50+0.66 rss_kb=258552
+ready+ansi config_get wall=4.18 cpu=4.59+0.73 rss_kb=252140
+ready+ansi config_get wall=3.69 cpu=4.31+0.55 rss_kb=253496
+ready+ansi config_get wall=3.64 cpu=4.19+0.55 rss_kb=256636
+ready+ansi config_get wall=3.51 cpu=3.99+0.49 rss_kb=259532
+ready+ansi config_get wall=4.08 cpu=4.56+0.70 rss_kb=256628
+ready+ansi sessions wall=3.05 cpu=3.44+0.46 rss_kb=222484
+ready+ansi sessions wall=3.39 cpu=3.73+0.54 rss_kb=224748
+ready+ansi sessions wall=3.23 cpu=3.48+0.56 rss_kb=220836
+ready+ansi sessions wall=3.22 cpu=3.50+0.53 rss_kb=218548
+ready+ansi sessions wall=2.81 cpu=3.26+0.39 rss_kb=219592
+ready+ansi sessions wall=4.21 cpu=4.50+0.76 rss_kb=218204
+ready+ansi sessions wall=3.00 cpu=3.35+0.49 rss_kb=224988
+ready+ansi sessions wall=3.76 cpu=3.98+0.67 rss_kb=224648
+ready+ansi sessions wall=3.71 cpu=3.99+0.58 rss_kb=223888
+ready+ansi sessions wall=4.07 cpu=4.05+0.66 rss_kb=221836
+ready+ansi sessions wall=3.56 cpu=3.95+0.54 rss_kb=218772
+ready+ansi sessions wall=2.93 cpu=3.42+0.44 rss_kb=217812
+patched fast
+ready+ansi+fast relay wall=0.81 cpu=0.80+0.15 rss_kb=122792
+ready+ansi+fast relay wall=0.92 cpu=0.90+0.17 rss_kb=117668
+ready+ansi+fast relay wall=0.79 cpu=0.82+0.17 rss_kb=121372
+ready+ansi+fast relay wall=0.67 cpu=0.71+0.13 rss_kb=116744
+ready+ansi+fast relay wall=0.74 cpu=0.76+0.18 rss_kb=121964
+ready+ansi+fast relay wall=0.63 cpu=0.71+0.10 rss_kb=117432
+ready+ansi+fast relay wall=0.64 cpu=0.66+0.13 rss_kb=122208
+ready+ansi+fast relay wall=0.56 cpu=0.62+0.11 rss_kb=124436
+ready+ansi+fast relay wall=0.54 cpu=0.58+0.09 rss_kb=117260
+ready+ansi+fast relay wall=0.61 cpu=0.64+0.10 rss_kb=122080
+ready+ansi+fast relay wall=0.65 cpu=0.68+0.11 rss_kb=122936
+ready+ansi+fast relay wall=0.66 cpu=0.77+0.15 rss_kb=122084
+ready+ansi+fast cron_status wall=1.40 cpu=1.51+0.22 rss_kb=172924
+ready+ansi+fast cron_status wall=1.66 cpu=1.67+0.26 rss_kb=168696
+ready+ansi+fast cron_status wall=2.14 cpu=1.99+0.46 rss_kb=168772
+ready+ansi+fast cron_status wall=1.89 cpu=1.93+0.35 rss_kb=171808
+ready+ansi+fast cron_status wall=1.71 cpu=1.80+0.30 rss_kb=168604
+ready+ansi+fast cron_status wall=1.40 cpu=1.50+0.25 rss_kb=170000
+ready+ansi+fast cron_status wall=1.59 cpu=1.67+0.24 rss_kb=175288
+ready+ansi+fast cron_status wall=1.14 cpu=1.35+0.16 rss_kb=173036
+ready+ansi+fast cron_status wall=1.25 cpu=1.44+0.20 rss_kb=170888
+ready+ansi+fast cron_status wall=1.25 cpu=1.39+0.22 rss_kb=172120
+ready+ansi+fast cron_status wall=1.48 cpu=1.70+0.24 rss_kb=171288
+ready+ansi+fast cron_status wall=1.53 cpu=1.64+0.29 rss_kb=174248
+ready+ansi+fast config_get wall=4.04 cpu=4.46+0.63 rss_kb=250300
+ready+ansi+fast config_get wall=4.07 cpu=4.39+0.68 rss_kb=249716
+ready+ansi+fast config_get wall=4.40 cpu=4.75+0.69 rss_kb=250368
+ready+ansi+fast config_get wall=3.59 cpu=4.07+0.45 rss_kb=252176
+ready+ansi+fast config_get wall=4.17 cpu=4.52+0.68 rss_kb=252892
+ready+ansi+fast config_get wall=3.64 cpu=4.12+0.43 rss_kb=251620
+ready+ansi+fast config_get wall=4.29 cpu=4.39+0.51 rss_kb=250384
+ready+ansi+fast config_get wall=4.49 cpu=4.52+0.60 rss_kb=250636
+ready+ansi+fast config_get wall=3.80 cpu=3.87+0.41 rss_kb=251524
+ready+ansi+fast config_get wall=4.24 cpu=4.33+0.50 rss_kb=249284
+ready+ansi+fast config_get wall=3.77 cpu=3.97+0.46 rss_kb=252288
+ready+ansi+fast config_get wall=4.56 cpu=4.41+0.55 rss_kb=252812
+ready+ansi+fast sessions wall=3.91 cpu=3.68+0.56 rss_kb=215860
+ready+ansi+fast sessions wall=3.62 cpu=3.26+0.40 rss_kb=222276
+ready+ansi+fast sessions wall=4.07 cpu=3.49+0.43 rss_kb=215740
+ready+ansi+fast sessions wall=3.66 cpu=3.39+0.36 rss_kb=218752
+ready+ansi+fast sessions wall=3.60 cpu=3.42+0.41 rss_kb=221504
+ready+ansi+fast sessions wall=4.11 cpu=3.85+0.57 rss_kb=215784
+ready+ansi+fast sessions wall=4.18 cpu=3.66+0.47 rss_kb=220072
+ready+ansi+fast sessions wall=3.26 cpu=3.40+0.45 rss_kb=217276
+ready+ansi+fast sessions wall=3.80 cpu=3.76+0.49 rss_kb=217360
+ready+ansi+fast sessions wall=2.84 cpu=2.96+0.33 rss_kb=218676
+ready+ansi+fast sessions wall=3.60 cpu=3.39+0.44 rss_kb=222096
+ready+ansi+fast sessions wall=4.08 cpu=2.99+0.27 rss_kb=223528
+-- sanity fast
+44893
+ rc=0 stderr_bytes=0
+{"mock":1}
+relay rc=0
+  ! plugins.entries.codex: plugin not installed: codex — install the official external plugin with: openclaw plugins i
+{
+  "ok": false,
+  "error": {
+    "type": "cli_error",
+    "
+patched bundle
+ready+ansi+fast+bundle relay wall=0.55 cpu=0.39+0.06 rss_kb=97848
+ready+ansi+fast+bundle relay wall=0.61 cpu=0.38+0.06 rss_kb=98096
+ready+ansi+fast+bundle relay wall=0.77 cpu=0.38+0.04 rss_kb=99608
+ready+ansi+fast+bundle relay wall=0.82 cpu=0.48+0.07 rss_kb=98380
+ready+ansi+fast+bundle relay wall=0.57 cpu=0.37+0.05 rss_kb=97528
+ready+ansi+fast+bundle relay wall=1.10 cpu=0.54+0.08 rss_kb=99044
+ready+ansi+fast+bundle relay wall=0.97 cpu=0.50+0.06 rss_kb=98156
+ready+ansi+fast+bundle relay wall=1.06 cpu=0.42+0.04 rss_kb=96964
+ready+ansi+fast+bundle relay wall=0.83 cpu=0.37+0.06 rss_kb=97808
+ready+ansi+fast+bundle relay wall=0.99 cpu=0.38+0.05 rss_kb=98480
+ready+ansi+fast+bundle relay wall=0.96 cpu=0.49+0.06 rss_kb=96804
+ready+ansi+fast+bundle relay wall=0.81 cpu=0.39+0.04 rss_kb=98092
+ready+ansi+fast+bundle cron_status wall=2.95 cpu=1.35+0.16 rss_kb=176084
+ready+ansi+fast+bundle cron_status wall=3.36 cpu=1.73+0.23 rss_kb=176124
+ready+ansi+fast+bundle cron_status wall=4.21 cpu=1.88+0.28 rss_kb=172796
+ready+ansi+fast+bundle cron_status wall=3.62 cpu=1.75+0.28 rss_kb=176804
+ready+ansi+fast+bundle cron_status wall=3.02 cpu=1.56+0.20 rss_kb=177328
+ready+ansi+fast+bundle cron_status wall=3.40 cpu=1.56+0.19 rss_kb=175632
+ready+ansi+fast+bundle cron_status wall=3.14 cpu=1.60+0.22 rss_kb=174164
+ready+ansi+fast+bundle cron_status wall=3.50 cpu=1.73+0.24 rss_kb=174284
+ready+ansi+fast+bundle cron_status wall=3.43 cpu=1.60+0.18 rss_kb=174940
+ready+ansi+fast+bundle cron_status wall=3.25 cpu=1.60+0.22 rss_kb=172160
+ready+ansi+fast+bundle cron_status wall=3.12 cpu=1.55+0.21 rss_kb=169592
+ready+ansi+fast+bundle cron_status wall=3.20 cpu=1.53+0.18 rss_kb=170588
+ready+ansi+fast+bundle config_get wall=3.92 cpu=4.15+0.39 rss_kb=246860
+ready+ansi+fast+bundle config_get wall=4.49 cpu=4.45+0.41 rss_kb=250288
+ready+ansi+fast+bundle config_get wall=4.65 cpu=4.31+0.41 rss_kb=249712
+ready+ansi+fast+bundle config_get wall=4.29 cpu=4.12+0.47 rss_kb=242576
+ready+ansi+fast+bundle config_get wall=4.76 cpu=4.24+0.42 rss_kb=249792
+ready+ansi+fast+bundle config_get wall=3.55 cpu=3.81+0.37 rss_kb=247588
+ready+ansi+fast+bundle config_get wall=4.05 cpu=4.45+0.51 rss_kb=246176
+ready+ansi+fast+bundle config_get wall=4.30 cpu=4.74+0.46 rss_kb=246236
+ready+ansi+fast+bundle config_get wall=2.89 cpu=3.63+0.30 rss_kb=245100
+ready+ansi+fast+bundle config_get wall=3.70 cpu=4.42+0.39 rss_kb=240488
+ready+ansi+fast+bundle config_get wall=3.25 cpu=3.63+0.26 rss_kb=245664
+ready+ansi+fast+bundle config_get wall=3.37 cpu=4.09+0.39 rss_kb=243748
+ready+ansi+fast+bundle sessions wall=2.74 cpu=3.10+0.30 rss_kb=210216
+ready+ansi+fast+bundle sessions wall=2.87 cpu=3.43+0.37 rss_kb=211692
+ready+ansi+fast+bundle sessions wall=2.99 cpu=3.59+0.40 rss_kb=207440
+ready+ansi+fast+bundle sessions wall=2.44 cpu=2.91+0.28 rss_kb=208488
+ready+ansi+fast+bundle sessions wall=2.64 cpu=3.04+0.33 rss_kb=207260
+ready+ansi+fast+bundle sessions wall=2.84 cpu=3.03+0.32 rss_kb=208952
+ready+ansi+fast+bundle sessions wall=2.61 cpu=2.96+0.27 rss_kb=211200
+ready+ansi+fast+bundle sessions wall=2.38 cpu=2.83+0.29 rss_kb=207632
+ready+ansi+fast+bundle sessions wall=2.80 cpu=3.15+0.28 rss_kb=210096
+ready+ansi+fast+bundle sessions wall=2.06 cpu=2.62+0.20 rss_kb=211592
+ready+ansi+fast+bundle sessions wall=2.83 cpu=3.21+0.33 rss_kb=205512
+ready+ansi+fast+bundle sessions wall=2.18 cpu=2.70+0.23 rss_kb=209712
+-- sanity bundle
+44893
+ rc=0 stderr_bytes=0
+{"mock":1}
+relay rc=0
+  ! plugins.entries.codex: plugin not installed: codex — install the official external plugin with: openclaw plugins i
+{
+  "ok": false,
+  "error": {
+    "type": "cli_error",
+    "
+patched relaytrim
+ready+ansi+fast+bundle+trim relay wall=0.46 cpu=0.44+0.07 rss_kb=90664
+ready+ansi+fast+bundle+trim relay wall=0.30 cpu=0.31+0.04 rss_kb=91216
+ready+ansi+fast+bundle+trim relay wall=0.28 cpu=0.28+0.05 rss_kb=90912
+ready+ansi+fast+bundle+trim relay wall=0.32 cpu=0.32+0.04 rss_kb=89540
+ready+ansi+fast+bundle+trim relay wall=0.36 cpu=0.35+0.06 rss_kb=90756
+ready+ansi+fast+bundle+trim relay wall=0.28 cpu=0.26+0.04 rss_kb=90608
+ready+ansi+fast+bundle+trim relay wall=0.45 cpu=0.35+0.06 rss_kb=90268
+ready+ansi+fast+bundle+trim relay wall=0.36 cpu=0.31+0.04 rss_kb=89324
+ready+ansi+fast+bundle+trim relay wall=0.40 cpu=0.40+0.07 rss_kb=90352
+ready+ansi+fast+bundle+trim relay wall=0.37 cpu=0.35+0.07 rss_kb=89804
+ready+ansi+fast+bundle+trim relay wall=0.43 cpu=0.39+0.07 rss_kb=90564
+ready+ansi+fast+bundle+trim relay wall=0.38 cpu=0.33+0.04 rss_kb=90628
+-- sanity trim
+44893
+ rc=0 stderr_bytes=0
+{"mock":1}
+relay rc=0
+  ! plugins.entries.codex: plugin not installed: codex — install the official external plugin with: openclaw plugins i
+{
+  "ok": false,
+  "error": {
+    "type": "cli_error",
+    "
+thin relay wall=0.08 cpu=0.07+0.01 rss_kb=58240
+thin relay wall=0.09 cpu=0.09+0.02 rss_kb=58368
+thin relay wall=0.07 cpu=0.07+0.01 rss_kb=58496
+thin relay wall=0.07 cpu=0.08+0.01 rss_kb=58496
+thin relay wall=0.09 cpu=0.08+0.01 rss_kb=58464
+thin relay wall=0.09 cpu=0.08+0.02 rss_kb=58564
+thin relay wall=0.20 cpu=0.14+0.07 rss_kb=58496
+thin relay wall=0.10 cpu=0.09+0.01 rss_kb=58364
+thin relay wall=0.15 cpu=0.12+0.02 rss_kb=58496
+thin relay wall=0.10 cpu=0.08+0.02 rss_kb=58308
+thin relay wall=0.09 cpu=0.08+0.02 rss_kb=58368
+thin relay wall=0.08 cpu=0.07+0.01 rss_kb=58364
+ 10:11:52 up 114 days,  9:45, 20 users,  load average: 6.47, 8.93, 7.87

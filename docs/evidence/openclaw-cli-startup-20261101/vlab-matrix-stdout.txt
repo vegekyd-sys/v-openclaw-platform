@@ -1,0 +1,340 @@
+runtime=/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/runtime config=/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/openclaw.json state=/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state data=/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data
+uid=977(lab-db91-parity) gid=972(lab-db91-parity) groups=972(lab-db91-parity)
+ 09:38:35 up 114 days,  9:12, 21 users,  load average: 5.30, 3.33, 2.97
+C=/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/runtime/openclaw/openclaw.mjs
+total 80
+drwxr-xr-x 3 lab-db91-parity root  4096 Nov  1 09:38 .
+drwxr-xr-x 4 lab-db91-parity root  4096 Nov  1 09:38 ..
+drwxr-xr-x 7 lab-db91-parity root  4096 Nov  1 09:38 agents
+-rw------- 1 lab-db91-parity root 65831 Nov  1 09:38 openclaw.json
+116K	/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state
+### version: --version
+warmrc=0
+version wall=0.04 user=0.03 sys=0.01 rss_kb=48224 majflt=0 inblk=0 outblk=0
+version wall=0.04 user=0.03 sys=0.01 rss_kb=48232 majflt=0 inblk=0 outblk=0
+version wall=0.06 user=0.04 sys=0.01 rss_kb=48188 majflt=0 inblk=0 outblk=0
+version wall=0.05 user=0.03 sys=0.01 rss_kb=48132 majflt=0 inblk=0 outblk=0
+version wall=0.06 user=0.03 sys=0.02 rss_kb=48344 majflt=0 inblk=0 outblk=0
+writes:
+sqlite opens:
+connects:
+openat total: 21
+### help: --help
+warmrc=0
+help wall=7.39 user=7.56 sys=1.00 rss_kb=414456 majflt=0 inblk=2296 outblk=0
+help wall=6.68 user=6.80 sys=0.85 rss_kb=415088 majflt=0 inblk=0 outblk=0
+help wall=6.63 user=7.05 sys=0.85 rss_kb=414404 majflt=0 inblk=0 outblk=0
+help wall=6.69 user=7.00 sys=0.83 rss_kb=390296 majflt=0 inblk=0 outblk=0
+help wall=9.94 user=7.46 sys=0.91 rss_kb=407832 majflt=0 inblk=0 outblk=0
+writes:
+sqlite opens:
+     15 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/runtime/openclaw/dist
+connects:
+    274 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/r
+     11 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/capability-alignment-20260911/plugin-sources/ho
+openat total: 18284
+### config_get: config get gateway.port
+warmrc=0
+config_get wall=6.52 user=6.47 sys=0.82 rss_kb=255892 majflt=0 inblk=0 outblk=0
+config_get wall=5.62 user=5.64 sys=0.55 rss_kb=252272 majflt=0 inblk=0 outblk=0
+config_get wall=5.31 user=4.96 sys=0.52 rss_kb=256464 majflt=0 inblk=0 outblk=0
+config_get wall=6.20 user=5.09 sys=0.67 rss_kb=249456 majflt=0 inblk=0 outblk=0
+config_get wall=5.50 user=5.38 sys=0.66 rss_kb=251196 majflt=0 inblk=0 outblk=0
+writes:
+sqlite opens:
+connects:
+     11 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/r
+      3 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/capability-alignment-20260911/plugin-sources/ho
+openat total: 10973
+### config_file: config file
+warmrc=0
+config_file wall=3.11 user=2.91 sys=0.63 rss_kb=206244 majflt=0 inblk=0 outblk=0
+config_file wall=2.74 user=2.89 sys=0.53 rss_kb=208004 majflt=0 inblk=0 outblk=0
+config_file wall=3.11 user=3.21 sys=0.56 rss_kb=205520 majflt=0 inblk=0 outblk=0
+config_file wall=2.25 user=2.55 sys=0.41 rss_kb=203360 majflt=0 inblk=0 outblk=0
+config_file wall=2.64 user=2.89 sys=0.53 rss_kb=203528 majflt=0 inblk=0 outblk=0
+writes:
+sqlite opens:
+connects:
+      8 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/r
+openat total: 11058
+### hooks_relay: hooks relay --provider codex --relay-id cand --event post_tool_use --timeout 2000
+warmrc=0
+hooks_relay wall=1.28 user=1.44 sys=0.18 rss_kb=159952 majflt=0 inblk=0 outblk=8
+hooks_relay wall=1.18 user=1.31 sys=0.18 rss_kb=154868 majflt=0 inblk=0 outblk=8
+hooks_relay wall=1.13 user=1.27 sys=0.17 rss_kb=159180 majflt=0 inblk=0 outblk=8
+hooks_relay wall=1.19 user=1.33 sys=0.20 rss_kb=155120 majflt=0 inblk=0 outblk=8
+hooks_relay wall=1.26 user=1.39 sys=0.22 rss_kb=155208 majflt=0 inblk=0 outblk=8
+writes:
+sqlite opens:
+connects:
+      1 connect(21, {sa_family=AF_INET, sin_port=htons(24993), sin_addr=inet_addr("127.0.0.1")}, 16) = -1 EINPROGRESS (Operation
+     10 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/r
+openat total: 6866
+### gateway_call: gateway call health --json --timeout 2000
+warmrc=0
+gateway_call wall=4.53 user=3.31 sys=0.46 rss_kb=198752 majflt=0 inblk=0 outblk=0
+gateway_call wall=3.37 user=3.20 sys=0.43 rss_kb=199168 majflt=0 inblk=0 outblk=0
+gateway_call wall=2.86 user=2.98 sys=0.47 rss_kb=198252 majflt=0 inblk=0 outblk=0
+gateway_call wall=2.59 user=2.88 sys=0.38 rss_kb=194744 majflt=0 inblk=0 outblk=0
+gateway_call wall=3.04 user=3.09 sys=0.45 rss_kb=198104 majflt=0 inblk=0 outblk=0
+writes:
+sqlite opens:
+connects:
+      1 connect(21, {sa_family=AF_INET, sin_port=htons(24993), sin_addr=inet_addr("127.0.0.1")}, 16) = -1 EINPROGRESS (Operation
+     14 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/r
+openat total: 11794
+### cron_list: cron list --json --timeout 2000
+warmrc=0
+cron_list wall=2.89 user=2.97 sys=0.48 rss_kb=178300 majflt=0 inblk=0 outblk=0
+cron_list wall=2.76 user=2.92 sys=0.47 rss_kb=178244 majflt=0 inblk=0 outblk=0
+cron_list wall=1.98 user=2.26 sys=0.27 rss_kb=175884 majflt=0 inblk=0 outblk=0
+cron_list wall=2.77 user=2.60 sys=0.40 rss_kb=175284 majflt=0 inblk=0 outblk=0
+cron_list wall=2.89 user=2.54 sys=0.36 rss_kb=175496 majflt=0 inblk=0 outblk=0
+writes:
+sqlite opens:
+connects:
+      1 connect(21, {sa_family=AF_INET, sin_port=htons(24993), sin_addr=inet_addr("127.0.0.1")}, 16) = -1 EINPROGRESS (Operation
+     14 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/r
+openat total: 11489
+### cron_status: cron status --json --timeout 2000
+warmrc=0
+cron_status wall=2.66 user=2.74 sys=0.48 rss_kb=178376 majflt=0 inblk=0 outblk=0
+cron_status wall=2.05 user=2.27 sys=0.34 rss_kb=175584 majflt=0 inblk=0 outblk=0
+cron_status wall=1.94 user=2.12 sys=0.29 rss_kb=175616 majflt=0 inblk=0 outblk=0
+cron_status wall=3.14 user=3.21 sys=0.55 rss_kb=173648 majflt=0 inblk=0 outblk=0
+cron_status wall=2.35 user=2.51 sys=0.39 rss_kb=176704 majflt=0 inblk=0 outblk=0
+writes:
+sqlite opens:
+connects:
+      1 connect(21, {sa_family=AF_INET, sin_port=htons(24993), sin_addr=inet_addr("127.0.0.1")}, 16) = -1 EINPROGRESS (Operation
+     14 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/r
+openat total: 11490
+### sessions: sessions --json --limit 5
+warmrc=1
+sessions wall=4.25 user=4.49 sys=0.59 rss_kb=223520 majflt=0 inblk=0 outblk=240
+sessions wall=4.01 user=4.42 sys=0.53 rss_kb=226964 majflt=0 inblk=0 outblk=232
+sessions wall=3.59 user=4.11 sys=0.49 rss_kb=218936 majflt=0 inblk=0 outblk=240
+sessions wall=3.72 user=4.38 sys=0.45 rss_kb=220328 majflt=0 inblk=0 outblk=240
+sessions wall=3.86 user=4.54 sys=0.50 rss_kb=219752 majflt=0 inblk=0 outblk=232
+writes:
+      4 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-wal", O_
+      4 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-shm", O_
+      2 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/tmp/openclaw-977/openclaw-2026-11-01.log", O_WRONLY|O_CREAT|O_APPEND|O_NOFOLLOW|O_CLOEX
+      1 mkdir("/srv/vlab-production-mirror/labs/instances/db91-parity/tmp/openclaw-977", 0777) = -1 EEXIST (File exists)
+sqlite opens:
+     12 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/open
+     11 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/runtime/openclaw/dist
+connects:
+     12 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/r
+      3 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/capability-alignment-20260911/plugin-sources/ho
+openat total: 12359
+### sessions_all: sessions --all-agents --json --limit 5
+warmrc=0
+sessions_all wall=4.33 user=4.82 sys=0.61 rss_kb=223960 majflt=0 inblk=0 outblk=304
+sessions_all wall=3.99 user=4.61 sys=0.51 rss_kb=218600 majflt=0 inblk=0 outblk=296
+sessions_all wall=4.83 user=5.22 sys=0.75 rss_kb=224348 majflt=0 inblk=0 outblk=296
+sessions_all wall=4.04 user=4.53 sys=0.63 rss_kb=220348 majflt=0 inblk=0 outblk=296
+sessions_all wall=3.98 user=4.49 sys=0.55 rss_kb=222352 majflt=0 inblk=0 outblk=296
+writes:
+      5 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-wal", O_
+      5 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-shm", O_
+      1 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/tmp/openclaw-977/openclaw-2026-11-01.log", O_WRONLY|O_CREAT|O_APPEND|O_NOFOLLOW|O_CLOEX
+      1 mkdir("/srv/vlab-production-mirror/labs/instances/db91-parity/tmp/openclaw-977", 0777) = -1 EEXIST (File exists)
+sqlite opens:
+     15 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/open
+     11 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/runtime/openclaw/dist
+connects:
+     12 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/r
+      3 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/capability-alignment-20260911/plugin-sources/ho
+openat total: 12356
+### memory_status: memory status --json
+warmrc=0
+memory_status wall=6.08 user=6.93 sys=0.75 rss_kb=364264 majflt=0 inblk=0 outblk=1488
+memory_status wall=6.31 user=7.32 sys=0.83 rss_kb=364360 majflt=0 inblk=0 outblk=1488
+memory_status wall=6.89 user=7.27 sys=0.83 rss_kb=362780 majflt=0 inblk=0 outblk=1504
+memory_status wall=5.67 user=6.59 sys=0.66 rss_kb=360072 majflt=0 inblk=0 outblk=1496
+memory_status wall=6.86 user=7.57 sys=0.89 rss_kb=337096 majflt=0 inblk=0 outblk=1496
+writes:
+     26 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-wal", O_
+     26 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-shm", O_
+      6 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/tmp/openclaw-977/openclaw-2026-11-01.log", O_WRONLY|O_CREAT|O_APPEND|O_NOFOLLOW|O_CLOEX
+      1 mkdir("/srv/vlab-production-mirror/labs/instances/db91-parity/tmp/openclaw-977", 0777) = -1 EEXIST (File exists)
+sqlite opens:
+     78 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/open
+     15 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/runtime/openclaw/dist
+connects:
+     20 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/r
+      3 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/capability-alignment-20260911/plugin-sources/ho
+      1 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/workspace/w1/memory/projects/v-ha-xiaoai/2026-0
+openat total: 17238
+### status: status --json
+warmrc=0
+status wall=5.13 user=5.08 sys=0.88 rss_kb=258032 majflt=0 inblk=0 outblk=5968
+status wall=7.00 user=6.14 sys=1.06 rss_kb=248744 majflt=0 inblk=0 outblk=5968
+status wall=5.83 user=5.49 sys=0.93 rss_kb=248632 majflt=0 inblk=0 outblk=5976
+status wall=5.88 user=5.64 sys=0.99 rss_kb=244716 majflt=0 inblk=0 outblk=5968
+status wall=5.98 user=5.52 sys=1.20 rss_kb=252020 majflt=0 inblk=0 outblk=5968
+writes:
+      4 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-wal", O_
+      4 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-shm", O_
+      1 unlink("/srv/vlab-production-mirror/labs/instances/db91-parity/cache/openclaw/openclaw-sqlite-readonly-2036919-qoezSx/first") = 0
+      1 unlink("/srv/vlab-production-mirror/labs/instances/db91-parity/cache/openclaw/openclaw-sqlite-readonly-2036919-qoezSx/database.sqlite-wal") = 0
+      1 unlink("/srv/vlab-production-mirror/labs/instances/db91-parity/cache/openclaw/openclaw-sqlite-readonly-2036919-qoezSx/database.sqlite-shm") = 0
+      1 unlink("/srv/vlab-production-mirror/labs/instances/db91-parity/cache/openclaw/openclaw-sqlite-readonly-2036919-qoezSx/database.sqlite") = 0
+      1 rename("/srv/vlab-production-mirror/labs/instances/db91-parity/cache/openclaw/openclaw-sqlite-readonly-2036919-qoezSx/second", "/srv/vlab-production-mirror/labs
+      1 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/cache/openclaw/openclaw-sqlite-readonly-2036919-qoezSx/second", O_WRONLY|O_CREAT|O_EXCL
+      1 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/cache/openclaw/openclaw-sqlite-readonly-2036919-qoezSx/first", O_WRONLY|O_CREAT|O_EXCL|
+      1 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/cache/openclaw/openclaw-sqlite-readonly-2036919-qoezSx/database.sqlite-wal", O_RDWR|O_C
+      1 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/cache/openclaw/openclaw-sqlite-readonly-2036919-qoezSx/database.sqlite-shm", O_RDWR|O_C
+      1 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/cache/openclaw/openclaw-sqlite-readonly-2036919-qoezSx/database.sqlite", O_WRONLY|O_CRE
+sqlite opens:
+     18 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/open
+     13 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/runtime/openclaw/dist
+      4 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/cache/openclaw/openclaw-sqlite-readonly-2036919-qoezSx/database.sql
+      1 unlink("/srv/vlab-production-mirror/labs/instances/db91-parity/cache/openclaw/openclaw-sqlite-readonly-2036919-qoezSx/database.sqlite-wal") 
+      1 unlink("/srv/vlab-production-mirror/labs/instances/db91-parity/cache/openclaw/openclaw-sqlite-readonly-2036919-qoezSx/database.sqlite-shm") 
+      1 unlink("/srv/vlab-production-mirror/labs/instances/db91-parity/cache/openclaw/openclaw-sqlite-readonly-2036919-qoezSx/database.sqlite") = 0
+connects:
+      1 connect(21, {sa_family=AF_INET, sin_port=htons(24993), sin_addr=inet_addr("127.0.0.1")}, 16) = -1 EINPROGRESS (Operation
+      1 connect(21, {sa_family=AF_INET, sin_port=htons(5900), sin_addr=inet_addr("127.0.0.1")}, 16) = -1 EINPROGRESS (Operation 
+      1 connect(22, {sa_family=AF_INET, sin_port=htons(24993), sin_addr=inet_addr("127.0.0.1")}, 16) = -1 EINPROGRESS (Operation
+      3 connect(3, {sa_family=AF_UNIX, sun_path="/run/dbus/system_bus_socket"}, 30) = 0
+      1 connect(3, {sa_family=AF_UNIX, sun_path="/run/dbus/system_bus_socket"}, 30 <unfinished ...>
+openat total: 17568
+### doctor_lint: models list --json
+warmrc=0
+doctor_lint wall=9.51 user=10.78 sys=0.92 rss_kb=317592 majflt=0 inblk=0 outblk=528
+doctor_lint wall=10.27 user=11.44 sys=1.15 rss_kb=308356 majflt=0 inblk=0 outblk=528
+doctor_lint wall=10.49 user=11.08 sys=1.01 rss_kb=314820 majflt=0 inblk=0 outblk=536
+doctor_lint wall=9.58 user=10.80 sys=0.86 rss_kb=308488 majflt=0 inblk=0 outblk=536
+doctor_lint wall=10.65 user=11.87 sys=1.19 rss_kb=308776 majflt=0 inblk=0 outblk=528
+writes:
+      9 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-wal", O_
+      9 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-shm", O_
+      2 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite", O_RDWR
+      2 mkdir("/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state", 0700) = -1 EEXIST (File exists)
+      1 unlink("/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite-journal") = 0
+      1 unlink("/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-wal") = 0
+      1 unlink("/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-shm") = 0
+      1 openat(AT_FDCWD, "/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite", O_RDWR|O_CREAT|O_NOFOLLOW|O_CLOEXEC, 0644) = 20
+      1 openat(AT_FDCWD, "/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite-journal", O_RDWR|O_CREAT|O_NOFOLLOW|O_CLOEXEC, 0600) = 21
+      1 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/tmp/openclaw-977/openclaw-2026-11-01.log", O_WRONLY|O_CREAT|O_APPEND|O_NOFOLLOW|O_CLOEX
+      1 mkdir("/tmp/openclaw-state-locks-977", 0700) = -1 EEXIST (File exists)
+      1 mkdir("/srv/vlab-production-mirror/labs/instances/db91-parity/tmp/openclaw-977", 0777) = -1 EEXIST (File exists)
+sqlite opens:
+     27 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/open
+     14 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/runtime/openclaw/dist
+      2 unlink("/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlit
+      1 unlink("/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite-journal") = 0
+      1 openat(AT_FDCWD, "/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite", O_RDWR|O_CREAT|O_NOFOLLOW|O_CLOEXEC, 0644) = 20
+      1 openat(AT_FDCWD, "/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite-journal", O_RDWR|O_CREAT|O_NOFOLLOW|O_CLOEXEC, 0600) = 
+connects:
+     18 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/r
+      3 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/capability-alignment-20260911/plugin-sources/ho
+openat total: 15541
+### agents: agents list --json
+warmrc=0
+agents wall=5.17 user=5.00 sys=0.67 rss_kb=208856 majflt=0 inblk=0 outblk=304
+agents wall=3.59 user=4.05 sys=0.54 rss_kb=208496 majflt=0 inblk=0 outblk=304
+agents wall=3.94 user=4.42 sys=0.53 rss_kb=211336 majflt=0 inblk=0 outblk=304
+agents wall=4.84 user=4.56 sys=0.60 rss_kb=209984 majflt=0 inblk=0 outblk=304
+agents wall=3.55 user=3.75 sys=0.46 rss_kb=208804 majflt=0 inblk=0 outblk=304
+writes:
+      5 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-wal", O_
+      5 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-shm", O_
+      3 mkdir("/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state", 0700) = -1 EEXIST (File exists)
+      2 unlink("/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-wal") = 0
+      2 unlink("/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-shm") = 0
+      2 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite", O_RDWR
+      1 unlink("/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite-journal") = 0
+      1 openat(AT_FDCWD, "/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite", O_RDWR|O_CREAT|O_NOFOLLOW|O_CLOEXEC, 0644) = 20
+      1 openat(AT_FDCWD, "/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite-journal", O_RDWR|O_CREAT|O_NOFOLLOW|O_CLOEXEC, 0600) = 21
+      1 mkdir("/tmp/openclaw-state-locks-977", 0700) = -1 EEXIST (File exists)
+sqlite opens:
+     15 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/open
+      4 unlink("/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlit
+      1 unlink("/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite-journal") = 0
+      1 openat(AT_FDCWD, "/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite", O_RDWR|O_CREAT|O_NOFOLLOW|O_CLOEXEC, 0644) = 20
+      1 openat(AT_FDCWD, "/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite-journal", O_RDWR|O_CREAT|O_NOFOLLOW|O_CLOEXEC, 0600) = 
+connects:
+     11 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/r
+      3 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/capability-alignment-20260911/plugin-sources/ho
+openat total: 11516
+### plugins: plugins list --json
+warmrc=0
+plugins wall=4.53 user=3.65 sys=0.60 rss_kb=192024 majflt=0 inblk=0 outblk=224
+plugins wall=3.45 user=3.41 sys=0.50 rss_kb=191512 majflt=0 inblk=0 outblk=224
+plugins wall=4.15 user=3.61 sys=0.49 rss_kb=192348 majflt=0 inblk=0 outblk=224
+plugins wall=3.86 user=3.61 sys=0.54 rss_kb=192308 majflt=0 inblk=0 outblk=224
+plugins wall=2.78 user=3.16 sys=0.39 rss_kb=191060 majflt=0 inblk=0 outblk=224
+writes:
+      4 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-wal", O_
+      4 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-shm", O_
+sqlite opens:
+     12 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/open
+connects:
+     11 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/r
+      3 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/instances/db91-parity/capability-alignment-20260911/plugin-sources/ho
+openat total: 10024
+### tasks: tasks list --json
+warmrc=0
+tasks wall=2.94 user=2.78 sys=0.44 rss_kb=197660 majflt=0 inblk=0 outblk=136
+tasks wall=3.47 user=3.32 sys=0.67 rss_kb=194912 majflt=0 inblk=0 outblk=136
+tasks wall=3.27 user=2.98 sys=0.44 rss_kb=203252 majflt=0 inblk=0 outblk=136
+tasks wall=2.73 user=2.82 sys=0.48 rss_kb=195920 majflt=0 inblk=0 outblk=136
+tasks wall=2.81 user=2.93 sys=0.45 rss_kb=201116 majflt=0 inblk=0 outblk=136
+writes:
+      2 unlink("/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-wal") = 0
+      2 unlink("/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-shm") = 0
+      2 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-wal", O_
+      2 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite-shm", O_
+      2 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlite", O_RDWR
+      2 mkdir("/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state", 0700) = -1 EEXIST (File exists)
+      1 unlink("/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite-journal") = 0
+      1 openat(AT_FDCWD, "/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite", O_RDWR|O_CREAT|O_NOFOLLOW|O_CLOEXEC, 0644) = 20
+      1 openat(AT_FDCWD, "/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite-journal", O_RDWR|O_CREAT|O_NOFOLLOW|O_CLOEXEC, 0600) = 21
+      1 mkdir("/tmp/openclaw-state-locks-977", 0700) = -1 EEXIST (File exists)
+sqlite opens:
+      6 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/open
+      4 unlink("/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/data/state/state/openclaw.sqlit
+      2 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/runtime/openclaw/dist
+      1 unlink("/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite-journal") = 0
+      1 openat(AT_FDCWD, "/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite", O_RDWR|O_CREAT|O_NOFOLLOW|O_CLOEXEC, 0644) = 20
+      1 openat(AT_FDCWD, "/tmp/openclaw-state-locks-977/state-lifecycle.bb24b2c8.lock.sqlite-journal", O_RDWR|O_CREAT|O_NOFOLLOW|O_CLOEXEC, 0600) = 
+connects:
+      8 openat(AT_FDCWD, "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-160d20cb-4ecd-4d07-8156-792137497eed/r
+openat total: 11380
+agents end 4862 modules 680 bytes 4236270 loop 786 cpu_ms 985 rss 150668
+agents end 4010 modules 1856 bytes 9450025 loop 3693 cpu_ms 4658 rss 262932
+config_file end 3671 modules 680 bytes 4236270 loop 1174 cpu_ms 1349 rss 148972
+config_file end 2469 modules 1793 bytes 8899166 loop 2469 cpu_ms 2858 rss 227100
+config_get end 6538 modules 680 bytes 4236270 loop 1078 cpu_ms 1132 rss 152004
+config_get end 5413 modules 1631 bytes 8142532 loop 5398 cpu_ms 6366 rss 263336
+cron_list end 3743 modules 680 bytes 4236270 loop 927 cpu_ms 1046 rss 147684
+cron_list end 2779 modules 2111 bytes 8834726 loop 2679 cpu_ms 3199 rss 203564
+cron_status end 2688 modules 680 bytes 4236270 loop 788 cpu_ms 956 rss 151680
+cron_status end 1862 modules 2111 bytes 8834726 loop 1702 cpu_ms 2295 rss 196424
+doctor_lint end 13063 modules 680 bytes 4236270 loop 1024 cpu_ms 1203 rss 152568
+doctor_lint end 11974 modules 3595 bytes 23298788 loop 11972 cpu_ms 14049 rss 484668
+gateway_call end 4341 modules 680 bytes 4236270 loop 797 cpu_ms 990 rss 150388
+gateway_call end 3505 modules 2254 bytes 10376646 loop 3273 cpu_ms 3727 rss 242636
+help end 16256 modules 6308 bytes 42784786 loop 16256 cpu_ms 14013 rss 723572
+hooks_relay end 3113 modules 1865 bytes 7425376 loop 1087 cpu_ms 2450 rss 173868
+memory_status end 11709 modules 680 bytes 4236270 loop 1061 cpu_ms 1225 rss 147692
+memory_status end 10543 modules 4292 bytes 33597843 loop 4430 cpu_ms 12448 rss 647884
+plugins end 5169 modules 680 bytes 4236270 loop 1260 cpu_ms 1450 rss 148064
+plugins end 3878 modules 1484 bytes 7454389 loop 3877 cpu_ms 4561 rss 225268
+sessions end 5916 modules 680 bytes 4236270 loop 950 cpu_ms 1169 rss 149540
+sessions end 4917 modules 2178 bytes 11528973 loop 4914 cpu_ms 5809 rss 271052
+sessions_all end 4562 modules 680 bytes 4236270 loop 816 cpu_ms 981 rss 147632
+sessions_all end 3695 modules 2177 bytes 11526716 loop 3690 cpu_ms 4621 rss 271128
+status end 7479 modules 680 bytes 4236270 loop 1096 cpu_ms 1221 rss 149460
+status end 6318 modules 2710 bytes 16536068 loop 4571 cpu_ms 7306 rss 382552
+tasks end 4557 modules 680 bytes 4236270 loop 829 cpu_ms 1050 rss 147940
+tasks end 3643 modules 1973 bytes 10276188 loop 3643 cpu_ms 4230 rss 241496
+version end 64 modules 7 bytes 28367 loop -1 cpu_ms 62 rss 48848
+total 2756
+drwx------   2 lab-db91-parity lab-db91-parity    4096 Nov  1 09:50 .
+drwxrwxrwt 426 root            root              69632 Nov  1 09:50 ..
+-rw-------   1 lab-db91-parity lab-db91-parity 2741482 Nov  1 09:50 cand-2032974.tgz
