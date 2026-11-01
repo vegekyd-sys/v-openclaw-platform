@@ -1,0 +1,56 @@
+{
+ "support": [
+  "lab/candidate/cli-startup/mock-bridge.mjs",
+  "lab/candidate/cli-startup/patch.py",
+  "lab/candidate/cli-startup/relay-ab.sh",
+  "lab/candidate/cli-startup/runtime-concurrency.mjs",
+  "lab/candidate/cli-startup/runtime-concurrency-lag.mjs",
+  "lab/candidate/cli-startup/policy-plugin/index.mjs",
+  "lab/candidate/cli-startup/policy-plugin/package.json",
+  "lab/candidate/cli-startup/policy-plugin/openclaw.plugin.json",
+  "lab/candidate/cli-startup/v-codex-dist.tgz"
+ ],
+ "command": [
+  "/bin/bash",
+  "lab/candidate/cli-startup/relay-ab.sh"
+ ],
+ "timeoutSeconds": 1800,
+ "user": "lab-db91-parity",
+ "env": {
+  "ARMS": "vdsp:small:multi",
+  "RELAY_VARIANTS": "fast",
+  "RELAY_POLICY_PROBE": "1",
+  "LEVELS": "1",
+  "PAIRED": "1",
+  "MULTI_MAX": "15",
+  "BIG_COUNT": "0",
+  "BIG_MB": "80",
+  "WORKER_MIN": "5",
+  "WORKER_MAX": "24",
+  "WORKER_SESSIONS": "3",
+  "STEADY_MIN": "2",
+  "STEADY_SAMPLE_MS": "30000",
+  "COOLDOWN_MS": "30000",
+  "V_CODEX_DIST_SHA": "5de6470552320f7d9a86e3315c0d88f0aa061381a19fa7f155cdcd681a447aae",
+  "GATE_FAIL_RATE": "1.1",
+  "PROFILE": "0",
+  "CODEX_NORELAY": "",
+  "SKIP_MICRO": "1",
+  "SKIP_PATCH": "1",
+  "AB_TIMEOUT": "1500"
+ },
+ "files": [
+  {
+   "source": "lab/release-files/cli-startup-fast/native-hook-relay-cli-DTqrikhm.js",
+   "target": "openclaw/dist/native-hook-relay-cli-DTqrikhm.js"
+  },
+  {
+   "source": "lab/release-files/cli-startup-fast/native-hook-relay-client-GFGIwlRq.js",
+   "target": "openclaw/dist/native-hook-relay-client-GFGIwlRq.js"
+  },
+  {
+   "source": "lab/release-files/cli-startup-fast/warning-filter.js",
+   "target": "openclaw/dist/warning-filter.js"
+  }
+ ]
+}

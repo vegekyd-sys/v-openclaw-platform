@@ -573,6 +573,20 @@
     },
     {
       "layer": "core",
+      "path": "native-hook-relay-cli-DTqrikhm.js",
+      "sha256": "dc73ce928f270b39717c59ee29b66cf47b3e5315bd0640b88b55f340a5d1fb0e",
+      "source": "versa:15c5a88b59d",
+      "note": "cli-startup-fast, PR #530 (versa/port-relay-fast-20261101, fast-forwarded into versa/port-backlog-20261029); launcher-preflight, relay CLI and import boundary 29/29 and native-hook-relay 159/159 on the fork on Node 22.23.1"
+    },
+    {
+      "layer": "core",
+      "path": "native-hook-relay-client-GFGIwlRq.js",
+      "sha256": "531f2257364b28f7225d047875adc402969cf8fea1bf4fd68132799a9b9c044b",
+      "source": "versa:15c5a88b59d",
+      "note": "cli-startup-fast, PR #530 (versa/port-relay-fast-20261101, fast-forwarded into versa/port-backlog-20261029); launcher-preflight, relay CLI and import boundary 29/29 and native-hook-relay 159/159 on the fork on Node 22.23.1"
+    },
+    {
+      "layer": "core",
       "path": "node-sqlite-CL-d6drd.js",
       "sha256": "da24951ca0a47d7a2ba43f1aa6f3fd844c85d5546170d66ed7d5aed6d3d93ee9",
       "source": "versa:3951d3e691b",
@@ -1279,6 +1293,13 @@
       "sha256": "49a8bf6e97dab4e70084732826a25236328c0609a031c93b6a6cfcbb93a84692",
       "source": "versa:3bde236a5ee",
       "note": "wave-1 backlog (voice group, versa/port-voice-20261029 @ 69f2fe8b4c5) merged into versa/port-backlog-20261029; unit and source-level integration tests fail without each change; logic compared by reading (V modules land in other chunks); no real GPT Live call verified yet; runtime A/B pending"
+    },
+    {
+      "layer": "core",
+      "path": "warning-filter.js",
+      "sha256": "a27485624940c2cffa8e53c0bec014b7aac3cba94ebbfeb22c62ebe78de711f0",
+      "source": "versa:15c5a88b59d",
+      "note": "cli-startup-fast, PR #530 (versa/port-relay-fast-20261101, fast-forwarded into versa/port-backlog-20261029); launcher-preflight, relay CLI and import boundary 29/29 and native-hook-relay 159/159 on the fork on Node 22.23.1"
     },
     {
       "layer": "core",
