@@ -1,0 +1,6 @@
+{
+  "port": 23970,
+  "publicBaseUrl": "https://nightshift.tianyi.live/",
+  "boardApiBaseUrl": "http://127.0.0.1:24880",
+  "feishuCredentialsFile": "/etc/v-link-preview/feishu.json"
+}
