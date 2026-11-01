@@ -278,8 +278,8 @@ C5 之后，V 跑的就是 fork 构建，这三层就成了每次发版的回归
 
 | 台账项 | 验证位置 | 原因 |
 |---|---|---|
-| CX-*、visible-progress、codex-commentary、BG-WORK | C3 | 要真实 Codex app-server |
-| worker 相关（B1–B10、WORKER-fast-compaction 等）、LOOPBACK-SENDER | C3 | 这里没有加载 worker，也没有 claude-cli |
+| CX-*、visible-progress、codex-commentary、BG-WORK | C3（部分未覆盖，见「行为契约」） | 要真实 Codex app-server |
+| worker 相关（B1–B10、WORKER-fast-compaction 等）、LOOPBACK-SENDER | C3（部分未覆盖，见「行为契约」） | 这里没有加载 worker，也没有 claude-cli |
 | GPT-LIVE/*、VOICE-*（除页面加载）、语音确认卡 | C4 | 要真实通话 |
 | 性能类（A 系列、D1/D3、#454 等） | C3 | 不是行为差异，要同口径 A/B |
 | COMPUTER-*、E1、漏消息补拉（只有 WebSocket 模式有） | 单测；上线后观察 | 要 node 或真实断线；E1 的触发条件在假服务上走不到 |
@@ -305,9 +305,44 @@ Telegram 的假服务上，`ask_user` 和凭据请求展示都对，但工具结
 
 **负载很高时的结论是有限的。** 早先没有控制负载的几轮里，fork 慢过 3–4 秒（18.9 秒对 14.7 / 15.6 秒），当时可用内存只有约 2 GB，而固定负载这组可用内存在 3.5 GB 以上。所以这里证明的是空闲和中等负载下没有差距，内存更紧时两边是否一致没有测。V 是 8 核，这种压力要到更高并发才会出现，C5 观察期要盯可用内存和首字。
 
-**C3 没有覆盖的行为：** 上面「C2 契约」表里推给 C3 的 CX-*、visible-progress、codex-commentary、BG-WORK、Worker B1–B10、LOOPBACK-SENDER 还没有逐条做。这次只有 6 项验收（普通回复、exec、memory_search、cron、workboard、sessions_spawn），都带 Worker，但没有 Codex app-server 和 claude-cli。这些要在合入 dev 之前补上，或由 Tianyi 决定放进 C5 观察。
+证据在演练机 `/srv/versa-mirror95/evidence/gate103/`：静默组 `c3v8 c3f7 c3f8 c3v9`，固定负载组 `c3lv1 c3lf1 c3lf2 c3lv2`，重启组 `c3v2 c3f2 c3f3`；行为契约结果 `/srv/versa-mirror95/c3/contracts/c3-m{1,2,3}.json`。
 
-证据在演练机 `/srv/versa-mirror95/evidence/gate103/`：静默组 `c3v8 c3f7 c3f8 c3v9`，固定负载组 `c3lv1 c3lf1 c3lf2 c3lv2`，重启组 `c3v2 c3f2 c3f3`。
+#### 行为契约（11/02，18 条）
+
+用例在 `lab/contracts/cases-c3/`，V 和 fork 都通过，返回值相同。最后一版跑 1 遍 18/18；此前同一批 17 条跑 2 遍 17/17，之后只改写了压缩摘要那条。
+
+| 路径 | 证明的行为 | 台账项 |
+|---|---|---|
+| Worker | 回合确实在 Worker 里跑；exec；子 agent 完成后唤醒父会话；Skill Workshop 提案和 apply；记忆检索；快速压缩后下一轮带摘要；飞书卡片显示过程和答案；杀掉 Worker 后下一轮恢复 | B1、B2、B3、B7、WORKER-fast-compaction、WORKER-port-status、WORKER-pool-admission、WORKER-subagent-completion-relay、WORKER-session-agentdb-access、FEISHU-visible-progress |
+| `/vds`（真实 Codex） | DeepSeek 路由、不开 code mode；同一线程续用；超限不换线程并原生压缩；压缩摘要不当回复；记忆整理走单独线程、不夺绑定；`view_image` 由 OpenClaw 提供；413 后换线程；工具结果回到模型；飞书显示 commentary | CX-G1、CX-B、CX-C、CX-292、CX-E、CX-322、FEISHU-codex-commentary |
+| `/vcodex` | OpenAI 路由能回复；从 `/vds` 切过来换新线程 | CX-B |
+
+**这些契约能抓到问题吗：** 在 V 的副本上逐个撤掉补丁，对应契约都失败了。
+
+| 撤掉的补丁 | 结果 |
+|---|---|
+| 超限 DeepSeek 线程不换（CX-C） | 失败：没走到保留线程的路径 |
+| 永久关闭 code mode 不算临时限制（CX-B） | 失败：两轮用了两个线程 |
+| 压缩摘要不当回复（CX-292） | 失败：摘要被当回复发出。第一版契约没抓到，已改写 |
+| 记忆整理走临时线程（CX-E） | 失败：下一轮被换到别的线程 |
+| 保留 OpenClaw 的 `view_image`（CX-322） | 失败：工具不再提供 |
+| 413 后丢弃线程（CX-322） | 失败，但报的是下一轮的运行错误，不是断言 |
+| Codex commentary 上卡片（飞书） | 失败：commentary 没上卡片 |
+| Worker 过程上卡片（飞书） | 失败：工具前的文字没上卡片 |
+
+其余契约没有做变异检验。其中 Worker 的几条断言的是功能结果（命令输出、子 agent 结果回到父会话等），`C3-CX-A` 只证明 400 段的长流能完整回复且不重放，没有强制触发 pre-bind 溢出。
+
+**这里没有覆盖、仍只靠归一化对照和单测的项：**
+
+| 项目 | 原因 |
+|---|---|
+| `LOOPBACK-SENDER`，以及 claude-cli 的回合行为 | 真实 Claude CLI 在演练环境里过不了认证，请求到不了假模型 |
+| `BG-WORK-CODEX-SUBAGENT`、`CX-137` | 假模型的 `/vcodex` 回合请求里没有工具列表，触发不了原生子 agent |
+| `CX-B2`、`CX-vds-switch-guard` | 契约只查切换后换了线程，没有断言认证归属和拦截 |
+| `CX-A` 的溢出路径、`CX-H` | 要写库慢和大会话才能触发 |
+| B4、B5、B6、B8、B9、B10-core、`WORKER-voice-*`、`WORKER-secrets-egress` | 没写契约；B10 要真实媒体任务，语音归 C4 |
+
+这些项要么放进 C5 的观察清单，要么补写，由 Tianyi 决定。假模型只证明 Gateway 这一侧的行为，真实 provider 的响应不在内。
 
 ### C4′ 新版本演练（11/01，9.36，流程跑通，不能上线）
 
@@ -374,7 +409,7 @@ C4 真实通话依赖 GPT Live 委派的移植，这次没有做。
 | B 补完欠账（台账部分 10/30 完成） | 10/30 | 第二波 3 次发版、46 个文件，**逐字翻**；钉钉/企微 13 个文件按字节重建（PR #516）；黑盒契约场景还没写 | 台账不剩 pending（已达成）；待判条目全部有结论、翻错 = 0（已达成） |
 | C1 构建对照（10/30 在 Mac 上跑过一次） | 10/30；V 有新发版时重跑 | 构建 fork 9.1，对 V 最新捕获重跑归一化对照（含新发版）。演练机构建放到 C3 一起做 | 同 B0 标准（已达成：212 个文件，翻错 0） |
 | C2 契约基线（10/31 完成，55 条） | 10/31 | 黑盒契约，在 V 现字节上定基线，在原版 9.1 上跑反向对照，Mac 和 Linux 各跑一遍 | 结果和缺口见上面「C2 契约」一节 |
-| C3 同版本 A/B（11/01 性能通过，部分行为待补） | 11/01 | 演练机上 fork 构建对 V 字节：同口径的首字、重启时间和内存，稳态后测 | 性能已达成；CX-*、Worker 等推给 C3 的行为契约还没做，见上面「C3 同版本 A/B」一节 |
+| C3 同版本 A/B（11/02 完成，有未覆盖项） | 11/01–11/02 | 演练机上 fork 构建对 V 字节：同口径的首字、重启时间和内存，稳态后测；18 条 Worker 和 Codex 行为契约 | 性能已达成；18 条一致；未覆盖项见上面「行为契约」一节 |
 | C4 真实通话 | 同周 | GPT Live 在 fork 构建上打真实电话 | 通话、打断、挂断正常 |
 | C4′ 新版本演练（11/01 跑过一次，未达标） | C3 之后 | 在演练机上把提交栈合到目标版本，跑同一套单测、契约和门禁 | 契约一致；门禁通过（未达成：契约 45/54，重启 795–882 秒，见上面「C4′ 新版本演练」一节） |
 | 合入 dev | 验证完成后 | 经 Tianyi 批准，升级分支整体合入 dev | — |

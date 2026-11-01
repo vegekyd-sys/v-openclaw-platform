@@ -42,6 +42,21 @@ node lab/contracts/run.mjs --targets <dir> [--only <子串>] [--on stock,v,fork-
 - 配置名为 `deepseek` 的 provider 会触发从 npm 安装插件，测试里换个名字。
 - 反向对照失败的原因要看一眼：`stock` 必须是因为缺这个行为而失败，不能是因为别的。
 
+## C3 行为契约（`--cases cases-c3`）
+
+只在演练机上跑，需要 Worker 插件和真实 Codex 二进制：
+
+```bash
+node lab/contracts/make-worker-targets.mjs --targets <dir> --worker <V 的 Worker 插件目录>
+C3_CODEX_BIN=<codex> C3_DEEPSEEK_PLUGIN=<deepseek provider 插件目录> \
+  node lab/contracts/run.mjs --cases cases-c3 --targets <dir> --on v,fork-c5
+```
+
+- `/vds`、`/vcodex` 是真实 Codex app-server，假模型提供 Responses 接口，不需要任何真实登录。
+- 飞书卡片过程要配 `streaming.mode=partial`、`renderMode=card`、`messages.visibleReplies=automatic`，和 V 一样；否则 Codex 回合只能靠 `message` 工具回复。
+- `stock` 没有 DeepSeek 路由和 Worker 桥，当不了反向对照。这里全部是对照型，每条自己断言行为；是否真能抓到问题，用撤补丁的变异检验确认。
+- `make-worker-targets.mjs` 只供演练，靠改写哈希文件名绑定 Worker。C5 要换成不依赖哈希的查找。
+
 ## 这套契约证明不了什么
 
 - 假模型和假飞书只证明 Gateway 这一侧的行为，真实飞书的展示、真实 provider 的响应不在内。

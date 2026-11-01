@@ -29,7 +29,25 @@ function merge(base, over) {
   return out;
 }
 
-export async function boot(targetDir, { config = {}, env = {}, modelScript, feishu, feishuApi, telegram, setup } = {}) {
+/** Puts the target's own copy of V's Worker plugin in front of the default model. */
+function workerConfig(targetDir, stateDir) {
+  const pluginDir = path.join(path.dirname(targetDir), `worker-${path.basename(targetDir)}`);
+  const workerConfigPath = path.join(stateDir, "worker-openclaw.json");
+  return {
+    plugins: {
+      load: { paths: [pluginDir] },
+      entries: {
+        "vlab-agent-worker-isolation": {
+          enabled: true,
+          config: { minWorkers: 1, maxWorkers: 2, sessionsPerWorker: 3, idleTimeoutMs: 180000, requestTimeoutMs: 120000, requestStallTimeoutMs: 60000, workerConfigPath, warmSpareWorkers: 0 },
+        },
+      },
+    },
+    agents: { defaults: { models: { "fake/m1": { agentRuntime: { id: "vlab-worker" } } } } },
+  };
+}
+
+export async function boot(targetDir, { config = {}, env = {}, modelScript, feishu, feishuApi, telegram, setup, worker } = {}) {
   const dir = mkdtempSync(path.join(os.tmpdir(), "c2-"));
   const stateDir = path.join(dir, "state");
   const workspace = path.join(dir, "ws");
@@ -59,7 +77,7 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
       plugins: { entries: { "memory-core": { config: { dreaming: { enabled: false } } } } },
       update: { checkOnStart: false },
     },
-    merge(config, process.env.C2_EXTRA_CONFIG ? JSON.parse(process.env.C2_EXTRA_CONFIG) : {}),
+    merge(merge(worker ? workerConfig(targetDir, stateDir) : {}, config), process.env.C2_EXTRA_CONFIG ? JSON.parse(process.env.C2_EXTRA_CONFIG) : {}),
   );
   for (const provider of Object.values(fullConfig.models.providers)) {
     if (provider.baseUrl === "FAKE_MODEL_URL") provider.baseUrl = `http://127.0.0.1:${model.port}/v1`;
@@ -73,7 +91,7 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
       fullConfig.channels,
     );
   }
-  if (setup) env = { ...env, ...setup(dir) };
+  if (setup) env = { ...env, ...setup(dir, { stateDir, modelPort: model.port }) };
   if (feishu) {
     fullConfig.plugins = merge(fullConfig.plugins, { entries: { feishu: { enabled: true } } });
     fullConfig.channels = merge(
@@ -101,6 +119,7 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
     env = { ...env, OPENCLAW_CRON_SHARED_POLICY: path.join(dir, "cron-shared-policy.json") };
     writeFileSync(env.OPENCLAW_CRON_SHARED_POLICY, JSON.stringify({ version: 1, agents: { main: { mode: "shared", enabled: true } } }));
   }
+  if (worker) fullConfig.plugins.entries["vlab-agent-worker-isolation"].config.gatewayConfigPath = configPath;
   writeFileSync(configPath, JSON.stringify(fullConfig, null, 2));
   const logPath = path.join(dir, "gateway.log");
   const logs = [];
@@ -116,7 +135,7 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
     });
     if (r.status !== 0) logs.push(`doctor exited ${r.status}\n${r.stdout}\n${r.stderr}`);
   }
-  const child = spawn(process.execPath, ["dist/index.js", "gateway", "--port", String(port)], {
+  const child = spawn(process.execPath, [...(process.env.C2_NODE_FLAGS?.split(" ") ?? []), "dist/index.js", "gateway", "--port", String(port)], {
     cwd: targetDir,
     env: {
       ...process.env,
