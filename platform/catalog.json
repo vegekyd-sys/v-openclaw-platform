@@ -481,7 +481,8 @@
         "lab/workboard-sweep-bounded.test.mjs",
         "lab/openclaw-tool-safe-deny.test.mjs",
         "lab/skill-workshop-agent-apply.test.mjs",
-        "scripts/v-skills-catalog.test.mjs"
+        "scripts/v-skills-catalog.test.mjs",
+        "lab/model-switch-thinking.test.mjs"
       ]
     }
   ],
@@ -609,6 +610,10 @@
     {
       "file": "lab/worker-loop-state-native.test.mjs",
       "reason": "需要 VLab 候选运行时（VLAB_CANDIDATE_RUNTIME 等），只能在 vlab.mjs candidate 里跑，离线入口不应把它当通过。"
+    },
+    {
+      "file": "lab/model-switch-thinking.v-bytes.test.mjs",
+      "reason": "需要 V 的原字节（MSWT_V_BASE），core 的 3 个文件没有捕获进仓库，离线入口不应把它当通过。"
     },
     {
       "file": "lab/upstream-5xx-fallback.runtime.test.mjs",
