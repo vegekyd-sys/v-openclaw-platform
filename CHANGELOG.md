@@ -11,6 +11,34 @@
 
 ---
 
+## v2026.9.1-db91.6-codex-context-batch-20261101
+
+上线：2026-11-01 13:35 CST  ·  tag `v2026.9.1-db91.6-codex-context-batch-20261101`
+
+**摘要**：/vcodex（gpt-6.x）终于能看到 SOUL、IDENTITY、USER、MEMORY 和 OpenClaw 的 skills 目录了。从 2026-09-05 起，Codex 用模型目录的 Default 文本替换 collaboration 说明，这些内容一直没到模型。现在改走线程 developer 消息，内容变化或压缩后才重发（#510）。另外切模型不再改写会话的推理档位，`/Grok → /deepseek` 之后 DeepSeek 继续推理（#509）。
+
+激活：2026-11-01 13:35 CST 重启（请求 `20261101-133522-9db2`，stream 与 Worker 就绪，`postChecks` 全 0），Worker 随重启换代。
+
+上 V 后验收（测试群 `oc_260a…`）：/vcodex 真实 gpt-6.1-sol 不调工具答对 MEMORY 里的 DealClaw 网址和 SOUL Core Truths 第一条（10/28 同一个群答「看不到」）；/vds、Worker、切换都有回复；`/Grok → /deepseek` 档位全程 high，DeepSeek effort=high 且有推理事件。重启后 `another runner` 0 次。大线程注入后缓存仍命中（383,232/385,020）。
+
+未验证：#524 的故障路径这次没在 V 上重放，依据是字节只叠加。gpt-6.x 定时任务回合的 cron 协作说明仍被目录文本替换，未修。
+
+回退：`promote-to-v.mjs --undo /opt/v-release-backups/v2026.9.1-db91.6-codex-context-batch-20261101` 后重启。来源：[PR #510](https://github.com/vegekyd-sys/v-openclaw-platform/pull/510)、[PR #509](https://github.com/vegekyd-sys/v-openclaw-platform/pull/509)，fork `93a39a13859`、`4bd4c915305`。
+
+相对上一版 `v2026.9.1-db91.6-cli-startup-fast-20261101`：7 个文件变化。
+
+**经 VLab 发版 `codex-context-batch-20261101-v1`**（codex-context-batch-20261101，dev `fe456570`）
+> 验收：共享 VLab 验收 13:18-13:29 CST。/vcodex 真实 gpt-6.1-sol 不调工具答对 MEMORY.md 的 DealClaw 网址和 SOUL Core Truths 第一条（rollout 第 8 行 31790 字符 handoff 带 SOUL+MEMORY；marker 落盘），连发命中缓存 25216/25349。/vds 答对 SOUL，第二轮缓存 56320/56548，/vds→/vcodex→/vds 均回复。#509：/think high → /Grok 档位仍 high → /deepseek 档位仍 high，切回后回复带推理块。未覆盖：共享 VLab 无 xai 凭据，Grok 回合报 No API key 未跑通，Grok 回合写回路径（第 4 处）由 candidate 覆盖，上 V 后再验；#524 故障路径未重放，字节比对为…
+- `core` apply-session-model-selection-CJtWmAQJ.js  b83769d1 → 819e5dad
+- `core` directive-handling.impl-CoR1-5xR.js  d0759e89 → 6523693e
+- `core` sessions-patch-iR7MNInU.js  78264539 → bd6535af
+- `worker` harness-event-contract.mjs  a25315d7 → 02457ef2
+- `codex` dist/compact-_t0HQrUS.js  278c8505 → 4af4b703
+- `codex` dist/run-attempt-D1hJO4fX.js  d6f28b4a → 71a11b78
+- `codex` dist/thread-lifecycle-DAcEJ_Om.js  6a00e8c2 → bdb000d5
+
+---
+
 ## v2026.9.1-db91.6-cli-startup-fast-20261101
 
 上线：2026-11-01 13:12 CST（未重启 Gateway，relay 每次新起进程，立即生效）  ·  tag `v2026.9.1-db91.6-cli-startup-fast-20261101`

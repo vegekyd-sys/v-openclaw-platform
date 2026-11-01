@@ -105,6 +105,13 @@
     },
     {
       "layer": "core",
+      "path": "apply-session-model-selection-CJtWmAQJ.js",
+      "sha256": "819e5dad31618353034af1a462bb6cc25f652a7960d48fcfe5d4d0834da4e911",
+      "source": "versa:4bd4c915305",
+      "note": "thinking-preserve-on-switch-v1, PR #509 (versa/port-model-switch-thinking-20261101, fast-forwarded into versa/port-backlog-20261029); core of upstream b22f886cdc9 (#169435); sessions-patch, directive-handling.model and apply-session-model-selection tests pass on the fork"
+    },
+    {
+      "layer": "core",
       "path": "attempt.model-diagnostic-events-B4dGIs0S.js",
       "sha256": "8aa2ea92c8c55aecec9077659295765f9cddfaf608bf71ef82b460ad031cee9d",
       "source": "versa:aea2dae23b4",
@@ -339,6 +346,13 @@
       "path": "delivery.runtime-CAsclR-9.js",
       "sha256": "3e943055229ccf3e2becae1bb132992f9861a5b2295a9abbb215ac6780aa7b2e",
       "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "directive-handling.impl-CoR1-5xR.js",
+      "sha256": "6523693ea977accbab21c875579c37cc5ffcee1dd100690b5115a037885f36c0",
+      "source": "versa:4bd4c915305",
+      "note": "thinking-preserve-on-switch-v1, PR #509 (versa/port-model-switch-thinking-20261101, fast-forwarded into versa/port-backlog-20261029); core of upstream b22f886cdc9 (#169435); sessions-patch, directive-handling.model and apply-session-model-selection tests pass on the fork"
     },
     {
       "layer": "core",
@@ -997,6 +1011,13 @@
     },
     {
       "layer": "core",
+      "path": "sessions-patch-iR7MNInU.js",
+      "sha256": "bd6535af1db29ce629834670a8998156c9ea79b48495a5070786f6a53e50a6c5",
+      "source": "versa:4bd4c915305",
+      "note": "thinking-preserve-on-switch-v1, PR #509 (versa/port-model-switch-thinking-20261101, fast-forwarded into versa/port-backlog-20261029); core of upstream b22f886cdc9 (#169435); sessions-patch, directive-handling.model and apply-session-model-selection tests pass on the fork"
+    },
+    {
+      "layer": "core",
       "path": "sessions-read-C6mAMxyQ.js",
       "sha256": "5c84c606c258ae729630a659d54bdf28d1b7cb2999b1ca86a325832b78ef5a43",
       "source": "pending:backlog-20261029"
@@ -1409,6 +1430,13 @@
     },
     {
       "layer": "codex",
+      "path": "dist/compact-_t0HQrUS.js",
+      "sha256": "4af4b7036884e0f179d21e80e57bcf3c4ab376dafb8030938a0e039926e6f206",
+      "source": "versa:93a39a13859",
+      "note": "codex-turn-context-handoff, PR #510 (versa/port-codex-turn-context-20261101, fast-forwarded into versa/port-backlog-20261029); Codex plugin tests pass on the fork."
+    },
+    {
+      "layer": "codex",
       "path": "dist/dynamic-tools-BU9tmlYm.js",
       "sha256": "f3ad9f4d87130bb315322322e9bad45d15146a97c563fd23b8895ba85728ef0f",
       "source": "versa:3951d3e691b",
@@ -1431,9 +1459,9 @@
     {
       "layer": "codex",
       "path": "dist/run-attempt-D1hJO4fX.js",
-      "sha256": "d6f28b4aa56027d95b34cd1ec8da0dd6cb7669f0e714672df4fb0894f5fcebaa",
-      "source": "versa:9e4c1d29266",
-      "note": "#524 failed-turn fix (versa/port-codex-failed-thread-20261101, fast-forwarded into versa/port-backlog-20261029); 662 Codex tests pass on Node 22.23.1"
+      "sha256": "71a11b784e37c14eecd4ab54bc58947edf5ac5a1e5beb3fb6e1482e53e07f57a",
+      "source": "versa:93a39a13859",
+      "note": "#524 failed-turn fix (versa/port-codex-failed-thread-20261101, fast-forwarded into versa/port-backlog-20261029); 662 Codex tests pass on Node 22.23.1 11/01 codex-turn-context-handoff, PR #510 (versa/port-codex-turn-context-20261101, fast-forwarded into versa/port-backlog-20261029); Codex plugin tests pass on the fork."
     },
     {
       "layer": "codex",
@@ -1464,9 +1492,9 @@
     {
       "layer": "codex",
       "path": "dist/thread-lifecycle-DAcEJ_Om.js",
-      "sha256": "6a00e8c2c66789fc66b569503190a7cebaf82f6f839a254c24e28f23fb779943",
-      "source": "versa:9e4c1d29266",
-      "note": "wave-1 backlog (codex group, versa/port-codex-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (assets identical); runtime A/B pending; 11/01 #524 failed-turn fix (versa/port-codex-failed-thread-20261101, fast-forwarded into versa/port-backlog-20261029); 662 Codex tests pass on Node 22.23.1"
+      "sha256": "bdb000d570172024f7b4c2b1e6ae74706ec68368aa7d1736e2af94ab39b7f99a",
+      "source": "versa:93a39a13859",
+      "note": "wave-1 backlog (codex group, versa/port-codex-20261029) merged into versa/port-backlog-20261029; unit tests fail without each change; byte compare logic-equivalent (assets identical); runtime A/B pending; 11/01 #524 failed-turn fix (versa/port-codex-failed-thread-20261101, fast-forwarded into versa/port-backlog-20261029); 662 Codex tests pass on Node 22.23.1 11/01 codex-turn-context-handoff, PR #510 (versa/port-codex-turn-context-20261101, fast-forwarded into versa/port-backlog-20261029); Codex plugin tests pass on the fork."
     },
     {
       "layer": "codex",
