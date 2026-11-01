@@ -56,7 +56,7 @@ padded to V's sizes, real chunks, each switch off and on. Runs and pending count
 | same keys, process holding every run, as a Gateway does | 0 differ |
 | 40 keys with another agent id, both shapes | 0 differ |
 | 16 injected trees, both shapes | 0 differ |
-| budget cases really read everything; a small tree does not | cold 1.5-3.2 s against under 50 ms |
+| budget cases really read everything; a small tree does not | cold 1.8-3.2 s against 1-17 ms |
 | all 3,819 task owners, index against a filter of the whole list | 0 differ |
 | 1,145 wrapper comparisons over 229 owners and 5 runtime shapes | 0 differ, 150 ms to 0.06 ms |
 | tasks created, updated and finished through the runtime | same at each step |
