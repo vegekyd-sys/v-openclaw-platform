@@ -1,0 +1,16 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/subagent-active-precheck/history-image-prune-Dg0CDQ4a.js",
+      "target": "openclaw/dist/history-image-prune-Dg0CDQ4a.js",
+      "before": "dbe28902fd72d4620e1cbd16ad03daab58758011e5692d0705957583e3e24c49",
+      "after": "3e5c9c8b90e78d85c0360cf64bba4f9add36dbdabb7eceaf96a5eefe084bdd36"
+    },
+    {
+      "source": "lab/release-files/subagent-active-precheck/v-subagent-active-precheck.mjs",
+      "target": "openclaw/dist/v-subagent-active-precheck.mjs",
+      "after": "9e6a45cacabf37f932af07b580fa226d888507c49d03983c5f63cd3b2edd25f6"
+    }
+  ]
+}
