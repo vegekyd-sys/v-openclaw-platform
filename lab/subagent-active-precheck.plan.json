@@ -10,7 +10,8 @@
     {
       "source": "lab/release-files/subagent-active-precheck/v-subagent-active-precheck.mjs",
       "target": "openclaw/dist/v-subagent-active-precheck.mjs",
-      "after": "9e6a45cacabf37f932af07b580fa226d888507c49d03983c5f63cd3b2edd25f6"
+      "after": "9e6a45cacabf37f932af07b580fa226d888507c49d03983c5f63cd3b2edd25f6",
+      "before": null
     }
   ]
 }

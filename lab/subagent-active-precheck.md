@@ -1,7 +1,7 @@
 # The Worker's 2.3 s before each model call: the subagent registry
 
-Status: candidate only (2026-11-01). Not merged, not on shared VLab, not on V. V was only read: its
-journal, `/proc`, and `mode=ro` queries at idle priority.
+Status: on V since 2026-11-01 10:00 CST (`v2026.9.1-db91.6-subagent-precheck-20261101`, PR #525).
+Activated by `vlab.workers.roll`, without a Gateway restart. See "Production result" below.
 
 ## Where the time goes
 
@@ -82,3 +82,38 @@ no surrounding whitespace (0 of 13,550), so comparing them untrimmed matches.
 
 `lab/subagent-active-precheck.plan.json` pins V's bytes (`dbe28902...` before). The helper is a new file in
 `openclaw/dist`. Results: `lab/subagent-active-precheck-results-20261101.json`.
+
+## Production result (2026-11-01)
+
+Same bench before and after: 5 groups holding only Tianyi and V, deepseek-flash on the Worker, one
+message per group per round, first text = Feishu `create_time` to first answer push. Before ran 09:33
+to 09:44 (6 rounds), after ran 10:00 to 10:14 (8 rounds), straight after the worker roll. The Gateway did
+not restart in between (up since 10/30).
+
+| | before | after |
+|---|---|---|
+| first text P50, all rounds | 7.2 s (n=30) | 4.6 s (n=40) |
+| first text P50, rounds 3 to 6 | 6.6 s | 4.9 s |
+| first text P50, last 4 rounds | 6.6 s | 4.4 s |
+| first text P95, all rounds | 10.6 s | 18.7 s |
+| prompt ready to model call, P50 | 2496 ms | 176 ms |
+| model call to first text, P50 (control) | 2188 ms | 1846 ms |
+
+Over the 26 hours around the roll, by whether the turn was the first in its Worker process:
+
+| prompt ready to model call | before | after |
+|---|---|---|
+| later turns, P50 / P99 | 2326 / 4182 ms (n=386) | 170 / 2965 ms (n=41) |
+| first turn in a process, P50 / max | 18171 / 21388 ms (n=28) | 15852 / 16374 ms (n=6) |
+
+The worse P95 comes from two things this release did not add. The roll made five new Workers, and each
+first turn in a process waits 16 to 18 s; that was already so before the release and happens on every
+natural recycle too. One round (10:08) lost 3 to 5 s inbound while the Gateway's liveness heartbeat was late.
+
+Not measured: real user traffic. No other user sent a Worker message in the after window, so the bench
+is the whole comparison so far. Liveness delays: 189 in the 25.7 hours before, 4 in the 16 minutes after;
+that sample is too small to read a rate from.
+
+Acceptance on V, in the release acceptance group: a 100 s turn kept by the old generation through the
+roll and finished, the next turn replied, the old generation drained, 0 Worker errors. With a child
+running, the model quoted the real run id from the Active Subagents section.
