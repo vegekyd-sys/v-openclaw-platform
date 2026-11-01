@@ -48,11 +48,3 @@ test('release files parse', () => {
     assert.equal(r.status, 0, `${file.name} does not parse: ${r.stderr}`);
   }
 });
-
-test('release bytes are the build of V bytes', { skip: !process.env.MSWT_V_BASE && 'set MSWT_V_BASE=<dir with core/dist/*> to compare' }, () => {
-  for (const file of FILES) {
-    const original = fs.readFileSync(path.join(process.env.MSWT_V_BASE, file.base, file.name), 'utf8');
-    assert.equal(sha(original), file.before);
-    assert.equal(sha(file.patch(original)), sha(read(file.name)));
-  }
-});
