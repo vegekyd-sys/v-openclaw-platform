@@ -11,6 +11,20 @@
 
 ---
 
+## v2026.9.1-db91.6-subagent-precheck-20261101
+
+上线：2026-11-01 10:00 CST（`vlab.workers.roll`，未重启 Gateway）
+
+**摘要**：Worker 每次调模型前不再整表读 `subagent_runs`（V 上 13,550 行、217 MB）。先按索引查当前会话及其后代，确定没有活跃子 agent 就跳过。同一测速，首字 P50 从 7.2 s 降到 4.6 s，系统提示词就绪到调模型的空档从 2496 ms 降到 176 ms。P95 从 10.6 s 变成 18.7 s，来自 roll 产生的新 Worker 第一轮（改之前也要等约 18 s）和一轮 Gateway 入站延迟，不是本次改动带来的。真实用户流量的对比还没有。
+
+相对上一版 `v-desktop-handback-progress-20261030`：2 个文件变化。
+
+**经 VLab 发版 `subagent-active-precheck-20261101-v2`**（worker-subagent-precheck-525，dev `e1dcaa4b`）
+- `core` history-image-prune-Dg0CDQ4a.js  dbe28902 → 3e5c9c8b
+- `core` v-subagent-active-precheck.mjs  — → 9e6a45ca
+
+来源：[PR #525](https://github.com/vegekyd-sys/v-openclaw-platform/pull/525)，源码 `versa:a4258902630`。详情见 `lab/subagent-active-precheck.md`。
+
 ## v-desktop-handback-progress-20261030
 
 上线：2026-10-30 00:33 CST 激活完成，00:41 CST 真实生产链路验收通过。

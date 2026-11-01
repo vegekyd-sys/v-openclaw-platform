@@ -491,9 +491,9 @@
     {
       "layer": "core",
       "path": "history-image-prune-Dg0CDQ4a.js",
-      "sha256": "dbe28902fd72d4620e1cbd16ad03daab58758011e5692d0705957583e3e24c49",
-      "source": "versa:35f7f06f225",
-      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending; completes computer-frame-prune with the history-image-e3 resize skip (#355)"
+      "sha256": "3e5c9c8b90e78d85c0360cf64bba4f9add36dbdabb7eceaf96a5eefe084bdd36",
+      "source": "versa:a4258902630",
+      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending; completes computer-frame-prune with the history-image-e3 resize skip (#355); 11/01 subagent-active-precheck, PR #525 (versa/port-subagent-precheck-20261101, fast-forwarded into versa/port-backlog-20261029); precheck unit tests pass on the fork; subagent-active-context.test.ts needs a Node with safe SQLite and was not run there"
     },
     {
       "layer": "core",
@@ -1251,6 +1251,13 @@
       "path": "v-session-entries-matching.mjs",
       "sha256": "3e5671e2cec4eb82fe670fc4bc5f3fab82006ecc3e3ee182e7bbc7e146999a88",
       "source": "pending:backlog-20261029"
+    },
+    {
+      "layer": "core",
+      "path": "v-subagent-active-precheck.mjs",
+      "sha256": "9e6a45cacabf37f932af07b580fa226d888507c49d03983c5f63cd3b2edd25f6",
+      "source": "versa:a4258902630",
+      "note": "subagent-active-precheck, PR #525 (versa/port-subagent-precheck-20261101, fast-forwarded into versa/port-backlog-20261029); precheck unit tests pass on the fork; subagent-active-context.test.ts needs a Node with safe SQLite and was not run there"
     },
     {
       "layer": "core",
