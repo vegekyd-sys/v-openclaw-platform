@@ -1,5 +1,5 @@
 // Build lab/release-files/cli-startup-fast/ from V's bytes
-// (db91-release-v2026.9.1-db91.6/core/dist; the first commit of each chunk is that copy).
+// (db91-release-v2026.9.1-db91.6/core/dist; unpatching a release file gives those bytes back).
 //   node lab/build-cli-startup-fast.mjs [<V dist dir>]
 import fs from 'node:fs';
 import path from 'node:path';
