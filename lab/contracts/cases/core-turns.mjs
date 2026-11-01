@@ -1,8 +1,9 @@
 // What a reply turn says when the model misbehaves. The fake model scripts the
 // failure; the contract reads the reply the user would get.
+import { lastToolResult } from "../lib/fake-model.mjs";
+
 const silentAfterTool = (body) => {
-  const last = body.messages.at(-1);
-  if (last.role === "tool") return { text: "NO_REPLY" };
+  if (lastToolResult(body)) return { text: "NO_REPLY" };
   return { toolCalls: [{ name: "session_status", args: {} }] };
 };
 
