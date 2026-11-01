@@ -11,6 +11,23 @@
 
 ---
 
+## v2026.9.1-db91.6-codex-failed-thread-20261101
+
+上线：2026-11-01 10:24 CST  ·  tag `v2026.9.1-db91.6-codex-failed-thread-20261101`
+
+**摘要**：/vds、/vcodex 回合遇到上游失败（503、429、402、断流）后，下一条消息不再报 `Codex session became active in another runner`，也不用等约 60 秒，上游恢复后立刻能回复。上游失败那一轮本身的行为不变。
+
+激活：2026-11-01 10:20 CST 重启（请求 `20261101-101803-db29`，等候空闲 19 s，stream 3/3），同时也是 #525 上线后第一次 Gateway 重启。生产验收 10:21–10:23 在「V 生产发布验收 0910」真实飞书群：Worker 3 条、/vds 2 条、/vcodex 1 条全部回复，重启后 `another runner`、`Cannot reap`、回复前失败均为 0。V 上没有注入故障，修复路径只在共享 VLab 和 candidate 上触发过。
+
+来源：[PR #524](https://github.com/vegekyd-sys/v-openclaw-platform/pull/524)、[PR #526](https://github.com/vegekyd-sys/v-openclaw-platform/pull/526)，证据 `docs/evidence/codex-failed-thread-resume-20261031/`。
+
+相对上一版 `v2026.9.1-db91.6-subagent-precheck-20261101`：2 个文件变化。
+
+**经 VLab 发版 `codex-failed-thread-resume-20261101-v1`**（codex-failed-thread-524，dev `451ac388`）
+> 验收：真实飞书群 VLab 发布验收 B /vds，Runtime codex。常规 plain 连续 5 条与切模型均正常。断流故障：循环切断 Codex 到 DeepSeek 的连接 120 次，4 次尝试均 stream disconnected，134 s 后报错卡；下一条 12.5 s（run 内 5.9 s）、再下一条 8.2 s 均由 codex 回复；10:08 起 another runner 0 次。state/npm 与 runtime 两份字节相同。A 路径失败矩阵证据见 docs/evidence/codex-failed-thread-resume-20261031，补丁字节相同。
+- `codex` dist/run-attempt-D1hJO4fX.js  c34d6d77 → d6f28b4a
+- `codex` dist/thread-lifecycle-DAcEJ_Om.js  4cceab62 → 6a00e8c2
+
 ## v2026.9.1-db91.6-subagent-precheck-20261101
 
 上线：2026-11-01 10:00 CST（`vlab.workers.roll`，未重启 Gateway）

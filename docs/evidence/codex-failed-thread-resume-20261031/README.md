@@ -40,3 +40,17 @@ After a Codex hang run gave up, the next message's reply about 73 s later answer
 so the turn was still alive (`after-vds-hang`: `correct` false). The Codex settings cover only `stall`,
 and `models.providers.*.timeoutSeconds` does not reach Codex. A no-answer hang needs a watchdog in
 OpenClaw. The candidates shared a busy 4-core host; timers set these durations, not load.
+
+## Shared VLab and production (2026-11-01 CST)
+
+Release `codex-failed-thread-resume-20261101-v1`, real Feishu group, `/vds`, runtime codex.
+
+- Fault on shared VLab: a loop cut every HTTPS connection of the Codex processes 120 times during one
+  turn. Four attempts ended in `stream disconnected before completion`, and the error card came at 134 s
+  (fallbacks are off after a manual `/model`).
+- Next message: 12.5 s in the group, about 6 s in the run, runtime codex. The one after: 8.2 s.
+  `another runner` appeared 0 times since the deploy.
+- Production V after the restart at 10:20: Worker 3, `/vds` 2, `/vcodex` 1, all replied. No fault was
+  injected on V, so production has not exercised the fixed path yet.
+- Not exercised on the shared Gateway: 503, 429, 402, and the unload wait after a config change. Those
+  have candidate evidence with the same patch.
