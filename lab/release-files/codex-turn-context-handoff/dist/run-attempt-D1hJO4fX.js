@@ -2817,7 +2817,7 @@ async function cleanupCodexAttempt(resources, turnRuntime, lifecycle, requestRun
 		});
 		await runCleanupStep("codex-trajectory-flush", () => trajectoryRecorder?.flush());
 		const retainLiveIncognitoThread = (terminalState.turnSucceeded || state.permissionChangeRestart === "confirmed" && !params.abortSignal?.aborted) && isIncognitoSessionKey(params.sessionKey);
-		const retainLiveThread = ((retainLiveIncognitoThread && resourceState.thread.liveThreadEphemeralPolicy !== void 0 || terminalState.turnSucceeded && !isIncognitoSessionKey(params.sessionKey) && params.cleanupBundleMcpOnRunEnd !== true && resourceState.thread.liveThreadConfigFingerprint !== void 0 && resourceState.thread.preserveNativeModel !== true && resourceState.thread.connectionScope !== "supervision" && !resourceState.thread.ringZeroConfigFingerprint) && resourceState.thread.clientId === resolveCodexAppServerClientInstanceId(resourceState.client) ? (await bindingStore.read(bindingIdentity))?.threadId === resourceState.thread.threadId && await bindingStore.withLease(bindingIdentity, async () => {
+		const retainLiveThread = ((retainLiveIncognitoThread && resourceState.thread.liveThreadEphemeralPolicy !== void 0 || (terminalState.turnSucceeded || terminalState.turnFailedSettled) && !isIncognitoSessionKey(params.sessionKey) && params.cleanupBundleMcpOnRunEnd !== true && resourceState.thread.liveThreadConfigFingerprint !== void 0 && resourceState.thread.preserveNativeModel !== true && resourceState.thread.connectionScope !== "supervision" && !resourceState.thread.ringZeroConfigFingerprint) && resourceState.thread.clientId === resolveCodexAppServerClientInstanceId(resourceState.client) ? (await bindingStore.read(bindingIdentity))?.threadId === resourceState.thread.threadId && await bindingStore.withLease(bindingIdentity, async () => {
 			if ((await bindingStore.read(bindingIdentity))?.threadId !== resourceState.thread.threadId) return false;
 			return await retainCodexAppServerBindingSubscription(resourceState.client, resourceState.thread.threadId, {
 				release: resourceState.thread.liveThreadOwnership?.release,
@@ -4183,6 +4183,7 @@ async function finalizeCodexAttempt(resources, turnRuntime, lifecycle, notificat
 	if (toolBridge.telemetry.messagingToolSentTargets.some((target) => target.sourceReplyFinal === true)) result.agentHarnessResultClassification = void 0;
 	const attemptSucceeded = turnSucceeded && result.agentHarnessResultClassification === void 0;
 	terminalState.turnSucceeded = turnSucceeded;
+	terminalState.turnFailedSettled = !turnSucceeded && !finalAborted && !effectiveTimedOut && clientClosedPromptErrorForFinal === void 0 && completedTurnStatus === "failed";
 	terminalState.sharedAbortAllowedAfterTerminalOutcome = shouldKeepCodexSharedAbortOpen({
 		trigger: params.trigger,
 		result,

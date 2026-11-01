@@ -1,12 +1,12 @@
 # Codex 工作区上下文改走线程 developer 消息（2026.9.1，Codex 插件 3 个文件）
 
 `patch-codex-turn-context-handoff.mjs --codex-dist <@openclaw/codex dist>`，幂等。基线是 V 在
-2026-10-28 运行的字节（`v2026.9.1-db91.6-release-batch-20261028`，Codex 插件 generation g-b42d646e5561ece2）：
+2026-11-01 运行的字节（带 #524 failed-turn 修复，`lab/release-files/codex-failed-thread-resume/dist`，Codex 插件 generation g-b42d646e5561ece2）：
 
 | 文件 | before | after |
 |---|---|---|
-| `thread-lifecycle-DAcEJ_Om.js` | 4cceab62 | 762089fd |
-| `run-attempt-D1hJO4fX.js` | c34d6d77 | 09343afb |
+| `thread-lifecycle-DAcEJ_Om.js` | 6a00e8c2 | bdb000d5 |
+| `run-attempt-D1hJO4fX.js` | d6f28b4a | 71a11b78 |
 | `compact-_t0HQrUS.js` | 278c8505 | 4af4b703 |
 
 发版 plan：`release.plan.json`。
@@ -63,8 +63,8 @@ supervision 连接（Mac 原生会话）不动；不拼进用户输入。
 
 `tests/codex-turn-context-handoff.test.mjs`：真实 Codex 0.159.2 app-server（npm 官方包，与 V 同
 sha256 1748767b）+ 本地假 Responses 接口，抓模型实际收到的请求；catalog 用 V 的 gpt-6.1-sol 条目。
-跑法：先在 VLab 主机 `npm pack @openai/codex@0.159.2-linux-x64` 解到 `/tmp/turnctx-codex-0.159.2/`，
-V 的 `models_cache.json` 放同目录（plan 里的 `CODEX_BIN`、`CODEX_TEST_CATALOG`），用完删掉。
+跑法：二进制用 VLab 自带的 `tools/codex-0.159.2`；先把 V 的 `models_cache.json` 放到 VLab 的
+`/tmp/turnctx-codex-catalog/`（plan 里的 `CODEX_TEST_CATALOG`），用完删掉。
 
 | | 基线（V 字节） | 补丁 |
 |---|---|---|

@@ -6,12 +6,12 @@
   {
    "source": "lab/release-files/codex-turn-context-handoff/dist/thread-lifecycle-DAcEJ_Om.js",
    "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js",
-   "before": "4cceab62ea349d266533cf18f6ffdbd620407504cfe16126e16aa04e5bfcb661"
+   "before": "6a00e8c2c66789fc66b569503190a7cebaf82f6f839a254c24e28f23fb779943"
   },
   {
    "source": "lab/release-files/codex-turn-context-handoff/dist/run-attempt-D1hJO4fX.js",
    "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js",
-   "before": "c34d6d777a862db761e22e03fae20e70c595867361052475a5703f67446ce2ce"
+   "before": "d6f28b4aa56027d95b34cd1ec8da0dd6cb7669f0e714672df4fb0894f5fcebaa"
   },
   {
    "source": "lab/release-files/codex-turn-context-handoff/dist/compact-_t0HQrUS.js",
@@ -20,8 +20,8 @@
   }
  ],
  "env": {
-  "CODEX_BIN": "/tmp/turnctx-codex-0.159.2/package/vendor/x86_64-unknown-linux-musl/bin/codex",
-  "CODEX_TEST_CATALOG": "/tmp/turnctx-codex-0.159.2/models_cache.json"
+  "CODEX_BIN": "/srv/vlab-production-mirror/labs/instances/db91-parity/tools/codex-0.159.2/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+  "CODEX_TEST_CATALOG": "/tmp/turnctx-codex-catalog/models_cache.json"
  },
  "user": "lab-db91-parity",
  "timeoutSeconds": 0

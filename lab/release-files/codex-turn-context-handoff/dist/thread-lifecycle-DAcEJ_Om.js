@@ -4353,12 +4353,30 @@ async function prepareCodexThreadResume(params, binding, context) {
 	};
 }
 function observeCodexThreadConfiguration(params, thread, assertCurrent) {
-	if (thread.status?.type !== "idle" && thread.status?.type !== "notLoaded") throw new CodexAdoptedThreadActiveError();
+	if (thread.status?.type !== "idle" && thread.status?.type !== "notLoaded" && thread.status?.type !== "systemError") throw new CodexAdoptedThreadActiveError();
+	const settledSystemError = thread.status.type === "systemError";
 	let unloaded = thread.status.type === "notLoaded";
+	let onUnloaded;
 	return {
 		dispose: params.client.addNotificationHandler((notification) => {
-			if (notification.method === "thread/status/changed" && isJsonObject(notification.params) && notification.params.threadId === thread.id && isJsonObject(notification.params.status) && notification.params.status.type === "notLoaded") unloaded = true;
+			if (notification.method === "thread/status/changed" && isJsonObject(notification.params) && notification.params.threadId === thread.id && isJsonObject(notification.params.status) && notification.params.status.type === "notLoaded") {
+				unloaded = true;
+				onUnloaded?.();
+			}
 		}),
+		waitForSettledUnload: async () => {
+			if (!settledSystemError || unloaded) return;
+			await new Promise((resolve) => {
+				const timer = setTimeout(resolve, 75e3);
+				onUnloaded = () => {
+					clearTimeout(timer);
+					resolve();
+				};
+				params.signal?.addEventListener("abort", onUnloaded, { once: true });
+			});
+			params.signal?.removeEventListener("abort", onUnloaded);
+			onUnloaded = void 0;
+		},
 		assertConfigured: () => {
 			assertCurrent();
 			if (!unloaded) throw new Error("Codex did not confirm unloading its previous configuration. The thread is preserved; stop competing native work and reconnect before retrying.");
@@ -5089,6 +5107,8 @@ async function startOrResumeThread(params) {
 					});
 					try {
 						await releaseRetainedThread(binding.threadId, binding.clientId, configuration.assertCurrent);
+						configuration.assertCurrent();
+						await configuration.waitForSettledUnload();
 						configuration.assertCurrent();
 						const resumed = await resumeExistingCodexThread(params, {
 							...requestContext,
