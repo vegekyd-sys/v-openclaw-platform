@@ -1,0 +1,17 @@
+{
+  "support": [
+    "lab/candidate/v-client-gateway.mjs",
+    "lab/candidate/bound-task-support.mjs",
+    "lab/candidate/feishu-fake-open-api.mjs",
+    "lab/candidate/feishu-no-live.cjs"
+  ],
+  "files": [
+    {"source": "lab/candidate/bound-task-plugin/index.js", "target": "extensions/bound-task-candidate/index.js"},
+    {"source": "lab/candidate/bound-task-plugin/openclaw.plugin.json", "target": "extensions/bound-task-candidate/openclaw.plugin.json"},
+    {"source": "lab/candidate/bound-task-plugin/package.json", "target": "extensions/bound-task-candidate/package.json"}
+  ],
+  "command": ["/opt/vlab/node-v22.23.1-linux-x64/bin/node", "lab/candidate/v-client-gateway.mjs"],
+  "env": {"VCLIENT_HOLD_MINUTES": "180"},
+  "timeoutSeconds": 12000,
+  "user": "lab-db91-parity"
+}
