@@ -59,7 +59,7 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
       plugins: { entries: { "memory-core": { config: { dreaming: { enabled: false } } } } },
       update: { checkOnStart: false },
     },
-    config,
+    merge(config, process.env.C2_EXTRA_CONFIG ? JSON.parse(process.env.C2_EXTRA_CONFIG) : {}),
   );
   for (const provider of Object.values(fullConfig.models.providers)) {
     if (provider.baseUrl === "FAKE_MODEL_URL") provider.baseUrl = `http://127.0.0.1:${model.port}/v1`;
@@ -104,6 +104,18 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
   writeFileSync(configPath, JSON.stringify(fullConfig, null, 2));
   const logPath = path.join(dir, "gateway.log");
   const logs = [];
+  // C2_EXTRA_CONFIG: settings a newer version needs to keep V's behavior (tools.toolSearch).
+  // A newer version migrates config with doctor before its first start, as an upgrade does.
+  if (process.env.C2_PRE_DOCTOR) {
+    const { spawnSync } = await import("node:child_process");
+    const r = spawnSync(process.execPath, ["dist/index.js", "doctor", "--fix", "--non-interactive"], {
+      cwd: targetDir,
+      env: { ...process.env, OPENCLAW_STATE_DIR: stateDir, OPENCLAW_CONFIG_PATH: configPath, OPENCLAW_SKIP_CHANNELS: "1", ...env },
+      encoding: "utf8",
+      timeout: 120_000,
+    });
+    if (r.status !== 0) logs.push(`doctor exited ${r.status}\n${r.stdout}\n${r.stderr}`);
+  }
   const child = spawn(process.execPath, ["dist/index.js", "gateway", "--port", String(port)], {
     cwd: targetDir,
     env: {
