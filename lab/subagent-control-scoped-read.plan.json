@@ -1,0 +1,23 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/subagent-control-scoped-read/subagent-control-scope-DA4oSvgr.js",
+      "target": "openclaw/dist/subagent-control-scope-DA4oSvgr.js",
+      "before": "feb68aa7963a2a571b22a2b53976957ba293eab009399b9ecb1286e69e3a1c02",
+      "after": "a90aa5bb38625ba9ead76a62c610585c69103b997b42bf8da664a7840c799b57"
+    },
+    {
+      "source": "lab/release-files/subagent-control-scoped-read/plugin-sdk/agent-harness-task-runtime.js",
+      "target": "openclaw/dist/plugin-sdk/agent-harness-task-runtime.js",
+      "before": "50dc439b5cbb8a16860aab0bd8b4f4fd485f16a246f881820be5c0ea9c0754e3",
+      "after": "84b2c4d93aa62d70c1ceb91a7e6755ec4fcdc87555dfcf22b315ae8f029b0157"
+    },
+    {
+      "source": "lab/release-files/subagent-control-scoped-read/v-subagent-control-scoped-runs.mjs",
+      "target": "openclaw/dist/v-subagent-control-scoped-runs.mjs",
+      "before": null,
+      "after": "4a44852de1ef8678f4797d6786f490f7299370b466dc35573fd4371208a822f1"
+    }
+  ]
+}

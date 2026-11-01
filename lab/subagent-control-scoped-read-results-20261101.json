@@ -1,0 +1,1470 @@
+{
+ "loadCandidate": {
+  "id": "candidate-ed77a9a7-deaa-4f04-abde-36373529039b",
+  "inputSha256": "936a85fb67ea24f0d5f1cb5aea5163d0259be831df46f10c9ed11cf1e47398cc",
+  "baseRelease": "codex-context-batch-20261101-v1",
+  "files": [
+   {
+    "source": "lab/release-files/subagent-control-scoped-read/subagent-control-scope-DA4oSvgr.js",
+    "target": "openclaw/dist/subagent-control-scope-DA4oSvgr.js",
+    "before": "feb68aa7963a2a571b22a2b53976957ba293eab009399b9ecb1286e69e3a1c02",
+    "after": "a90aa5bb38625ba9ead76a62c610585c69103b997b42bf8da664a7840c799b57"
+   },
+   {
+    "source": "lab/release-files/subagent-control-scoped-read/plugin-sdk/agent-harness-task-runtime.js",
+    "target": "openclaw/dist/plugin-sdk/agent-harness-task-runtime.js",
+    "before": "50dc439b5cbb8a16860aab0bd8b4f4fd485f16a246f881820be5c0ea9c0754e3",
+    "after": "84b2c4d93aa62d70c1ceb91a7e6755ec4fcdc87555dfcf22b315ae8f029b0157"
+   },
+   {
+    "source": "lab/release-files/subagent-control-scoped-read/v-subagent-control-scoped-runs.mjs",
+    "target": "openclaw/dist/v-subagent-control-scoped-runs.mjs",
+    "after": "4a44852de1ef8678f4797d6786f490f7299370b466dc35573fd4371208a822f1"
+   }
+  ]
+ },
+ "equivalence": {
+  "candidate": "candidate-6debf2f4-c777-4054-9157-d6818aeeef06",
+  "sourceCommit": "1ae076d2c6b987e853f66d86e87b1027ed66fe39",
+  "inputSha256": "f024776ad17308cfc7b88d9a516e7f6177e109b7ccbfde01be982ae0b56c85d4",
+  "result": {
+   "rows": 13572,
+   "tasks": {
+    "owners": 229,
+    "comparisons": 1145,
+    "mismatches": 0,
+    "withTasks": 455,
+    "offP50Ms": 149.9,
+    "onP50Ms": 0.063,
+    "onMaxMs": 80.75
+   },
+   "distinctKeys": 59,
+   "keysTried": 465,
+   "shapes": {
+    "reader": {
+     "memory": 0,
+     "real": {
+      "n": 465,
+      "mismatches": 0,
+      "withRuns": 59,
+      "offP50Ms": 47,
+      "onP50Ms": 0.94,
+      "onMaxMs": 1601.2,
+      "fallbackKeys": 1
+     },
+     "wrongAgent": {
+      "n": 40,
+      "mismatches": 0,
+      "withRuns": 0,
+      "offP50Ms": 48,
+      "onP50Ms": 1.35,
+      "onMaxMs": 2931,
+      "fallbackKeys": 1
+     },
+     "injected": {
+      "settledTree": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 1
+      },
+      "runningChild": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 0.9
+      },
+      "runningGrandchild": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 1
+      },
+      "endedNoCleanup": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 1
+      },
+      "requesterOnly": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 4
+      },
+      "controllerOnly": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 0.8
+      },
+      "noControllerColumn": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 2.3
+      },
+      "laterGenerationElsewhere": {
+       "same": true,
+       "n": 0,
+       "coldOnMs": 1.2
+      },
+      "sameStartTime": {
+       "same": true,
+       "n": 2,
+       "coldOnMs": 1.2
+      },
+      "cycle": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 2.5
+      },
+      "notCanonical": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 2.8
+      },
+      "aboveBudget": {
+       "same": true,
+       "n": 260,
+       "coldOnMs": 1831.2
+      },
+      "closureAboveBudget": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 2404.8
+      },
+      "inMemoryOnly": {
+       "same": true,
+       "n": 2
+      },
+      "memoryAheadOfRow": {
+       "same": true,
+       "n": 1
+      },
+      "memoryMovedToKey": {
+       "same": true,
+       "n": 1
+      }
+     }
+    },
+    "gateway": {
+     "memory": 14883,
+     "real": {
+      "n": 465,
+      "mismatches": 0,
+      "withRuns": 59,
+      "offP50Ms": 64,
+      "onP50Ms": 16.43,
+      "onMaxMs": 2919.9,
+      "fallbackKeys": 1
+     },
+     "wrongAgent": {
+      "n": 40,
+      "mismatches": 0,
+      "withRuns": 0,
+      "offP50Ms": 46,
+      "onP50Ms": 19.72,
+      "onMaxMs": 4956.6,
+      "fallbackKeys": 1
+     },
+     "injected": {
+      "settledTree": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 16.9
+      },
+      "runningChild": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 22.4
+      },
+      "runningGrandchild": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 11
+      },
+      "endedNoCleanup": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 11
+      },
+      "requesterOnly": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 10.7
+      },
+      "controllerOnly": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 6.3
+      },
+      "noControllerColumn": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 14.7
+      },
+      "laterGenerationElsewhere": {
+       "same": true,
+       "n": 0,
+       "coldOnMs": 13.8
+      },
+      "sameStartTime": {
+       "same": true,
+       "n": 2,
+       "coldOnMs": 7.5
+      },
+      "cycle": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 6.4
+      },
+      "notCanonical": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 9.9
+      },
+      "aboveBudget": {
+       "same": true,
+       "n": 260,
+       "coldOnMs": 2131.5
+      },
+      "closureAboveBudget": {
+       "same": true,
+       "n": 1,
+       "coldOnMs": 3163.1
+      },
+      "inMemoryOnly": {
+       "same": true,
+       "n": 2
+      },
+      "memoryAheadOfRow": {
+       "same": true,
+       "n": 1
+      },
+      "memoryMovedToKey": {
+       "same": true,
+       "n": 1
+      }
+     }
+    }
+   },
+   "tasksEveryOwner": {
+    "owners": 3819,
+    "tasks": 22423,
+    "mismatches": 0
+   },
+   "taskMutation": {
+    "created": 6,
+    "n": 6,
+    "afterCreate": true,
+    "afterProgress": true,
+    "afterFinal": true
+   }
+  }
+ },
+ "ab": {
+  "levels": 30,
+  "byTask": {
+   "multi": {
+    "off": {
+     "levels": 6,
+     "turns": 90,
+     "correct": 90,
+     "mainCpuS": [
+      36.6,
+      46.8,
+      61,
+      89.9,
+      131.2,
+      159.2
+     ],
+     "mainCpuMedianS": 75.45,
+     "allThreadsMedianS": 88.2,
+     "donePerLevelP50S": 78.05,
+     "firstPerLevelP50S": 73.75,
+     "sessionStatusP50S": 10.55,
+     "stallMaxMedianMs": 8940,
+     "wallMedianS": 84.5,
+     "loadAtEnd": [
+      "6.06",
+      "2.31",
+      "2.33",
+      "2.90",
+      "7.37",
+      "2.18"
+     ],
+     "otherCandidates": [
+      2,
+      1,
+      2,
+      2,
+      2,
+      0
+     ]
+    },
+    "on": {
+     "levels": 6,
+     "turns": 90,
+     "correct": 90,
+     "mainCpuS": [
+      21.7,
+      29.3,
+      49.2,
+      56.3,
+      99.2,
+      113.1
+     ],
+     "mainCpuMedianS": 52.75,
+     "allThreadsMedianS": 59.45,
+     "donePerLevelP50S": 54.55,
+     "firstPerLevelP50S": 51.4,
+     "sessionStatusP50S": 4.5,
+     "stallMaxMedianMs": 2621.5,
+     "wallMedianS": 61.5,
+     "loadAtEnd": [
+      "6.67",
+      "4.83",
+      "2.79",
+      "1.75",
+      "4.73",
+      "3.00"
+     ],
+     "otherCandidates": [
+      2,
+      2,
+      1,
+      2,
+      2,
+      0
+     ]
+    },
+    "pairs": [
+     {
+      "round": 0,
+      "off": 36.6,
+      "on": 21.7,
+      "diff": 14.9
+     },
+     {
+      "round": 1,
+      "off": 46.8,
+      "on": 29.3,
+      "diff": 17.5
+     },
+     {
+      "round": 2,
+      "off": 61,
+      "on": 49.2,
+      "diff": 11.8
+     },
+     {
+      "round": 3,
+      "off": 89.9,
+      "on": 56.3,
+      "diff": 33.6
+     },
+     {
+      "round": 4,
+      "off": 131.2,
+      "on": 99.2,
+      "diff": 32
+     },
+     {
+      "round": 5,
+      "off": 159.2,
+      "on": 113.1,
+      "diff": 46.1
+     }
+    ],
+    "pairDiffMedianS": 24.75
+   },
+   "bash5": {
+    "off": {
+     "levels": 6,
+     "turns": 90,
+     "correct": 90,
+     "mainCpuS": [
+      25.1,
+      37.5,
+      45.6,
+      72.3,
+      91.3,
+      129.6
+     ],
+     "mainCpuMedianS": 58.95,
+     "allThreadsMedianS": 66.1,
+     "donePerLevelP50S": 67.9,
+     "firstPerLevelP50S": 59.05,
+     "sessionStatusP50S": null,
+     "stallMaxMedianMs": 8854.5,
+     "wallMedianS": 76.5,
+     "loadAtEnd": [
+      "5.73",
+      "3.28",
+      "4.07",
+      "7.99",
+      "4.06",
+      "3.31"
+     ],
+     "otherCandidates": [
+      2,
+      1,
+      2,
+      2,
+      1,
+      1
+     ]
+    },
+    "on": {
+     "levels": 6,
+     "turns": 90,
+     "correct": 90,
+     "mainCpuS": [
+      23.3,
+      30,
+      44,
+      63.6,
+      93.6,
+      112.2
+     ],
+     "mainCpuMedianS": 53.8,
+     "allThreadsMedianS": 59.75,
+     "donePerLevelP50S": 57.65,
+     "firstPerLevelP50S": 50.1,
+     "sessionStatusP50S": null,
+     "stallMaxMedianMs": 5716.5,
+     "wallMedianS": 63,
+     "loadAtEnd": [
+      "3.84",
+      "2.77",
+      "2.20",
+      "5.23",
+      "4.76",
+      "3.46"
+     ],
+     "otherCandidates": [
+      1,
+      1,
+      2,
+      2,
+      1,
+      1
+     ]
+    },
+    "pairs": [
+     {
+      "round": 0,
+      "off": 25.1,
+      "on": 23.3,
+      "diff": 1.8
+     },
+     {
+      "round": 1,
+      "off": 37.5,
+      "on": 30,
+      "diff": 7.5
+     },
+     {
+      "round": 2,
+      "off": 45.6,
+      "on": 44,
+      "diff": 1.6
+     },
+     {
+      "round": 3,
+      "off": 72.3,
+      "on": 63.6,
+      "diff": 8.7
+     },
+     {
+      "round": 4,
+      "off": 91.3,
+      "on": 93.6,
+      "diff": -2.3
+     },
+     {
+      "round": 5,
+      "off": 129.6,
+      "on": 112.2,
+      "diff": 17.4
+     }
+    ],
+    "pairDiffMedianS": 4.65
+   }
+  }
+ },
+ "levels": [
+  {
+   "atUtc": "2026-11-01T06:43",
+   "round": "warm",
+   "task": "multi",
+   "side": "on",
+   "mainCpuS": 27.9,
+   "gcHelperCpuS": 7.5,
+   "wallS": 60,
+   "firstP50S": 52.4,
+   "doneP50S": 56.8,
+   "doneP95S": 59.6,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": 0.9,
+   "stallMaxMs": 10485,
+   "heapMaxMB": 1413,
+   "hostLoad1": "7.66",
+   "otherCandidates": 1,
+   "hostAvailMinMB": 1626,
+   "subagentRows": 13516,
+   "taskRows": 22404
+  },
+  {
+   "atUtc": "2026-11-01T06:44",
+   "round": "warm",
+   "task": "bash5",
+   "side": "on",
+   "mainCpuS": 21.7,
+   "gcHelperCpuS": 5.3,
+   "wallS": 50,
+   "firstP50S": 41.6,
+   "doneP50S": 41.8,
+   "doneP95S": 49.4,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": null,
+   "stallMaxMs": 6616,
+   "heapMaxMB": 1449,
+   "hostLoad1": "5.08",
+   "otherCandidates": 2,
+   "hostAvailMinMB": 4608,
+   "subagentRows": 13516,
+   "taskRows": 22404
+  },
+  {
+   "atUtc": "2026-11-01T06:46",
+   "round": 0,
+   "task": "multi",
+   "side": "off",
+   "mainCpuS": 36.6,
+   "gcHelperCpuS": 8.7,
+   "wallS": 52,
+   "firstP50S": 48,
+   "doneP50S": 49,
+   "doneP95S": 51.8,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": 4.3,
+   "stallMaxMs": 5328,
+   "heapMaxMB": 4250,
+   "hostLoad1": "6.06",
+   "otherCandidates": 2,
+   "hostAvailMinMB": 2880,
+   "subagentRows": 13516,
+   "taskRows": 22404
+  },
+  {
+   "atUtc": "2026-11-01T06:48",
+   "round": 0,
+   "task": "multi",
+   "side": "on",
+   "mainCpuS": 21.7,
+   "gcHelperCpuS": 5.3,
+   "wallS": 33,
+   "firstP50S": 30.4,
+   "doneP50S": 32.1,
+   "doneP95S": 32.8,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": 2.4,
+   "stallMaxMs": 1448,
+   "heapMaxMB": 1461,
+   "hostLoad1": "6.67",
+   "otherCandidates": 2,
+   "hostAvailMinMB": 5383,
+   "subagentRows": 13516,
+   "taskRows": 22404
+  },
+  {
+   "atUtc": "2026-11-01T06:50",
+   "round": 0,
+   "task": "bash5",
+   "side": "off",
+   "mainCpuS": 25.1,
+   "gcHelperCpuS": 5.7,
+   "wallS": 42,
+   "firstP50S": 38.5,
+   "doneP50S": 39.7,
+   "doneP95S": 42,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": null,
+   "stallMaxMs": 8845,
+   "heapMaxMB": 1684,
+   "hostLoad1": "5.73",
+   "otherCandidates": 2,
+   "hostAvailMinMB": 1412,
+   "subagentRows": 13516,
+   "taskRows": 22403
+  },
+  {
+   "atUtc": "2026-11-01T06:51",
+   "round": 0,
+   "task": "bash5",
+   "side": "on",
+   "mainCpuS": 23.3,
+   "gcHelperCpuS": 5.4,
+   "wallS": 32,
+   "firstP50S": 28.6,
+   "doneP50S": 30.2,
+   "doneP95S": 32.2,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": null,
+   "stallMaxMs": 4836,
+   "heapMaxMB": 1454,
+   "hostLoad1": "3.84",
+   "otherCandidates": 1,
+   "hostAvailMinMB": 3215,
+   "subagentRows": 13516,
+   "taskRows": 22401
+  },
+  {
+   "atUtc": "2026-11-01T06:53",
+   "round": 1,
+   "task": "multi",
+   "side": "on",
+   "mainCpuS": 29.3,
+   "gcHelperCpuS": 6,
+   "wallS": 51,
+   "firstP50S": 41,
+   "doneP50S": 41.7,
+   "doneP95S": 50.7,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": 1.7,
+   "stallMaxMs": 2280,
+   "heapMaxMB": 1467,
+   "hostLoad1": "4.83",
+   "otherCandidates": 2,
+   "hostAvailMinMB": 4536,
+   "subagentRows": 13516,
+   "taskRows": 22400
+  },
+  {
+   "atUtc": "2026-11-01T06:55",
+   "round": 1,
+   "task": "multi",
+   "side": "off",
+   "mainCpuS": 46.8,
+   "gcHelperCpuS": 13.1,
+   "wallS": 56,
+   "firstP50S": 50.1,
+   "doneP50S": 53.5,
+   "doneP95S": 55.4,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": 9.9,
+   "stallMaxMs": 6326,
+   "heapMaxMB": 3972,
+   "hostLoad1": "2.31",
+   "otherCandidates": 1,
+   "hostAvailMinMB": 2030,
+   "subagentRows": 13516,
+   "taskRows": 22399
+  },
+  {
+   "atUtc": "2026-11-01T06:57",
+   "round": 1,
+   "task": "bash5",
+   "side": "on",
+   "mainCpuS": 30,
+   "gcHelperCpuS": 4.2,
+   "wallS": 35,
+   "firstP50S": 29,
+   "doneP50S": 32.1,
+   "doneP95S": 34.8,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": null,
+   "stallMaxMs": 1848,
+   "heapMaxMB": 3975,
+   "hostLoad1": "2.77",
+   "otherCandidates": 1,
+   "hostAvailMinMB": 1553,
+   "subagentRows": 13516,
+   "taskRows": 22398
+  },
+  {
+   "atUtc": "2026-11-01T06:59",
+   "round": 1,
+   "task": "bash5",
+   "side": "off",
+   "mainCpuS": 37.5,
+   "gcHelperCpuS": 7.2,
+   "wallS": 53,
+   "firstP50S": 43.5,
+   "doneP50S": 45.4,
+   "doneP95S": 53.3,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": null,
+   "stallMaxMs": 3990,
+   "heapMaxMB": 1478,
+   "hostLoad1": "3.28",
+   "otherCandidates": 1,
+   "hostAvailMinMB": 5843,
+   "subagentRows": 13516,
+   "taskRows": 22398
+  },
+  {
+   "atUtc": "2026-11-01T07:01",
+   "round": 2,
+   "task": "multi",
+   "side": "off",
+   "mainCpuS": 61,
+   "gcHelperCpuS": 11.7,
+   "wallS": 70,
+   "firstP50S": 60.2,
+   "doneP50S": 61.9,
+   "doneP95S": 70.1,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": 7.6,
+   "stallMaxMs": 8216,
+   "heapMaxMB": 3275,
+   "hostLoad1": "2.33",
+   "otherCandidates": 2,
+   "hostAvailMinMB": 2324,
+   "subagentRows": 13516,
+   "taskRows": 22394
+  },
+  {
+   "atUtc": "2026-11-01T07:03",
+   "round": 2,
+   "task": "multi",
+   "side": "on",
+   "mainCpuS": 49.2,
+   "gcHelperCpuS": 6.6,
+   "wallS": 62,
+   "firstP50S": 53.3,
+   "doneP50S": 55.7,
+   "doneP95S": 61.9,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": 2.5,
+   "stallMaxMs": 1690,
+   "heapMaxMB": 1462,
+   "hostLoad1": "2.79",
+   "otherCandidates": 1,
+   "hostAvailMinMB": 4171,
+   "subagentRows": 13516,
+   "taskRows": 22394
+  },
+  {
+   "atUtc": "2026-11-01T07:05",
+   "round": 2,
+   "task": "bash5",
+   "side": "off",
+   "mainCpuS": 45.6,
+   "gcHelperCpuS": 7,
+   "wallS": 61,
+   "firstP50S": 47.1,
+   "doneP50S": 52.2,
+   "doneP95S": 60.6,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": null,
+   "stallMaxMs": 2327,
+   "heapMaxMB": 1485,
+   "hostLoad1": "4.07",
+   "otherCandidates": 2,
+   "hostAvailMinMB": 4428,
+   "subagentRows": 13516,
+   "taskRows": 22394
+  },
+  {
+   "atUtc": "2026-11-01T07:07",
+   "round": 2,
+   "task": "bash5",
+   "side": "on",
+   "mainCpuS": 44,
+   "gcHelperCpuS": 5.8,
+   "wallS": 51,
+   "firstP50S": 44.5,
+   "doneP50S": 46.7,
+   "doneP95S": 51.2,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": null,
+   "stallMaxMs": 6597,
+   "heapMaxMB": 1467,
+   "hostLoad1": "2.20",
+   "otherCandidates": 2,
+   "hostAvailMinMB": 2707,
+   "subagentRows": 13516,
+   "taskRows": 22393
+  },
+  {
+   "atUtc": "2026-11-01T07:09",
+   "round": 3,
+   "task": "multi",
+   "side": "on",
+   "mainCpuS": 56.3,
+   "gcHelperCpuS": 6.4,
+   "wallS": 61,
+   "firstP50S": 49.5,
+   "doneP50S": 53.4,
+   "doneP95S": 60.7,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": 6.5,
+   "stallMaxMs": 2963,
+   "heapMaxMB": 1465,
+   "hostLoad1": "1.75",
+   "otherCandidates": 2,
+   "hostAvailMinMB": 3044,
+   "subagentRows": 13516,
+   "taskRows": 22393
+  },
+  {
+   "atUtc": "2026-11-01T07:11",
+   "round": 3,
+   "task": "multi",
+   "side": "off",
+   "mainCpuS": 89.9,
+   "gcHelperCpuS": 13.5,
+   "wallS": 99,
+   "firstP50S": 87.3,
+   "doneP50S": 94.2,
+   "doneP95S": 98.5,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": 11.2,
+   "stallMaxMs": 9664,
+   "heapMaxMB": 4355,
+   "hostLoad1": "2.90",
+   "otherCandidates": 2,
+   "hostAvailMinMB": 1429,
+   "subagentRows": 13516,
+   "taskRows": 22391
+  },
+  {
+   "atUtc": "2026-11-01T07:14",
+   "round": 3,
+   "task": "bash5",
+   "side": "on",
+   "mainCpuS": 63.6,
+   "gcHelperCpuS": 5.8,
+   "wallS": 75,
+   "firstP50S": 55.7,
+   "doneP50S": 68.6,
+   "doneP95S": 74.9,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": null,
+   "stallMaxMs": 3667,
+   "heapMaxMB": 1518,
+   "hostLoad1": "5.23",
+   "otherCandidates": 2,
+   "hostAvailMinMB": 4534,
+   "subagentRows": 13516,
+   "taskRows": 22391
+  },
+  {
+   "atUtc": "2026-11-01T07:16",
+   "round": 3,
+   "task": "bash5",
+   "side": "off",
+   "mainCpuS": 72.3,
+   "gcHelperCpuS": 7,
+   "wallS": 92,
+   "firstP50S": 71,
+   "doneP50S": 83.6,
+   "doneP95S": 92.2,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": null,
+   "stallMaxMs": 9533,
+   "heapMaxMB": 1477,
+   "hostLoad1": "7.99",
+   "otherCandidates": 2,
+   "hostAvailMinMB": 2925,
+   "subagentRows": 13516,
+   "taskRows": 22390
+  },
+  {
+   "atUtc": "2026-11-01T07:21",
+   "round": 4,
+   "task": "multi",
+   "side": "off",
+   "mainCpuS": 131.2,
+   "gcHelperCpuS": 14.9,
+   "wallS": 242,
+   "firstP50S": 219.9,
+   "doneP50S": 230.3,
+   "doneP95S": 241.8,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": 29.1,
+   "stallMaxMs": 51438,
+   "heapMaxMB": 3135,
+   "hostLoad1": "7.37",
+   "otherCandidates": 2,
+   "hostAvailMinMB": 187,
+   "subagentRows": 13516,
+   "taskRows": 22386
+  },
+  {
+   "atUtc": "2026-11-01T07:24",
+   "round": 4,
+   "task": "multi",
+   "side": "on",
+   "mainCpuS": 99.2,
+   "gcHelperCpuS": 6.1,
+   "wallS": 112,
+   "firstP50S": 90.3,
+   "doneP50S": 102.5,
+   "doneP95S": 111.5,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": 13.4,
+   "stallMaxMs": 9523,
+   "heapMaxMB": 3170,
+   "hostLoad1": "4.73",
+   "otherCandidates": 2,
+   "hostAvailMinMB": 1607,
+   "subagentRows": 13516,
+   "taskRows": 22386
+  },
+  {
+   "atUtc": "2026-11-01T07:27",
+   "round": 4,
+   "task": "bash5",
+   "side": "off",
+   "mainCpuS": 91.3,
+   "gcHelperCpuS": 7.2,
+   "wallS": 102,
+   "firstP50S": 86.6,
+   "doneP50S": 90.8,
+   "doneP95S": 102.3,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": null,
+   "stallMaxMs": 8864,
+   "heapMaxMB": 1777,
+   "hostLoad1": "4.06",
+   "otherCandidates": 1,
+   "hostAvailMinMB": 6141,
+   "subagentRows": 13516,
+   "taskRows": 22385
+  },
+  {
+   "atUtc": "2026-11-01T07:30",
+   "round": 4,
+   "task": "bash5",
+   "side": "on",
+   "mainCpuS": 93.6,
+   "gcHelperCpuS": 6.9,
+   "wallS": 111,
+   "firstP50S": 83.5,
+   "doneP50S": 88.6,
+   "doneP95S": 111.3,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": null,
+   "stallMaxMs": 7479,
+   "heapMaxMB": 1503,
+   "hostLoad1": "4.76",
+   "otherCandidates": 1,
+   "hostAvailMinMB": 8484,
+   "subagentRows": 13516,
+   "taskRows": 22385
+  },
+  {
+   "atUtc": "2026-11-01T07:33",
+   "round": 5,
+   "task": "multi",
+   "side": "on",
+   "mainCpuS": 113.1,
+   "gcHelperCpuS": 5.9,
+   "wallS": 117,
+   "firstP50S": 94.3,
+   "doneP50S": 97.1,
+   "doneP95S": 117.2,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": 10.4,
+   "stallMaxMs": 10290,
+   "heapMaxMB": 1511,
+   "hostLoad1": "3.00",
+   "otherCandidates": 0,
+   "hostAvailMinMB": 8764,
+   "subagentRows": 13516,
+   "taskRows": 22382
+  },
+  {
+   "atUtc": "2026-11-01T07:37",
+   "round": 5,
+   "task": "multi",
+   "side": "off",
+   "mainCpuS": 159.2,
+   "gcHelperCpuS": 15.8,
+   "wallS": 166,
+   "firstP50S": 140.6,
+   "doneP50S": 144,
+   "doneP95S": 165.8,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": 13.9,
+   "stallMaxMs": 13571,
+   "heapMaxMB": 3542,
+   "hostLoad1": "2.18",
+   "otherCandidates": 0,
+   "hostAvailMinMB": 2930,
+   "subagentRows": 13516,
+   "taskRows": 22381
+  },
+  {
+   "atUtc": "2026-11-01T07:40",
+   "round": 5,
+   "task": "bash5",
+   "side": "on",
+   "mainCpuS": 112.2,
+   "gcHelperCpuS": 8.3,
+   "wallS": 122,
+   "firstP50S": 98.2,
+   "doneP50S": 104.1,
+   "doneP95S": 121.4,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": null,
+   "stallMaxMs": 8806,
+   "heapMaxMB": 3600,
+   "hostLoad1": "3.46",
+   "otherCandidates": 1,
+   "hostAvailMinMB": 3133,
+   "subagentRows": 13516,
+   "taskRows": 22375
+  },
+  {
+   "atUtc": "2026-11-01T07:43",
+   "round": 5,
+   "task": "bash5",
+   "side": "off",
+   "mainCpuS": 129.6,
+   "gcHelperCpuS": 8.2,
+   "wallS": 138,
+   "firstP50S": 115.9,
+   "doneP50S": 120.2,
+   "doneP95S": 137.6,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": null,
+   "stallMaxMs": 13400,
+   "heapMaxMB": 1545,
+   "hostLoad1": "3.31",
+   "otherCandidates": 1,
+   "hostAvailMinMB": 4296,
+   "subagentRows": 13516,
+   "taskRows": 22373
+  },
+  {
+   "atUtc": "2026-11-01T07:48",
+   "round": "profile",
+   "task": "multi",
+   "side": "off",
+   "mainCpuS": 202.8,
+   "gcHelperCpuS": 16,
+   "wallS": 229,
+   "firstP50S": 168.4,
+   "doneP50S": 177.5,
+   "doneP95S": 228.7,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": 17.9,
+   "stallMaxMs": 20551,
+   "heapMaxMB": 3989,
+   "hostLoad1": "5.06",
+   "otherCandidates": 1,
+   "hostAvailMinMB": 1516,
+   "subagentRows": 13516,
+   "taskRows": 22373
+  },
+  {
+   "atUtc": "2026-11-01T07:52",
+   "round": "profile",
+   "task": "multi",
+   "side": "on",
+   "mainCpuS": 185,
+   "gcHelperCpuS": 8.2,
+   "wallS": 199,
+   "firstP50S": 166.1,
+   "doneP50S": 181.4,
+   "doneP95S": 198.7,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": 15.6,
+   "stallMaxMs": 20748,
+   "heapMaxMB": 1909,
+   "hostLoad1": "4.71",
+   "otherCandidates": 1,
+   "hostAvailMinMB": 1929,
+   "subagentRows": 13516,
+   "taskRows": 22372
+  },
+  {
+   "atUtc": "2026-11-01T07:56",
+   "round": "profile",
+   "task": "bash5",
+   "side": "off",
+   "mainCpuS": 147.4,
+   "gcHelperCpuS": 8.1,
+   "wallS": 155,
+   "firstP50S": 128.1,
+   "doneP50S": 137.8,
+   "doneP95S": 154.7,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": null,
+   "stallMaxMs": 15720,
+   "heapMaxMB": 1487,
+   "hostLoad1": "6.07",
+   "otherCandidates": 1,
+   "hostAvailMinMB": 4151,
+   "subagentRows": 13516,
+   "taskRows": 22369
+  },
+  {
+   "atUtc": "2026-11-01T08:00",
+   "round": "profile",
+   "task": "bash5",
+   "side": "on",
+   "mainCpuS": 156.1,
+   "gcHelperCpuS": 7.6,
+   "wallS": 159,
+   "firstP50S": 126.1,
+   "doneP50S": 136.5,
+   "doneP95S": 159,
+   "turns": 15,
+   "correct": 15,
+   "sessionStatusP50S": null,
+   "stallMaxMs": 12256,
+   "heapMaxMB": 1520,
+   "hostLoad1": "3.81",
+   "otherCandidates": 1,
+   "hostAvailMinMB": 4011,
+   "subagentRows": 13516,
+   "taskRows": 22368
+  }
+ ],
+ "profiles": {
+  "bash5-off": {
+   "wallMs": 170955,
+   "selfTop": [
+    [
+     "next :-1",
+     131464
+    ],
+    [
+     "(idle) :-1",
+     15792
+    ],
+    [
+     "(garbage collector) :-1",
+     2983
+    ],
+    [
+     "(anon) task-registry-B4-CJZk7.js:915",
+     1352
+    ],
+    [
+     "exec :-1",
+     1351
+    ],
+    [
+     "post node:inspector:117",
+     1244
+    ],
+    [
+     "(anon) kysely-sync-DKYGT267.js:144",
+     1175
+    ],
+    [
+     "parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815",
+     604
+    ],
+    [
+     "couldMatchDefaultRedactPatterns redact-Df68iObN.js:1256",
+     490
+    ],
+    [
+     "run :-1",
+     450
+    ],
+    [
+     "structuredClone js_transferable:111",
+     440
+    ],
+    [
+     "buildSingleRowSubagentRunIndex session-utils-list-BUP03AzS.js:779",
+     331
+    ]
+   ],
+   "listTaskRecordsSelfMs": 1791,
+   "inclusiveMs": {
+    "buildControlledSubagentRunsReadContext": 0,
+    "getSubagentRunsSnapshot": 0,
+    "buildStatusReplyParts": 0,
+    "readUsageFromSessionLog": 0,
+    "withCurrentProjectionSnapshot": 57283,
+    "readActiveTranscriptEntryAnchorInTransaction": 67442,
+    "runMemoryFlushIfNeeded": 37248,
+    "readTranscriptMirrorFacts": 28123,
+    "prepareCodexAttemptContext": 20170
+   }
+  },
+  "bash5-on": {
+   "wallMs": 174941,
+   "selfTop": [
+    [
+     "next :-1",
+     138758
+    ],
+    [
+     "(idle) :-1",
+     14325
+    ],
+    [
+     "(garbage collector) :-1",
+     2854
+    ],
+    [
+     "exec :-1",
+     1180
+    ],
+    [
+     "(anon) kysely-sync-DKYGT267.js:144",
+     1171
+    ],
+    [
+     "post node:inspector:117",
+     1062
+    ],
+    [
+     "parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815",
+     570
+    ],
+    [
+     "structuredClone js_transferable:111",
+     530
+    ],
+    [
+     "couldMatchDefaultRedactPatterns redact-Df68iObN.js:1256",
+     487
+    ],
+    [
+     "lstat :-1",
+     400
+    ],
+    [
+     "buildSingleRowSubagentRunIndex session-utils-list-BUP03AzS.js:779",
+     317
+    ],
+    [
+     "read subagent-registry.store.sqlite-hzGu4QSk.js:435",
+     308
+    ]
+   ],
+   "listTaskRecordsSelfMs": 0,
+   "inclusiveMs": {
+    "buildControlledSubagentRunsReadContext": 0,
+    "getSubagentRunsSnapshot": 0,
+    "buildStatusReplyParts": 0,
+    "readUsageFromSessionLog": 0,
+    "withCurrentProjectionSnapshot": 59199,
+    "readActiveTranscriptEntryAnchorInTransaction": 76258,
+    "runMemoryFlushIfNeeded": 37304,
+    "readTranscriptMirrorFacts": 32744,
+    "prepareCodexAttemptContext": 22017
+   }
+  },
+  "multi-off": {
+   "wallMs": 244675,
+   "selfTop": [
+    [
+     "next :-1",
+     174212
+    ],
+    [
+     "(garbage collector) :-1",
+     15279
+    ],
+    [
+     "(idle) :-1",
+     13131
+    ],
+    [
+     "post node:inspector:117",
+     8902
+    ],
+    [
+     "safeParseJson json-coercion-ighRFv8Y.js:3",
+     3929
+    ],
+    [
+     "(anon) kysely-sync-DKYGT267.js:144",
+     2964
+    ],
+    [
+     "all :-1",
+     2339
+    ],
+    [
+     "exec :-1",
+     1914
+    ],
+    [
+     "(anon) task-registry-B4-CJZk7.js:915",
+     1269
+    ],
+    [
+     "parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815",
+     687
+    ],
+    [
+     "couldMatchDefaultRedactPatterns redact-Df68iObN.js:1256",
+     634
+    ],
+    [
+     "run :-1",
+     628
+    ]
+   ],
+   "listTaskRecordsSelfMs": 1604,
+   "inclusiveMs": {
+    "buildControlledSubagentRunsReadContext": 23810,
+    "getSubagentRunsSnapshot": 25844,
+    "buildStatusReplyParts": 52430,
+    "readUsageFromSessionLog": 28419,
+    "withCurrentProjectionSnapshot": 85634,
+    "readActiveTranscriptEntryAnchorInTransaction": 66092,
+    "runMemoryFlushIfNeeded": 36883,
+    "readTranscriptMirrorFacts": 29090,
+    "prepareCodexAttemptContext": 20488
+   }
+  },
+  "multi-on": {
+   "wallMs": 215232,
+   "selfTop": [
+    [
+     "next :-1",
+     171721
+    ],
+    [
+     "(idle) :-1",
+     17559
+    ],
+    [
+     "(garbage collector) :-1",
+     3105
+    ],
+    [
+     "exec :-1",
+     1687
+    ],
+    [
+     "post node:inspector:117",
+     1462
+    ],
+    [
+     "(anon) kysely-sync-DKYGT267.js:144",
+     1448
+    ],
+    [
+     "parseSqliteSessionEntryRecord openclaw-agent-db-maintenance-DYSkzMMg.js:815",
+     740
+    ],
+    [
+     "run :-1",
+     642
+    ],
+    [
+     "couldMatchDefaultRedactPatterns redact-Df68iObN.js:1256",
+     611
+    ],
+    [
+     "structuredClone js_transferable:111",
+     510
+    ],
+    [
+     "buildSingleRowSubagentRunIndex session-utils-list-BUP03AzS.js:779",
+     427
+    ],
+    [
+     "lstat :-1",
+     352
+    ]
+   ],
+   "listTaskRecordsSelfMs": 0,
+   "inclusiveMs": {
+    "buildControlledSubagentRunsReadContext": 0,
+    "getSubagentRunsSnapshot": 0,
+    "buildStatusReplyParts": 31066,
+    "readUsageFromSessionLog": 30780,
+    "withCurrentProjectionSnapshot": 91572,
+    "readActiveTranscriptEntryAnchorInTransaction": 70900,
+    "runMemoryFlushIfNeeded": 37905,
+    "readTranscriptMirrorFacts": 28805,
+    "prepareCodexAttemptContext": 23053
+   }
+  }
+ },
+ "vToolFrequency": {
+  "window": "5 days to 2026-11-01 13:42 CST, agent makaron, read-only, transcript toolResult events",
+  "windows": 4209,
+  "eventsScanned": 381881,
+  "turns": {
+   "codex/chat": 904,
+   "vlab-worker/chat": 2157,
+   "vlab-worker/cron": 555,
+   "vlab-worker/bench": 182,
+   "codex/bench": 124,
+   "openclaw/chat": 189,
+   "openclaw/subagent": 3343,
+   "vlab-worker/subagent": 225,
+   "?/chat": 40,
+   "codex/cron": 46
+  },
+  "toolCallsByBucket": {
+   "codex/chat": 12819,
+   "vlab-worker/chat": 11768,
+   "vlab-worker/cron": 4824,
+   "vlab-worker/bench": 614,
+   "codex/bench": 457,
+   "openclaw/chat": 213,
+   "openclaw/subagent": 140034,
+   "vlab-worker/subagent": 6008,
+   "codex/cron": 1768
+  },
+  "codexChatTools": {
+   "bash": 8641,
+   "gateway_exec": 774,
+   "gateway_process": 705,
+   "browser": 683,
+   "progress_card": 559,
+   "apply_patch": 402,
+   "exec": 140,
+   "web_search": 120,
+   "message": 114,
+   "node_exec": 110,
+   "read": 84,
+   "web_fetch": 65,
+   "automations": 44,
+   "write": 42,
+   "view_image": 33,
+   "memory_search": 31
+  },
+  "sessionStatusByBucket": {
+   "codex/chat": 23,
+   "vlab-worker/chat": 1,
+   "vlab-worker/cron": 1,
+   "vlab-worker/bench": 108,
+   "codex/bench": 82,
+   "codex/cron": 1
+  },
+  "codexChatSessionStatusSessions": 1,
+  "largestCodexChatSessionStatusCount": 17
+ }
+}

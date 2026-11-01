@@ -29,6 +29,12 @@
 //     Gateway CPU/RSS/heap, app-server and claude process counts, host memory
 //   - gate: a level with a stall > GATE_STALL_MS or failures > GATE_FAIL_RATE ends that arm
 //
+// AB_ROUNDS=N: instead of LEVELS, the same concurrency (AB_C) on one Gateway, N rounds of AB_TASKS with
+// the switches in AB_ENVS off and on alternately (off-on, on-off, ...), first warmed with one discarded
+// level per task. AB_PROFILE=1 adds one profiled pair at the end, outside the numbers. SEED_REGISTRY=1
+// brings the private state database to V's registry shape first, from SEED_TOPOLOGY (free text removed,
+// padded to V's sizes; kept outside the repository).
+//
 // Output: JSON lines on stdout and in $OUT_DIR/progress.jsonl as they happen, then a summary (also
 // $OUT_DIR/summary.json with every run), the Gateway's lag/signal lines and the 1 s samples.
 
@@ -57,6 +63,9 @@ const PAIRED = process.env.PAIRED === "1";
 // default with the Worker default as its fallback, inheritance by subagent and cron, and the
 // fallback path under DeepSeek faults injected by a local proxy in front of Codex only.
 const SCENARIOS = process.env.SCENARIOS === "1";
+const AB_ROUNDS = num("AB_ROUNDS", 0);
+const AB_C = num("AB_C", 15);
+const AB_TASKS = (process.env.AB_TASKS ?? "multi").split(",");
 // CHANNEL_GRAY=1 (with SCENARIOS): the default stays on the Worker; only one Feishu group gets /vds
 // through channels.modelByChannel, the way a gradual rollout would.
 const CHANNEL_GRAY = process.env.CHANNEL_GRAY === "1";
@@ -612,6 +621,7 @@ if (SCENARIOS) {
   }).listen(FAULT_PORT, "127.0.0.1").unref();
 }
 const lines = [];
+const abSwitchFile = path.join(OUT_DIR, "ab-switch");
 let gateway;
 let gatewayStartedAt;
 let gatewayStarts = 0;
@@ -631,7 +641,7 @@ function startGateway() {
   gatewayStartedAt = Date.now();
   // GATEWAY_CPU_PROF=1: a V8 CPU profile of the whole run (5 ms sampling), written to OUT_DIR on exit
   const prof = process.env.GATEWAY_CPU_PROF === "1" ? ["--cpu-prof", `--cpu-prof-dir=${OUT_DIR}`, "--cpu-prof-interval=5000"] : [];
-  gateway = spawn(process.execPath, [`--import=${lagProbe}`, ...prof, "--experimental-async-context-frame", "--max-old-space-size=12288", `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
+  gateway = spawn(process.execPath, [`--import=${lagProbe}`, ...prof, "--experimental-async-context-frame", "--max-old-space-size=12288", `${dist}/index.js`, "gateway", "--port", String(port)], { env: { ...env, ...(AB_ROUNDS ? { LT_AB_FILE: abSwitchFile, LT_AB_ENVS: process.env.AB_ENVS ?? "" } : {}), ...(process.env.AB_PROFILE === "1" ? { LT_PROFILE_DIR: path.join(OUT_DIR, "profiles") } : {}) }, stdio: ["ignore", "pipe", "pipe"] });
   for (const s of [gateway.stdout, gateway.stderr]) {
     s.setEncoding("utf8");
     let rest = "";
@@ -658,7 +668,8 @@ function onEvent(e) {
   const now = Date.now();
   if (e.event === "agent" && p.stream === "assistant" && typeof p.data?.text === "string" && p.data.text.trim() && !r.firstTextAt) r.firstTextAt = now;
   if (e.event === "agent" && p.stream === "tool" && !r.firstToolAt) r.firstToolAt = now;
-  if (e.event === "agent" && p.stream === "tool" && p.data?.phase === "start") (r.tools ??= []).push(String(p.data?.name ?? "?"));
+  if (e.event === "agent" && p.stream === "tool" && p.data?.phase === "start") { (r.tools ??= []).push(String(p.data?.name ?? "?")); (r.spans ??= []).push({ name: String(p.data?.name ?? "?"), startAt: now }); }
+  if (e.event === "agent" && p.stream === "tool" && p.data?.phase === "result") { const span = (r.spans ?? []).find((x) => !x.endAt && x.name === String(p.data?.name ?? "?")); if (span) span.endAt = now; }
   if (e.event === "chat" && p.state === "delta" && !r.firstTextAt) r.firstTextAt = now;
   if (e.event === "chat" && ["final", "error", "aborted"].includes(p.state) && !r.terminal) {
     r.terminal = p.state;
@@ -792,6 +803,8 @@ async function send(key, runtimeId, label, task = "sha") {
   // correct reply proves the tool ran
   const message = task === "multi"
     ? `（自动化并发压测）按顺序做，一步也不要省：1) 用 shell 执行 \`uname -r\`；2) 用 shell 执行 \`ls /tmp | wc -l\`；3) 用读文件工具读工作区 AGENTS.md（只需前 5 行）；4) 调用 session_status 工具；5) 用 shell 执行 \`printf %s ${label} | sha256sum | cut -c1-12\`。全部做完后只回复第 5 步输出的那 12 个字符，不要别的文字。`
+    : task === "bash5"
+    ? `（自动化并发压测）按顺序做，一步也不要省：1) 用 shell 执行 \`uname -r\`；2) 用 shell 执行 \`ls /tmp | wc -l\`；3) 用读文件工具读工作区 AGENTS.md（只需前 5 行）；4) 用 shell 执行 \`date +%s\`；5) 用 shell 执行 \`printf %s ${label} | sha256sum | cut -c1-12\`。全部做完后只回复第 5 步输出的那 12 个字符，不要别的文字。`
     : `（自动化并发压测）用 shell 执行一次 \`printf %s ${label} | sha256sum | cut -c1-12\`，然后只回复它输出的那 12 个字符，不要别的文字。`;
   r.expected = createHash("sha256").update(label).digest("hex").slice(0, 12);
   try {
@@ -815,7 +828,7 @@ async function send(key, runtimeId, label, task = "sha") {
     } catch {}
   }
   r.correct = r.terminal === "final" && (r.text ?? "").includes(r.expected);
-  return { label, runtime: runtimeId, key: key.split(":").pop(), terminal: r.terminal, correct: r.correct, tool: Boolean(r.firstToolAt), tools: r.tools,
+  return { label, runtime: runtimeId, key: key.split(":").pop(), terminal: r.terminal, correct: r.correct, tool: Boolean(r.firstToolAt), tools: r.tools, spans: (r.spans ?? []).filter((x) => x.endAt).map((x) => ({ name: x.name, ms: x.endAt - x.startAt })),
     firstMs: r.firstTextAt ? r.firstTextAt - r.sentAt : null, doneMs: r.endAt - r.sentAt, error: r.error, text: r.correct ? undefined : redact(r.text ?? "").slice(0, 160) };
 }
 const REF = { vds: VDS_REF, vcc: VCC_REF, flash: FLASH_REF };
@@ -887,9 +900,38 @@ function lastEvents(key, n = 8) {
     return db.prepare("SELECT json_extract(event_json,'$.type') AS t, json_extract(event_json,'$.message.role') AS role, substr(json_extract(event_json,'$.customType'),1,40) AS ct, substr(json_extract(event_json,'$.message.content'),1,220) AS c FROM transcript_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?").all(w.sid, n);
   } catch (error) { return String(error?.message ?? error).slice(0, 200); } finally { db.close(); }
 }
+// where the Gateway's own CPU goes, per thread, plus reaped children; the lag probe adds a main-thread
+// profile when the runner drops start.<name> / stop.<name> in PROFILE_DIR around a level
+const PROFILE_DIR = process.env.AB_PROFILE === "1" ? path.join(OUT_DIR, "profiles") : null;
+if (PROFILE_DIR) fs.mkdirSync(PROFILE_DIR, { recursive: true });
+let profileNow = null;
+function gatewayThreads() {
+  const out = { threads: {}, childrenSec: 0 };
+  const pid = String(gateway.pid);
+  try {
+    const main = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+    const mf = main.slice(main.lastIndexOf(")") + 2).split(" ");
+    out.childrenSec = (Number(mf[13]) + Number(mf[14])) / TICK;
+    for (const tid of fs.readdirSync(`/proc/${pid}/task`)) {
+      const st = fs.readFileSync(`/proc/${pid}/task/${tid}/stat`, "utf8");
+      const f = st.slice(st.lastIndexOf(")") + 2).split(" ");
+      const comm = tid === pid ? "main" : st.slice(st.indexOf("(") + 1, st.lastIndexOf(")"));
+      out.threads[`${comm}#${tid}`] = (Number(f[11]) + Number(f[12])) / TICK;
+    }
+  } catch {}
+  return out;
+}
+function threadsDiff(a, b) {
+  const byComm = {};
+  for (const [k, v] of Object.entries(b.threads)) { const comm = k.split("#")[0]; byComm[comm] = (byComm[comm] ?? 0) + Math.max(0, v - (a.threads[k] ?? 0)); }
+  return { byComm: Object.fromEntries(Object.entries(byComm).sort((x, y) => y[1] - x[1]).slice(0, 10).map(([k, v]) => [k, Math.round(v * 10) / 10])), childrenSec: Math.round((b.childrenSec - a.childrenSec) * 10) / 10 };
+}
 async function level(arm, size, c, task = "sha") {
   const plan = await sessionsFor(arm, size, c);
   const cpuFrom = cpuTable();
+  const threadsFrom = gatewayThreads();
+  const profName = profileNow;
+  if (profName) { fs.writeFileSync(path.join(PROFILE_DIR, `start.${profName}`), ""); await sleep(1_000); }
   const from = Date.now();
   const jobs = plan.map((p, i) => send(p.key, p.rt, `${arm}-${size}-${task}-c${c}-${i}-${randomBytes(3).toString("hex")}`, task));
   const canary = CANARY ? send(await canaryKey(), "flash", `canary-${arm}-${size}-c${c}-${canaryN++}`) : null;
@@ -897,9 +939,15 @@ async function level(arm, size, c, task = "sha") {
   const canaryResult = canary ? await canary : null;
   const to = Date.now();
   const cpuByCmd = cpuDiff(cpuFrom, cpuTable());
+  const threadCpu = threadsDiff(threadsFrom, gatewayThreads());
   for (const r of results.filter((x) => !x.correct).slice(0, 2)) emit({ phase: "failed-turn", label: r.label, events: lastEvents(`agent:makaron:explicit:${r.key}`), logs: lines.filter((l) => l.at >= from && /memory.?flush|read.*write|tool.*(?:deny|filter)|toolsAllow/iu.test(l.line)).slice(-8).map((l) => redact(l.line).slice(0, 260)) });
   await sleep(SETTLE_MS);
+  const threadCpuSettled = threadsDiff(threadsFrom, gatewayThreads());
+  if (profName) fs.writeFileSync(path.join(PROFILE_DIR, `stop.${profName}`), "");
   const m = windowMetrics(from, Date.now());
+  const toolMs = {};
+  for (const r of results) for (const span of r.spans ?? []) (toolMs[span.name] ??= []).push(span.ms);
+  const toolSummary = Object.fromEntries(Object.entries(toolMs).map(([k, v]) => [k, { n: v.length, p50: pct(v, 0.5), p95: pct(v, 0.95) }]));
   const failed = results.filter((r) => !r.correct);
   const byRt = {};
   for (const rt of [...new Set(results.map((r) => r.runtime))]) {
@@ -913,7 +961,7 @@ async function level(arm, size, c, task = "sha") {
   const h = hostContext();
   const host = { gcSwap: h.gcSwapExperiment.length > 0, sharedGatewayInspect: h.sharedGatewayInspect.some((g) => g.inspect), otherCandidates: h.otherCandidates.length, load: h.load };
   const ran = actualRuntime([...plan.map((p) => p.key), ...(CANARY ? [await canaryKey()] : [])]);
-  return { arm, size, task, c, cpuByCmd, host, ran, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
+  return { arm, size, task, c, cpuByCmd, threadCpu, threadCpuSettled, toolSummary, host, ran, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
 }
 
 async function waitSteady(label, minUptimeMin) {
@@ -1086,12 +1134,79 @@ async function runScenarios() {
   }
 }
 
+// ---- V's registry shape in the private state database ----
+// The Gateway holds the registry in memory and a full persist deletes rows it does not know, so seed with
+// it stopped and let it restore the rows, as V's Gateway does at startup.
+async function seedRegistry() {
+  await new Promise((res) => { gateway.once("exit", res); gateway.kill("SIGTERM"); });
+  try { client?.stop?.(); } catch {}
+  const started = Date.now();
+  const { subagent, tasks } = JSON.parse((await import("node:zlib")).gunzipSync(fs.readFileSync(process.env.SEED_TOPOLOGY)));
+  const db = new DatabaseSync(path.join(stateDir, "state", "openclaw.sqlite"));
+  db.exec("PRAGMA busy_timeout = 30000");
+  const cols = ["run_id", "child_session_key", "controller_session_key", "requester_session_key", "created_at", "payload_json"];
+  const insS = db.prepare(`INSERT OR REPLACE INTO subagent_runs (${cols.join(",")}) VALUES (${cols.map(() => "?").join(",")})`);
+  db.exec("BEGIN IMMEDIATE");
+  for (const r of subagent) insS.run(...cols.map((k) => (k === "payload_json" ? JSON.stringify({ ...JSON.parse(r.payload_json), task: "x".repeat(r.pad) }) : r[k])));
+  db.exec("COMMIT");
+  const taskCols = Object.keys(tasks[0]).filter((k) => k !== "pad");
+  const insT = db.prepare(`INSERT OR REPLACE INTO task_runs (${taskCols.join(",")},task) VALUES (${taskCols.map(() => "?").join(",")},?)`);
+  db.exec("BEGIN IMMEDIATE");
+  for (const t of tasks) insT.run(...taskCols.map((k) => t[k]), "y".repeat(t.pad));
+  db.exec("COMMIT");
+  const counts = { subagent: db.prepare("SELECT count(*) n, sum(length(payload_json)) b FROM subagent_runs").get(), task: db.prepare("SELECT count(*) n, sum(length(task)) b FROM task_runs").get() };
+  db.close();
+  // a run whose child session has no entry is pruned as an orphan at restore; V has these entries
+  const agentDb = new DatabaseSync(dbPath);
+  agentDb.exec("PRAGMA busy_timeout = 30000; PRAGMA foreign_keys = OFF");
+  const insNode = agentDb.prepare("INSERT OR IGNORE INTO session_nodes (session_key, current_session_id, entry_json, entry_valid, updated_at) VALUES (?, ?, ?, 1, ?)");
+  const seededAt = Date.now();
+  agentDb.exec("BEGIN IMMEDIATE");
+  for (const child of new Set(subagent.map((r) => r.child_session_key))) {
+    const sid = randomUUID();
+    insNode.run(child, sid, JSON.stringify({ sessionId: sid, updatedAt: seededAt }), seededAt);
+  }
+  agentDb.exec("COMMIT");
+  agentDb.close();
+  emit({ phase: "seed-registry", ms: Date.now() - started, counts });
+  startGateway();
+  await connectGateway();
+  emit({ phase: "gateway-ready-after-seed", pid: gateway.pid, readyS: Math.round((Date.now() - gatewayStartedAt) / 1000) });
+}
+function registryRows() {
+  const check = new DatabaseSync(path.join(stateDir, "state", "openclaw.sqlite"), { readOnly: true });
+  try { return { subagent: check.prepare("SELECT count(*) n FROM subagent_runs").get().n, task: check.prepare("SELECT count(*) n FROM task_runs").get().n }; } finally { check.close(); }
+}
+
+// ---- A/B on one Gateway: the lag probe polls AB_SWITCH_FILE and sets the switches for its process ----
+async function runAb() {
+  const setSide = async (side) => { fs.writeFileSync(abSwitchFile, side); await sleep(1_500); };
+  const one = async (task, side, round, profiled) => {
+    await setSide(side);
+    profileNow = profiled ? `${task}-${side}` : null;
+    const res = await level("vds", "small", AB_C, task);
+    profileNow = null;
+    const { runs: levelRuns, ...head } = res;
+    emit({ phase: "ab-level", side, round, profiled, rows: registryRows(), ...head });
+    emit({ phase: "level-runs", side, round, task, runs: levelRuns });
+    summary.levels.push({ side, round, profiled, ...res });
+    await sleep(COOLDOWN_MS);
+  };
+  for (const task of AB_TASKS) await one(task, "on", "warm", false);
+  for (let round = 0; round < AB_ROUNDS; round += 1) {
+    for (const task of AB_TASKS) for (const side of round % 2 === 0 ? ["off", "on"] : ["on", "off"]) await one(task, side, round, false);
+    emit({ phase: "ab-round", round, host: hostContext() });
+  }
+  if (PROFILE_DIR) for (const task of AB_TASKS) for (const side of ["off", "on"]) await one(task, side, "profile", true);
+}
+
 // ---- run ----
 startGateway();
 const summary = { built, probes, models: { vds: VDS_REF, vcc: VCC_REF, canary: FLASH_REF }, levels: [], stoppedAt: {} };
 try {
   await connectGateway();
   emit({ phase: "gateway-ready", pid: gateway.pid, readyS: Math.round((Date.now() - gatewayStartedAt) / 1000) });
+  if (process.env.SEED_REGISTRY === "1") await seedRegistry();
   // warm each runtime once (app-server, claude, worker spawn), then every big session once so its
   // Codex thread / Claude session exists, as on V where big sessions are in use
   if (SCENARIOS) {
@@ -1120,6 +1235,13 @@ try {
   summary.steady = await waitSteady("initial", STEADY_MIN);
   summary.hostAtStart = hostContext();
   emit({ phase: "steady", ...summary.steady, host: summary.hostAtStart });
+  if (AB_ROUNDS > 0) {
+    await runAb();
+    const abOut = { phase: "summary", ...summary, levels: summary.levels.map(({ runs: _r, ...l }) => l) };
+    console.log(JSON.stringify(abOut).slice(0, 2000));
+    fs.writeFileSync(path.join(OUT_DIR, "summary.json"), JSON.stringify({ ...abOut, levels: summary.levels }, null, 1));
+    throw Object.assign(new Error("ab done"), { done: true });
+  }
   const runLevel = async ({ arm, size, task }, c) => {
     const res = await level(arm, size, c, task);
     const { runs: levelRuns, ...head } = res;
@@ -1155,7 +1277,7 @@ try {
   console.log(JSON.stringify(out, null, 1));
   fs.writeFileSync(path.join(OUT_DIR, "summary.json"), JSON.stringify({ ...out, levels: summary.levels }, null, 1));
 } catch (error) {
-  if (error?.done) { console.log("scenarios done"); } else {
+  if (error?.done) { console.log("done without levels"); } else {
   console.error(redact(error?.stack ?? error));
   console.error(redact(lines.slice(-120).map((l) => l.line).join("\n")));
   process.exitCode = 1;
