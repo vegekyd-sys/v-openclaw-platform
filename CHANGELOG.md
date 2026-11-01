@@ -11,6 +11,35 @@
 
 ---
 
+## v2026.9.1-db91.6-cli-startup-fast-20261101
+
+上线：2026-11-01 13:12 CST（未重启 Gateway，relay 每次新起进程，立即生效）  ·  tag `v2026.9.1-db91.6-cli-startup-fast-20261101`
+
+**摘要**：Codex（/vds、/vcodex）每次工具调用前等的 `hooks relay` 不再加载整个 CLI。真实进程存活 0.08–0.10 s（V，18 次）；之前 mock bridge 口径是 0.38 s（n=7），两者测法不同。VLab 15 并发五步任务 p50 从 70.3 s 降到 39.0 s（关钩子 22.8 s），V 上的对照由并发调研线第二轮计时给出。
+
+**范围**：`core/openclaw.mjs` 这条路径上的其他命令同时跳过 respawn，V 上省 0.30 s。**`/usr/local/bin/openclaw` 旧安装不改，所以这项对 agent exec、`health --json` 和用这个命令的脚本没有效果。**
+
+验收：真实 /vds 回合三次 shell 工具正确；`cron status` 和 `gateway call health` 正常；不存在的 relay id 在 `pre_tool_use` 上 deny、`post_tool_use` 返回空。真正拦截一次工具调用是在 VLab 同一份字节上验证的（探针插件），V 上没有实际拦截过。
+
+回退：`OPENCLAW_V_CLI_FAST_PATH=0`，或 `promote-to-v.mjs --undo /opt/v-release-backups/v2026.9.1-db91.6-cli-startup-fast-20261101`。说明见 `lab/cli-startup-fast.md`，证据见 `docs/evidence/openclaw-cli-startup-20261101/`。
+
+相对上一版 `v2026.9.1-db91.6-codex-failed-thread-20261101`：3 个文件变化。
+
+**经 VLab 发版 `cli-startup-fast-20261101-v1`**（cli-startup-0866b6，dev `c8426450`）
+> 验收：Shared VLab Gateway, real /vds (deepseek/vds-deepseek-flash, Codex harness) session agent:makaron:explicit:vlab-dev-cli-startup-fast-accept-1793509330835: two tool turns returned the correct sha (2bd833b1b368, e54421c096cb); real relay processes 0.16-0.18 s (exitsnoop). Candidate on the same bytes: before_tool_call probe blocked the marked command, file not created, reply names PreToolUse; stale r…
+- `core` native-hook-relay-cli-DTqrikhm.js  be7acfb8 → dc73ce92
+- `core` native-hook-relay-client-GFGIwlRq.js  aa685524 → 531f2257
+- `core` warning-filter.js  — → a2748562
+
+**这期间合入 dev 的 PR**（7 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #531 test: 目录文件计数改为 361（#509 和 #530 各加 1）
+- #510 Codex: deliver SOUL/MEMORY/skills context as a thread developer message (gpt-6.x never received it)
+- #530 perf(cli): hooks relay 走快路径，launcher 命令跳过 respawn
+- #509 切模型不再改写会话的 thinking 档位（DeepSeek↔Grok 切换调查）
+- #236 test(v-browser): candidate replay of the profile="user" fallback
+- #528 release: 记录 Codex 失败回合修复上线 V
+- #527 release: 记录 subagent precheck 上线 V 与前后对比
+
 ## v2026.9.1-db91.6-codex-failed-thread-20261101
 
 上线：2026-11-01 10:24 CST  ·  tag `v2026.9.1-db91.6-codex-failed-thread-20261101`

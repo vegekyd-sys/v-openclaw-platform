@@ -1,6 +1,17 @@
 # `hooks relay` and launcher commands without the general CLI's startup cost
 
-Status: not on V yet. Evidence for the cause: `docs/evidence/openclaw-cli-startup-20261101/README.md`.
+Status: on V since 2026-11-01 13:12 CST (`v2026.9.1-db91.6-cli-startup-fast-20261101`, PR #530), without a Gateway restart. Evidence for the cause: `docs/evidence/openclaw-cli-startup-20261101/README.md`.
+
+## Production result (V, 2026-11-01 13:13 CST)
+
+- Gateway PID unchanged (604187); parity ALIGNED.
+- Real `/vds` turn (`agent:makaron:explicit:cli-startup-fast-accept-20261101`): three shell tools ran, the reply held the right hash.
+- Real relay processes: **0.08-0.10 s** (exitsnoop, 18 processes, all `pre_tool_use`, including other Codex traffic in the window). Before: 0.38 s by the mock-bridge measure (n=7), not the same instrument. Each tool call ran one relay, not the 1-1.4 estimated earlier.
+- `cron status` 0.71 s and `gateway call health` 1.13 s through this launcher, JSON normal (n=1 each).
+- Blocking: a stale relay id through V's state database and Gateway denies `pre_tool_use` and returns nothing for `post_tool_use`. **No tool call was actually blocked on V**, which has no probe plugin; that ran on VLab on the same bytes.
+- `--apply` installed `warning-filter.js` owned by 501:staff. It was changed to root:root by hand; the bytes did not change. `promote-to-v.mjs` should not keep the local owner on new files.
+
+**The respawn saving does not reach agent `exec` or `health --json`:** they run `/usr/local/bin/openclaw`, the other install, which this release does not change.
 
 ## What changes
 
@@ -62,4 +73,4 @@ Non-relay commands on V save 0.30 s and 0.35 CPU seconds, **only through this in
 
 `node --test lab/cli-startup-fast.test.mjs`; `lab/candidate/cli-startup-fast.plan.json` for the real bytes.
 
-Source: `versa/port-relay-fast-20261101` (dd2d95f70b5). `launcher-preflight`, the import boundary and `native-hook-relay-cli` pass 29/29, and `src/agents/harness/native-hook-relay*` 159/159, on Node 22.23.1.
+Source: `versa/port-relay-fast-20261101` (15c5a88b59d). `launcher-preflight`, the import boundary and `native-hook-relay-cli` pass 29/29, and `src/agents/harness/native-hook-relay*` 159/159, on Node 22.23.1.

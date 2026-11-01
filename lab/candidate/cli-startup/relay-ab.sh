@@ -6,7 +6,7 @@ R=$VLAB_CANDIDATE_RUNTIME/openclaw
 HERE=$(cd "$(dirname "$0")" && pwd)
 W=$(mktemp -d /tmp/relay-ab.XXXXXX); export OUT_DIR=$W/out; mkdir -p $OUT_DIR
 export RELAY_SLOW_FLAG=$W/slow.flag RELAY_NONICE_FLAG=$W/nonice.flag
-python3 $HERE/patch.py $R relayfast $RELAY_SLOW_FLAG
+[ "${SKIP_PATCH:-}" = "1" ] || python3 $HERE/patch.py $R relayfast $RELAY_SLOW_FLAG
 mkdir -p $W/vcodex; tar xzf $HERE/v-codex-dist.tgz -C $W/vcodex; export V_CODEX_DIST_DIR=$W/vcodex/dist
 DB=$W/mock.sqlite; $N --no-warnings $HERE/mock-bridge.mjs $DB > $W/mock.log & MOCK=$!
 sleep 1
