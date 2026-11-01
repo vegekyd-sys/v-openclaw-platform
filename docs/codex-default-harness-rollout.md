@@ -16,11 +16,11 @@
 
 | # | 项目 | 挡住哪一批 | 状态 |
 |---|---|---|---|
-| 1 | 上游挂起无回复：Codex 超过 930 s 不回复也不回退（VLab，旧证据） | 第 2 批起 | 看门狗没做 |
+| 1 | 上游挂起无回复：Codex 超过 930 s 不回复也不回退（VLab，旧证据） | 第 2 批起 | PR #534（draft，未合、未上 V）。VLab：挂起和卡死 97–101 s 回退，Worker 185–192 s |
 | 2 | relay 启动晚时策略失效（第 3 节） | 第 2 批起 | 补丁在本 PR，未合、未上 V |
 | 3 | `write_stdin` 绕过策略（第 3 节） | 第 3 批前 | 等 Tianyi 决定接受还是关掉 |
 | 4 | 回退链：V 现在是 `[luna]`，/vds 失败会花 ChatGPT 额度，不会回 flash | 第 1 批 | 配置改一项，见第 5 节 |
-| 5 | 高并发 Gateway 开销：V 上 c15 五步 Codex 43.5–46 s、Worker 19–22 s，RSS 6.5–6.9 vs 2.3–3.1 GB（10/31 与 11/01 实测，见记忆 harness-compare-20261031） | 第 4 批。夜班留在 Worker 时只看真实交互并发，第 3 批靠指标决定 | 未 profile 到根因 |
+| 5 | 高并发更慢：V 上五步全 shell（不含 `session_status`，贴近真实工具分布）c5 14.8 vs 9.9 s，c15 23.1–24.6 vs 14.7–16.0 s，主线程忙 89–97% vs 39–71%，RSS 2.5–3.2 vs 2.1–2.2 GB（11/01 16:07，`harness-compare-20261031/v-staged-20261101/bash5-*`）。此前含 `session_status` 的 43.5–46 vs 19–22 s 高估了差距 | 第 4 批。夜班留在 Worker 时只看真实交互并发，第 3 批靠指标决定 | c5 主线程只忙 51% 仍慢约 5 s，原因未定 |
 | 6 | Workboard 固定补丁未合未上 | 只挡第 4 批 | 补丁在本 PR |
 
 ## 1. 夜班和定时任务
@@ -149,7 +149,7 @@ sudo v-self-restart --if-busy abort --idle-timeout 3600 --reason "vds gray batch
 
 **时长。** 今天 13:35:28 停、13:36:59 ready，启动 91 s (V)。加上等空闲，按一次 2–5 分钟算。夜班随重启自动暂停和恢复 (记忆 nightshift-gateway-restart-hold)。
 
-**回退链。** V 现在 `fallbacks=[openai/gpt-6-luna]`，map 上的 /vds 失败会先用 luna（ChatGPT 额度）。改成 `[deepseek/deepseek-flash, openai/gpt-6-luna]` 后：503 时 32.5 s 回退到 Worker flash 且回答正确，下一条回到 Codex（`pin-c`）。flash 为主时这个列表里的 flash 没有影响，cron 正常（`pin-c`）。**只覆盖上游明确报错，挂起不回退**，这就是阻塞项 1。
+**回退链。** V 现在 `fallbacks=[openai/gpt-6-luna]`，map 上的 /vds 失败会先用 luna（ChatGPT 额度）。改成 `[deepseek/deepseek-flash, openai/gpt-6-luna]` 后：503 时 32.5 s 回退到 Worker flash 且回答正确，下一条回到 Codex（`pin-c`）。flash 为主时这个列表里的 flash 没有影响，cron 正常（`pin-c`）。**这只覆盖上游明确报错**，挂起要靠 #534 才会回退，这就是阻塞项 1。
 
 **来回切的上下文。** Worker 会话切到 Codex，再切回 Worker，暗号都记得（`migrate`）。
 
@@ -170,7 +170,7 @@ sudo v-self-restart --if-busy abort --idle-timeout 3600 --reason "vds gray batch
 
 | 指标 | 回滚线 | 基线 | 怎么看 |
 |---|---|---|---|
-| Gateway RSS | 持续超 6 GB | 重启 15 分钟后 1.7 GB (V)；c15 五步 Worker 2.3–3.1 GB、Codex 6.5–6.9 GB (V) | `ps -o rss= -p <MainPID>` |
+| Gateway RSS | 持续超 6 GB | 重启 15 分钟后 1.7 GB (V)；c15 五步全 shell，运行 2.5 小时：Worker 2.1–2.2 GB、Codex 2.5–3.2 GB (V)；含 `session_status`、重启前：Worker 2.3–3.1 GB、Codex 6.5–6.9 GB (V) | `ps -o rss= -p <MainPID>` |
 | liveness | 超 10 s | V 上压测事故时 18.9 s | 日志 `liveness heartbeat delayed: overdue=` |
 | 首字 | 高于同群切换前 2 倍，连续一天 | 串行纯文字 Codex 3.4、Worker 5.9 s (V，10/31) | `scripts/firsttext-e2e-report.mjs` |
 | `Codex session became active in another runner` | 出现即查 | 修复后应为 0，生产还没触发过 | 日志 |
@@ -190,7 +190,7 @@ sudo v-self-restart --if-busy abort --idle-timeout 3600 --reason "vds gray batch
 - Worker 上 `requireApproval` 拒绝的原因 `signed plugin approval owner is unavailable` 是探针插件才有，还是所有插件都有，没查。
 - `policy` 里那 1 次自然发生的执行没留转录，归因是推断。
 - 关 `unified_exec`、压缩 Codex 帧尺寸，都没测。
-- 16 核 V 上高并发的根因（阻塞项 5）；V 上没有做压测，这次也没有。
+- 16 核 V 上高并发的根因（阻塞项 5）。本 PR 的场景都没在 V 上跑；V 上的计时在 `harness-compare-20261031/v-staged-20261101/`。
 - 私聊的 `modelByChannel` 匹配。
 
 ## 本 PR 的改动
