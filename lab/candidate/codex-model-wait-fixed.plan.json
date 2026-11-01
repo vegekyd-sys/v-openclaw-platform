@@ -1,0 +1,33 @@
+{
+  "support": [
+    "lab/candidate/runtime-concurrency.mjs",
+    "lab/candidate/runtime-concurrency-lag.mjs",
+    "lab/release-files/codex-model-wait-watchdog/patch-codex-model-wait-watchdog.mjs",
+    "lab/candidate/codex-model-wait-trace.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/runtime-concurrency.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity",
+  "env": {
+    "SCENARIOS": "1",
+    "ARMS": "vds:small",
+    "LEVELS": "1",
+    "BIG_COUNT": "0",
+    "WORKER_MIN": "2",
+    "WORKER_MAX": "6",
+    "WORKER_SESSIONS": "3",
+    "STEADY_MIN": "0",
+    "TURN_TIMEOUT_MS": "420000",
+    "V_CODEX_DIST_SHA": "c2bbae59453397ec481d6c96323ed052c587c894263b137a2c1b70f8d813c3ee",
+    "OUT_DIR": "/tmp/codex-model-wait-fixed",
+    "HANG_COMPARE": "1",
+    "HANG_PRIMARY": "vds",
+    "FAULTS": "hang,stall,stall-mid,hang-after-tool",
+    "FAULT_PORT": "29882",
+    "PROVIDER_TIMEOUT_S": "90",
+    "CODEX_PATCHES": "lab/release-files/codex-model-wait-watchdog/patch-codex-model-wait-watchdog.mjs,lab/candidate/codex-model-wait-trace.mjs"
+  }
+}

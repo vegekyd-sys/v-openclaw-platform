@@ -288,7 +288,7 @@ const PROVIDER_TIMEOUT = process.env.PROVIDER_TIMEOUT_S ? Number(process.env.PRO
 if (PROVIDER_TIMEOUT) config.models.providers.deepseek.timeoutSeconds = PROVIDER_TIMEOUT;
 const HANG_RT = process.env.HANG_PRIMARY ?? "flash";
 // a session on the default model keeps its fallback; a sessions.patch override would not
-const defaultModel = HANG_COMPARE ? (HANG_RT === "vds" ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : { primary: FLASH_REF, fallbacks: [VDS_REF] }) : CHANNEL_GRAY ? { primary: FLASH_REF, fallbacks: ["openai/gpt-6-luna"] } : SCENARIOS ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : { primary: FLASH_REF, fallbacks: [] };
+const defaultModel = HANG_COMPARE ? (HANG_RT === "vds" && process.env.HANG_MANUAL !== "1" ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : process.env.HANG_MANUAL === "1" ? { primary: FLASH_REF, fallbacks: [] } : { primary: FLASH_REF, fallbacks: [VDS_REF] }) : CHANNEL_GRAY ? { primary: FLASH_REF, fallbacks: ["openai/gpt-6-luna"] } : SCENARIOS ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : { primary: FLASH_REF, fallbacks: [] };
 // chat.send arrives as channel "webchat" with no group, so the wildcard entry is what a candidate can reach
 if (CHANNEL_GRAY) config.channels.modelByChannel = { webchat: { "*": VDS_REF } };
 config.agents.defaults.model = defaultModel;
@@ -593,16 +593,49 @@ if (SCENARIOS) {
   const http = await import("node:http");
   const https = await import("node:https");
   http.createServer((req, res) => {
-    const mode = !faultPath || req.url.includes(faultPath) ? faultMode : "ok";
+    let mode = !faultPath || req.url.includes(faultPath) ? faultMode : "ok";
+    // hang-after-tool: the first request of the scenario answers, the one carrying the tool result hangs
+    if (mode === "hang-after-tool") mode = faultLog.filter((f) => f.url.includes(faultPath)).length === 0 ? "ok" : "hang";
     faultLog.push({ at: Date.now(), mode, url: req.url });
     const fail = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
     if (mode === "503") return fail(503, { error: { message: "Service is too busy", type: "service_unavailable_error", code: "service_unavailable" } });
     if (mode === "429") return fail(429, { error: { message: "Rate limit reached", type: "rate_limit_error", code: "rate_limit_exceeded" } });
     if (mode === "402") return fail(402, { error: { message: "Insufficient Balance", type: "insufficient_balance", code: "invalid_request_error" } });
     if (mode === "hang") { req.resume(); return undefined; }
+    // slow-headers: the first request of a scenario answers late but within the limit
+    if (mode === "slow-headers" && faultLog.filter((f) => f.mode === "slow-headers").length === 1) {
+      const chunks = [];
+      req.on("data", (c) => chunks.push(c));
+      req.on("end", () => setTimeout(() => {
+        const up = https.request(`https://api.deepseek.com${req.url}`, { method: req.method, headers: { ...req.headers, host: "api.deepseek.com" } }, (r) => { res.writeHead(r.statusCode, r.headers); r.pipe(res); });
+        up.on("error", () => res.destroy());
+        up.end(Buffer.concat(chunks));
+      }, num("SLOW_HEADERS_S", 75) * 1000));
+      return undefined;
+    }
     const up = https.request(`https://api.deepseek.com${req.url}`, { method: req.method, headers: { ...req.headers, host: "api.deepseek.com" } }, (r) => {
       res.writeHead(r.statusCode, r.headers);
       if (mode === "stall") { r.once("data", (chunk) => { res.write(chunk); r.destroy(); }); return; }
+      // stall-mid: real model output reached Codex, then silence with the connection open
+      const sseTypes = (chunk) => [...String(chunk).matchAll(/"type":"(response\.[a-z_.]+)"/gu)].map((m) => m[1]);
+      const logEntry = faultLog.at(-1);
+      if (mode === "stall-mid") { let deltas = 0; logEntry.forwarded = []; r.on("data", (chunk) => { res.write(chunk); logEntry.forwarded.push(...sseTypes(chunk)); deltas += (String(chunk).match(/reasoning[a-z_]*\.delta"|output_text\.delta"/gu) ?? []).length; if (deltas >= 8) r.destroy(); }); return; }
+      // quiet-args: nothing reaches Codex for QUIET_ARGS_S once a tool call starts streaming, the
+      // silence a long tool argument makes (Codex has no app-server event for argument deltas)
+      if (mode === "quiet-args") {
+        const held = [];
+        let holding = false;
+        let ended = false;
+        const flush = () => { holding = false; for (const c of held.splice(0)) res.write(c); if (ended) res.end(); };
+        r.on("data", (chunk) => {
+          if (holding) { held.push(chunk); return; }
+          (logEntry.forwarded ??= []).push(...sseTypes(chunk));
+          if (!held.length && /function_call_arguments\.delta/u.test(String(chunk)) && !res.quietDone && (process.env.QUIET_AFTER_REASONING !== "1" || logEntry.forwarded.some((t) => /reasoning/u.test(t)))) { res.quietDone = true; holding = true; held.push(chunk); setTimeout(flush, num("QUIET_ARGS_S", 120) * 1000); return; }
+          res.write(chunk);
+        });
+        r.on("end", () => { ended = true; if (!holding) res.end(); });
+        return;
+      }
       if (mode === "cut") { r.once("data", (chunk) => { res.write(chunk); setTimeout(() => { res.destroy(); r.destroy(); }, 500); }); return; }
       r.pipe(res);
     });
@@ -790,7 +823,11 @@ async function send(key, runtimeId, label, task = "sha") {
   runs.set(id, r);
   // the answer is only known by running the command (the model cannot compute a sha256), so a
   // correct reply proves the tool ran
-  const message = task === "multi"
+  const longShell = `（自动化验证，不要改写命令）用 shell 执行一次 \`sleep ${num("LONG_TOOL_S", 200)}; printf %s ${label} | sha256sum | cut -c1-12\`，等它结束，然后只回复它输出的那 12 个字符，不要别的文字。`;
+  const longDynamic = `（自动化验证）先调用一次 session_status 工具，然后用 shell 执行一次 \`printf %s ${label} | sha256sum | cut -c1-12\`，然后只回复它输出的那 12 个字符，不要别的文字。`;
+  const think = `（自动化验证）先认真推理：一个 8 位二进制数翻转所有位后加 1，结果和原数相等的有哪些？想清楚但不用写出来。然后用 shell 执行一次 \`printf %s ${label} | sha256sum | cut -c1-12\`，然后只回复它输出的那 12 个字符，不要别的文字。`;
+  const bigArgs = `（自动化验证）用 shell 的 heredoc 把一篇你现写的、不少于 ${num("BIG_ARGS_CHARS", 12000)} 字的中文长文写进 /tmp/bigargs-${label}.txt（内容必须直接写在这一条命令里，一次写完，不要分成多条命令或多次追加），然后再用 shell 执行一次 \`rm -f /tmp/bigargs-${label}.txt; printf %s ${label} | sha256sum | cut -c1-12\`，最后只回复它输出的那 12 个字符，不要别的文字。`;
+  const message = task === "think" ? think : task === "long-shell" ? longShell : task === "long-dynamic" ? longDynamic : task === "big-args" ? bigArgs : task === "multi"
     ? `（自动化并发压测）按顺序做，一步也不要省：1) 用 shell 执行 \`uname -r\`；2) 用 shell 执行 \`ls /tmp | wc -l\`；3) 用读文件工具读工作区 AGENTS.md（只需前 5 行）；4) 调用 session_status 工具；5) 用 shell 执行 \`printf %s ${label} | sha256sum | cut -c1-12\`。全部做完后只回复第 5 步输出的那 12 个字符，不要别的文字。`
     : `（自动化并发压测）用 shell 执行一次 \`printf %s ${label} | sha256sum | cut -c1-12\`，然后只回复它输出的那 12 个字符，不要别的文字。`;
   r.expected = createHash("sha256").update(label).digest("hex").slice(0, 12);
@@ -943,12 +980,13 @@ function sessionsLike(pattern) {
     return db.prepare("SELECT n.session_key AS key, w.agent_harness_id AS harness, w.model AS model, w.model_provider AS provider FROM session_nodes n LEFT JOIN session_windows w ON w.session_id = n.current_session_id WHERE n.session_key LIKE ? ORDER BY n.updated_at DESC LIMIT 8").all(pattern);
   } catch (error) { return { error: String(error?.message ?? error).slice(0, 200) }; } finally { db.close(); }
 }
-const fallbackLines = (from) => lines.filter(inWin(from, Date.now())).filter((l) => /model-fallback|model fallback decision|harness failed|codexAppServerFailure|app-server.*fail/iu.test(l.line)).map((l) => redact(l.line).slice(0, 320)).slice(-12);
+const fallbackLines = (from) => lines.filter(inWin(from, Date.now())).filter((l) => /model-fallback|model fallback decision|harness failed|codexAppServerFailure|app-server.*fail|model request timed out|transient same-model retry|same-model retry already|retry window elapsed|another runner/iu.test(l.line)).map((l) => redact(l.line).slice(0, 320)).slice(-12);
 async function scenario(name, key, opts = {}) {
   const from = Date.now();
   faultLog.length = 0;
-  const r = await send(key, opts.rt ?? "vds", `${name}-${randomBytes(3).toString("hex")}`, "sha");
-  const out = { phase: "scenario", name, key: key.split(":").pop(), fault: faultMode, ...r, proxyRequests: faultLog.length, ran: actualRuntime([key]), fallback: fallbackLines(from) };
+  const r = await send(key, opts.rt ?? "vds", `${name}-${randomBytes(3).toString("hex")}`, opts.task ?? "sha");
+  const trace = lines.filter(inWin(from, Date.now())).filter((l) => l.line.includes("[model-wait-trace]")).map((l) => l.line.slice(l.line.indexOf("{")).slice(0, 300));
+  const out = { phase: "scenario", name, key: key.split(":").pop(), fault: faultMode, ...r, proxyRequests: faultLog.length, proxyModes: faultLog.map((f) => `${f.mode}:${f.url.split("/").pop()}`), proxyForwarded: faultLog.flatMap((f) => (f.forwarded ? [[...new Set(f.forwarded)].concat(`n=${f.forwarded.length}`)] : [])), ran: actualRuntime([key]), fallback: fallbackLines(from), trace };
   emit(out);
   return out;
 }
@@ -985,10 +1023,14 @@ async function runScenarios() {
     const api = HANG_RT === "vds" ? "/responses" : "/chat/completions";
     for (const fault of (process.env.FAULTS ?? "hang,stall").split(",")) {
       const k = key(`hang-${HANG_RT}-${fault}`);
+      // HANG_MANUAL=1: the session picked this model itself, so no fallback applies
+      if (process.env.HANG_MANUAL === "1") { const err = await prepareSession(k, REF[HANG_RT]); if (err) emit({ phase: "prepare-error", key: k, err }); }
       await scenario(`warm-${HANG_RT}-${fault}`, k, { rt: HANG_RT });
-      faultPath = api;
-      faultMode = fault;
-      await scenario(`fault-${HANG_RT}-${fault}`, k, { rt: HANG_RT });
+      // long-shell, long-dynamic, big-args: a healthy upstream and long real work; must not be killed
+      const work = ["long-shell", "long-dynamic", "big-args"].includes(fault);
+      faultPath = work ? null : api;
+      faultMode = work ? "ok" : fault;
+      await scenario(`fault-${HANG_RT}-${fault}`, k, { rt: HANG_RT, ...(work ? { task: fault } : process.env.HANG_TASK ? { task: process.env.HANG_TASK } : {}) });
       faultMode = "ok";
       faultPath = null;
       await scenario(`after-${HANG_RT}-${fault}`, k, { rt: HANG_RT });
