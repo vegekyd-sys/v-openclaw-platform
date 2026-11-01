@@ -1,0 +1,11 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/openclaw-tool-safe-deny/dist/selection-BC0YSSFq.js",
+      "target": "openclaw/dist/selection-BC0YSSFq.js",
+      "before": "5a0c1a19c69b2c7993405bab62e42268d899eec4e5b70ad889cc6f088cf69ccf",
+      "after": "b55b53525a4e668c4c242090893d6f8cb4de0ac96899b444f0dd85cf3f8bdaa4"
+    }
+  ]
+}

@@ -35,3 +35,10 @@ jobs:
         run: node --test tests/workboard-*-patch.test.mjs
       - name: Validate vLab release assets
         run: ./tests/vlab-static.sh
+      # Every OpenClaw byte V runs that differs from upstream must map to a
+      # source commit, so an upgrade is a rebase instead of re-deriving dist
+      # patches (docs/upgrade-lts/patch-catch-up-plan.md, step 0).
+      - name: Check captured runtime maps to source
+        run: |
+          node --test tests/check-source-map.test.mjs
+          node scripts/check-source-map.mjs --report

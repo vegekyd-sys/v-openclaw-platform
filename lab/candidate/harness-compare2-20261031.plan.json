@@ -1,0 +1,29 @@
+{
+  "support": [
+    "lab/candidate/runtime-concurrency.mjs",
+    "lab/candidate/runtime-concurrency-lag.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/runtime-concurrency.mjs"
+  ],
+  "timeoutSeconds": 21600,
+  "user": "lab-db91-parity",
+  "env": {
+    "ARMS": "flash:big,vds:small:multi,flash:small:multi,vds:big",
+    "LEVELS": "1,5,15",
+    "PAIRED": "1",
+    "MULTI_MAX": "15",
+    "BIG_COUNT": "15",
+    "BIG_MB": "80",
+    "WORKER_MIN": "5",
+    "WORKER_MAX": "24",
+    "WORKER_SESSIONS": "3",
+    "STEADY_MIN": "20",
+    "STEADY_SAMPLE_MS": "30000",
+    "COOLDOWN_MS": "150000",
+    "V_CODEX_DIST_SHA": "4660540eb90fa7c6c96fd6d5ac37f522c5eb846d13cd8d6ccd66dba9a9a764c2",
+    "OUT_DIR": "/tmp/harness-compare2-20261031",
+    "GATE_FAIL_RATE": "1.1"
+  }
+}

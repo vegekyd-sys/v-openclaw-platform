@@ -23,7 +23,7 @@ export function followupPresentationOptions(turn,sourceOpts){
  // renderer observes this admitted run through the shared event/embedded path.
  return {...sourceOpts,onAgentRunStart:()=>{},onToolStart:undefined,onCommandOutput:undefined,onItemEvent:undefined,onToolResult:undefined,
   onPartialReply:undefined,onBlockReply:undefined,onAssistantMessageStart:undefined,
-  onModelSelected:m=>h.start(m)};
+  onModelSelected:m=>h.selectModel(m)};
 }
 export async function deliverFollowupPresentation(params,payloads){
  const h=globalThis[KEY]?.runs.get(params.runId);

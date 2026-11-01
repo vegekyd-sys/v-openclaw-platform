@@ -35,10 +35,18 @@ export default {id:'bound-task-candidate',register(api){
     await Promise.all([...m.tasks.values()].map(h=>h.flush()));
     respond(true,{accounts:[...m.accounts.keys()],tasks:[...m.tasks.values()].map(h=>h.record),entry:p.sessionKey?api.runtime.agent.session.getSessionEntry({agentId:'makaron',sessionKey:p.sessionKey,readConsistency:'latest'}):null});return;
    }
-   if(p.op==='cross'){
+   if(p.op==='prepare-restart'){
+    if(!p.runId?.startsWith('candidate-resume-'))throw Error('candidate run required');
+    const h=await m.open({source:'subagent-announce',agentId:'makaron',sessionKey:p.sessionKey,runId:p.runId,taskId:p.runId,text:'Candidate resumed task'},{trusted:true});
+    if(!h)throw Error('No candidate presentation');
+    await h.start({provider:'openai',model:'gpt-6.1-sol',agentRuntime:'codex'});await h.partial({text:'BEFORE_RESTART'});
+    if(p.legacy)await h.finish(null,'Gateway 重启打断了任务；请核对原执行状态后继续。');
+    respond(true,{record:h.record});return;
+   }
+   if(p.op==='cross'||p.op==='resume'){
     const {t:agentCommand}=await import(path.join(dist,'agent-command-DPfawBbr.js'));
     const result=await agentCommand({agentId:'makaron',sessionKey:p.sessionKey,runId:p.runId,message:p.text,deliver:true,
-     inputProvenance:{kind:'inter_session',sourceTool:'sessions_send',sourceSessionKey:p.sourceSessionKey},senderIsOwner:true},
+     inputProvenance:{kind:'inter_session',sourceTool:p.op==='resume'?'subagent_announce':'sessions_send',sourceSessionKey:p.sourceSessionKey},senderIsOwner:true},
      {log(){},error(){},exit(code){throw Error('Unexpected exit '+code);}});
     respond(true,{result});return;
    }

@@ -51,3 +51,11 @@ export function patchConversationPhoneTabs(source) {
       },`);
   return marker+'\n'+source;
 }
+
+export function patchPrivateConversationContext(source) {
+  const marker='// v-feishu-private-conversation-context-v1';
+  if(source.includes(marker))return source;
+  const anchor='"im.chat.access_event.bot_p2p_chat_entered_v1": data => vPhoneTab.schedule(data),';
+  assert.equal(source.split(anchor).length,2,'Expected one native private-entry event handler');
+  return marker+'\n'+source.replace(anchor,'"im.chat.access_event.bot_p2p_chat_entered_v1": data => vPhoneTab.schedule({header:{event_type:"im.chat.access_event.bot_p2p_chat_entered_v1"},event:data.event??data}),');
+}

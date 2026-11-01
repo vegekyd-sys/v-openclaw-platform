@@ -1,0 +1,19 @@
+{
+ "tests": [
+  "tests/bootstrap-memory-everywhere.test.mjs"
+ ],
+ "files": [
+  {
+   "source": "lab/release-files/bootstrap-memory-everywhere/dist/workspace-BFk42BX6.js",
+   "target": "openclaw/dist/workspace-BFk42BX6.js",
+   "before": "7aa02efc72fcb93ad581476af2c6d3628f21763db8246658d3457f53b9722d77"
+  },
+  {
+   "source": "lab/release-files/bootstrap-memory-everywhere/dist/attempt-context-DmQUNWwT.js",
+   "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/attempt-context-DmQUNWwT.js",
+   "before": "f3d2f15a3f21b55a7c804e8f45322e7e80ee08bcabf0793ff5ba096edd531b89"
+  }
+ ],
+ "user": "lab-db91-parity",
+ "timeoutSeconds": 0
+}
