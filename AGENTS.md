@@ -37,6 +37,13 @@
   Preserve existing settings and conversations; use private writable snapshots
   for candidate tests and shared RPC for read-only history.
   Never point independent Gateway processes at the same writable state directory.
+- A change to OpenClaw core or an official plugin's dist ships with its source
+  commit on `vegekyd-sys/openclaw-versa` branch `versa/main` (with a test), and
+  the capture PR maps the new bytes in `release/source-map.json` to it
+  (`versa:<sha>`, `upstream:<sha>` for a cherry-picked upstream fix, or
+  `platform:<path>` for third-party plugin patches). An emergency hotfix may land
+  dist-first; its source follows within 24 hours. CI runs
+  `scripts/check-source-map.mjs`; see `docs/upgrade-lts/patch-catch-up-plan.md`.
 - Validate changes in vLab before proposing production promotion.
 - Keep vLab and production state paths, ports, workspaces, and channel
   credentials completely separate.

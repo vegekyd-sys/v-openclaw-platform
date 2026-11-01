@@ -3110,7 +3110,7 @@ function createFeishuReplyDispatcher(params) {
 				}).catch((error) => params.runtime.log?.(`feishu[${account.accountId}] card note refresh failed: ${String(error)}`));
 				vFirsttextMark("cardCreatedAtMs");
 				streamingStartBackoffUntilByAccount.delete(account.accountId);
-				if (!['cron-continuation','subagent-announce','queued-followup'].includes(params.boundTaskPresentation?.source)) vTaskStatusAttach(params.sessionKey, session, (message) => params.runtime.log?.(`feishu[${account.accountId}] ${message}`));
+				if (!['cron-continuation','subagent-announce','queued-followup','desktop-handback'].includes(params.boundTaskPresentation?.source)) vTaskStatusAttach(params.sessionKey, session, (message) => params.runtime.log?.(`feishu[${account.accountId}] ${message}`));
 			} catch (error) {
 				rememberStreamingStartFailure(account.accountId);
 				params.runtime.error?.(`feishu[${account.accountId}]: streaming start failed; using non-streaming card fallback for ${STREAMING_START_FAILURE_BACKOFF_MS / 1e3}s: ${String(error)}`);
@@ -9845,7 +9845,7 @@ function createTaskPresentationAccount({cfg,accountId,runtime,createClient,creat
       let state=record.sinkState??{};
       const persist=async next=>{state=JSON.parse(JSON.stringify(next));record.sinkState=state;await checkpoint(state);};
       if(!record.anchorId){
-        const title=record.source==='cron-continuation'?'↩️ 自动续接':record.source==='queued-followup'?'⏳ 排队请求':record.source==='subagent-announce'?'↩️ 子任务回报':record.source==='inter-session'?'📨 跨会话任务':'📞 语音交办';
+        const title=record.source==='desktop-handback'?'↩️ 电脑交还':record.source==='cron-continuation'?'↩️ 自动续接':record.source==='queued-followup'?'⏳ 排队请求':record.source==='subagent-announce'?'↩️ 子任务回报':record.source==='inter-session'?'📨 跨会话任务':'📞 语音交办';
         const response=await client.im.message.create({params:{receive_id_type:route.kind==='group'?'chat_id':'open_id'},
           data:{receive_id:route.chatId,msg_type:'text',uuid:record.id.slice(0,32),content:JSON.stringify({text:title+'\n'+record.text})}});
         if(response?.code!==0||!response.data?.message_id)throw Error('Feishu task anchor was not acknowledged');

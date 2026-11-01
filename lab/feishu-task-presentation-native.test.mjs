@@ -37,7 +37,7 @@ test('cron native card identifies its own lifecycle instead of the conversation 
  const monitor=fs.readFileSync('lab/release-files/feishu-continuation-progress/monitor.account-WFdlCDhR.js','utf8');
  const line=monitor.split('\n').find(s=>s.includes('vTaskStatusAttach(params.sessionKey, session,'));
  let attached=0;const run=new Function('params','session','vTaskStatusAttach',line);
- for(const source of ['cron-continuation','subagent-announce','queued-followup','voice-direct',undefined]){run({sessionKey:'source',runtime:{},boundTaskPresentation:source?{source}:undefined},{},()=>attached++);}
+ for(const source of ['cron-continuation','subagent-announce','queued-followup','desktop-handback','voice-direct',undefined]){run({sessionKey:'source',runtime:{},boundTaskPresentation:source?{source}:undefined},{},()=>attached++);}
  assert.equal(attached,2,'ordinary and Voice cards retain their background summary; continuations own their individual lifecycle');
 });
 test('a failed idle close and finalization are both observed without an unhandled rejection',async()=>{

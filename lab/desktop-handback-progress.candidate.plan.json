@@ -1,0 +1,97 @@
+{
+  "files": [
+    {
+      "source": "lab/release-files/desktop-handback-progress/v-feishu-task-presentation.mjs",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/v-feishu-task-presentation.mjs",
+      "before": "d3f49b00811b026835f1f5a90afaf0d8f004a25a4fa3c3599e9c3d8facd6fdcb"
+    },
+    {
+      "source": "lab/release-files/desktop-handback-progress/monitor.account-WFdlCDhR.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+      "before": "1925d3f2d4f3550189e76b27bac09a40b25bbdd7b124e839c6605926b677366b"
+    },
+    {
+      "source": "lab/candidate/bound-task-plugin/index.js",
+      "target": "extensions/bound-task-candidate/index.js"
+    },
+    {
+      "source": "lab/candidate/bound-task-plugin/openclaw.plugin.json",
+      "target": "extensions/bound-task-candidate/openclaw.plugin.json"
+    },
+    {
+      "source": "lab/candidate/bound-task-plugin/package.json",
+      "target": "extensions/bound-task-candidate/package.json"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/index.js",
+      "target": "extensions/v-desktop-handoff/index.js"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/package.json",
+      "target": "extensions/v-desktop-handoff/package.json"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/openclaw.plugin.json",
+      "target": "extensions/v-desktop-handoff/openclaw.plugin.json"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/admin-client.js",
+      "target": "extensions/v-desktop-handoff/core/admin-client.js"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/card.js",
+      "target": "extensions/v-desktop-handoff/core/card.js"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/channel-cards.js",
+      "target": "extensions/v-desktop-handoff/core/channel-cards.js"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/deliver.js",
+      "target": "extensions/v-desktop-handoff/core/deliver.js"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/feishu-api.js",
+      "target": "extensions/v-desktop-handoff/core/feishu-api.js"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/identity.js",
+      "target": "extensions/v-desktop-handoff/core/identity.js"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/native-card.js",
+      "target": "extensions/v-desktop-handoff/core/native-card.js"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/policy.js",
+      "target": "extensions/v-desktop-handoff/core/policy.js"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/task-presentation.js",
+      "target": "extensions/v-desktop-handoff/core/task-presentation.js"
+    },
+    {
+      "source": "apps/v-desktop-handoff/plugin/core/telegram-api.js",
+      "target": "extensions/v-desktop-handoff/core/telegram-api.js"
+    }
+  ],
+  "tests": [
+    "lab/candidate/desktop-handback-progress.mjs"
+  ],
+  "support": [
+    "lab/candidate/bound-task-support.mjs",
+    "lab/candidate/feishu-fake-open-api.mjs",
+    "lab/candidate/feishu-no-live.cjs",
+    "lab/realtime-direct-tools/backend.mjs",
+    "lab/realtime-direct-tools/tools.mjs",
+    "lab/realtime-direct-tools/lark-readonly.mjs",
+    "lab/gpt-live-consult-progress.mjs",
+    "lab/gpt-live-h5/result-presentation.mjs",
+    "lab/gpt-live-h5/media-references.mjs"
+  ],
+  "user": "lab-db91-parity",
+  "env": {
+    "BOUND_TASK_HARNESS": "vds"
+  },
+  "timeoutSeconds": 600
+}

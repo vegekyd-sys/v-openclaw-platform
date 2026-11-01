@@ -4,7 +4,7 @@ import {createHash,randomUUID} from 'node:crypto';
 
 export const PRESENTATION_KEY = Symbol.for('openclaw.v.boundTaskPresentation.v1');
 export const PRESENTATION_METHOD = 'v.feishu.taskPresentation';
-const sources = new Set(['inter-session','voice-direct','voice-native','queued-followup','subagent-announce','cron-continuation']);
+const sources = new Set(['inter-session','voice-direct','voice-native','queued-followup','subagent-announce','cron-continuation','desktop-handback']);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const clean = value => typeof value === 'string' ? value.trim() : '';
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -94,7 +94,7 @@ export class TaskPresentationManager {
       // Completion notifications may be deliberate silence. Publish only once
       // this run has public progress or a real outcome; admission is not progress.
       if(input.source!=='subagent-announce')void handle.enqueue(()=>handle.ensureSink());
-      if(input.source==='queued-followup')void handle.partial({text:QUEUED_TEXT,phase:'commentary',kind:'status'});
+      if(['queued-followup','desktop-handback'].includes(input.source))void handle.partial({text:QUEUED_TEXT,phase:'commentary',kind:'status'});
       return handle;
     })().catch(error=>{this.logger.warn?.('Feishu task presentation unavailable: '+String(error?.message??error));return null;}).finally(()=>this.opening.delete(id));
     this.opening.set(id,pending);return pending;

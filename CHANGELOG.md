@@ -11,6 +11,51 @@
 
 ---
 
+## v2026.9.1-db91.6-codex-failed-thread-20261101
+
+上线：2026-11-01 10:24 CST  ·  tag `v2026.9.1-db91.6-codex-failed-thread-20261101`
+
+**摘要**：/vds、/vcodex 回合遇到上游失败（503、429、402、断流）后，下一条消息不再报 `Codex session became active in another runner`，也不用等约 60 秒，上游恢复后立刻能回复。上游失败那一轮本身的行为不变。
+
+激活：2026-11-01 10:20 CST 重启（请求 `20261101-101803-db29`，等候空闲 19 s，stream 3/3），同时也是 #525 上线后第一次 Gateway 重启。生产验收 10:21–10:23 在「V 生产发布验收 0910」真实飞书群：Worker 3 条、/vds 2 条、/vcodex 1 条全部回复，重启后 `another runner`、`Cannot reap`、回复前失败均为 0。V 上没有注入故障，修复路径只在共享 VLab 和 candidate 上触发过。
+
+来源：[PR #524](https://github.com/vegekyd-sys/v-openclaw-platform/pull/524)、[PR #526](https://github.com/vegekyd-sys/v-openclaw-platform/pull/526)，证据 `docs/evidence/codex-failed-thread-resume-20261031/`。
+
+相对上一版 `v2026.9.1-db91.6-subagent-precheck-20261101`：2 个文件变化。
+
+**经 VLab 发版 `codex-failed-thread-resume-20261101-v1`**（codex-failed-thread-524，dev `451ac388`）
+> 验收：真实飞书群 VLab 发布验收 B /vds，Runtime codex。常规 plain 连续 5 条与切模型均正常。断流故障：循环切断 Codex 到 DeepSeek 的连接 120 次，4 次尝试均 stream disconnected，134 s 后报错卡；下一条 12.5 s（run 内 5.9 s）、再下一条 8.2 s 均由 codex 回复；10:08 起 another runner 0 次。state/npm 与 runtime 两份字节相同。A 路径失败矩阵证据见 docs/evidence/codex-failed-thread-resume-20261031，补丁字节相同。
+- `codex` dist/run-attempt-D1hJO4fX.js  c34d6d77 → d6f28b4a
+- `codex` dist/thread-lifecycle-DAcEJ_Om.js  4cceab62 → 6a00e8c2
+
+## v2026.9.1-db91.6-subagent-precheck-20261101
+
+上线：2026-11-01 10:00 CST（`vlab.workers.roll`，未重启 Gateway）
+
+**摘要**：Worker 每次调模型前不再整表读 `subagent_runs`（V 上 13,550 行、217 MB）。先按索引查当前会话及其后代，确定没有活跃子 agent 就跳过。同一测速，首字 P50 从 7.2 s 降到 4.6 s，系统提示词就绪到调模型的空档从 2496 ms 降到 176 ms。P95 从 10.6 s 变成 18.7 s，来自 roll 产生的新 Worker 第一轮（改之前也要等约 18 s）和一轮 Gateway 入站延迟，不是本次改动带来的。真实用户流量的对比还没有。
+
+相对上一版 `v-desktop-handback-progress-20261030`：2 个文件变化。
+
+**经 VLab 发版 `subagent-active-precheck-20261101-v2`**（worker-subagent-precheck-525，dev `e1dcaa4b`）
+- `core` history-image-prune-Dg0CDQ4a.js  dbe28902 → 3e5c9c8b
+- `core` v-subagent-active-precheck.mjs  — → 9e6a45ca
+
+来源：[PR #525](https://github.com/vegekyd-sys/v-openclaw-platform/pull/525)，源码 `versa:a4258902630`。详情见 `lab/subagent-active-precheck.md`。
+
+## v-desktop-handback-progress-20261030
+
+上线：2026-10-30 00:33 CST 激活完成，00:41 CST 真实生产链路验收通过。
+
+**摘要**：接管页点击“交还给 V”后，排队、公开进度、工具状态和最终结果在原飞书群的同一张卡上展示。保留原执行链路、幂等键和原生投递回执，不重复启动模型或另发一份结果。
+
+- 来源：[PR #511](https://github.com/vegekyd-sys/v-openclaw-platform/pull/511)，已合入 dev `60afc19494127f10bc188fdd0aa8b4c00b5c25d9`。
+- VLab release `desktop-handback-progress-20261029-v1`，artifact `1876a504b6e0c7687fe5fabea0f07be0a5b88b652583f1e1c8fe8de0fc3ef46f`。117 项回归、真实页面交还、单 run、同卡进度和最终 ACK 已通过共享验收。
+- 相对上一版 `v2026.9.1-db91.6-release-batch-20261028`，七组件快照仅两份飞书文件变化：`dist/monitor.account-WFdlCDhR.js`（`1925d3f2` → `faa10628`）和 `dist/v-feishu-task-presentation.mjs`（`d3f49b00` → `070801aa`）。其他六个组件字节未变。
+- 桌面插件另有两份文件：`index.js`（`6c0c9db8` → `e730debb`），新增 `core/task-presentation.js`（`46bae355`）；同一提交与 VLab 已验收字节，保留原文件及权限回滚清单。
+- 配置未修改。重启请求 `20261030-002355-8763` 使用 `--if-busy abort --idle-timeout 3600`，等待业务空闲 405 秒后激活；5/5 workers、2/2 streams 恢复，0 告警。真实生产 Q 验收确认同卡进度/工具/最终结果、单 run 和成功回执；VLab 已 ALIGNED。
+
+[发布与回滚记录](docs/experiments/desktop-handback-production-20261030.md)
+
 ## v2026.9.1-db91.6-release-batch-20261028
 
 上线：2026-10-28 19:51 CST（19:49 v-self-restart 一次，同时 --set skills）  ·  tag `v2026.9.1-db91.6-release-batch-20261028`
