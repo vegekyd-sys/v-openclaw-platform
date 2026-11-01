@@ -481,7 +481,8 @@
         "lab/workboard-sweep-bounded.test.mjs",
         "lab/openclaw-tool-safe-deny.test.mjs",
         "lab/skill-workshop-agent-apply.test.mjs",
-        "scripts/v-skills-catalog.test.mjs"
+        "scripts/v-skills-catalog.test.mjs",
+        "lab/model-switch-thinking.test.mjs"
       ]
     }
   ],
