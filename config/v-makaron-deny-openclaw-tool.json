@@ -1,0 +1,11 @@
+{
+  "agents": {
+    "entries": {
+      "makaron": {
+        "tools": {
+          "deny": ["openclaw"]
+        }
+      }
+    }
+  }
+}

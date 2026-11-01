@@ -1,0 +1,17 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/bootstrap-memory-everywhere/dist/workspace-BFk42BX6.js",
+      "target": "openclaw/dist/workspace-BFk42BX6.js",
+      "before": "7aa02efc72fcb93ad581476af2c6d3628f21763db8246658d3457f53b9722d77",
+      "after": "5c74cd7c84c4745fb615bff621836be5a5473949c29db0b115ab81f72a4ce027"
+    },
+    {
+      "source": "lab/release-files/bootstrap-memory-everywhere/dist/attempt-context-DmQUNWwT.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/attempt-context-DmQUNWwT.js",
+      "before": "f3d2f15a3f21b55a7c804e8f45322e7e80ee08bcabf0793ff5ba096edd531b89",
+      "after": "d425cfe28349a0313a7be3dbba56bd6790fd70005501119d83aced3532a3a7d7"
+    }
+  ]
+}

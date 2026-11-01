@@ -1,0 +1,4 @@
+{"support":["lab/candidate/cli-startup/hook.mjs","lab/candidate/cli-startup/matrix.sh"],
+"command":["/bin/bash","lab/candidate/cli-startup/matrix.sh"],
+"timeoutSeconds":1800,"user":"lab-db91-parity",
+"databases":[]}

@@ -1,0 +1,23 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/cli-startup-fast/native-hook-relay-cli-DTqrikhm.js",
+      "target": "openclaw/dist/native-hook-relay-cli-DTqrikhm.js",
+      "before": "be7acfb87f02edfc92d139421a7695c606e3ece8b2060e0cdf3fea7a6c555846",
+      "after": "dc73ce928f270b39717c59ee29b66cf47b3e5315bd0640b88b55f340a5d1fb0e"
+    },
+    {
+      "source": "lab/release-files/cli-startup-fast/native-hook-relay-client-GFGIwlRq.js",
+      "target": "openclaw/dist/native-hook-relay-client-GFGIwlRq.js",
+      "before": "aa685524265913e9faf9293c9a39aa30bdf651834bf1303e71867163751e6081",
+      "after": "531f2257364b28f7225d047875adc402969cf8fea1bf4fd68132799a9b9c044b"
+    },
+    {
+      "source": "lab/release-files/cli-startup-fast/warning-filter.js",
+      "target": "openclaw/dist/warning-filter.js",
+      "after": "a27485624940c2cffa8e53c0bec014b7aac3cba94ebbfeb22c62ebe78de711f0",
+      "before": null
+    }
+  ]
+}

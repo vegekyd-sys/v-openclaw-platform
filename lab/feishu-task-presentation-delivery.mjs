@@ -12,6 +12,7 @@ export async function deliverPresentedBatch(context,batch,fallback){
  h.captureDelivery(batch.payloads);
  await h.finish({payloads:batch.payloads,meta:{yielded:false}});
  if(!h.record.delivered)return {status:'failed',results:[],error:Error(h.record.error??'Native final delivery has no ACK')};
+ if(h.record.suppressed)return {status:'suppressed',reason:'intentional_silence',results:[],payloads:[]};
  const receipts=h.record.sinkState?.receipts??[];
  // No fabricated message receipt: durable task delivery needs a per-payload ACK.
  if(!receipts.length||receipts.some(r=>r.visibleReplySent!==true))return {status:'failed',results:[],error:Error('Native final receipt is incomplete')};
@@ -22,6 +23,7 @@ export function hasPresentedRun(runId){const m=globalThis[KEY];return Boolean(m?
 // card ACK must supersede its cached transport failure without re-running work.
 export function reconcilePresentedResult(runId,result){
  const m=globalThis[KEY],h=[...m?.tasks.values()??[]].find(h=>h.record.activeRunId===runId);
+ if(h?.record.delivered&&h.record.suppressed&&m.current(h.record))return {...result,payloads:[],deliverySucceeded:true,deliveryStatus:{requested:true,attempted:false,status:'suppressed',succeeded:true,reason:'intentional_silence',resultCount:0}};
  const receipts=h?.record.sinkState?.receipts;
  if(!h?.record.delivered||!m.current(h.record)||!receipts?.length||receipts.some(r=>!r.visibleReplySent))return result;
  return {...result,payloads:h.record.executionOutcome.result.payloads,deliverySucceeded:true,

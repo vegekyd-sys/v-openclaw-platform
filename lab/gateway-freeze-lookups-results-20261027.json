@@ -1,0 +1,413 @@
+{
+ "fixture": {
+  "counts": {
+   "session_nodes": 10724,
+   "session_windows": 13383,
+   "session_participants": 10384,
+   "session_transcript_index_state": 13310,
+   "session_progress_cards": 4262,
+   "entryJsonMB": 708,
+   "columnDiffersFromEntry": 0,
+   "sessionIdIndex": [
+    "idx_agent_session_nodes_current_session_id"
+   ]
+  },
+  "ms": 113101
+ },
+ "equivalence": {
+  "cases": 171,
+  "differences": 0,
+  "summary": {
+   "real / agentId makaron": {
+    "n": 30,
+    "resolved": 30,
+    "missing": 0,
+    "threw": 0
+   },
+   "real / no agentId": {
+    "n": 30,
+    "resolved": 0,
+    "missing": 0,
+    "threw": 30,
+    "error": "Multiple agents are configured, but this operation has no explicit owner. Select an agent explicitly; CLI callers can pass --agent <id>, channels can add a binding, and ambient services can set their "
+   },
+   "real / agentId v-codex": {
+    "n": 30,
+    "resolved": 0,
+    "missing": 30,
+    "threw": 0
+   },
+   "real upper case / agentId makaron": {
+    "n": 5,
+    "resolved": 0,
+    "missing": 5,
+    "threw": 0
+   },
+   "real upper case / no agentId": {
+    "n": 5,
+    "resolved": 0,
+    "missing": 0,
+    "threw": 5,
+    "error": "Multiple agents are configured, but this operation has no explicit owner. Select an agent explicitly; CLI callers can pass --agent <id>, channels can add a binding, and ambient services can set their "
+   },
+   "real upper case / agentId v-codex": {
+    "n": 5,
+    "resolved": 0,
+    "missing": 5,
+    "threw": 0
+   },
+   "synthetic shared / agentId makaron": {
+    "n": 1,
+    "resolved": 1,
+    "missing": 0,
+    "threw": 0
+   },
+   "synthetic shared / no agentId": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 0,
+    "threw": 1,
+    "error": "Multiple agents are configured, but this operation has no explicit owner. Select an agent explicitly; CLI callers can pass --agent <id>, channels can add a binding, and ambient services can set their "
+   },
+   "synthetic shared / agentId v-codex": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 1,
+    "threw": 0
+   },
+   "synthetic tie / agentId makaron": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 1,
+    "threw": 0
+   },
+   "synthetic tie / no agentId": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 0,
+    "threw": 1,
+    "error": "Multiple agents are configured, but this operation has no explicit owner. Select an agent explicitly; CLI callers can pass --agent <id>, channels can add a binding, and ambient services can set their "
+   },
+   "synthetic tie / agentId v-codex": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 1,
+    "threw": 0
+   },
+   "synthetic internal / agentId makaron": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 1,
+    "threw": 0
+   },
+   "synthetic internal / no agentId": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 0,
+    "threw": 1,
+    "error": "Multiple agents are configured, but this operation has no explicit owner. Select an agent explicitly; CLI callers can pass --agent <id>, channels can add a binding, and ambient services can set their "
+   },
+   "synthetic internal / agentId v-codex": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 1,
+    "threw": 0
+   },
+   "synthetic tombstone / agentId makaron": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 1,
+    "threw": 0
+   },
+   "synthetic tombstone / no agentId": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 0,
+    "threw": 1,
+    "error": "Multiple agents are configured, but this operation has no explicit owner. Select an agent explicitly; CLI callers can pass --agent <id>, channels can add a binding, and ambient services can set their "
+   },
+   "synthetic tombstone / agentId v-codex": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 1,
+    "threw": 0
+   },
+   "synthetic structural / agentId makaron": {
+    "n": 1,
+    "resolved": 1,
+    "missing": 0,
+    "threw": 0
+   },
+   "synthetic structural / no agentId": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 0,
+    "threw": 1,
+    "error": "Multiple agents are configured, but this operation has no explicit owner. Select an agent explicitly; CLI callers can pass --agent <id>, channels can add a binding, and ambient services can set their "
+   },
+   "synthetic structural / agentId v-codex": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 1,
+    "threw": 0
+   },
+   "unknown uuid / agentId makaron": {
+    "n": 10,
+    "resolved": 0,
+    "missing": 10,
+    "threw": 0
+   },
+   "unknown uuid / no agentId": {
+    "n": 10,
+    "resolved": 0,
+    "missing": 0,
+    "threw": 10,
+    "error": "Multiple agents are configured, but this operation has no explicit owner. Select an agent explicitly; CLI callers can pass --agent <id>, channels can add a binding, and ambient services can set their "
+   },
+   "unknown uuid / agentId v-codex": {
+    "n": 10,
+    "resolved": 0,
+    "missing": 10,
+    "threw": 0
+   },
+   "unknown workboard run / agentId makaron": {
+    "n": 5,
+    "resolved": 0,
+    "missing": 5,
+    "threw": 0
+   },
+   "unknown workboard run / no agentId": {
+    "n": 5,
+    "resolved": 0,
+    "missing": 0,
+    "threw": 5,
+    "error": "Multiple agents are configured, but this operation has no explicit owner. Select an agent explicitly; CLI callers can pass --agent <id>, channels can add a binding, and ambient services can set their "
+   },
+   "unknown workboard run / agentId v-codex": {
+    "n": 5,
+    "resolved": 0,
+    "missing": 5,
+    "threw": 0
+   },
+   "announce run id / agentId makaron": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 1,
+    "threw": 0
+   },
+   "announce run id / no agentId": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 0,
+    "threw": 1,
+    "error": "Multiple agents are configured, but this operation has no explicit owner. Select an agent explicitly; CLI callers can pass --agent <id>, channels can add a binding, and ambient services can set their "
+   },
+   "announce run id / agentId v-codex": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 1,
+    "threw": 0
+   },
+   "empty run id / agentId makaron": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 1,
+    "threw": 0
+   },
+   "empty run id / no agentId": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 0,
+    "threw": 1,
+    "error": "Multiple agents are configured, but this operation has no explicit owner. Select an agent explicitly; CLI callers can pass --agent <id>, channels can add a binding, and ambient services can set their "
+   },
+   "empty run id / agentId v-codex": {
+    "n": 1,
+    "resolved": 0,
+    "missing": 1,
+    "threw": 0
+   },
+   "cache base": {
+    "same": true,
+    "secondCallMs": 0.52
+   },
+   "cache patched": {
+    "same": true,
+    "secondCallMs": 0.04
+   },
+   "switchOff": {
+    "key": null,
+    "ms": 13331
+   }
+  },
+  "ms": 691960
+ },
+ "cost.base hit (night shift session id)": {
+  "label": "base: hit (night shift session id)",
+  "repeat": 3,
+  "msMedian": 12780.9,
+  "msMax": 13199.6,
+  "allocatedMBPerCall": 2715.7
+ },
+ "cost.patched hit (night shift session id)": {
+  "label": "patched: hit (night shift session id)",
+  "repeat": 60,
+  "msMedian": 2.3,
+  "msMax": 21,
+  "allocatedMBPerCall": 0.4
+ },
+ "cost.base miss (unknown run id)": {
+  "label": "base: miss (unknown run id)",
+  "repeat": 3,
+  "msMedian": 10450.5,
+  "msMax": 11608.8,
+  "allocatedMBPerCall": 2718.4
+ },
+ "cost.patched miss (unknown run id)": {
+  "label": "patched: miss (unknown run id)",
+  "repeat": 60,
+  "msMedian": 0.6,
+  "msMax": 16.7,
+  "allocatedMBPerCall": 0.1
+ },
+ "cost.base miss (workboard run id)": {
+  "label": "base: miss (workboard run id)",
+  "repeat": 3,
+  "msMedian": 10840.4,
+  "msMax": 11125.5,
+  "allocatedMBPerCall": 2705.1
+ },
+ "cost.patched miss (workboard run id)": {
+  "label": "patched: miss (workboard run id)",
+  "repeat": 60,
+  "msMedian": 0.6,
+  "msMax": 5.9,
+  "allocatedMBPerCall": 0.1
+ },
+ "stream context without sessionKey": {
+  "base": {
+   "runs": 2,
+   "emitted": 20,
+   "wallMs": 213557,
+   "lookups": 20,
+   "lookupMsTotal": 212280,
+   "lookupsOver100ms": 20,
+   "lookupMsMax": 12888,
+   "timerLagMaxMs": 23973,
+   "timerLagTotalMs": 190942,
+   "sent": 0,
+   "sentDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "patched": {
+   "runs": 2,
+   "emitted": 20,
+   "wallMs": 1263,
+   "lookups": 20,
+   "lookupMsTotal": 6,
+   "lookupsOver100ms": 0,
+   "lookupMsMax": 2,
+   "timerLagMaxMs": 11,
+   "timerLagTotalMs": 68,
+   "sent": 0,
+   "sentDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "sameOutput": true
+ },
+ "stream no context, no sessionKey": {
+  "base": {
+   "runs": 2,
+   "emitted": 20,
+   "wallMs": 192891,
+   "lookups": 20,
+   "lookupMsTotal": 191628,
+   "lookupsOver100ms": 20,
+   "lookupMsMax": 11900,
+   "timerLagMaxMs": 23162,
+   "timerLagTotalMs": 173462,
+   "sent": 18,
+   "sentDigest": "023fa284f5bbfd787ce47ab522d4fa1a1ccafa5bb431d74e4a642de66d60d342"
+  },
+  "patched": {
+   "runs": 2,
+   "emitted": 20,
+   "wallMs": 1278,
+   "lookups": 20,
+   "lookupMsTotal": 5,
+   "lookupsOver100ms": 0,
+   "lookupMsMax": 1,
+   "timerLagMaxMs": 6,
+   "timerLagTotalMs": 57,
+   "sent": 18,
+   "sentDigest": "023fa284f5bbfd787ce47ab522d4fa1a1ccafa5bb431d74e4a642de66d60d342"
+  },
+  "sameOutput": true
+ },
+ "stream invisible run cleared after emit": {
+  "base": {
+   "runs": 2,
+   "emitted": 20,
+   "wallMs": 245457,
+   "lookups": 20,
+   "lookupMsTotal": 244195,
+   "lookupsOver100ms": 20,
+   "lookupMsMax": 20941,
+   "timerLagMaxMs": 34936,
+   "timerLagTotalMs": 225557,
+   "sent": 0,
+   "sentDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "patched": {
+   "runs": 2,
+   "emitted": 20,
+   "wallMs": 1260,
+   "lookups": 20,
+   "lookupMsTotal": 6,
+   "lookupsOver100ms": 0,
+   "lookupMsMax": 4,
+   "timerLagMaxMs": 5,
+   "timerLagTotalMs": 44,
+   "sent": 0,
+   "sentDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "sameOutput": true
+ },
+ "maintenance equivalence": {
+  "tasks": 62,
+  "blockers": 43,
+  "blockerDiff": false,
+  "reconcileDifferences": 0,
+  "reconciled": {
+   "running": 43,
+   "lost: backing session missing": 16,
+   "lost: rsl wedged reason": 1,
+   "queued": 1,
+   "lost: Native subagent stopped reporting progress": 1
+  }
+ },
+ "maintenance switch off": {
+  "ms": 8728
+ },
+ "cost.base restart blockers (62 tasks)": {
+  "label": "base: getInspectableActiveTaskRestartBlockers",
+  "repeat": 3,
+  "msMedian": 9945.2,
+  "msMax": 10043.7,
+  "allocatedMBPerCall": 2674.6
+ },
+ "cost.patched restart blockers (62 tasks)": {
+  "label": "patched: getInspectableActiveTaskRestartBlockers",
+  "repeat": 30,
+  "msMedian": 55.4,
+  "msMax": 90.8,
+  "allocatedMBPerCall": 13.4
+ },
+ "_candidate": {
+  "id": "candidate-4207ba89-ac8c-42c4-a5df-cc86f3932783",
+  "ok": true,
+  "sourceCommit": "85eef9cf783208cb30e170253280ae2bb5147980",
+  "branch": "claude/run-session-lookup-exact",
+  "dirty": false,
+  "runtimeSha": "798e355b3c58bb5f3d637f0db30f0870e6d8e95a3e2bcadfd9e97e9219f810b8",
+  "totalServerMs": 2200109
+ }
+}

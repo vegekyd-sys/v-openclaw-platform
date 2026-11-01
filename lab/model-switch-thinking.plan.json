@@ -1,0 +1,25 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/model-switch-thinking/directive-handling.impl-CoR1-5xR.js",
+      "target": "openclaw/dist/directive-handling.impl-CoR1-5xR.js",
+      "before": "d0759e8925b33031661502017d0be04972168bd4b17da6254112b86ab719175a"
+    },
+    {
+      "source": "lab/release-files/model-switch-thinking/apply-session-model-selection-CJtWmAQJ.js",
+      "target": "openclaw/dist/apply-session-model-selection-CJtWmAQJ.js",
+      "before": "b83769d1e23f0a1f4f3ca9ab0eeb8f4ff9697f337469abdafb493095d4acfcd0"
+    },
+    {
+      "source": "lab/release-files/model-switch-thinking/sessions-patch-iR7MNInU.js",
+      "target": "openclaw/dist/sessions-patch-iR7MNInU.js",
+      "before": "78264539e088ae8bf356265db624c73ed5085b63c419a77ea6852d067ed9b36a"
+    },
+    {
+      "source": "lab/release-files/model-switch-thinking/harness-event-contract.mjs",
+      "target": "production-worker/harness-event-contract.mjs",
+      "before": "a25315d7fc782c2e7ac2c85739e281a42e8f39ad51e2eb1ee84bd24ee8fd1e4c"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "support": [
+    "lab/candidate/gateway-freeze-lookups-ab.mjs",
+    "lab/gateway-freeze-lookups.plan.json",
+    "lab/release-files/gateway-freeze-lookups/server-session-key-ZtX3Ble7.js",
+    "lab/release-files/gateway-freeze-lookups/task-registry.maintenance-C4nMaDY9.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "--expose-gc",
+    "lab/candidate/gateway-freeze-lookups-ab.mjs"
+  ],
+  "timeoutSeconds": 0,
+  "env": {
+    "FIXTURE_DIR": "/var/tmp/rsl-20261027",
+    "REPEAT": "3",
+    "SAMPLE": "30",
+    "STREAM_EVENTS": "10",
+    "STREAM_RUNS": "2",
+    "STREAM_RATE": "8"
+  }
+}

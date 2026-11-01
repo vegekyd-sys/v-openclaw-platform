@@ -1,0 +1,47 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/model-switch-thinking/directive-handling.impl-CoR1-5xR.js",
+      "target": "openclaw/dist/directive-handling.impl-CoR1-5xR.js",
+      "before": "d0759e8925b33031661502017d0be04972168bd4b17da6254112b86ab719175a",
+      "after": "6523693ea977accbab21c875579c37cc5ffcee1dd100690b5115a037885f36c0"
+    },
+    {
+      "source": "lab/release-files/model-switch-thinking/apply-session-model-selection-CJtWmAQJ.js",
+      "target": "openclaw/dist/apply-session-model-selection-CJtWmAQJ.js",
+      "before": "b83769d1e23f0a1f4f3ca9ab0eeb8f4ff9697f337469abdafb493095d4acfcd0",
+      "after": "819e5dad31618353034af1a462bb6cc25f652a7960d48fcfe5d4d0834da4e911"
+    },
+    {
+      "source": "lab/release-files/model-switch-thinking/sessions-patch-iR7MNInU.js",
+      "target": "openclaw/dist/sessions-patch-iR7MNInU.js",
+      "before": "78264539e088ae8bf356265db624c73ed5085b63c419a77ea6852d067ed9b36a",
+      "after": "bd6535af1db29ce629834670a8998156c9ea79b48495a5070786f6a53e50a6c5"
+    },
+    {
+      "source": "lab/release-files/model-switch-thinking/harness-event-contract.mjs",
+      "target": "production-worker/harness-event-contract.mjs",
+      "before": "a25315d7fc782c2e7ac2c85739e281a42e8f39ad51e2eb1ee84bd24ee8fd1e4c",
+      "after": "02457ef22d9849a619797390733b8c8a015bc2c52045251eb442636603013bf3"
+    },
+    {
+      "source": "lab/release-files/codex-turn-context-handoff/dist/thread-lifecycle-DAcEJ_Om.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js",
+      "before": "6a00e8c2c66789fc66b569503190a7cebaf82f6f839a254c24e28f23fb779943",
+      "after": "bdb000d570172024f7b4c2b1e6ae74706ec68368aa7d1736e2af94ab39b7f99a"
+    },
+    {
+      "source": "lab/release-files/codex-turn-context-handoff/dist/run-attempt-D1hJO4fX.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js",
+      "before": "d6f28b4aa56027d95b34cd1ec8da0dd6cb7669f0e714672df4fb0894f5fcebaa",
+      "after": "71a11b784e37c14eecd4ab54bc58947edf5ac5a1e5beb3fb6e1482e53e07f57a"
+    },
+    {
+      "source": "lab/release-files/codex-turn-context-handoff/dist/compact-_t0HQrUS.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/compact-_t0HQrUS.js",
+      "before": "278c85051bb8cf0932c1409d860fc0fac63bacd619b9998e29c7ea7e0afb6406",
+      "after": "4af4b7036884e0f179d21e80e57bcf3c4ab376dafb8030938a0e039926e6f206"
+    }
+  ]
+}

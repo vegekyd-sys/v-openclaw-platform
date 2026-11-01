@@ -1,0 +1,24 @@
+{
+  "support": [
+    "lab/candidate/workboard-sweep-bounded-ab.mjs",
+    "lab/patch-workboard-sweep-bounded.mjs",
+    "lab/workboard-sweep-bounded.plan.json",
+    "lab/release-files/workboard-sweep-bounded/v-session-entries-matching.mjs",
+    "lab/release-files/workboard-sweep-bounded/session-utils-list-BUP03AzS.js",
+    "lab/release-files/workboard-sweep-bounded/sessions-read-C6mAMxyQ.js",
+    "lab/release-files/workboard-sweep-bounded/sqlite-store-CH-caj1l.js",
+    "lab/release-files/workboard-sweep-bounded/runtime-api-1CCazqtv.js",
+    "lab/release-files/workboard-sweep-bounded/extensions/workboard/index.js"
+  ],
+  "files": [
+    { "source": "lab/release-files/workboard-sweep-bounded/v-session-entries-matching.mjs", "target": "openclaw/dist/v-session-entries-matching.mjs", "before": "d2d2c2cd7b33622fabcd1ab52ec003d2bf471735c64b49030294a76f27af7e02" },
+    { "source": "lab/release-files/workboard-sweep-bounded/session-utils-list-BUP03AzS.js", "target": "openclaw/dist/session-utils-list-BUP03AzS.js", "before": "a6e3d70fba29547fa1a9e303216fb0743798b8b71896c9e3a2eaaa5f5fc8f0a7" },
+    { "source": "lab/release-files/workboard-sweep-bounded/sessions-read-C6mAMxyQ.js", "target": "openclaw/dist/sessions-read-C6mAMxyQ.js", "before": "eb18ffa53ef8ff816f42010572e9cef083e575c6f16dc218b53f5866a7616a7a" },
+    { "source": "lab/release-files/workboard-sweep-bounded/sqlite-store-CH-caj1l.js", "target": "openclaw/dist/sqlite-store-CH-caj1l.js", "before": "12c1f54644fb13a2babe6d043af32b7d097b71eca9c5cf8ef77d259a935d9b28" },
+    { "source": "lab/release-files/workboard-sweep-bounded/runtime-api-1CCazqtv.js", "target": "openclaw/dist/runtime-api-1CCazqtv.js", "before": "3bc03ce67684e78c753e73acecc21aefba43d8eb5e614f89f9295a7c82f96985" },
+    { "source": "lab/release-files/workboard-sweep-bounded/extensions/workboard/index.js", "target": "openclaw/dist/extensions/workboard/index.js", "before": "610d45feca74199c313a83640a520c6b4108e7a0390e4b8ac4612106b9330804" }
+  ],
+  "command": ["/opt/vlab/node-v22.23.1-linux-x64/bin/node", "--expose-gc", "--max-old-space-size=8192", "lab/candidate/workboard-sweep-bounded-ab.mjs"],
+  "timeoutSeconds": 0,
+  "env": { "FIXTURE_DIR": "/var/tmp/wsb-20261027", "REPEAT": "3" }
+}

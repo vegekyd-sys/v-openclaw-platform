@@ -1,0 +1,17 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/gateway-freeze-lookups/server-session-key-ZtX3Ble7.js",
+      "target": "openclaw/dist/server-session-key-ZtX3Ble7.js",
+      "before": "30a0e1f9884da81e4c4a3d22fd69a025552c8b8419597c940cfe46e35b3cb5ae",
+      "after": "6310b72b4fe21d37e7e137ec33f29497519c12fef8a3fc3661ced869654cf021"
+    },
+    {
+      "source": "lab/release-files/gateway-freeze-lookups/task-registry.maintenance-C4nMaDY9.js",
+      "target": "openclaw/dist/task-registry.maintenance-C4nMaDY9.js",
+      "before": "b6fe747f864dd451d2740c336d287794c2e77ded31c78a6beed5b5cc5f2ad9bc",
+      "after": "cd4a70c3b909d6d8e21a26a8fce250b281a67f76c5d4779f91d90d8b7e4671d3"
+    }
+  ]
+}
