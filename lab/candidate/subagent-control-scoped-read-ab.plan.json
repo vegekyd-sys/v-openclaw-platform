@@ -1,0 +1,31 @@
+{
+  "support": [
+    "lab/candidate/subagent-control-scoped-read-ab.mjs"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/subagent-control-scoped-read/subagent-control-scope-DA4oSvgr.js",
+      "target": "openclaw/dist/subagent-control-scope-DA4oSvgr.js",
+      "before": "feb68aa7963a2a571b22a2b53976957ba293eab009399b9ecb1286e69e3a1c02"
+    },
+    {
+      "source": "lab/release-files/subagent-control-scoped-read/plugin-sdk/agent-harness-task-runtime.js",
+      "target": "openclaw/dist/plugin-sdk/agent-harness-task-runtime.js",
+      "before": "50dc439b5cbb8a16860aab0bd8b4f4fd485f16a246f881820be5c0ea9c0754e3"
+    },
+    {
+      "source": "lab/release-files/subagent-control-scoped-read/v-subagent-control-scoped-runs.mjs",
+      "target": "openclaw/dist/v-subagent-control-scoped-runs.mjs"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/subagent-control-scoped-read-ab.mjs"
+  ],
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity",
+  "env": {
+    "FIXTURE": "/var/tmp/csr-20261101/topo.json.gz",
+    "CHILD_SAMPLE": "400"
+  }
+}

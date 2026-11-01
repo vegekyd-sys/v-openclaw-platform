@@ -1,0 +1,146 @@
+busy 47047
+20529  idle
+11568 25% session_status 工具
+10704 23% 其他
+9828 21% GC
+6717 14% 事件广播里的会话快照
+2918 6% 写事务
+2545 5% Codex 回合开始的子 agent 监控
+1480 3% Codex 回合收尾
+750 2% Codex 回合启动其他
+410 1% 脱敏
+70 0% workboard/lifecycle
+56 0% 钩子请求处理
+--other top
+1630 (program)
+595 applySessionEntryLifecycleMutation>readSessionEntryCount
+529 prepareCodexAttemptTools>buildDynamicTools
+340 runProgressCallback>shouldForwardProgressCallback
+283 readTranscriptUpdateLifecycleOwner>loadSessionEntryReadOnly
+274 reconcile>readWorkboardLifecycleLinks
+233 runEmbeddedAgentEntry>runWithModelFallback
+186 processImmediate>drainOne
+184 listBoards>listBoardAggregates
+180 processImmediate>runNextTicks
+159 resolveReplyDirectives>listSkillCommandsForWorkspace
+134 enqueueNotification>handleNotification
+115 executePreparedReplyAgentRun>traceAgentPhase
+108 prepareCodexThreadLifecyclePreflight>measureSync
+total ms 67575 idle ms 20529
+--self
+20529 (idle)@:-1
+9828 (garbage collector)@:-1
+6115 (anon)@kysely-sync-DKYGT267.js:144
+4475 next@:-1
+2008 safeParseJson@json-coercion-ighRFv8Y.js:3
+1652 structuredClone@js_transferable:111
+1630 (program)@:-1
+1470 all@:-1
+1176 parseSqliteSessionEntryRecord@openclaw-agent-db-maintenance-DYSkzMMg.js:815
+1003 buildSingleRowSubagentRunIndex@session-utils-list-BUP03AzS.js:779
+933 (anon)@task-registry-B4-CJZk7.js:915
+760 runSqliteTransactionSync@node-sqlite-CL-d6drd.js:302
+735 loadGatewaySessionSnapshot@session-utils-list-BUP03AzS.js:1271
+628 read@subagent-registry.store.sqlite-hzGu4QSk.js:435
+599 redactRegisteredSecretValues@secret-redaction-registry-BOLC6DkF.js:38
+382 exec@:-1
+345 prepare@:-1
+314 writev@:-1
+264 isVitestRuntimeEnv@test-runtime-env-DQDRzsLt.js:2
+259 stableCostFingerprintValue@usage-format-G8w2sGOz.js:249
+251 readdir@:-1
+233 cloneTaskRecord@task-registry-activity-DSlVVJwD.js:12
+231 lstat@:-1
+214 modelCatalogPricingFingerprint@usage-format-G8w2sGOz.js:131
+195 couldMatchDefaultRedactPatterns@redact-Df68iObN.js:1256
+194 normalizePluginEntries@config-normalization-shared-Ci376FnC.js:177
+183 run@:-1
+175 openSync@node:fs:558
+161 get@:-1
+161 iterateSqliteQuerySync@kysely-sync-DKYGT267.js:191
+159 buildControlledSubagentRunsReadContext@subagent-control-scope-DA4oSvgr.js:61
+153 getSubagentRunsSnapshot@subagent-registry-read-UaDFTyfW.js:603
+140 structuredClone@:-1
+134 listLifecycleMatchLinks@sqlite-store-CH-caj1l.js:1044
+130 sqliteSessionEntriesEqual@session-accessor.sqlite-entry-store-VfW3gyuj.js:221
+130 serializeToolInputSchema@tool-schema-json-projection-BtZiml7r.mjs:44
+117 readSessionEntryCount@session-accessor.sqlite-entry-store-VfW3gyuj.js:1434
+115 listTaskRecords@task-registry-B4-CJZk7.js:912
+107 readCardLifecycleMatchLink@sqlite-store-CH-caj1l.js:872
+103 visitNode@operation-node-visitor.js:109
+101 existsSync@:-1
+99 executeWithCachedStatement@kysely-sync-DKYGT267.js:98
+93 freeze@object-utils.js:61
+90 loadSubagentRegistryFromSqlite@subagent-registry.store.sqlite-hzGu4QSk.js:503
+89 resolve@node:path:1259
+--inclusive
+67575 (root)@:-1
+20529 (idle)@:-1
+11813 runMicrotasks@:-1
+11568 buildStatusReplyParts@status-text-DIfQLEZ2.js:230
+10829 processTicksAndRejections@task_queues:70
+10522 buildControlledSubagentRunsReadContext@subagent-control-scope-DA4oSvgr.js:61
+10410 executeSqliteQuerySync@kysely-sync-DKYGT267.js:173
+10221 getSubagentRunsSnapshotForRead@subagent-registry-read-UaDFTyfW.js:619
+10205 getSubagentRunsSnapshot@subagent-registry-read-UaDFTyfW.js:603
+10190 executeCompiledSqliteQuerySync@kysely-sync-DKYGT267.js:141
+10188 executeWithCachedStatement@kysely-sync-DKYGT267.js:98
+10052 loadPersistedSubagentRunsForRead@subagent-registry-read-UaDFTyfW.js:558
+10003 loadSubagentRegistryFromSqlite@subagent-registry.store.sqlite-hzGu4QSk.js:503
+9920 (anon)@kysely-sync-DKYGT267.js:144
+9828 (garbage collector)@:-1
+7672 readSubagentRegistryRows@subagent-registry.store.sqlite-hzGu4QSk.js:302
+5030 runSqliteTransactionSync@node-sqlite-CL-d6drd.js:302
+5019 loadGatewaySessionSnapshot@session-utils-list-BUP03AzS.js:1271
+4851 run@async_context_frame:28
+4475 next@:-1
+4045 (anon)@server-runtime-subscriptions-DBC0HRs-.js:1175
+3599 handleEvent@server-chat-Mh_L0_2e.js:751
+3447 runCodexAppServerAttempt@run-attempt-D1hJO4fX.js:7588
+3137 withOpenClawAgentDatabaseReadOnly@openclaw-agent-db-readonly-wb-jdztx.js:81
+3034 withSqlitePostCommitPublications@openclaw-state-db-Bh3Bq87y.js:167
+3029 runSqliteImmediateTransactionSync@node-sqlite-CL-d6drd.js:371
+2918 runOpenClawAgentWriteTransaction@openclaw-agent-db-CUTe8BX6.js:281
+2827 withAgentDatabaseProcessLeaseSync@agent-db-process-coordinator.mjs:96
+2733 buildSessionEventSnapshot@server-chat-Mh_L0_2e.js:290
+2688 loadGatewaySessionLifecycleSnapshot@session-utils-list-BUP03AzS.js:1310
+2687 runWithHeldLease@agent-db-process-coordinator.mjs:11
+2677 run@openclaw-agent-db-CUTe8BX6.js:287
+2677 withSqliteBeginContentionRetrySync@sqlite-begin-contention-retry.mjs:28
+2677 (anon)@openclaw-agent-db-CUTe8BX6.js:285
+2677 runTransaction@openclaw-agent-db-CUTe8BX6.js:285
+2591 buildSingleRowSubagentRunIndex@session-utils-list-BUP03AzS.js:779
+2545 listTaskRecords@agent-harness-task-runtime.js:67
+2545 reconcileTaskRowsForParent@native-subagent-monitor-CnH147jH.js:3088
+2545 registerParent@native-subagent-monitor-CnH147jH.js:2164
+2545 registerMonitor@native-subagent-monitor-CnH147jH.js:2065
+2545 registerNativeSubagentMonitor@run-attempt-D1hJO4fX.js:5093
+2545 createCodexAttemptNotificationController@run-attempt-D1hJO4fX.js:4557
+2529 handleTranscriptUpdateBroadcast@server-session-events-B8swmjJ9.js:61
+2499 listTaskRecords@task-registry-B4-CJZk7.js:912
+2436 operation@openclaw-agent-db-CUTe8BX6.js:293
+2436 (anon)@sqlite-begin-contention-retry.mjs:37
+2436 runSqliteImmediateTransactionSync.busyTimeoutMs@openclaw-agent-db-CUTe8BX6.js:287
+2359 (anon)@task-registry-B4-CJZk7.js:915
+2334 loadGatewaySessionRow@session-utils-list-BUP03AzS.js:1313
+2241 rowToSubagentRunRecord@subagent-registry.store.sqlite-hzGu4QSk.js:248
+2009 runSqliteDeferredTransactionSync@node-sqlite-CL-d6drd.js:368
+2008 safeParseJson@json-coercion-ighRFv8Y.js:3
+2002 parseJson@subagent-registry.store.sqlite-hzGu4QSk.js:244
+1946 resolveSessionEntry@session-accessor.sqlite-entry-BlklNPKQ.js:320
+1873 readSessionEntryRow@session-accessor.sqlite-entry-store-VfW3gyuj.js:1376
+1871 readSessionEntryRowUnchecked@session-accessor.sqlite-entry-store-VfW3gyuj.js:1380
+1848 parseReadableSqliteSessionEntryRow@session-accessor.sqlite-entry-store-VfW3gyuj.js:1357
+1799 structuredClone@js_transferable:111
+1630 (program)@:-1
+1599 read@session-accessor.sqlite-entry-BlklNPKQ.js:322
+1592 loadSessionEntryWithMode@session-utils-store-Dlphca2N.js:464
+1586 loadSubagentRunTreeFromSqlite@subagent-registry.store.sqlite-hzGu4QSk.js:431
+1512 cloneTaskRecord@task-registry-activity-DSlVVJwD.js:12
+1497 resolveGatewaySessionStoreTargetWithStore@session-utils-store-Dlphca2N.js:310
+1482 loadGatewaySessionEntryReadOnly@session-utils-store-Dlphca2N.js:499
+1480 finalizeCodexAttempt@run-attempt-D1hJO4fX.js:4059
+1470 all@:-1
+1424 processTimers@timers:505
+1409 listLifecycleCandidates@runtime-api-1CCazqtv.js:1914
+1396 (anon)@session-accessor.sqlite-entry-BlklNPKQ.js:753
