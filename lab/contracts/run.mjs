@@ -4,7 +4,7 @@
 // a contract stock also passes never reached the patched path). A contract with
 // `parity: true` instead returns a value that must be identical on V and the fork.
 //
-// usage: run.mjs --targets <dir> [--only <substring>] [--on stock,v,fork-c5] [--out <file>] [--slow]
+// usage: run.mjs --targets <dir> [--only <substring>] [--on stock,v,fork-c5] [--out <file>] [--slow] [--cases cases-c3]
 import { readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -12,14 +12,14 @@ import { parseArgs } from "node:util";
 import { boot } from "./lib/harness.mjs";
 
 const { values: a } = parseArgs({
-  options: { targets: { type: "string" }, only: { type: "string" }, on: { type: "string" }, out: { type: "string" }, slow: { type: "boolean" } },
+  options: { targets: { type: "string" }, only: { type: "string" }, on: { type: "string" }, out: { type: "string" }, slow: { type: "boolean" }, cases: { type: "string" } },
 });
 if (!a.targets) throw new Error("--targets is required");
 const on = (a.on ?? "stock,v,fork-c5").split(",");
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cases = [];
-for (const f of readdirSync(path.join(here, "cases")).sort()) {
-  const mod = await import(pathToFileURL(path.join(here, "cases", f)));
+for (const f of readdirSync(path.join(here, a.cases ?? "cases")).sort()) {
+  const mod = await import(pathToFileURL(path.join(here, a.cases ?? "cases", f)));
   const list = Array.isArray(mod.default) ? mod.default : [mod.default];
   cases.push(...list.filter((c) => (!a.only || c.id.includes(a.only)) && (a.slow || a.only || !c.slow)));
 }

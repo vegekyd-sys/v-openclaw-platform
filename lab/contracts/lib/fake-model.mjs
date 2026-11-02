@@ -8,6 +8,57 @@ export function lastToolResult(body) {
   return body.messages.findLast((m) => m.role === "tool");
 }
 
+/** The same question for a Responses request: the newest tool output in `input`. */
+export function lastFunctionOutput(body) {
+  return (body.input ?? []).findLast((i) => i.type === "function_call_output");
+}
+
+/** OpenAI Responses over SSE, the wire a real Codex app-server speaks. Same script shape as chat completions. */
+async function serveResponses(req, res, body, raw, script, requests) {
+  // Codex tries a WebSocket first; those upgrade attempts are not model calls.
+  if (req.method !== "POST") {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
+  requests.push({ body, bytes: raw.length, wire: "responses" });
+  const out = (await script.current(body, requests.length - 1)) ?? { text: "ok" };
+  if (out.httpStatus) {
+    res.writeHead(out.httpStatus, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: { message: out.errorMessage ?? "scripted", type: "server_error", code: out.errorCode } }));
+    return;
+  }
+  const id = `resp_${requests.length}`;
+  const send = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
+  res.writeHead(200, { "content-type": "text/event-stream" });
+  send("response.created", { response: { id, object: "response", status: "in_progress", model: body.model, output: [] } });
+  const output = [];
+  let index = 0;
+  for (const phase of out.commentary ? ["commentary"] : []) {
+    const item = { id: `msg_c${requests.length}`, type: "message", role: "assistant", phase, content: [{ type: "output_text", text: out.commentary, annotations: [] }] };
+    send("response.output_item.added", { output_index: index, item: { ...item, status: "in_progress", content: [] } });
+    send("response.output_text.delta", { item_id: item.id, output_index: index, content_index: 0, delta: out.commentary });
+    send("response.output_item.done", { output_index: index++, item });
+    output.push(item);
+  }
+  const text = out.text ?? out.chunks?.join("");
+  if (text) {
+    const itemId = `msg_${requests.length}`;
+    send("response.output_item.added", { output_index: index, item: { id: itemId, type: "message", role: "assistant", status: "in_progress", content: [] } });
+    for (const delta of out.chunks ?? [text]) send("response.output_text.delta", { item_id: itemId, output_index: index, content_index: 0, delta });
+    const item = { id: itemId, type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] };
+    send("response.output_item.done", { output_index: index++, item });
+    output.push(item);
+  }
+  (out.toolCalls ?? []).forEach((tc, i) => {
+    const item = { id: `fc_${requests.length}_${i}`, type: "function_call", status: "completed", call_id: tc.id ?? `call_${requests.length}_${i}`, name: tc.name, arguments: JSON.stringify(tc.args ?? {}) };
+    send("response.output_item.done", { output_index: index++, item });
+    output.push(item);
+  });
+  send("response.completed", { response: { id, object: "response", status: "completed", model: body.model, output, usage: out.usage ?? { input_tokens: 10, output_tokens: 2, total_tokens: 12, input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } } });
+  res.end();
+}
+
 export async function startFakeModel(script) {
   const requests = [];
   const server = createServer(async (req, res) => {
@@ -23,6 +74,10 @@ export async function startFakeModel(script) {
       const inputs = Array.isArray(body.input) ? body.input : [body.input];
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ object: "list", model: body.model, data: inputs.map((_, index) => ({ object: "embedding", index, embedding: [0.1, 0.2, 0.3, 0.4] })), usage: { prompt_tokens: 1, total_tokens: 1 } }));
+      return;
+    }
+    if (req.url.includes("/responses")) {
+      await serveResponses(req, res, body, raw, script, requests);
       return;
     }
     if (!req.url.includes("/chat/completions")) {
