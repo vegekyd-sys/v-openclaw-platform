@@ -32,10 +32,11 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { captured, captureSourceForTarget } from './lib/runtime-components.mjs';
+import { defaultVlabTool } from './lib/vlab-tool.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const repo = resolve(dirname(new URL(import.meta.url).pathname), '..');
-const VLAB_TOOL = args.vlabTool ?? '/Users/tianyicai/vlab-dev/lab/vlab.mjs';
+const VLAB_TOOL = args.vlabTool ?? defaultVlabTool();
 const DEV = dirname(dirname(VLAB_TOOL));
 if (!args.name || !args.owner) usage('--name and --owner are required');
 const id = args.id ?? `sync-from-v-${args.name}`.replace(/[^a-z0-9-]/gi, '-').toLowerCase();

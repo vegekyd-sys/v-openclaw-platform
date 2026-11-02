@@ -45,6 +45,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { COMPONENTS, captureRuns, presentCaptureRuns, resolveVDirs, vPathForTarget } from './lib/runtime-components.mjs';
 import { feishuVoiceLayoutRemote } from './lib/feishu-voice-layout.mjs';
+import { defaultVlabTool } from './lib/vlab-tool.mjs';
 
 // H5-only releases keep the Gateway runtime/current metadata unchanged. The
 // entry controller requires a frozen shared H5 proof and an idle voice entry.
@@ -139,7 +140,7 @@ const args = parseArgs(argv);
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const V = args.vHost ?? 'v';
 const VLAB = args.vlabHost ?? 'vlab91';
-const VLAB_TOOL = args.vlabTool ?? '/Users/tianyicai/vlab-dev/lab/vlab.mjs';
+const VLAB_TOOL = args.vlabTool ?? defaultVlabTool();
 const RELEASES = '/srv/vlab-production-mirror/labs/shared-workflow/releases';
 const V_UNIT = 'openclaw-gateway.service';
 const V_NPM_PROJECTS = args.vNpmProjects ?? '/home/openclaw/.openclaw/npm/projects';
