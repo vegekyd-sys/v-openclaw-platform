@@ -10,6 +10,11 @@
       "source": "lab/release-files/luna-fallback-takeover/index.mjs",
       "target": "production-worker/index.mjs",
       "before": "e657c62b022692e4f740b0914b8ac8cdc291af58c8f3fa8f1b45d812a7b9ff0d"
+    },
+    {
+      "source": "lab/release-files/luna-fallback-takeover/openai-chatgpt-provider-BApw3_oy.js",
+      "target": "openclaw/dist/openai-chatgpt-provider-BApw3_oy.js",
+      "before": "46bc8cc01badf720ab5d3443bf66cc2885b998f90a072b3588d6694566935df2"
     }
   ]
 }

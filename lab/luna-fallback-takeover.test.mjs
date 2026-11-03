@@ -72,3 +72,14 @@ test('anything the user could have seen or that had effects stays with the Worke
   assert.equal(silentModelTimeout(silentAttempt({ currentAttemptAssistant: { role: 'assistant', stopReason: 'aborted', errorMessage: 'Request was aborted' } })), undefined, 'other abort');
   assert.equal(silentModelTimeout(silentAttempt({ currentAttemptAssistant: { role: 'assistant', stopReason: 'stop', content: [{ type: 'text', text: 'ok' }] } })), undefined);
 });
+
+test('only gpt-6-luna gets the larger context budget', () => {
+  const src = read('openai-chatgpt-provider-BApw3_oy.js');
+  const entry = (id) => {
+    const at = src.indexOf(`if (lower === "${id}") return normalizeModelCompat({`);
+    assert(at > 0, `${id} entry`);
+    return src.slice(at, src.indexOf('});', at));
+  };
+  assert.match(entry('gpt-6-luna'), /contextWindow: 1050000, contextTokens: 850000, maxTokens: 128000/u);
+  for (const id of ['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-astra']) assert.match(entry(id), /contextTokens: 272000/u, id);
+});

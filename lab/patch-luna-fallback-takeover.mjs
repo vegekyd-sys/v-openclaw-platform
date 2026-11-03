@@ -28,6 +28,14 @@ import assert from 'node:assert/strict';
 //                   reports for a hung request, so promptTimeoutFallbackSafe applies. Without a
 //                   fallback (a user-selected model) the Gateway surfaces it as it does today for
 //                   a hung request.
+//   chatgpt provider gpt-6-luna's context budget 272000 -> 850000. The 272000 came with V's own
+//                   synthesized GPT-6 entries (v91-gpt6-sol-luna-v1, upstream's ChatGPT default).
+//                   The subscription backend took 454,831 / 491,681 / 520,029 / 806,326 input tokens
+//                   and refused ~980k ("Your input exceeds the context window"), matching the Codex
+//                   catalog's max_context_window 872000 (shared VLab, real account, 2026-11-03).
+//                   A models.providers.openai.models row cannot raise it: on the vlab-worker path an
+//                   authored contextTokens is only a cap. With 272000 every fallback to luna over
+//                   ~252k tokens compacted first (20-100 s, and the session stays compacted).
 
 export const MARKER = 'luna-fallback-takeover-v1';
 
@@ -100,7 +108,24 @@ function readSilentModelTimeout(attempt, abortSignal) {
   return out;
 }
 
+// core/dist/openai-chatgpt-provider-BApw3_oy.js
+export const LUNA_CONTEXT_TOKENS = 850000;
+export function patchChatgptProvider(source) {
+  guard(source);
+  const luna = `	if (lower === "gpt-6-luna") return normalizeModelCompat({
+		id: trimmedModelId, name: "GPT-6 Luna", provider: PROVIDER_ID,
+		api: "openai-chatgpt-responses", baseUrl: synthBaseUrl,
+		reasoning: true, input: ["text", "image"],
+		contextWindow: 1050000, contextTokens: 272000, maxTokens: 128000,
+`;
+  return replaceExactlyOnce(source, luna, luna.replace(
+    '		contextWindow: 1050000, contextTokens: 272000, maxTokens: 128000,\n',
+    `		// ${MARKER}: the subscription takes luna requests up to its 872k window
+		contextWindow: 1050000, contextTokens: ${LUNA_CONTEXT_TOKENS}, maxTokens: 128000,\n`), 'gpt-6-luna entry');
+}
+
 export const FILES = [
   { name: 'embedded-agent-DaSvA-Yk.js', base: 'core/dist', target: 'openclaw/dist', before: '88a9a95e96af39eea5753ae75b0952fa216c9a83c99d876c24dc2b44c3e3ac86', patch: patchEmbeddedAgent },
   { name: 'index.mjs', base: 'worker', target: 'production-worker', before: 'e657c62b022692e4f740b0914b8ac8cdc291af58c8f3fa8f1b45d812a7b9ff0d', patch: patchWorkerIndex },
+  { name: 'openai-chatgpt-provider-BApw3_oy.js', base: 'core/dist', target: 'openclaw/dist', before: '46bc8cc01badf720ab5d3443bf66cc2885b998f90a072b3588d6694566935df2', patch: patchChatgptProvider },
 ];
