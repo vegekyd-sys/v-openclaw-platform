@@ -11,6 +11,36 @@
 
 ---
 
+## v2026.9.1-db91.6-luna-fallback-takeover-20261104
+
+上线：2026-11-04 00:16 CST  ·  tag `v2026.9.1-db91.6-luna-fallback-takeover-20261104`
+
+**摘要**：DeepSeek 出错（503/过载）时直接切到备用 gpt-6-luna，不再换 key 重试 DeepSeek；DeepSeek 卡住不回也会按超时切过去。luna 的会话预算从 27.2 万抬到 85 万，worker 回合后压缩改按本回合预算判断（之前 worker 查不到 luna，按默认 20 万在 18 万就压缩）。11/03 16:53–17:47 DeepSeek Flash 503 期间约 43 个回合失败，这次修的是其中「换 key 重试」和「卡住报 aborted」两类。
+
+激活：2026-11-04 00:14 CST 重启（请求 `20261104-001354-ceac`，00:16:23 起来、00:17:41 就绪：stream 3/3、Worker 5/5，`postChecks` 全 0）。V 上 4 个文件哈希与本节一致，parity ALIGNED。
+
+上 V 后验收（测试群 `oc_260a…`）：`/luna` 后真实回复 `LUNA-V-OK openai/gpt-6-luna`；`/deepseek` 后 exec 工具回合回复 `DS-V-OK VM-8-2-ubuntu 2026-11-04 01:47:52 CST`；之后切回 `/vcodex`。共享 VLab 上真实账号：luna 会话 22.2 万、40.6 万 token 都不压缩且两个暗号都答对（只有 #543 时 22.5 万即被压到 4 万）。
+
+未验证：DeepSeek 503/卡住→luna 只在 candidate 里用替身验证过（c1d0a1d5、87f1e6b5、64d56e34、7f25adfc、ba3e0630、8f1d9747），V 和共享 VLab 都没人为制造故障；V 上的大会话不压缩没测（飞书消息装不下几十万 token），依据是字节与共享 VLab 一致。
+
+已知遗留：手动切到 luna 的**第一回合**，Gateway 回合前检查按目录缓存 272000 判断（阈值 25.2 万），超过的会话会先压缩一次，第二回合起按 85 万；DeepSeek→luna 回退不受影响。sessions.list、/status 对 luna 一直显示 272000，是 Gateway 现算的展示值，不是 worker 用的存储值。工具调用之后才 503 的回合（C 类）和用户手选 v4-pro 的回合（E 类）没修。
+
+回退：`promote-to-v.mjs --undo /opt/v-release-backups/v2026.9.1-db91.6-luna-fallback-takeover-20261104` 后重启。来源：[PR #543](https://github.com/vegekyd-sys/v-openclaw-platform/pull/543)、[PR #544](https://github.com/vegekyd-sys/v-openclaw-platform/pull/544)。
+
+相对上一版 `v2026.9.1-db91.6-codex-context-batch-20261101`：4 个文件变化。
+
+**经 VLab 发版 `luna-fallback-takeover-20261103-v2`**（dc1e0248-release，dev `9309c767`）
+> 验收：共享 VLab 验收 2026-11-03 21:43-21:47 CST（#543+#544，dev 9309c767）。DeepSeek 默认路径：vlab-dev-luna-v2-ds 会话 exec 工具调用 hostname/date 回复正确。luna 大会话：vlab-dev-luna-v2-big 会话 /model openai/gpt-6-luna，真实账号，V1 8 万 emoji input 222,060 答对 LUNA-ACCEPT-V1-OK、回合后不压缩（totalTokens 225,772，compactionCheckpointCount 无）；V2 再 8 万 emoji，答对 V1+V2 两个暗号，totalTokens 405,804 仍不压缩。对照：同一测试在只部署 #543 时回复后 auto-threshold 压缩到 40,524（vla…
+- `core` agent-runner-memory-7VF-zwNt.js  befc094d → a7a2a568
+- `core` embedded-agent-DaSvA-Yk.js  88a9a95e → 21df02d9
+- `core` openai-chatgpt-provider-BApw3_oy.js  46bc8cc0 → 38b149c1
+- `worker` index.mjs  e657c62b → 1bf070dc
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #544 fix(memory-flush): worker 里的回合后压缩按本回合预算判断（luna 回复后不再被 20 万默认值压缩）
+- #543 fix(fallback): DeepSeek 故障时让 luna 接住大会话（跳过同供应商轮换 + luna 预算 85 万）
+- #540 feat(ops): 让 V 能在自己身上跑发布流程
+
 ## v2026.9.1-db91.6-codex-context-batch-20261101
 
 上线：2026-11-01 13:35 CST  ·  tag `v2026.9.1-db91.6-codex-context-batch-20261101`
