@@ -114,3 +114,28 @@ V 上 luna 的元数据是我们自己的补丁 `v91-gpt6-sol-luna-v1` 写死的
 - **`compaction.model`。** 回合内的压缩兜底不受它影响（先用回合模型）。它只影响独立压缩路径；要不要删掉这个显式设置、让独立压缩也跟随回合模型和 fallbacks，可以另议，本 PR 不改。
 - **挂起要等 2×`timeoutSeconds`。** V 的 DeepSeek 是 90 s，回 200 后挂起要约 3 分钟才切。可以调低，但会误伤正常的长推理首 token。
 - **压缩是永久的。** luna 接手大会话时会话被压缩，DeepSeek 恢复后也回不到原始历史。这是 OpenClaw 的设计。
+
+## 7. 更正（11/03 晚）：#543 之后 luna 仍在回复后被压缩
+
+共享 VLab 验收（#543 已部署）：`/model openai/gpt-6-luna` 后发约 22 万 token，luna 正常回答（input 222,057），随后 `auto-threshold` 压缩到 40,524。第 5 节 B 臂「不压缩」的结论**只在有配置行时成立**：替身 `lunastub` 的配置行自带 `contextTokens`，掩盖了下面的问题。
+
+**阈值从哪来**（candidate 打开 `OPENCLAW_LOG_LEVEL=debug`，fallback 用真实的 `openai/gpt-6-luna`：forward-compat 条目 + 模型目录，只把 baseUrl 指到替身、OAuth 换成假档案）：
+
+| 检查 | 进程 | 日志里的窗口 / 阈值 | 来源 |
+|---|---|---|---|
+| 回合内预检 | Gateway / worker | 85 万 | 运行时模型的 `contextTokens`（#543 的 dist） |
+| 回合前 `preflightCompaction`、`memoryFlush` | Gateway | 272000 / 252000（会话首个 luna 回合），之后 850000 | 目录缓存取最小值（订阅目录 luna `context_window 272000`） |
+| 回合后 `preflightCompaction`、`memoryFlush` | **worker** | **200000 / 180000** | worker 从不加载目录缓存，查不到就回落默认 20 万 |
+
+luna 替身按真实后端报 usage 22.5 万时，worker 回合后日志：`preflightCompaction triggered … tokenCount=225000 threshold=180000 trigger=tokens`，与共享 VLab 一致。所有跑在 worker 里、没有配置行的模型都受影响；DeepSeek 有配置行，不受影响。
+
+**修复**（`session-budget-maintenance-v1`，`lab/patch-session-budget-maintenance.mjs`，1 个文件 `openclaw/dist/agent-runner-memory-7VF-zwNt.js`）：回合前/回合后压缩和 memory flush 的窗口，优先用会话条目里记录的本回合预算（`contextTokens`，luna 回合后是 850000），前提是条目的模型和 provider 就是正在维护的那个；否则照旧查表、回落 20 万。源码：versa `b61c13eb`（`versa/port-session-budget-maintenance-20261103`），新测试去掉源码改动后失败。
+
+| 场景（luna usage 22.5 万） | B（dev，#543） | D（#543 + 本修复） |
+|---|---|---|
+| 手动 `/luna`，chat.send | worker 回合后阈值 18 万 → 压缩（225000→40465） | 阈值 83 万，不压缩 |
+| DeepSeek 503 → luna 回退 | worker 回合后阈值 18 万 → 压缩 | 阈值 83 万，不压缩 |
+
+candidate-ba3e0630（B/D）、8f1d9747（B/C）。C 臂（#543 + luna 配置行）在 candidate 里同样不压缩，但共享 VLab 上同一行配置没有生效，原因未查清；本修复不依赖配置行。
+
+剩余：手动切到 luna 的**第一个**回合，Gateway 回合前检查还拿不到会话里的 luna 预算（条目记的是上一个模型），按目录 272k 判断（阈值 25.2 万）；从第二回合起用 85 万。DeepSeek → luna 回退不受影响（回合前按会话模型 DeepSeek 判断）。
