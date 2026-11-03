@@ -1,9 +1,9 @@
 // Candidate for lab/release-files/luna-fallback-takeover (2026-11-03): when DeepSeek fails, does the
-// fallback model (gpt-6-luna, 272k window) take over a ~484k-token session and answer?
+// fallback model (gpt-6-luna) take over a ~580k-token session and answer?
 //
 // V 2026-11-03 16:53-17:47: turns that reached luna all finished (mid-turn precheck compacted
 // 443k-503k sessions), but most failing turns never reached it. This candidate replays the three
-// DeepSeek behaviours seen that day on the big mirrored session (lab/candidate/model-switch-fallback.mjs),
+// DeepSeek behaviours seen that day on a big mirrored session (copied as in lab/candidate/model-switch-fallback.mjs),
 // with V's model, fallback and compaction setup, in arms
 //   A = the runtime's live bytes (checked equal to V's before shas)
 //   B = the same runtime with lab/patch-luna-fallback-takeover.mjs applied
@@ -13,6 +13,7 @@
 //             answer 200 and then stay silent (V: turns lost after the Gateway's profile rotation)
 //   hang      every request answers 200 and stays silent (V: idle timeout, no fallback)
 //   hangpin   like hang, on a session whose model the user picked (no fallback: what does the user see?)
+//   s503nocompact  every DeepSeek request 503 and the fast-compaction model 503 too (compaction.model is DeepSeek)
 //   ok        DeepSeek healthy (speed check, small and big session)
 // Stand-ins on one loopback server: /v1/chat/completions model deepseek-flash plays DeepSeek,
 // /v1/responses plays luna (rejects a prompt over its window like OpenAI), /v1/chat/completions model
@@ -42,7 +43,8 @@ const DS_TIMEOUT_S = Number(process.env.LF_DS_TIMEOUT_S ?? 20);
 const LUNA_WINDOW = Number(process.env.LF_LUNA_WINDOW ?? 872000);
 // OpenClaw's budget for luna: 272000 on V today (v91-gpt6-sol-luna-v1), 850000 with this release.
 const LUNA_CTX = { A: Number(process.env.LF_LUNA_CTX_A ?? 272000), B: Number(process.env.LF_LUNA_CTX_B ?? 850000) };
-const SESSION_ID = process.env.LF_SESSION ?? "faa116bd-0fbf-40ee-b157-52022411c7d1";
+// oc_f164f1c7: ~583k DeepSeek tokens, never compacted (faa116bd was compacted by earlier shared tests).
+const SESSION_ID = process.env.LF_SESSION ?? "ac50d9cc-b3d1-477c-b232-183eb7f53624";
 const TURN_TIMEOUT_MS = Number(process.env.LF_TURN_TIMEOUT_MS ?? 900_000);
 const DS = "deepseek/deepseek-flash";
 const LUNA = "lunastub/gpt-6-luna";
@@ -83,19 +85,26 @@ const tagIn = (texts) => {
 const estimateTokens = (s) => { const cjk = (s.match(/[　-鿿＀-￯]/gu) ?? []).length; return Math.round(cjk * 0.7 + (s.length - cjk) / 3.6); };
 const ccChunk = (model, delta, finish, usage) => `data: ${JSON.stringify({ id: "c1", object: "chat.completion.chunk", created: 1, model, choices: [{ index: 0, delta, finish_reason: finish }], ...(usage ? { usage } : {}) })}\n\n`;
 const dsCount = new Map();
+// Compaction requests do not carry the turn's tag (the current prompt is never summarized): they follow the turn in flight.
+let activeScenario = null;
 const deepseek = (req, res, body, turn, rec) => {
   const key = turn ? `${turn.arm}-${turn.scenario}-${turn.n}` : "untagged";
   const nth = (dsCount.get(key) ?? 0) + 1;
   dsCount.set(key, nth);
   rec.nth = nth;
-  const scenario = turn?.scenario ?? "ok";
-  const fail503 = scenario === "s503" || (scenario === "s503hang" && nth <= FAIL_FIRST);
+  const scenario = turn?.scenario ?? activeScenario ?? "ok";
+  const fail503 = scenario === "s503" || scenario === "s503nocompact" || (scenario === "s503hang" && nth <= FAIL_FIRST);
   const hang = scenario === "hang" || scenario === "hangpin" || (scenario === "s503hang" && nth > FAIL_FIRST);
   if (fail503) { rec.status = 503; res.writeHead(503, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { message: BUSY } })); }
   if (hang) {
     rec.status = "200-silent";
+    // V 2026-11-03: the stream opened and then no model event came ("LLM idle timeout ... no response from
+    // model"). A queued DeepSeek request keeps the connection alive with SSE comments, so the transport
+    // never times out; only the model idle timeout fires.
     res.writeHead(200, { "content-type": "text/event-stream" });
-    res.flushHeaders?.();
+    res.write(": keep-alive\n\n");
+    const keepAlive = setInterval(() => res.write(": keep-alive\n\n"), 3_000);
+    req.on("close", () => clearInterval(keepAlive));
     openHangs.add(res);
     req.on("close", () => openHangs.delete(res));
     return;
@@ -109,7 +118,8 @@ const deepseek = (req, res, body, turn, rec) => {
 };
 const SUMMARY = ["## Decisions", "- 候选测试用的压缩摘要。", "## Open TODOs", "- 无", "## Constraints/Rules", "- 无",
   "## Pending user asks", "- 用户刚问：现在这个群主要在讨论什么。", "## Exact identifiers", "- LF-COMPACT-STUB"].join("\n");
-const compactor = (res, body, rec) => {
+const compactor = (res, body, turn, rec) => {
+  if ((turn?.scenario ?? activeScenario) === "s503nocompact") { rec.status = 503; res.writeHead(503, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { message: "upstream unavailable" } })); }
   rec.status = 200;
   const usage = { prompt_tokens: rec.estTokens, completion_tokens: 200, total_tokens: rec.estTokens + 200 };
   if (!body.stream) {
@@ -158,7 +168,7 @@ const server = http.createServer((req, res) => {
     const rec = { at, role, model: body.model, bytes: raw.length, items: items.length, estTokens: estimateTokens(raw), ...turn };
     requests.push(rec);
     if (role === "luna") return luna(res, body, turn, rec);
-    if (role === "compaction") return compactor(res, body, rec);
+    if (role === "compaction") return compactor(res, body, turn, rec);
     if (/\/chat\/completions\b/u.test(req.url ?? "")) return deepseek(req, res, body, turn, rec);
     res.writeHead(404); res.end();
   });
@@ -173,6 +183,9 @@ for (;;) {
   await new Promise((resolve) => server.close(resolve));
 }
 const standin = `http://127.0.0.1:${server.address().port}/v1`;
+// OpenClaw skips the model idle watchdog for loopback/private provider hosts (isLocalProviderHostname), so a
+// DeepSeek stand-in on 127.0.0.1 never produces V's "LLM idle timeout". lvh.me is public DNS for 127.0.0.1.
+const deepseekStandin = `http://${process.env.LF_DS_HOST ?? "lvh.me"}:${server.address().port}/v1`;
 
 // ---- V's model, fallback and compaction setup (both config files) ----
 const V_FLASH = { id: "deepseek-flash", name: "DeepSeek V4.1 Flash", reasoning: true, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 980000, maxTokens: 64000, api: "openai-completions", compat: { supportsUsageInStreaming: true, supportsReasoningEffort: true, maxTokensField: "max_tokens", thinkingFormat: "deepseek" } };
@@ -184,7 +197,9 @@ const asV = (config) => {
     maintenance: { ...(config.session?.maintenance ?? {}), pruneAfter: "3650d", resetArchiveRetention: "3650d" } };
   config.cron = { ...(config.cron ?? {}), enabled: false };
   const providers = config.models.providers;
-  Object.assign(providers.deepseek, { baseUrl: standin, apiKey: "sk-standin-loopback", agentRuntime: { id: "vlab-worker" }, timeoutSeconds: DS_TIMEOUT_S });
+  // lvh.me resolves to loopback: let the provider request through the SSRF guard (stand-in only).
+  providers.deepseek.request = { ...(providers.deepseek.request ?? {}), allowPrivateNetwork: true };
+  Object.assign(providers.deepseek, { baseUrl: deepseekStandin, apiKey: "sk-standin-loopback", agentRuntime: { id: "vlab-worker" }, timeoutSeconds: DS_TIMEOUT_S });
   providers.deepseek.models = [...(providers.deepseek.models ?? []).filter((m) => m.id !== V_FLASH.id), V_FLASH];
   providers.lunastub = { baseUrl: standin, apiKey: "luna-standin-loopback", api: "openai-responses", models: [LUNA_MODEL] };
   providers.compactstub = { baseUrl: standin, apiKey: "compact-standin-loopback", api: "openai-completions", models: [SOL_STUB] };
@@ -281,6 +296,15 @@ let bigKey;
     for (const k of ["modelOverride", "providerOverride", "modelOverrideSource", "agentRuntimeOverride", "liveModelSwitchPending", "thinkingLevel", "modelFallback"]) delete e[k];
     dst.prepare("UPDATE session_nodes SET entry_json = ? WHERE session_key = ?").run(JSON.stringify(e), bigKey);
   }
+  // V resolves two deepseek auth candidates (a deepseek:default profile, then the provider key), which is what
+  // lets the prompt stage rotate profiles after a 5xx. Give the private store the same profile, on the stand-in.
+  {
+    const row = dst.prepare("SELECT store_key, store_json FROM auth_profile_store").get();
+    const store = row ? JSON.parse(row.store_json) : { version: 1, profiles: {} };
+    store.profiles = { ...(store.profiles ?? {}), "deepseek:default": { type: "api_key", provider: "deepseek", key: "sk-standin-profile-loopback" } };
+    if (row) dst.prepare("UPDATE auth_profile_store SET store_json = ?, updated_at = ? WHERE store_key = ?").run(JSON.stringify(store), Date.now(), row.store_key);
+    else dst.prepare("INSERT INTO auth_profile_store (store_key, store_json, updated_at) VALUES ('primary', ?, ?)").run(JSON.stringify(store), Date.now());
+  }
   dst.exec(`PRAGMA user_version = ${src.prepare("PRAGMA user_version").get().user_version}`);
   dst.exec("PRAGMA journal_mode = DELETE");
   src.close(); dst.close();
@@ -311,11 +335,14 @@ const portRangeFree = async (base, span) => {
 };
 const gw = { lines: [], events: [] };
 const startGateway = async () => {
+  for (let i = 0; i < 60 && !(await portRangeFree(port, 12)); i++) await sleep(2_000);
   assert(await portRangeFree(port, 12), `port ${port} is busy`);
   const tmp = path.join(scratch, "tmp-gw");
   for (const dir of [tmp, path.join(scratch, "cache-gw")]) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   // OPENCLAW_GATEWAY_PORT: the agent CLI otherwise inherits the shared VLab Gateway's port and runs there.
-  const env = { ...process.env, OPENCLAW_CONFIG_PATH: configPath, OPENCLAW_STATE_DIR: stateDir, OPENCLAW_GATEWAY_PORT: String(port),
+  // DEEPSEEK_API_KEY: V's Gateway has the provider key both in config and in its environment, i.e. two
+  // auth candidates for deepseek, which is what lets the prompt stage rotate profiles.
+  const env = { ...process.env, DEEPSEEK_API_KEY: "sk-standin-env-loopback", OPENCLAW_CONFIG_PATH: configPath, OPENCLAW_STATE_DIR: stateDir, OPENCLAW_GATEWAY_PORT: String(port),
     TMPDIR: tmp, XDG_CACHE_HOME: path.join(scratch, "cache-gw"), npm_config_cache: path.join(scratch, "cache-gw", "npm") };
   delete env.VLAB_OPENCLAW_AGENT_RUNTIME;
   gw.env = env;
@@ -448,7 +475,9 @@ try {
       // A database swapped under a running Gateway fails DB91 integrity; every scenario starts cold.
       restoreDb({ userPickedModel: scenario === "hangpin" });
       await startGateway();
+      activeScenario = scenario;
       const r = await bigTurn(arm, scenario, 1);
+      activeScenario = null;
       results.big.push(r);
       log(JSON.stringify(r, null, 1));
       await stopGateway();

@@ -9,8 +9,8 @@
   ],
   "env": {
     "LF_ARMS": "A,B",
-    "LF_SCENARIOS": "s503,s503hang,hang,hangpin",
-    "LF_SPEED_N": "5"
+    "LF_SCENARIOS": "s503nocompact,s503hang,hang,hangpin",
+    "LF_SPEED_N": "9"
   },
   "timeoutSeconds": 10800,
   "user": "lab-db91-parity"
