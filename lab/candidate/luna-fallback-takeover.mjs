@@ -47,7 +47,11 @@ const LUNA_CTX = { A: Number(process.env.LF_LUNA_CTX_A ?? 272000), B: Number(pro
 const SESSION_ID = process.env.LF_SESSION ?? "ac50d9cc-b3d1-477c-b232-183eb7f53624";
 const TURN_TIMEOUT_MS = Number(process.env.LF_TURN_TIMEOUT_MS ?? 900_000);
 const DS = "deepseek/deepseek-flash";
-const LUNA = "lunastub/gpt-6-luna";
+// LF_LUNA_REAL=1: the fallback is V's own openai/gpt-6-luna (forward-compat entry in openai-chatgpt-provider, model
+// catalog, context caches), only its baseUrl points at the stand-in and its OAuth profile is fake. Otherwise a
+// lunastub provider whose config row carries contextTokens, which hides any budget read from the model catalog.
+const LUNA_REAL = process.env.LF_LUNA_REAL === "1";
+const LUNA = LUNA_REAL ? "openai/gpt-6-luna" : "lunastub/gpt-6-luna";
 const COMPACT = "compactstub/sol-stub";
 const BUSY = "Service is too busy. We advise users to temporarily switch to alternative LLM API service providers.";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -57,10 +61,15 @@ const log = (...args) => console.error(new Date().toISOString(), ...args);
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const { FILES } = await import(path.join(repoRoot, "lab/patch-luna-fallback-takeover.mjs"));
+// Arm A must run V's bytes. Shared VLab may already carry this release, so fall back to the captured V bytes.
+const CAPTURED = { "openclaw/dist": "release/captured/v2026.9.1-db91.6-codex-context-batch-20261101/dist", "production-worker": "release/captured/v2026.9.1-db91.6-codex-context-batch-20261101.worker/dist" };
 const live = FILES.map((file) => {
   const target = path.join(runtime, file.target, file.name);
-  const bytes = fs.readFileSync(target, "utf8");
-  return { file, target, bytes, liveIsV: sha(bytes) === file.before };
+  const runtimeBytes = fs.readFileSync(target, "utf8");
+  const captured = path.join(repoRoot, CAPTURED[file.target], file.name);
+  const bytes = sha(runtimeBytes) === file.before ? runtimeBytes : fs.readFileSync(captured, "utf8");
+  assert.equal(sha(bytes), file.before, `no V bytes for ${file.name}`);
+  return { file, target, bytes, liveIsV: sha(runtimeBytes) === file.before, runtimeSha: sha(runtimeBytes) };
 });
 log("runtime vs V", JSON.stringify(live.map((l) => ({ target: `${l.file.target}/${l.file.name}`, liveIsV: l.liveIsV }))));
 const installB = () => {
@@ -69,7 +78,16 @@ const installB = () => {
     fs.renameSync(`${l.target}.next`, l.target);
   }
 };
-const restoreA = () => { for (const l of live) fs.writeFileSync(l.target, l.bytes); };
+// Arm D: B plus lab/patch-session-budget-maintenance.mjs (session maintenance uses the turn's budget).
+const { FILES: MAINT_FILES } = await import(path.join(repoRoot, "lab/patch-session-budget-maintenance.mjs"));
+const maint = MAINT_FILES.map((file) => {
+  const target = path.join(runtime, file.target, file.name);
+  const bytes = fs.readFileSync(target, "utf8");
+  assert.equal(sha(bytes), file.before, `runtime ${file.name} is not V's bytes`);
+  return { file, target, bytes };
+});
+const setMaintenance = (on) => { for (const m of maint) fs.writeFileSync(m.target, on ? m.file.patch(m.bytes) : m.bytes); };
+const restoreA = () => { for (const l of live) fs.writeFileSync(l.target, l.bytes); setMaintenance(false); };
 
 // ---- loopback stand-ins ----
 const requests = [];
@@ -82,7 +100,8 @@ const tagIn = (texts) => {
     if (t) return { arm: t[1], scenario: t[2], n: Number(t[3]) };
   }
 };
-const estimateTokens = (s) => { const cjk = (s.match(/[　-鿿＀-￯]/gu) ?? []).length; return Math.round(cjk * 0.7 + (s.length - cjk) / 3.6); };
+// Emoji count about 2.4 tokens each on the real luna backend (shared VLab, 2026-11-03: 200k emoji -> 491,681).
+const estimateTokens = (s) => { const cjk = (s.match(/[　-鿿＀-￯]/gu) ?? []).length; const emoji = (s.match(/\p{Extended_Pictographic}/gu) ?? []).length; return Math.round(cjk * 0.7 + emoji * 2.4 + (s.length - cjk - emoji * 2) / 3.6); };
 const ccChunk = (model, delta, finish, usage) => `data: ${JSON.stringify({ id: "c1", object: "chat.completion.chunk", created: 1, model, choices: [{ index: 0, delta, finish_reason: finish }], ...(usage ? { usage } : {}) })}\n\n`;
 const dsCount = new Map();
 // Compaction requests do not carry the turn's tag (the current prompt is never summarized): they follow the turn in flight.
@@ -140,7 +159,10 @@ const luna = (res, body, turn, rec) => {
   const text = `Luna 的回答 ${turn ? `${turn.arm}-${turn.scenario}-${turn.n}` : ""}。`;
   const reasoning = { type: "reasoning", id: "rs_lf", summary: [{ type: "summary_text", text: "LUNA-MARK" }], encrypted_content: "LUNA-ENC-opaque" };
   const msg = { type: "message", id: "msg_lf", role: "assistant", status: "completed", content: [{ type: "output_text", text, annotations: [] }] };
-  const usage = { input_tokens: rec.estTokens, output_tokens: 30, total_tokens: rec.estTokens + 30 };
+  // LF_LUNA_USAGE: report the real backend's prompt size (2026-11-03 shared VLab: 222,061 for the same message);
+  // the post-turn checks compare the persisted usage, not the request.
+  const inputTokens = Number(process.env.LF_LUNA_USAGE ?? 0) || rec.estTokens;
+  const usage = { input_tokens: inputTokens, output_tokens: 30, total_tokens: inputTokens + 30 };
   res.writeHead(200, { "content-type": "text/event-stream" });
   res.end(ev("response.created", { response: { id: "resp_lf", object: "response", status: "in_progress", model: body.model, output: [] } })
     + ev("response.output_item.added", { output_index: 0, item: { ...reasoning, summary: [] } })
@@ -165,7 +187,8 @@ const server = http.createServer((req, res) => {
     const items = isResponses ? (Array.isArray(body.input) ? body.input : []) : (Array.isArray(body.messages) ? body.messages : []);
     const turn = tagIn(items.filter((m) => (m.role ?? m.type) === "user").map((m) => flatten(m.content)));
     const role = isResponses ? "luna" : body.model === "sol-stub" ? "compaction" : "deepseek";
-    const rec = { at, role, model: body.model, bytes: raw.length, items: items.length, estTokens: estimateTokens(raw), ...turn };
+    // Re-serialize: the ChatGPT route escapes non-ASCII (\uXXXX), which would hide emoji from the estimate.
+    const rec = { at, role, model: body.model, bytes: raw.length, items: items.length, estTokens: estimateTokens(raw.startsWith("{") ? JSON.stringify(body) : raw), ...turn };
     requests.push(rec);
     if (role === "luna") return luna(res, body, turn, rec);
     if (role === "compaction") return compactor(res, body, turn, rec);
@@ -201,7 +224,16 @@ const asV = (config) => {
   providers.deepseek.request = { ...(providers.deepseek.request ?? {}), allowPrivateNetwork: true };
   Object.assign(providers.deepseek, { baseUrl: deepseekStandin, apiKey: "sk-standin-loopback", agentRuntime: { id: "vlab-worker" }, timeoutSeconds: DS_TIMEOUT_S });
   providers.deepseek.models = [...(providers.deepseek.models ?? []).filter((m) => m.id !== V_FLASH.id), V_FLASH];
-  providers.lunastub = { baseUrl: standin, apiKey: "luna-standin-loopback", api: "openai-responses", models: [LUNA_MODEL] };
+  if (LUNA_REAL) {
+    // Provider-level baseUrl only, no model row: on V gpt-6-luna resolves through the forward-compat entry.
+    // Provider-level api keeps the ChatGPT subscription route (an unofficial baseUrl alone reads as the API-key
+    // route and filters out OAuth, docs/v-add-openai-model-by-config.md); it adds no model row.
+    providers.openai = { ...(providers.openai ?? {}), baseUrl: `http://${process.env.LF_DS_HOST ?? "lvh.me"}:${server.address().port}/v1`, api: "openai-chatgpt-responses", request: { allowPrivateNetwork: true } };
+    if (Array.isArray(providers.openai.models)) providers.openai.models = providers.openai.models.filter((m) => m.id !== "gpt-6-luna");
+    config.auth = { ...(config.auth ?? {}), order: { ...(config.auth?.order ?? {}), openai: ["openai:lf-fake"] } };
+    if (config.auth.profiles) for (const id of Object.keys(config.auth.profiles)) if (id.startsWith("openai:")) delete config.auth.profiles[id];
+    config.auth.profiles = { ...(config.auth.profiles ?? {}), "openai:lf-fake": { provider: "openai", mode: "oauth" } };
+  } else providers.lunastub = { baseUrl: standin, apiKey: "luna-standin-loopback", api: "openai-responses", models: [LUNA_MODEL] };
   providers.compactstub = { baseUrl: standin, apiKey: "compact-standin-loopback", api: "openai-completions", models: [SOL_STUB] };
   const rt = { agentRuntime: { id: "vlab-worker" } };
   const model = { primary: DS, fallbacks: [LUNA] };
@@ -241,6 +273,15 @@ const sharedRuntime = "/srv/vlab-production-mirror/labs/instances/db91-parity/ru
   fs.writeFileSync(workerPlugin.workerConfigPath, `${JSON.stringify(asV(workerConfig), null, 2)}\n`, { mode: 0o600 });
   fs.writeFileSync(configPath, `${JSON.stringify(asV(config0), null, 2)}\n`, { mode: 0o600 });
 }
+const LUNA_ROW = { id: "gpt-6-luna", name: "GPT-6 Luna", api: "openai-chatgpt-responses", reasoning: true, input: ["text", "image"], cost: { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 }, contextWindow: 1050000, contextTokens: 850000, maxTokens: 128000, compat: { supportsReasoningEffort: true, supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"] } };
+const setLunaRow = (on) => {
+  for (const file of [configPath, workerPlugin.workerConfigPath]) {
+    const config = JSON.parse(fs.readFileSync(file, "utf8"));
+    const rest = (config.models.providers.openai.models ?? []).filter((m) => m.id !== "gpt-6-luna");
+    config.models.providers.openai.models = on ? [...rest, LUNA_ROW] : rest;
+    fs.writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+  }
+};
 const setLunaContextTokens = (n) => {
   for (const file of [configPath, workerPlugin.workerConfigPath]) {
     const config = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -302,12 +343,36 @@ let bigKey;
     const row = dst.prepare("SELECT store_key, store_json FROM auth_profile_store").get();
     const store = row ? JSON.parse(row.store_json) : { version: 1, profiles: {} };
     store.profiles = { ...(store.profiles ?? {}), "deepseek:default": { type: "api_key", provider: "deepseek", key: "sk-standin-profile-loopback" } };
+    // Never carry a real OpenAI refresh token into a candidate (a refresh rotates the shared account's chain).
+    for (const id of Object.keys(store.profiles)) if (id.startsWith("openai")) delete store.profiles[id];
+    if (LUNA_REAL) {
+      const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+      const exp = Math.floor(Date.now() / 1000) + 30 * 86400;
+      const access = `${b64({ alg: "none", typ: "JWT" })}.${b64({ exp, "https://api.openai.com/auth": { chatgpt_account_id: "acct-lf-fake", chatgpt_plan_type: "pro" } })}.fake`;
+      store.profiles["openai:lf-fake"] = { type: "oauth", provider: "openai", email: "lf-fake@example.invalid", access, refresh: "lf-fake-refresh-never-valid", accountId: "acct-lf-fake", chatgptPlanType: "pro", expires: exp * 1000 };
+    }
     if (row) dst.prepare("UPDATE auth_profile_store SET store_json = ?, updated_at = ? WHERE store_key = ?").run(JSON.stringify(store), Date.now(), row.store_key);
     else dst.prepare("INSERT INTO auth_profile_store (store_key, store_json, updated_at) VALUES ('primary', ?, ?)").run(JSON.stringify(store), Date.now());
   }
   dst.exec(`PRAGMA user_version = ${src.prepare("PRAGMA user_version").get().user_version}`);
   dst.exec("PRAGMA journal_mode = DELETE");
   src.close(); dst.close();
+}
+// Other agents' stores in the candidate state may hold the shared VLab's OpenAI OAuth; drop them.
+for (const agent of fs.readdirSync(path.join(stateDir, "agents"))) {
+  const file = path.join(stateDir, "agents", agent, "agent", "openclaw-agent.sqlite");
+  if (!fs.existsSync(file) || file === path.join(stateDir, dbRel)) continue;
+  try {
+    const db = new DatabaseSync(file);
+    for (const row of db.prepare("SELECT store_key, store_json FROM auth_profile_store").all()) {
+      const store = JSON.parse(row.store_json);
+      const ids = Object.keys(store.profiles ?? {}).filter((id) => id.startsWith("openai"));
+      if (!ids.length) continue;
+      for (const id of ids) delete store.profiles[id];
+      db.prepare("UPDATE auth_profile_store SET store_json = ? WHERE store_key = ?").run(JSON.stringify(store), row.store_key);
+    }
+    db.close();
+  } catch (error) { log("auth store scrub skipped", agent, error.message); }
 }
 const restoreDb = ({ userPickedModel = false } = {}) => {
   const target = path.join(stateDir, dbRel);
@@ -342,7 +407,7 @@ const startGateway = async () => {
   // OPENCLAW_GATEWAY_PORT: the agent CLI otherwise inherits the shared VLab Gateway's port and runs there.
   // DEEPSEEK_API_KEY: V's Gateway has the provider key both in config and in its environment, i.e. two
   // auth candidates for deepseek, which is what lets the prompt stage rotate profiles.
-  const env = { ...process.env, DEEPSEEK_API_KEY: "sk-standin-env-loopback", OPENCLAW_CONFIG_PATH: configPath, OPENCLAW_STATE_DIR: stateDir, OPENCLAW_GATEWAY_PORT: String(port),
+  const env = { ...process.env, ...(process.env.LF_DEBUG_LOG === "1" ? { OPENCLAW_LOG_LEVEL: "debug" } : {}), DEEPSEEK_API_KEY: "sk-standin-env-loopback", OPENCLAW_CONFIG_PATH: configPath, OPENCLAW_STATE_DIR: stateDir, OPENCLAW_GATEWAY_PORT: String(port),
     TMPDIR: tmp, XDG_CACHE_HOME: path.join(scratch, "cache-gw"), npm_config_cache: path.join(scratch, "cache-gw", "npm") };
   delete env.VLAB_OPENCLAW_AGENT_RUNTIME;
   gw.env = env;
@@ -422,11 +487,37 @@ const transcriptSince = (sessionKey, sinceMs) => {
     return out;
   } finally { db.close(); }
 };
+// With LF_DEBUG_LOG=1 the file logs carry logVerbose decisions (preflightCompaction check/triggered ...).
+const DEBUG_RE = /preflightCompaction|memoryFlush|memory flush|compaction|Compaction|contextWindow|threshold/u;
+const debugLines = (t0, t1) => {
+  if (process.env.LF_DEBUG_LOG !== "1") return undefined;
+  const out = [];
+  const walk = (dir, depth) => {
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory() && depth < 6 && !/node_modules|agents|workspace|npm/u.test(e.name)) walk(p, depth + 1);
+      else if (e.isFile() && /^openclaw-.*\.log$/u.test(e.name)) {
+        for (const line of fs.readFileSync(p, "utf8").split("\n")) {
+          if (!DEBUG_RE.test(line)) continue;
+          const time = /"time":"([^"]+)"/u.exec(line)?.[1] ?? /"date":"([^"]+)"/u.exec(line)?.[1];
+          const at = time ? Date.parse(time) : NaN;
+          if (at >= t0 && at <= t1 + 5000) out.push(`${((at - t0) / 1000).toFixed(1)}s ${line.replace(/\s+/gu, " ").slice(0, 600)}`);
+        }
+      }
+    }
+  };
+  walk(scratch, 0);
+  walk("/tmp", 1);
+  return out.sort().slice(0, 120);
+};
 // The agent CLI replays the whole branch of the mirrored session (chat.send into a mirrored group only replays its own conversation).
 const bigTurn = async (arm, scenario, n) => {
   const message = `[lf ${arm} ${scenario} ${n}] 用一句话回答：现在这个群主要在讨论什么？不要调用工具。`;
   const t0 = Date.now();
   const args = [path.join(runtime, "openclaw", "dist", "index.js"), "agent", "--agent", "makaron", "--session-key", bigKey, "--message", message, "--json", "--timeout", String(Math.round(TURN_TIMEOUT_MS / 1000))];
+  if (scenario === "manual") args.push("--model", LUNA);
   const child = spawn(process.execPath, args, { env: gw.env, stdio: ["ignore", "pipe", "pipe"] });
   let stdout = "", stderr = "";
   child.stdout.on("data", (c) => { stdout += c; });
@@ -437,17 +528,47 @@ const bigTurn = async (arm, scenario, n) => {
   try { meta = JSON.parse(stdout.slice(stdout.indexOf("{"))); } catch {}
   const payloads = meta?.result?.payloads ?? meta?.payloads ?? [];
   const text = payloads.map((p) => p.text ?? "").join(" | ");
-  const mine = requests.filter((r) => r.arm === arm && r.scenario === scenario && r.n === n);
+  // By time window: the ChatGPT Responses route shapes its input differently and the tag is not always parsed.
+  const mine = requests.filter((r) => r.at >= t0 && r.at <= t1);
   // Every scenario reaches the DeepSeek stand-in first; none means the turn ran on some other Gateway.
-  assert(mine.some((r) => r.role === "deepseek"), `turn ${arm}/${scenario} never reached the stand-ins (Gateway target: ${/Gateway target: (\S+)/u.exec(stderr)?.[1] ?? "?"})`);
+  if (!mine.some((r) => r.role === (scenario === "manual" ? "luna" : "deepseek"))) log("turn reached no stand-in", JSON.stringify({ text, stderr: redact(stderr).slice(-1500), decisions: decisions(t0, t1).slice(0, 40), other: gw.lines.filter((l) => l.at >= t0 && l.at <= t1 + 2000 && /openai|luna|auth|route|error|fail/iu.test(l.line) && !NOISE_RE.test(l.line)).map((l) => redact(l.line).slice(0, 300)).slice(0, 40) }, null, 1));
+  assert(mine.some((r) => r.role === (scenario === "manual" ? "luna" : "deepseek")), `turn ${arm}/${scenario} never reached the stand-ins (Gateway target: ${/Gateway target: (\S+)/u.exec(stderr)?.[1] ?? "?"})`);
   const lunaAnswered = /Luna 的回答/u.test(text);
   return { arm, scenario, exit, totalS: (t1 - t0) / 1000, lunaAnswered, text: text.slice(0, 300), isError: payloads.some((p) => p.isError),
     stderr: exit === 0 ? undefined : redact(stderr).slice(-600),
     requests: mine.map((r) => ({ t: +((r.at - t0) / 1000).toFixed(1), role: r.role, status: r.status, nth: r.nth, items: r.items, estTokens: r.estTokens })),
     compactionRequests: requests.filter((r) => r.role === "compaction" && r.at >= t0 && r.at <= t1).length,
+    // Compaction relative to luna's answer: before = pre-turn / in-turn, after = post-turn.
+    compactionTimeline: requests.filter((r) => r.at >= t0 && r.at <= t1 && (r.role === "compaction" || r.role === "luna")).map((r) => `${((r.at - t0) / 1000).toFixed(1)}s ${r.role} ${r.estTokens}`),
     fastCompactionFellBack: gw.lines.some((l) => l.at >= t0 && /versa-fast-quality-v1" (?:failed|is configured but not registered|returned empty)/u.test(l.line)),
     transcript: transcriptSince(bigKey, t0),
+    debug: debugLines(t0, t1),
     decisions: decisions(t0, t1) };
+};
+// The shared VLab acceptance on 2026-11-03: a fresh session, /model openai/gpt-6-luna, then one ~222k-token message
+// over chat.send (the Gateway reply pipeline, not the agent CLI).
+const chatLunaTurn = async (arm, emojiCount) => {
+  const sessionKey = `agent:makaron:explicit:vlab-dev-lf-chat-${arm.toLowerCase()}-${Date.now()}`;
+  const send = async (message, tag) => {
+    const t0 = Date.now();
+    const sent = await gw.client.request("chat.send", { agentId: "makaron", sessionKey, message, deliver: false, timeoutMs: TURN_TIMEOUT_MS, idempotencyKey: `lf-chat-${arm}-${tag}-${t0}` });
+    if (sent?.runId) await gw.client.request("agent.wait", { runId: sent.runId, timeoutMs: TURN_TIMEOUT_MS }, { timeoutMs: TURN_TIMEOUT_MS + 20_000 }).catch(() => null);
+    return { t0, runId: sent?.runId };
+  };
+  await send(`/model ${LUNA}`, "model");
+  let seed = 7; const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  let body = ""; for (let i = 0; i < emojiCount; i++) { body += String.fromCodePoint(0x1F300 + Math.floor(rnd() * 0x2FF)); if (i % 60 === 59) body += "\n"; }
+  const { t0 } = await send(`[lf ${arm} chat 1] 上下文容量测试，只回复暗号 LF-CHAT-OK。\n\n${body}`, "big");
+  await sleep(20_000); // a post-turn compaction lands after the reply
+  const t1 = Date.now();
+  const db = new DatabaseSync(path.join(stateDir, dbRel), { readOnly: true });
+  let entry;
+  try { entry = JSON.parse(db.prepare("SELECT entry_json FROM session_nodes WHERE session_key = ?").get(sessionKey)?.entry_json ?? "null"); } finally { db.close(); }
+  return { arm, scenario: "chat", sessionKey, totalS: (t1 - t0) / 1000,
+    entry: entry && { compactionCount: entry.compactionCount ?? 0, totalTokens: entry.totalTokens, contextTokens: entry.contextTokens, model: entry.model,
+      checkpoints: (entry.compactionCheckpoints ?? []).map((c) => ({ reason: c.reason, tokensBefore: c.tokensBefore, tokensAfter: c.tokensAfter })) },
+    requests: requests.filter((r) => r.at >= t0 && r.at <= t1).map((r) => ({ t: +((r.at - t0) / 1000).toFixed(1), role: r.role, status: r.status, estTokens: r.estTokens })),
+    debug: debugLines(t0, t1), decisions: decisions(t0, t1) };
 };
 // Healthy DeepSeek: a small session over chat.send, chat.send -> first DeepSeek request / first delta / final.
 const speedTurn = async (arm, n) => {
@@ -469,14 +590,17 @@ const median = (xs) => { const s = xs.filter((x) => Number.isFinite(x)).sort((a,
 const results = { big: [], speed: {} };
 try {
   for (const arm of ARMS) {
-    if (arm === "B") installB(); else restoreA();
-    setLunaContextTokens(LUNA_CTX[arm]);
+    if (arm === "B" || arm === "C" || arm === "D") installB(); else restoreA();
+    setMaintenance(arm === "D");
+    // Arm C: B plus the luna model row with contextTokens, as tried on shared VLab 2026-11-03.
+    if (LUNA_REAL) setLunaRow(arm === "C");
+    if (!LUNA_REAL) setLunaContextTokens(LUNA_CTX[arm]);
     for (const scenario of SCENARIOS) {
       // A database swapped under a running Gateway fails DB91 integrity; every scenario starts cold.
       restoreDb({ userPickedModel: scenario === "hangpin" });
       await startGateway();
       activeScenario = scenario;
-      const r = await bigTurn(arm, scenario, 1);
+      const r = scenario === "chat" ? await chatLunaTurn(arm, Number(process.env.LF_CHAT_EMOJI ?? 80000)) : await bigTurn(arm, scenario, 1);
       activeScenario = null;
       results.big.push(r);
       log(JSON.stringify(r, null, 1));

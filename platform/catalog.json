@@ -486,7 +486,8 @@
         "lab/skill-workshop-agent-apply.test.mjs",
         "scripts/v-skills-catalog.test.mjs",
         "lab/model-switch-thinking.test.mjs",
-        "lab/luna-fallback-takeover.test.mjs"
+        "lab/luna-fallback-takeover.test.mjs",
+        "lab/session-budget-maintenance.test.mjs"
       ]
     }
   ],
