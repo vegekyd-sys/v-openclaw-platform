@@ -1,0 +1,15 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/luna-fallback-takeover/embedded-agent-DaSvA-Yk.js",
+      "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
+      "before": "88a9a95e96af39eea5753ae75b0952fa216c9a83c99d876c24dc2b44c3e3ac86"
+    },
+    {
+      "source": "lab/release-files/luna-fallback-takeover/index.mjs",
+      "target": "production-worker/index.mjs",
+      "before": "e657c62b022692e4f740b0914b8ac8cdc291af58c8f3fa8f1b45d812a7b9ff0d"
+    }
+  ]
+}
