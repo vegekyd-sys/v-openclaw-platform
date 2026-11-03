@@ -1,0 +1,1 @@
+{"id":"relay-policy-probe","name":"Relay Policy Probe","description":"Candidate-only: blocks tool calls carrying a marker so the native hook relay's pre-tool path can be verified.","version":"0.1.0","activation":{"onStartup":true},"configSchema":{"type":"object","additionalProperties":false,"properties":{"logPath":{"type":"string"}}}}

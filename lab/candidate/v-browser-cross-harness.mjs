@@ -20,6 +20,15 @@
 // different model; it is not run here because the candidate's copied ChatGPT
 // refresh token is stale and refreshing it can revoke the account's token chain.
 //
+// VB_SCENARIO=blocked-user replays production 2026-10-06 17:44: a group member
+// with no authorized device asked V to use Tianyi's browser, v_browser_devices
+// returned [], and the agent fell back to browser profile="user" (an
+// existing-session Chrome on V's own host), which can never connect and is
+// reported as "enable remote debugging on your computer". Plugin 0.4.8 blocks
+// that profile with the V Browser path; the sender here has no device either.
+// VB_EXPECT=fixed asserts the block reached the model and no existing-session
+// attach ran; VB_EXPECT=baseline asserts the attach failure is reproduced.
+//
 // Inputs (support files outside the repo, found by basename):
 //   v-browser-plugin.tgz  `git archive <commit> openclaw-plugin` from the v-browser repo
 //                         (baseline: same tree with core/session-lease-manager.js and
@@ -42,9 +51,12 @@ const data = process.env.VLAB_CANDIDATE_DATA ?? stateDir;
 assert(runtime && configPath && stateDir, "candidate runtime environment is required");
 const expect = process.env.VB_EXPECT ?? "fixed";
 assert(["fixed", "baseline"].includes(expect));
+const scenario = process.env.VB_SCENARIO ?? "route";
+assert(["route", "blocked-user"].includes(scenario), `unknown VB_SCENARIO ${scenario}`);
 const HARNESSES = {
   worker: { model: "deepseek/deepseek-v4-flash", harness: /vlab-worker/u },
-  vds: { model: "deepseek/deepseek-flash", harness: /codex/u },
+  // Shared VLab renamed the /vds key on 2026-10; deepseek/deepseek-flash now runs on the Worker.
+  vds: { model: "deepseek/vds-deepseek-flash", harness: /codex/u },
   vcc: { model: "anthropic/claude-opus-5", harness: /claude-cli/u },
 };
 const only = (process.env.VB_HARNESSES ?? Object.keys(HARNESSES).join(",")).split(",").map((s) => s.trim()).filter(Boolean);
@@ -55,7 +67,7 @@ const OWNER = "vbx-owner";
 const DEVICE_LABEL = "VB cross-harness probe";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const dist = path.join(runtime, "openclaw", "dist");
-const summary = { startedAt: new Date().toISOString(), expect, harnesses: only, turns: {}, notes: [] };
+const summary = { startedAt: new Date().toISOString(), scenario, expect, harnesses: only, turns: {}, notes: [] };
 const secrets = new Set();
 const redact = (s) => {
   let out = String(s).replace(/(token|api.?key|authorization|secret|bearer|password)([=: ]+)[^\s"]+/giu, "$1$2[redacted]");
@@ -158,7 +170,8 @@ const pluginEntry = (brokerUrl) => ({
     brokerUrl, adminTokenFile, profilePrefix: "vbrowser-", leaseTtlMs: 300_000, autoAcquireSingleDevice: false,
     // `openclaw agent --session-key` runs carry no sender; real Feishu turns do.
     sessionKeyActorFallback: true,
-    principalAliases: Object.fromEntries(Object.values(senders).map((s) => [`feishu:${s}`, OWNER])),
+    // blocked-user: like the production group member, the sender owns no device.
+    principalAliases: scenario === "blocked-user" ? {} : Object.fromEntries(Object.values(senders).map((s) => [`feishu:${s}`, OWNER])),
     traceLifecycle: true,
   },
 });
@@ -386,6 +399,16 @@ const PROMPT = (h) => [
   "6. 只回复一行：VB_OK <那串字符>。任何一步失败就回复 VB_FAIL 加上原样的错误信息。",
 ].join("\n");
 
+const BLOCKED_PROMPT = (h) => [
+  "这是一次自动化测试，请严格按步骤执行，只用下面提到的工具，不要用 exec、web_fetch、curl 或其他工具。",
+  "1. 调用 v_browser_devices。",
+  `2. 调用 browser 工具，参数 action="open"、profile="user"、url="${pageBase}/fixture?h=${h}"。`,
+  "3. 不要重试，不要换别的 profile 或工具。",
+  "4. 只回复一行：VB_RESULT 加上第 2 步 browser 返回内容的第一句话原文（报错就写报错原文）。",
+].join("\n");
+const BLOCKED_TEXT = /is disabled on V/gu;
+const EXISTING_SESSION = /Chrome MCP existing-session attach|DevToolsActivePort|Enable remote debugging/gu;
+
 const startedAt = Date.now();
 startGateway();
 try {
@@ -449,7 +472,7 @@ try {
   // -------------------------------------------------------------- one Session per harness
   for (const h of only) {
     const auditBefore = (await api("/v1/audit")).events.length;
-    const turn = await runTurn(h, PROMPT(h));
+    const turn = await runTurn(h, scenario === "blocked-user" ? BLOCKED_PROMPT(h) : PROMPT(h));
     const audit = (await api("/v1/audit")).events.slice(auditBefore).map((e) => ({ type: e.type, actorUserId: e.actorUserId, profile: e.profile }));
     const health = await waitFor(async () => { const x = await api("/health"); return x.activeRoutes === 0 && x; }, 60_000, "idle broker").catch(() => null);
     const want = secretsServed.get(h);
@@ -464,14 +487,19 @@ try {
       routeInstructionBlocks: (joined.match(/This Session controls a V Browser device/gu) ?? []).length,
       identityDenied: /no trusted Channel sender identity/u.test(joined) || /no trusted Channel sender identity/u.test(turn.reply),
       trace: turn.log.filter((l) => /vBrowserTrace/u.test(l)).slice(-6).map((l) => l.slice(0, 240)),
+      blockedProfileHits: (joined.match(BLOCKED_TEXT) ?? []).length + (turn.reply.match(BLOCKED_TEXT) ?? []).length,
+      existingSessionAttempts: (joined.match(EXISTING_SESSION) ?? []).length,
     };
     if (/codex/u.test(String(turn.ran?.harness)) || h === "vds") {
       result.codexBrowserCalls = codexBrowserCalls(turn.startedAt);
       if (result.codexBrowserCalls.length > 0) result.runtimeSeen = "codex"; // Codex's own transcript holds the calls
       result.rewriteRefusals += result.codexBrowserCalls.filter((c) => /rewrote Codex app-server/u.test(c.output)).length;
       result.routeInstructionBlocks += result.codexBrowserCalls.filter((c) => /This Session controls a V Browser device/u.test(c.output)).length;
+      result.blockedProfileHits += result.codexBrowserCalls.filter((c) => /is disabled on V/u.test(c.output)).length;
+      result.existingSessionAttempts += result.codexBrowserCalls.filter((c) => /existing-session attach|DevToolsActivePort|Enable remote debugging/u.test(c.output)).length;
     }
-    if (turn.exit !== 0 || !result.replyHasSecret) result.logTail = turn.log.filter((l) => /browser|v_browser|hook|block|error|denied/iu.test(l)).slice(-20).map((l) => l.slice(0, 300));
+    if (scenario === "blocked-user" && result.existingSessionAttempts === 0 && /existing-session|remote debugging/iu.test(turn.reply)) result.existingSessionAttempts += 1;
+    if (turn.exit !== 0 || (scenario === "route" && !result.replyHasSecret) || scenario === "blocked-user") result.logTail = turn.log.filter((l) => /browser|v_browser|hook|block|error|denied/iu.test(l)).slice(-20).map((l) => l.slice(0, 300));
     summary.turns[h] = result;
   }
 
@@ -479,6 +507,18 @@ try {
   for (const h of only) {
     const t = summary.turns[h];
     assert.match(String(t.runtimeSeen), HARNESSES[h].harness, `${h}: ran on the wrong harness ${JSON.stringify(t.ran)}`);
+    if (scenario === "blocked-user") {
+      assert.equal(t.exit, 0, `${h}: agent turn failed: ${t.stderr}`);
+      assert.equal(t.audit.filter((e) => e.type === "lease_acquired").length, 0, `${h}: a device was leased for a sender with no device`);
+      if (expect === "fixed") {
+        assert(t.blockedProfileHits > 0, `${h}: the profile block never reached the model: ${t.reply}`);
+        assert.equal(t.existingSessionAttempts, 0, `${h}: an existing-session attach still ran`);
+      } else {
+        assert(t.existingSessionAttempts > 0, `${h}: baseline did not reproduce the existing-session failure: ${t.reply}`);
+        assert.equal(t.blockedProfileHits, 0, `${h}: baseline plugin should not know the block`);
+      }
+      continue;
+    }
     if (expect === "fixed") {
       assert.equal(t.exit, 0, `${h}: agent turn failed: ${t.stderr}`);
       assert.equal(t.rewriteRefusals, 0, `${h}: Codex refused a rewritten call`);
@@ -488,7 +528,7 @@ try {
       assert(t.brokerIdleAfter, `${h}: broker still routing after the turn`);
     }
   }
-  if (expect === "baseline") {
+  if (expect === "baseline" && scenario === "route") {
     // The rewriting plugin must reproduce the production refusal on the Codex harness.
     assert(only.includes("vds"), "baseline needs the vds harness");
     assert(summary.turns.vds.rewriteRefusals > 0, "baseline did not reproduce the Codex rewrite refusal");

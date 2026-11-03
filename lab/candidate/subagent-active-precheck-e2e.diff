@@ -1,0 +1,289 @@
+--- runtime-concurrency.mjs
++++ runtime-concurrency.mjs
+@@ -614,7 +614,7 @@
+   gatewayStartedAt = Date.now();
+   // GATEWAY_CPU_PROF=1: a V8 CPU profile of the whole run (5 ms sampling), written to OUT_DIR on exit
+   const prof = process.env.GATEWAY_CPU_PROF === "1" ? ["--cpu-prof", `--cpu-prof-dir=${OUT_DIR}`, "--cpu-prof-interval=5000"] : [];
+-  gateway = spawn(process.execPath, [`--import=${lagProbe}`, ...prof, "--experimental-async-context-frame", "--max-old-space-size=12288", `${dist}/index.js`, "gateway", "--port", String(port)], { env: PROFILE_DIR ? { ...env, LT_PROFILE_DIR: PROFILE_DIR } : env, stdio: ["ignore", "pipe", "pipe"] });
++  gateway = spawn(process.execPath, [`--import=${lagProbe}`, ...prof, "--experimental-async-context-frame", "--max-old-space-size=12288", `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
+   for (const s of [gateway.stdout, gateway.stderr]) {
+     s.setEncoding("utf8");
+     let rest = "";
+@@ -870,38 +870,9 @@
+     return db.prepare("SELECT json_extract(event_json,'$.type') AS t, json_extract(event_json,'$.message.role') AS role, substr(json_extract(event_json,'$.customType'),1,40) AS ct, substr(json_extract(event_json,'$.message.content'),1,220) AS c FROM transcript_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?").all(w.sid, n);
+   } catch (error) { return String(error?.message ?? error).slice(0, 200); } finally { db.close(); }
+ }
+-// PROFILE=1: where the Gateway's own CPU goes, per thread, plus reaped children; the lag probe adds a
+-// main-thread profile and live heap sample for each level.
+-const PROFILE_DIR = process.env.PROFILE === "1" ? path.join(OUT_DIR, "profiles") : null;
+-if (PROFILE_DIR) fs.mkdirSync(PROFILE_DIR, { recursive: true });
+-let profileN = 0;
+-function gatewayThreads() {
+-  const out = { threads: {}, childrenSec: 0 };
+-  const pid = String(gateway.pid);
+-  try {
+-    const main = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+-    const mf = main.slice(main.lastIndexOf(")") + 2).split(" ");
+-    out.childrenSec = (Number(mf[13]) + Number(mf[14])) / TICK;
+-    for (const tid of fs.readdirSync(`/proc/${pid}/task`)) {
+-      const st = fs.readFileSync(`/proc/${pid}/task/${tid}/stat`, "utf8");
+-      const f = st.slice(st.lastIndexOf(")") + 2).split(" ");
+-      const comm = tid === pid ? "main" : st.slice(st.indexOf("(") + 1, st.lastIndexOf(")"));
+-      out.threads[`${comm}#${tid}`] = (Number(f[11]) + Number(f[12])) / TICK;
+-    }
+-  } catch {}
+-  return out;
+-}
+-function threadsDiff(a, b) {
+-  const byComm = {};
+-  for (const [k, v] of Object.entries(b.threads)) { const comm = k.split("#")[0]; byComm[comm] = (byComm[comm] ?? 0) + Math.max(0, v - (a.threads[k] ?? 0)); }
+-  return { byComm: Object.fromEntries(Object.entries(byComm).sort((x, y) => y[1] - x[1]).slice(0, 10).map(([k, v]) => [k, Math.round(v * 10) / 10])), childrenSec: Math.round((b.childrenSec - a.childrenSec) * 10) / 10 };
+-}
+ async function level(arm, size, c, task = "sha") {
+   const plan = await sessionsFor(arm, size, c);
+   const cpuFrom = cpuTable();
+-  const threadsFrom = gatewayThreads();
+-  const profName = `${arm}-${size}-${task}-c${c}-${profileN++}`;
+-  if (PROFILE_DIR) { fs.writeFileSync(path.join(PROFILE_DIR, `start.${profName}`), ""); await sleep(1_000); }
+   const from = Date.now();
+   const jobs = plan.map((p, i) => send(p.key, p.rt, `${arm}-${size}-${task}-c${c}-${i}-${randomBytes(3).toString("hex")}`, task));
+   const canary = CANARY ? send(await canaryKey(), "flash", `canary-${arm}-${size}-c${c}-${canaryN++}`) : null;
+@@ -909,8 +880,6 @@
+   const canaryResult = canary ? await canary : null;
+   const to = Date.now();
+   const cpuByCmd = cpuDiff(cpuFrom, cpuTable());
+-  const threadCpu = threadsDiff(threadsFrom, gatewayThreads());
+-  if (PROFILE_DIR) fs.writeFileSync(path.join(PROFILE_DIR, `stop.${profName}`), "");
+   for (const r of results.filter((x) => !x.correct).slice(0, 2)) emit({ phase: "failed-turn", label: r.label, events: lastEvents(`agent:makaron:explicit:${r.key}`), logs: lines.filter((l) => l.at >= from && /memory.?flush|read.*write|tool.*(?:deny|filter)|toolsAllow/iu.test(l.line)).slice(-8).map((l) => redact(l.line).slice(0, 260)) });
+   await sleep(SETTLE_MS);
+   const m = windowMetrics(from, Date.now());
+@@ -927,7 +896,7 @@
+   const h = hostContext();
+   const host = { gcSwap: h.gcSwapExperiment.length > 0, sharedGatewayInspect: h.sharedGatewayInspect.some((g) => g.inspect), otherCandidates: h.otherCandidates.length, load: h.load };
+   const ran = actualRuntime([...plan.map((p) => p.key), ...(CANARY ? [await canaryKey()] : [])]);
+-  return { arm, size, task, c, cpuByCmd, threadCpu, host, ran, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
++  return { arm, size, task, c, cpuByCmd, host, ran, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
+ }
+ 
+ async function waitSteady(label, minUptimeMin) {
+@@ -1088,10 +1057,78 @@
+   summary.steady = await waitSteady("initial", STEADY_MIN);
+   summary.hostAtStart = hostContext();
+   emit({ phase: "steady", ...summary.steady, host: summary.hostAtStart });
++  // SEED_REGISTRY=1: bring the private state database's registries to V's 2026-10-31 size. Rows are
++  // shared-VLab rows cloned and padded (V: subagent_runs 13,550 rows / 217 MB payload, task_runs
++  // 22,035 rows / 81 MB); no V data is copied.
++  if (process.env.SEED_REGISTRY === "1") {
++    // the Gateway holds the registry in memory and a full persist deletes rows it does not know, so
++    // seed with it stopped and let it restore the rows, as V's Gateway does at startup
++    await new Promise((res) => { gateway.once("exit", res); gateway.kill("SIGTERM"); });
++    try { client?.stop?.(); } catch {}
++    const started = Date.now();
++    const stateFile = path.join(stateDir, "state", "openclaw.sqlite");
++    const src = new DatabaseSync(path.join(sharedState, "state", "openclaw.sqlite"), { readOnly: true });
++    const tplT = src.prepare("SELECT * FROM task_runs WHERE status = 'succeeded' ORDER BY created_at DESC LIMIT 1").get();
++    src.close();
++    const db = new DatabaseSync(stateFile);
++    db.exec("PRAGMA busy_timeout = 30000");
++    const topo = JSON.parse((await import("node:zlib")).gunzipSync(fs.readFileSync(process.env.SEED_TOPOLOGY)));
++    const pad = "x".repeat(15_500);
++    const columnsS = Object.keys(topo[0]);
++    const insS = db.prepare(`INSERT OR REPLACE INTO subagent_runs (${columnsS.join(",")}) VALUES (${columnsS.map(() => "?").join(",")})`);
++    db.exec("BEGIN IMMEDIATE");
++    for (const r of topo) insS.run(...columnsS.map((k) => (k === "payload_json" ? JSON.stringify({ ...JSON.parse(r.payload_json), task: pad }) : r[k])));
++    db.exec("COMMIT");
++    const insT = db.prepare(`INSERT OR IGNORE INTO task_runs (${Object.keys(tplT).join(",")}) VALUES (${Object.keys(tplT).map(() => "?").join(",")})`);
++    const padT = "y".repeat(3_000);
++    db.exec("BEGIN IMMEDIATE");
++    for (let i = 0; i < num("SEED_TASK_RUNS", 22_035); i += 1) insT.run(...Object.keys(tplT).map((k) => (k === "task_id" ? `seed-task-${i}` : k === "run_id" ? `seed-run-t${i}` : k === "child_session_key" ? `agent:makaron:subagent:seed-t${i}` : k === "task" ? padT : tplT[k])));
++    db.exec("COMMIT");
++    const counts = { subagent: db.prepare("SELECT count(*) n, sum(length(payload_json)) b FROM subagent_runs").get(), task: db.prepare("SELECT count(*) n FROM task_runs").get(), pageCount: db.prepare("PRAGMA page_count").get() };
++    db.close();
++    // a run whose child session has no entry is pruned as an orphan at restore; V has these entries
++    const agentDb = new DatabaseSync(dbPath);
++    agentDb.exec("PRAGMA busy_timeout = 30000; PRAGMA foreign_keys = OFF");
++    const insNode = agentDb.prepare("INSERT OR IGNORE INTO session_nodes (session_key, current_session_id, entry_json, entry_valid, updated_at) VALUES (?, ?, ?, 1, ?)");
++    agentDb.exec("BEGIN IMMEDIATE");
++    const seededAt = Date.now();
++    for (const child of new Set(topo.map((r) => r.child_session_key))) {
++      const sid = randomUUID();
++      insNode.run(child, sid, JSON.stringify({ sessionId: sid, updatedAt: seededAt }), seededAt);
++    }
++    agentDb.exec("COMMIT");
++    counts.nodes = agentDb.prepare("SELECT count(*) n FROM session_nodes").get();
++    agentDb.close();
++    emit({ phase: "seed-registry", ms: Date.now() - started, counts });
++    startGateway();
++    await connectGateway();
++    await waitSteady("after-seed", 0);
++  }
++  // SEED_EACH_LEVEL=1: V's registry size at the start of every level after the first two, which warm the
++  // Workers (restore-at-start and orphan pruning are not what is measured here; rows the Gateway drops
++  // for having no session entry are put back before the next level).
++  let levelNo = 0;
++  const seedLevel = async () => {
++    const topo = (globalThis.__topo ??= JSON.parse((await import("node:zlib")).gunzipSync(fs.readFileSync(process.env.SEED_TOPOLOGY))));
++    const pad = "x".repeat(15_500);
++    const db = new DatabaseSync(path.join(stateDir, "state", "openclaw.sqlite"));
++    db.exec("PRAGMA busy_timeout = 30000");
++    const columns = Object.keys(topo[0]);
++    const ins = db.prepare(`INSERT OR REPLACE INTO subagent_runs (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`);
++    db.exec("BEGIN IMMEDIATE");
++    for (const r of topo) ins.run(...columns.map((k) => (k === "payload_json" ? JSON.stringify({ ...JSON.parse(r.payload_json), task: pad }) : r[k])));
++    db.exec("COMMIT");
++    const n = db.prepare("SELECT count(*) n, sum(length(payload_json)) b FROM subagent_runs").get();
++    db.close();
++    emit({ phase: "seed-level", levelNo, ...n });
++  };
+   const runLevel = async ({ arm, size, task }, c) => {
++    levelNo += 1;
++    if (process.env.SEED_EACH_LEVEL === "1" && levelNo > 2) await seedLevel();
+     const res = await level(arm, size, c, task);
+     const { runs: levelRuns, ...head } = res;
+     emit({ phase: "level", ...head });
++    if (process.env.SEED_REGISTRY === "1") { const check = new DatabaseSync(path.join(stateDir, "state", "openclaw.sqlite"), { readOnly: true }); emit({ phase: "registry-rows", n: check.prepare("SELECT count(*) n FROM subagent_runs").get().n, seeded: check.prepare("SELECT count(*) n FROM subagent_runs WHERE length(payload_json) > 15000").get().n }); check.close(); }
+     emit({ phase: "level-runs", arm, size, task, c, runs: levelRuns });
+     summary.levels.push(res);
+     const stop = (res.stallMaxMs ?? 0) > GATE_STALL_MS ? `stall ${res.stallMaxMs} ms` : res.failRate > GATE_FAIL_RATE ? `failures ${res.failed}/${c}` : null;
+--- runtime-concurrency-lag.mjs
++++ runtime-concurrency-lag.mjs
+@@ -33,56 +33,87 @@
+   lastElu = performance.eventLoopUtilization();
+ }, 1000).unref();
+ 
+-// PROFILE_DIR: the runner drops start.<name> / stop.<name> files around a load level; the Gateway's
+-// main thread profiles itself in between and writes a compact summary (CPU self time, live heap).
+-const profileDir = process.env.LT_PROFILE_DIR;
+-if (profileDir && process.argv.some((a) => a === "gateway")) {
+-  const [{ Session }, fs, path] = await Promise.all([import("node:inspector"), import("node:fs"), import("node:path")]);
+-  const session = new Session();
+-  session.connect();
+-  const post = (method, params) => new Promise((resolve, reject) => session.post(method, params, (error, result) => (error ? reject(error) : resolve(result))));
+-  const short = (url) => path.basename(String(url ?? "")).replace(/\?.*$/u, "");
+-  const label = (cf) => `${cf.functionName || "(anon)"} ${short(cf.url)}:${cf.lineNumber}`;
+-  const seen = new Set();
+-  let current = null;
+-  await post("Profiler.enable");
+-  await post("HeapProfiler.enable");
+-  setInterval(async () => {
+-    let names;
+-    try { names = fs.readdirSync(profileDir); } catch { return; }
+-    if (!current) {
+-      const start = names.find((n) => n.startsWith("start.") && !seen.has(n));
+-      if (!start) return;
+-      seen.add(start);
+-      current = start.slice(6);
+-      await post("Profiler.setSamplingInterval", { interval: 1000 });
+-      await post("Profiler.start");
+-      await post("HeapProfiler.startSampling", { samplingInterval: 262144 });
+-      return;
+-    }
+-    if (!names.includes(`stop.${current}`)) return;
+-    const name = current;
+-    current = null;
+-    const { profile } = await post("Profiler.stop");
+-    const { profile: heap } = await post("HeapProfiler.stopSampling");
+-    const nodes = new Map(profile.nodes.map((n) => [n.id, n]));
+-    const self = new Map();
+-    const dts = profile.timeDeltas ?? [];
+-    profile.samples.forEach((id, i) => self.set(id, (self.get(id) ?? 0) + (dts[i] ?? 0)));
+-    const byFn = new Map(); const byFile = new Map();
+-    let total = 0;
+-    for (const [id, us] of self) {
+-      const cf = nodes.get(id).callFrame;
+-      total += us;
+-      byFn.set(label(cf), (byFn.get(label(cf)) ?? 0) + us);
+-      const file = cf.url ? short(cf.url) : cf.functionName;
+-      byFile.set(file, (byFile.get(file) ?? 0) + us);
+-    }
+-    const ms = (m, n) => [...m].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => [k, Math.round(v / 1000)]);
+-    const live = new Map();
+-    const walk = (node) => { const sz = (node.selfSize ?? 0); if (sz) live.set(label(node.callFrame), (live.get(label(node.callFrame)) ?? 0) + sz); (node.children ?? []).forEach(walk); };
+-    walk(heap.head);
+-    const mb = [...live].sort((a, b) => b[1] - a[1]).slice(0, 25).map(([k, v]) => [k, Math.round(v / 1048576)]);
+-    fs.writeFileSync(path.join(profileDir, `summary.${name}.json`), JSON.stringify({ name, wallMs: Math.round(total / 1000), topFn: ms(byFn, 60), topFile: ms(byFile, 30), liveHeapMB: mb }));
+-  }, 300).unref();
++// ---- runstart-gap probe: long timers, subprocesses, outbound requests, with stacks ----
++import { appendFileSync, mkdirSync } from "node:fs";
++import { createRequire, syncBuiltinESMExports } from "node:module";
++const probeDir = process.env.RUNSTART_PROBE_DIR ?? "/tmp/runstart-gap-probe";
++try { mkdirSync(probeDir, { recursive: true }); } catch {}
++const probeOut = `${probeDir}/probe-${process.pid}.jsonl`;
++const probeLog = (o) => { try { appendFileSync(probeOut, `${JSON.stringify({ pid: process.pid, at: Date.now(), ...o })}\n`); } catch {} };
++Error.stackTraceLimit = 40;
++const stack = () => (new Error().stack ?? "").split("\n").slice(2, 34).map((s) => s.trim().replace(/file:\/\/\S*\/dist\//u, "dist/")).filter((s) => !s.includes("runtime-concurrency-lag"));
++const req = createRequire(import.meta.url);
++const timers = req("node:timers");
++const timersP = req("node:timers/promises");
++const MIN = Number(process.env.RUNSTART_PROBE_MIN_MS ?? 150);
++const origST = globalThis.setTimeout;
++const wrapped = function setTimeout(fn, ms, ...rest) {
++  if (typeof fn === "function" && Number(ms) >= MIN && Number(ms) <= 20000) {
++    const id = Math.random().toString(36).slice(2, 8);
++    probeLog({ k: "timer", id, ms: Number(ms), stack: stack() });
++    const f = fn;
++    return origST(function (...a) { probeLog({ k: "timer-fire", id }); return f.apply(this, a); }, ms, ...rest);
++  }
++  return origST(fn, ms, ...rest);
++};
++Object.assign(wrapped, origST);
++globalThis.setTimeout = wrapped;
++timers.setTimeout = wrapped;
++const origPST = timersP.setTimeout;
++timersP.setTimeout = function (ms, ...rest) {
++  if (Number(ms) >= MIN && Number(ms) <= 20000) probeLog({ k: "ptimer", ms: Number(ms), stack: stack() });
++  return origPST(ms, ...rest);
++};
++const cp = req("node:child_process");
++for (const name of ["spawn", "execFile", "exec", "fork"]) {
++  const orig = cp[name];
++  cp[name] = function (...a) {
++    const started = Date.now();
++    const c = orig.apply(this, a);
++    const cmd = String(a[0]).slice(0, 120);
++    probeLog({ k: "child", name, cmd, stack: stack() });
++    c?.once?.("exit", (code) => probeLog({ k: "child-exit", cmd, ms: Date.now() - started, code }));
++    return c;
++  };
+ }
++const origFetch = globalThis.fetch;
++if (origFetch) globalThis.fetch = async function (u, o) {
++  const started = Date.now();
++  let host = "?";
++  try { const x = new URL(typeof u === "string" ? u : u.url ?? String(u)); host = `${x.host}${x.pathname.slice(0, 60)}`; } catch {}
++  try { return await origFetch.call(this, u, o); } finally { probeLog({ k: "fetch", host, ms: Date.now() - started, stack: stack().slice(0, 8) }); }
++};
++for (const mod of ["node:https", "node:http"]) {
++  const m = req(mod);
++  const orig = m.request;
++  m.request = function (...a) {
++    const started = Date.now();
++    const c = orig.apply(this, a);
++    const o = a[0];
++    const host = typeof o === "string" ? o.slice(0, 80) : o instanceof URL ? o.host : `${o?.hostname ?? o?.host}${String(o?.path ?? "").slice(0, 60)}`;
++    c.once("response", () => probeLog({ k: "http", host, ms: Date.now() - started, stack: stack().slice(0, 8) }));
++    return c;
++  };
++}
++syncBuiltinESMExports();
++let tickAt = performance.now();
++setInterval(() => { const n = performance.now(); if (n - tickAt > 250) probeLog({ k: "blocked", ms: Math.round(n - tickAt - 50) }); tickAt = n; }, 50).unref();
++
++// every SQL statement in a Worker, with time and row count (statement text only, no bound values)
++if (process.argv.some((a) => a.endsWith("worker.mjs"))) {
++  const { DatabaseSync, StatementSync } = req("node:sqlite");
++  const sqlOf = new WeakMap();
++  const origPrepare = DatabaseSync.prototype.prepare;
++  DatabaseSync.prototype.prepare = function (sql, ...rest) { const s = origPrepare.call(this, sql, ...rest); sqlOf.set(s, String(sql).replace(/\s+/gu, " ").slice(0, 400)); return s; };
++  for (const name of ["all", "get", "run"]) {
++    const orig = StatementSync.prototype[name];
++    StatementSync.prototype[name] = function (...a) {
++      const t = performance.now();
++      const r = orig.apply(this, a);
++      const ms = Math.round((performance.now() - t) * 10) / 10; const sql = sqlOf.get(this); const heavy = ms >= 20 || /subagent_runs|task_runs|flow_runs/u.test(sql ?? ""); probeLog({ k: "sql", op: name, ms, rows: Array.isArray(r) ? r.length : undefined, sql, stack: stack().slice(0, heavy ? 32 : 3) });
++      return r;
++    };
++  }
++  const origIter = StatementSync.prototype.iterate;
++  StatementSync.prototype.iterate = function (...a) { probeLog({ k: "sql", op: "iterate", sql: sqlOf.get(this), stack: stack().slice(0, 32) }); return origIter.apply(this, a); };
++}
