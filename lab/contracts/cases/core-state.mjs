@@ -46,17 +46,23 @@ export default [
   {
     id: "MEMSEARCH-QUALITY/rare-term-outranks-common-terms",
     ledger: ["MEMSEARCH-QUALITY"],
-    boot: { config: memoryOnly, modelScript: search("memory tianyi history 星擎路线") },
+    boot: {
+      config: memoryOnly,
+      modelScript: search("memory tianyi history 星擎路线"),
+      // The index is built before the Gateway owns the state.
+      async beforeStart({ cli, workspace }) {
+        const dir = path.join(workspace, "memory");
+        mkdirSync(dir, { recursive: true });
+        for (let i = 0; i < 40; i++) {
+          writeFileSync(path.join(dir, `common-${i}.md`), `# 记录 ${i}\nmemory tianyi history main 第 ${i} 条流水，没有别的内容。\n`);
+        }
+        writeFileSync(path.join(dir, "rare.md"), "# 决定\n星擎路线 是夜班 D 走的那条。\n");
+        const index = await cli(["memory", "index", "--force"]);
+        if (index.code !== 0) throw Object.assign(new Error(`memory index failed: ${index.out.slice(-300)}`), { contract: true });
+      },
+    },
     timeoutMs: 180_000,
     async run({ gw, assert }) {
-      const dir = path.join(gw.workspace, "memory");
-      mkdirSync(dir, { recursive: true });
-      for (let i = 0; i < 40; i++) {
-        writeFileSync(path.join(dir, `common-${i}.md`), `# 记录 ${i}\nmemory tianyi history main 第 ${i} 条流水，没有别的内容。\n`);
-      }
-      writeFileSync(path.join(dir, "rare.md"), "# 决定\n星擎路线 是夜班 D 走的那条。\n");
-      const index = await gw.cli(["memory", "index", "--force"]);
-      assert(index.code === 0, `memory index failed: ${index.out.slice(-300)}`);
       await gw.turn("查一下", { timeoutMs: 100_000 });
       const out = JSON.parse(lastToolResult(gw.model.requests.at(-1).body)?.content ?? gw.model.requests.map((q) => lastToolResult(q.body)?.content).find(Boolean));
       const top = out.results?.[0]?.path ?? "";

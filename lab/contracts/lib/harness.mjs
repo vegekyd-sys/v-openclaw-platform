@@ -47,7 +47,7 @@ function workerConfig(targetDir, stateDir) {
   };
 }
 
-export async function boot(targetDir, { config = {}, env = {}, modelScript, feishu, feishuApi, telegram, setup, worker } = {}) {
+export async function boot(targetDir, { config = {}, env = {}, modelScript, feishu, feishuApi, telegram, setup, worker, beforeStart } = {}) {
   const dir = mkdtempSync(path.join(os.tmpdir(), "c2-"));
   const stateDir = path.join(dir, "state");
   const workspace = path.join(dir, "ws");
@@ -135,6 +135,20 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
     });
     if (r.status !== 0) logs.push(`doctor exited ${r.status}\n${r.stdout}\n${r.stderr}`);
   }
+  /** Runs the target's CLI against this Gateway's state and config. */
+  const cli = (args) =>
+    new Promise((resolve) => {
+      const c = spawn(process.execPath, ["dist/index.js", ...args], {
+        cwd: targetDir,
+        env: { ...process.env, OPENCLAW_STATE_DIR: stateDir, OPENCLAW_CONFIG_PATH: configPath, ...env },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let out = "";
+      for (const s of [c.stdout, c.stderr]) s.on("data", (d) => (out += d));
+      c.on("exit", (code) => resolve({ code, out }));
+    });
+  // Work that needs the state offline (10.10 refuses `memory index` while a Gateway owns it).
+  if (beforeStart) await beforeStart({ cli, workspace, dir, stateDir });
   const child = spawn(process.execPath, [...(process.env.C2_NODE_FLAGS?.split(" ") ?? []), "dist/index.js", "gateway", "--port", String(port)], {
     cwd: targetDir,
     env: {
@@ -184,18 +198,7 @@ export async function boot(targetDir, { config = {}, env = {}, modelScript, feis
     logs: () => logs.join(""),
     feishu: fakeFeishu,
     telegram: fakeTelegram,
-    /** Runs the target's CLI against this Gateway's state and config. */
-    cli: (args) =>
-      new Promise((resolve) => {
-        const c = spawn(process.execPath, ["dist/index.js", ...args], {
-          cwd: targetDir,
-          env: { ...process.env, OPENCLAW_STATE_DIR: stateDir, OPENCLAW_CONFIG_PATH: configPath, ...env },
-          stdio: ["ignore", "pipe", "pipe"],
-        });
-        let out = "";
-        for (const s of [c.stdout, c.stderr]) s.on("data", (d) => (out += d));
-        c.on("exit", (code) => resolve({ code, out }));
-      }),
+    cli,
     /** Pushes one user message into the Feishu channel. */
     feishuSend: (opts) => sendFeishuEvent(webhookPort, textEvent(opts)),
     feishuEvent: (event, type) => sendFeishuEvent(webhookPort, event, type),

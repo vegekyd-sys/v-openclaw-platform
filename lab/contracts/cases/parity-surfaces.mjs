@@ -39,15 +39,15 @@ function feishuCalls(gw) {
     .map((c) => stable(`${c.method} ${c.path} ${JSON.stringify(normalize(c.body, gw))}`).replace(/"uuid":"[^"]+"/g, '"uuid":"-"'));
 }
 
-const feishuScenario = (id, modelScript, message = "你好", send = {}, { waitFor, ...extra } = {}) => ({
+const feishuScenario = (id, modelScript, message = "你好", send = {}, { waitFor, waitMs = 60_000, ...extra } = {}) => ({
   id: `PARITY/feishu-${id}`,
   ledger: ["feishu-sequence"],
   parity: true,
-  timeoutMs: 120_000,
+  timeoutMs: waitMs + 60_000,
   boot: { feishu: true, modelScript, ...extra },
   async run({ gw }) {
     await gw.feishuSend({ text: message, ...send });
-    await gw.until(() => (waitFor ? gw.feishu.outboundText().includes(waitFor) : /dispatch complete/.test(gw.logs())), { what: waitFor ?? "dispatch" });
+    await gw.until(() => (waitFor ? gw.feishu.outboundText().includes(waitFor) : /dispatch complete/.test(gw.logs())), { what: waitFor ?? "dispatch", timeoutMs: waitMs });
     await new Promise((r) => setTimeout(r, 2500));
     return { calls: feishuCalls(gw), modelRequests: gw.model.requests.length, prompt: requestShape(gw, 0) };
   },
@@ -70,7 +70,8 @@ export default [
   feishuScenario("tool-then-reply", (body) =>
     lastToolResult(body) ? { text: "工具之后的回答" } : { text: "先查一下", toolCalls: [{ name: "session_status", args: {} }] },
   ),
-  feishuScenario("server-error", () => ({ httpStatus: 503, errorMessage: "down" })),
+  // Without a fallback model 10.10 keeps retrying the same model for up to 90 s.
+  feishuScenario("server-error", () => ({ httpStatus: 503, errorMessage: "down" }), "你好", {}, { waitMs: 150_000 }),
   feishuScenario("truncated", () => ({ text: "半截", finishReason: "length" })),
   feishuScenario("no-reply", () => ({ text: "NO_REPLY" })),
   feishuScenario("group", () => ({ text: "群里回答" }), "群消息", { chatType: "group", chatId: "oc_group" }),

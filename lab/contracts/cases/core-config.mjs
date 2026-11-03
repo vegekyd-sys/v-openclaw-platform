@@ -41,14 +41,17 @@ export default [
         },
       },
       modelScript: (body) => (lastToolResult(body) ? { text: "查完了" } : { toolCalls: [{ name: "memory_search", args: { query: "星擎路线" } }] }),
+      // The index is built before the Gateway owns the state.
+      async beforeStart({ cli, workspace }) {
+        const dir = path.join(workspace, "memory");
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(path.join(dir, "rare.md"), "# 决定\n星擎路线 是夜班 D 走的那条。\n");
+        const index = await cli(["memory", "index", "--force"]);
+        if (index.code !== 0) throw Object.assign(new Error(`memory index failed: ${index.out.slice(-300)}`), { contract: true });
+      },
     },
     timeoutMs: 180_000,
     async run({ gw, assert }) {
-      const dir = path.join(gw.workspace, "memory");
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(path.join(dir, "rare.md"), "# 决定\n星擎路线 是夜班 D 走的那条。\n");
-      const index = await gw.cli(["memory", "index", "--force"]);
-      assert(index.code === 0, `memory index failed: ${index.out.slice(-300)}`);
       let free;
       gw.script.embeddingsHang = new Promise((r) => (free = r));
       const started = Date.now();
