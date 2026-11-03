@@ -1,0 +1,12 @@
+{
+  "support": ["lab/candidate/cli-startup/mock-bridge.mjs", "lab/candidate/cli-startup/thin-relay.mjs", "lab/candidate/cli-startup-fast-accept.sh"],
+  "files": [
+    {"source": "lab/release-files/cli-startup-fast/native-hook-relay-cli-DTqrikhm.js", "target": "openclaw/dist/native-hook-relay-cli-DTqrikhm.js"},
+    {"source": "lab/release-files/cli-startup-fast/native-hook-relay-client-GFGIwlRq.js", "target": "openclaw/dist/native-hook-relay-client-GFGIwlRq.js"},
+    {"source": "lab/release-files/cli-startup-fast/warning-filter.js", "target": "openclaw/dist/warning-filter.js"}
+  ],
+  "command": ["/bin/bash", "lab/candidate/cli-startup-fast-accept.sh"],
+  "timeoutSeconds": 900,
+  "user": "lab-db91-parity",
+  "databases": []
+}

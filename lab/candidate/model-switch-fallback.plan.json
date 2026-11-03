@@ -1,0 +1,18 @@
+{
+  "support": [
+    "lab/candidate/model-switch-fallback.mjs",
+    "lab/patch-model-switch-thinking.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/model-switch-fallback.mjs"
+  ],
+  "env": {
+    "MS_PHASES": "think,big",
+    "MS_BIG": "fallback,manual",
+    "MS_WINDOWS": "500000,272000",
+    "MS_ARMS": "B"
+  },
+  "timeoutSeconds": 10800,
+  "user": "lab-db91-parity"
+}

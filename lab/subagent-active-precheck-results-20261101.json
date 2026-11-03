@@ -1,0 +1,15 @@
+{
+  "scope": "VLab candidates and read-only measurements on V, 2026-10-31 18:00 to 2026-11-01 02:40 CST",
+  "v": {
+    "gapPromptEndToModelCall": { "runs": 48, "p50Ms": 2264, "note": "worker runs 18:00-22:20; independent of input items (1-1206) and tool count (2-109)" },
+    "workerMainThreadInGap": { "runs": 4, "state": "running", "rcharMB": [678, 803, 803], "diskReadMB": 0 },
+    "query": { "sql": "select * from subagent_runs order by created_at, run_id", "rows": 13550, "ms": 1085, "rcharMB": 678, "withoutOrderBy": { "ms": 782, "rcharMB": 238 } },
+    "precheckOnRealKeys": { "keys": 55, "fallback": 0, "p50Ms": 0.03, "p95Ms": 0.25, "maxMs": 1.7 },
+    "firstAnswerBaseline": { "window": "2026-10-30 00:34 - 2026-10-31 22:20 CST", "vlabWorkerFlash": { "n": 473, "p50Ms": 27589, "receivedToRunStartP50Ms": 4463 }, "vdsFlash": { "n": 123, "p50Ms": 17667, "receivedToRunStartP50Ms": 1413 }, "note": "observational: different sessions and tasks" }
+  },
+  "candidates": {
+    "equivalence": { "id": "candidate-01656dbd-b648-488e-8520-1db19cc8f404", "realKeys": 59, "mismatches": 0, "injectedCases": 7, "injectedMismatches": 0 },
+    "before": { "id": "candidate-a448b771-3833-4263-9b41-919d475696b5", "hotTurns": 10, "correct": "12/12", "firstTextP50Ms": 16601, "gapMedianMs": 7075, "fullRegistryReads": 28, "note": "the client lost its SSH connection at 01:40; the run finished on the host, numbers read from its output directory" },
+    "after": { "id": "candidate-fedd4427-3e44-4244-b8c1-a27506a8865c", "hotTurns": 10, "correct": "12/12", "firstTextP50Ms": 9175, "gapMedianMs": 205, "fullRegistryReads": 2, "note": "the 2 remaining reads are each Worker's one-time restore" }
+  }
+}
