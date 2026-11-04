@@ -106,7 +106,8 @@ export default [
     ledger: ["FEISHU-empty-card-discard"],
     boot: { feishu: true, modelScript: () => ({ text: "NO_REPLY" }) },
     async run({ gw, assert }) {
-      await gw.feishuSend({ text: "不用回" });
+      // A group: 10.10 never treats NO_REPLY as silence in a direct chat.
+      await gw.feishuSend({ text: "不用回", chatType: "group", chatId: "oc_contract_group" });
       await settled(gw);
       await new Promise((r) => setTimeout(r, 1500));
       const sent = gw.feishu.outbound().filter((c) => c.path === "/open-apis/im/v1/messages" && c.method === "POST");
