@@ -25,6 +25,12 @@
 
 已知遗留：手动切到 luna 的**第一回合**，Gateway 回合前检查按目录缓存 272000 判断（阈值 25.2 万），超过的会话会先压缩一次，第二回合起按 85 万；DeepSeek→luna 回退不受影响。sessions.list、/status 对 luna 一直显示 272000，是 Gateway 现算的展示值，不是 worker 用的存储值。工具调用之后才 503 的回合（C 类）和用户手选 v4-pro 的回合（E 类）没修。
 
+**11/04 10:09 CST 配置热更新（不改文件，不重启）**：第一回合的缺口已补。[PR #548](https://github.com/vegekyd-sys/v-openclaw-platform/pull/548) 的 `/opt/v-ops/configure-v-luna-context.mjs apply-hot` 给两份配置加了 `models.providers.openai.models` 的 `gpt-6-luna` 行（contextTokens 850000、contextWindow 1050000，元数据同合成条目），随后 `v-workers-roll.mjs luna-context` 把 worker 从第 2 代换到第 3 代；Gateway 进程未重启（00:14 启动的那个）。备份 `/home/openclaw/.openclaw/openclaw.json.bak-luna-context-20261104T020922`。
+- 验收（测试群 oc_260a…）：`/luna` 之后、第一轮之前，sessions.list 对 luna 就显示 850000（之前 272000；和回合前检查是同一个查找函数）；真实回合 `LUNA-CTX-OK openai/gpt-6-luna`；只读 entry_json 的 contextTokens 850000、compactionCount 0；已切回 `/vcodex`。
+- candidate-8acb1f16：现在 V 的代码在 Gateway 冷启动首轮报 272000/252000，加配置行后 850000/830000；回合后两臂都是 830000。
+- 共享 VLab **没有**改：它的 Gateway 读 `state/shared-vlab-20260909-v3/openclaw.json`，里面没有 `models.providers.openai`（V 的 terra 行也没有）。11/03 那次在 VLab 上「加了配置行没生效」就是写到了没人读的 `state/openclaw.json`。
+- 回退：`configure-v-luna-context.mjs restore-hot` 后 `v-workers-roll.mjs`。
+
 回退：`promote-to-v.mjs --undo /opt/v-release-backups/v2026.9.1-db91.6-luna-fallback-takeover-20261104` 后重启。来源：[PR #543](https://github.com/vegekyd-sys/v-openclaw-platform/pull/543)、[PR #544](https://github.com/vegekyd-sys/v-openclaw-platform/pull/544)。
 
 相对上一版 `v2026.9.1-db91.6-codex-context-batch-20261101`：4 个文件变化。
