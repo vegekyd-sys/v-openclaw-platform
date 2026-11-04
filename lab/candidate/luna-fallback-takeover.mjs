@@ -7,6 +7,9 @@
 // with V's model, fallback and compaction setup, in arms
 //   A = the runtime's live bytes (checked equal to V's before shas)
 //   B = the same runtime with lab/patch-luna-fallback-takeover.mjs applied
+//   C = B plus the gpt-6-luna row (contextTokens 850000) in both configs
+//   D = B plus lab/patch-session-budget-maintenance.mjs (what V runs since 2026-11-04)
+//   E = D plus the gpt-6-luna row (scripts/configure-v-luna-context.mjs)
 // DeepSeek scenarios (tag in the user message):
 //   s503      every request 503 "Service is too busy" (what already worked on V)
 //   s503hang  the first LF_FAIL_FIRST requests 503 (the Worker's whole first attempt), later requests
@@ -15,6 +18,8 @@
 //   hangpin   like hang, on a session whose model the user picked (no fallback: what does the user see?)
 //   s503nocompact  every DeepSeek request 503 and the fast-compaction model 503 too (compaction.model is DeepSeek)
 //   ok        DeepSeek healthy (speed check, small and big session)
+//   switch    a fresh session grown on DeepSeek to LF_SWITCH_EMOJI emoji, then /model luna and one small
+//             turn: the first luna turn's pre-turn check (V 2026-11-04: 272000 / 252000 without the row)
 // Stand-ins on one loopback server: /v1/chat/completions model deepseek-flash plays DeepSeek,
 // /v1/responses plays luna (rejects a prompt over its window like OpenAI), /v1/chat/completions model
 // sol-stub plays the fast-compaction model (V: azure-openai/gpt-5.6-sol through versa-fast-quality-v1).
@@ -82,8 +87,9 @@ const installB = () => {
 const { FILES: MAINT_FILES } = await import(path.join(repoRoot, "lab/patch-session-budget-maintenance.mjs"));
 const maint = MAINT_FILES.map((file) => {
   const target = path.join(runtime, file.target, file.name);
-  const bytes = fs.readFileSync(target, "utf8");
-  assert.equal(sha(bytes), file.before, `runtime ${file.name} is not V's bytes`);
+  const runtimeBytes = fs.readFileSync(target, "utf8");
+  const bytes = sha(runtimeBytes) === file.before ? runtimeBytes : fs.readFileSync(path.join(repoRoot, CAPTURED[file.target], file.name), "utf8");
+  assert.equal(sha(bytes), file.before, `no pre-maintenance bytes for ${file.name}`);
   return { file, target, bytes };
 });
 const setMaintenance = (on) => { for (const m of maint) fs.writeFileSync(m.target, on ? m.file.patch(m.bytes) : m.bytes); };
@@ -273,7 +279,8 @@ const sharedRuntime = "/srv/vlab-production-mirror/labs/instances/db91-parity/ru
   fs.writeFileSync(workerPlugin.workerConfigPath, `${JSON.stringify(asV(workerConfig), null, 2)}\n`, { mode: 0o600 });
   fs.writeFileSync(configPath, `${JSON.stringify(asV(config0), null, 2)}\n`, { mode: 0o600 });
 }
-const LUNA_ROW = { id: "gpt-6-luna", name: "GPT-6 Luna", api: "openai-chatgpt-responses", reasoning: true, input: ["text", "image"], cost: { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 }, contextWindow: 1050000, contextTokens: 850000, maxTokens: 128000, compat: { supportsReasoningEffort: true, supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"] } };
+// The row V gets from scripts/configure-v-luna-context.mjs.
+const { LUNA_ROW } = await import(path.join(repoRoot, "scripts/configure-v-luna-context.mjs"));
 const setLunaRow = (on) => {
   for (const file of [configPath, workerPlugin.workerConfigPath]) {
     const config = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -571,6 +578,41 @@ const chatLunaTurn = async (arm, emojiCount) => {
     debug: debugLines(t0, t1), decisions: decisions(t0, t1) };
 };
 // Healthy DeepSeek: a small session over chat.send, chat.send -> first DeepSeek request / first delta / final.
+// V 2026-11-04: a session over 252k tokens on DeepSeek (or vcodex/terra), then /luna. The first luna turn's
+// pre-turn check cannot use the entry's budget (the entry still records the previous model) and looks the model up.
+const switchLunaTurn = async (arm, emojiCount) => {
+  const sessionKey = `agent:makaron:explicit:vlab-dev-lf-switch-${arm.toLowerCase()}-${Date.now()}`;
+  const send = async (message, tag) => {
+    const t0 = Date.now();
+    const sent = await gw.client.request("chat.send", { agentId: "makaron", sessionKey, message, deliver: false, timeoutMs: TURN_TIMEOUT_MS, idempotencyKey: `lf-switch-${arm}-${tag}-${t0}` });
+    if (sent?.runId) await gw.client.request("agent.wait", { runId: sent.runId, timeoutMs: TURN_TIMEOUT_MS }, { timeoutMs: TURN_TIMEOUT_MS + 20_000 }).catch(() => null);
+    return { t0, runId: sent?.runId };
+  };
+  const readEntry = () => {
+    const db = new DatabaseSync(path.join(stateDir, dbRel), { readOnly: true });
+    try { return JSON.parse(db.prepare("SELECT entry_json FROM session_nodes WHERE session_key = ?").get(sessionKey)?.entry_json ?? "null"); } finally { db.close(); }
+  };
+  const brief = (e) => e && { model: e.model, modelOverride: e.modelOverride, totalTokens: e.totalTokens, contextTokens: e.contextTokens, compactionCount: e.compactionCount ?? 0,
+    checkpoints: (e.compactionCheckpoints ?? []).map((c) => ({ reason: c.reason, tokensBefore: c.tokensBefore, tokensAfter: c.tokensAfter })) };
+  let seed = 11; const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  let body = ""; for (let i = 0; i < emojiCount; i++) { body += String.fromCodePoint(0x1F300 + Math.floor(rnd() * 0x2FF)); if (i % 60 === 59) body += "\n"; }
+  const grow = await send(`[lf ${arm} switch 1] 上下文容量测试，只回复暗号 LF-GROW-OK。\n\n${body}`, "grow");
+  await sleep(20_000); // let any post-turn maintenance land before switching
+  const afterGrow = brief(readEntry());
+  await send(`/model ${LUNA}`, "model");
+  const afterSwitch = brief(readEntry());
+  const { t0 } = await send(`[lf ${arm} switch 2] 只回复暗号 LF-SWITCH-OK。`, "luna");
+  await sleep(20_000);
+  const t1 = Date.now();
+  const window = requests.filter((r) => r.at >= t0 && r.at <= t1);
+  return { arm, scenario: "switch", sessionKey, totalS: (t1 - t0) / 1000,
+    growRequests: requests.filter((r) => r.at >= grow.t0 && r.at < t0).map((r) => ({ role: r.role, status: r.status, estTokens: r.estTokens })),
+    afterGrow, afterSwitch, entry: brief(readEntry()),
+    requests: window.map((r) => ({ t: +((r.at - t0) / 1000).toFixed(1), role: r.role, status: r.status, estTokens: r.estTokens })),
+    // A compaction request before luna's answer = the pre-turn check compacted the session.
+    compactedBeforeLuna: window.findIndex((r) => r.role === "compaction") !== -1 && window.findIndex((r) => r.role === "compaction") < window.findIndex((r) => r.role === "luna"),
+    debug: debugLines(t0, t1), decisions: decisions(t0, t1) };
+};
 const speedTurn = async (arm, n) => {
   const sessionKey = `agent:makaron:feishu:direct:ou_lf_speed_${arm.toLowerCase()}`;
   const message = `[lf ${arm} ok ${n}] 回一句话就好。`;
@@ -590,17 +632,19 @@ const median = (xs) => { const s = xs.filter((x) => Number.isFinite(x)).sort((a,
 const results = { big: [], speed: {} };
 try {
   for (const arm of ARMS) {
-    if (arm === "B" || arm === "C" || arm === "D") installB(); else restoreA();
-    setMaintenance(arm === "D");
-    // Arm C: B plus the luna model row with contextTokens, as tried on shared VLab 2026-11-03.
-    if (LUNA_REAL) setLunaRow(arm === "C");
+    if (arm === "B" || arm === "C" || arm === "D" || arm === "E") installB(); else restoreA();
+    setMaintenance(arm === "D" || arm === "E");
+    // Arm C: B plus the luna model row with contextTokens, as tried on shared VLab 2026-11-03; E: D plus the row.
+    if (LUNA_REAL) setLunaRow(arm === "C" || arm === "E");
     if (!LUNA_REAL) setLunaContextTokens(LUNA_CTX[arm]);
     for (const scenario of SCENARIOS) {
       // A database swapped under a running Gateway fails DB91 integrity; every scenario starts cold.
       restoreDb({ userPickedModel: scenario === "hangpin" });
       await startGateway();
       activeScenario = scenario;
-      const r = scenario === "chat" ? await chatLunaTurn(arm, Number(process.env.LF_CHAT_EMOJI ?? 80000)) : await bigTurn(arm, scenario, 1);
+      const r = scenario === "chat" ? await chatLunaTurn(arm, Number(process.env.LF_CHAT_EMOJI ?? 80000))
+        : scenario === "switch" ? await switchLunaTurn(arm, Number(process.env.LF_SWITCH_EMOJI ?? 130000))
+        : await bigTurn(arm, scenario, 1);
       activeScenario = null;
       results.big.push(r);
       log(JSON.stringify(r, null, 1));
