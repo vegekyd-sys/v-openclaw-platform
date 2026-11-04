@@ -75,12 +75,10 @@ export const PATTERNS = {
   },
 };
 
-const GUIDE = `---
-name: feishu-card-ui
-description: 在飞书里把结构化结果做成卡片 UI（图表、指标卡、分栏对比、时间线、状态标签、折叠细节、跳转按钮）的版式与写法；写卡片回复前读。
----
+// references/reply-cards.md of V's feishu-channel-cards skill (the in-conversation reply card).
+const GUIDE = `# 回复卡片：版式与写法
 
-# 飞书卡片 UI
+回复卡片 = 这一条回复本身就是一张卡片（整条只有卡片 JSON），渠道原样发出，支持完整的卡片 JSON 2.0。不需要脚本、SDK 或 presentation。
 
 ## 什么时候用
 - 有一组数字 → 图表；有 2–4 个关键数字 → 指标卡；几个选项比较 → 分栏 + 推荐标签；按时间排的安排 → 时间线；有好坏/风险 → 彩色标签。出现其中任一样就用卡片，可以同时用好几样。
@@ -107,6 +105,6 @@ description: 在飞书里把结构化结果做成卡片 UI（图表、指标卡�
 
 const TITLES = { trend: '数据与趋势：状态标签标题 → 指标卡一行 → 图表 → 结论 → 折叠的安排/明细', compare: '多方对比：每个选项一栏 + 推荐标签 → 折叠的完整参数 → 跳转按钮', plan: '计划与行程：左栏时间、右栏内容，一步一行 → 风险/备选标签', report: '状态汇报：饼图 + 右侧清单与状态标签' };
 
-export function skillMarkdown() {
+export function replyCardsReference() {
   return GUIDE + Object.entries(PATTERNS).map(([k, card]) => `\n### ${TITLES[k]}\n\`\`\`json\n${JSON.stringify(card)}\n\`\`\`\n`).join('');
 }

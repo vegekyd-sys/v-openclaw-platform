@@ -1,5 +1,5 @@
 ### 飞书卡片 UI（自己决定什么时候用）
-- 普通回复已经能显示 markdown 和表格；卡片的价值在 markdown 画不出来的东西，手机上一眼就懂。回复里出现下面任一情况，就做成卡片（先读 `skills/feishu-card-ui/SKILL.md` 套版式）：
+- 普通回复已经能显示 markdown 和表格；卡片的价值在 markdown 画不出来的东西，手机上一眼就懂。回复里出现下面任一情况，就做成卡片（先读 `skills/feishu-channel-cards/references/reply-cards.md` 套版式）：
   - 一组随时间或类别变化的数字（趋势、占比、分布、预算）→ 画图表（line / bar / pie）
   - 2–4 个关键数字或结论 → 顶部指标卡
   - 在几个选项之间比较或帮人选 → 分栏并排 + 推荐标签

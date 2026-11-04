@@ -2237,6 +2237,51 @@ function cardImageLinks(text) {
   }
   return out;
 }
+// v-feishu-card-open-v1: model-written card replies
+function vPartialFeishuCard(text) {
+  const src = text.trimStart();
+  if (!src.startsWith('{')) return null;
+  const stack = [];
+  let header = null, elements = [], inString = false, escaped = false, expectKey = false, key = null, stringStart = -1;
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') { inString = false; if (expectKey) key = src.slice(stringStart + 1, i); }
+      continue;
+    }
+    if (ch === '"') { inString = true; stringStart = i; continue; }
+    if (ch === ':') { expectKey = false; continue; }
+    if (ch === ',') { expectKey = stack.at(-1)?.t === '{'; continue; }
+    if (ch === '{' || ch === '[') {
+      const parent = stack.at(-1);
+      stack.push({ t: ch, key: parent?.t === '{' ? key : '#', start: i });
+      expectKey = ch === '{';
+      continue;
+    }
+    if (ch === '}' || ch === ']') {
+      const done = stack.pop();
+      if (!done) return null;
+      if (done.t === '{' && stack.length === 3 && stack[1].key === 'body' && stack[2].key === 'elements') {
+        try { elements.push(JSON.parse(src.slice(done.start, i + 1))); } catch { return null; }
+      } else if (done.t === '{' && stack.length === 1 && done.key === 'header') {
+        try { header = JSON.parse(src.slice(done.start, i + 1)); } catch { return null; }
+      }
+      expectKey = false;
+    }
+  }
+  if (!header && !elements.length) return null;
+  return {
+    count: elements.length + (header ? 1 : 0),
+    card: {
+      schema: '2.0',
+      config: { width_mode: 'fill', streaming_mode: true, summary: { content: '[Generating...]' } },
+      ...(header ? { header } : {}),
+      body: { elements: elements.length ? elements : [{ tag: 'markdown', content: '…' }] },
+    },
+  };
+}
 var FeishuStreamingSession = class {
 	constructor(client, creds, log, deps) {
 		this.state = null;
@@ -2651,6 +2696,88 @@ var FeishuStreamingSession = class {
 	isActive() {
 		return this.state !== null && !this.closed;
 	}
+	async vPutWholeCard(card) {
+		const apiBase = resolveApiBase(this.creds.domain);
+		this.state.sequence += 1;
+		const { response, release } = await fetchWithSsrFGuard({
+			url: `${apiBase}/cardkit/v1/cards/${this.state.cardId}`,
+			init: {
+				method: "PUT",
+				headers: {
+					Authorization: `Bearer ${await getToken(this.creds, { fetchImpl: this.fetchImpl, lookupFn: this.lookupFn })}`,
+					"Content-Type": "application/json",
+					"User-Agent": getFeishuUserAgent()
+				},
+				body: JSON.stringify({
+					card: { type: "card_json", data: JSON.stringify(card) },
+					sequence: this.state.sequence,
+					uuid: `w_${this.state.cardId}_${this.state.sequence}`
+				})
+			},
+			fetchImpl: this.fetchImpl,
+			lookupFn: this.lookupFn,
+			policy: { allowedHostnames: resolveAllowedHostnames(this.creds.domain) },
+			auditContext: "feishu.streaming-card.model-card",
+			timeoutMs: this.creds.httpTimeoutMs ?? 3e4
+		});
+		try {
+			await assertSuccessfulCardKitResponse(response, "feishu.streaming-card.model-card", "Replace whole card");
+		} finally {
+			await release();
+		}
+	}
+	// v-feishu-card-open-v1: one more finished piece of V's card is shown in place.
+	vShowModelCard(card) {
+		this.queue = this.queue.then(async () => {
+			if (!this.state || this.closed) return;
+			await this.vPutWholeCard(card);
+			this.vModelCardShown = true;
+		}).catch((error) => this.log?.(`Model card preview failed: ${String(error)}`));
+		return this.queue;
+	}
+	async vCloseWithModelCard(card) {
+		this.closed = true;
+		this.clearFlushTimer();
+		await this.queue;
+		const messageId = this.state.messageId;
+		let error;
+		try {
+			await this.vPutWholeCard(card);
+		} catch (e) {
+			error = e;
+			this.log?.(`Model card final failed: ${String(e)}`);
+		}
+		const cardId = this.state.cardId;
+		this.state.sequence += 1;
+		await fetchWithSsrFGuard({
+			url: `${resolveApiBase(this.creds.domain)}/cardkit/v1/cards/${cardId}/settings`,
+			init: {
+				method: "PATCH",
+				headers: {
+					Authorization: `Bearer ${await getToken(this.creds, { fetchImpl: this.fetchImpl, lookupFn: this.lookupFn })}`,
+					"Content-Type": "application/json; charset=utf-8",
+					"User-Agent": getFeishuUserAgent()
+				},
+				body: JSON.stringify({
+					settings: JSON.stringify({ config: { streaming_mode: false, summary: { content: truncateSummary(card.header?.title?.content ?? "") } } }),
+					sequence: this.state.sequence,
+					uuid: `c_${cardId}_${this.state.sequence}`
+				})
+			},
+			fetchImpl: this.fetchImpl,
+			lookupFn: this.lookupFn,
+			policy: { allowedHostnames: resolveAllowedHostnames(this.creds.domain) },
+			auditContext: "feishu.streaming-card.close",
+			timeoutMs: this.creds.httpTimeoutMs ?? 3e4
+		}).then(async ({ response, release }) => {
+			try { await assertSuccessfulCardKitResponse(response, "feishu.streaming-card.close", "Close streaming card"); } finally { await release(); }
+		}).catch((e) => this.log?.(`Close failed: ${String(e)}`));
+		this.state = null;
+		this.pendingText = null;
+		this.log?.(`Closed streaming with model card: cardId=${cardId}`);
+		if (error !== void 0) throw error;
+		return { visibleReplySent: true, content: "", ...messageId ? { messageId } : {} };
+	}
 };
 //#endregion
 //#region extensions/feishu/src/typing-backoff.ts
@@ -3017,6 +3144,18 @@ function createFeishuReplyDispatcher(params) {
 				streamingFlushScheduled = false;
 			}
 		});
+	};
+	let vModelCardShownCount = 0;
+	const vStreamModelCard = (text) => {
+		const partial = vPartialFeishuCard(text);
+		if (!partial || partial.count <= vModelCardShownCount) return;
+		vModelCardShownCount = partial.count;
+		startStreaming();
+		const startPromise = streamingStartPromise;
+		void (async () => {
+			if (startPromise) await startPromise;
+			if (streaming?.isActive()) await streaming.vShowModelCard(partial.card);
+		})();
 	};
 	const queueStreamingUpdate = (nextText, options) => {
 		if (!nextText) return;
@@ -3706,7 +3845,6 @@ function createFeishuReplyDispatcher(params) {
 						kind: "card"
 					});
 				}
-				// v-feishu-card-open-v1: model-written card replies
 				let vModelCard;
 				if (info?.kind !== "block" && !inputPayload.presentation && !inputPayload.interactive && vReadNativeFeishuCardJson(inputPayload.text)) try {
 					vModelCard = vBuildFeishuPayloadCard({
@@ -3776,6 +3914,27 @@ function createFeishuReplyDispatcher(params) {
 						});
 					}
 				};
+				if (vModelCard && (streaming?.isActive() || streamingStartPromise)) {
+					if (streamingStartPromise) await streamingStartPromise;
+					const session = streaming;
+					try {
+						if (hasMedia) await collectDelivery(sendMediaReplies(payload));
+						if (streamingStartPromise) await streamingStartPromise;
+						if (!session?.isActive()) throw new Error("no preview card to finish");
+						const closed = await session.vCloseWithModelCard(vModelCard);
+						if (streaming === session) resetStreamingState();
+						markVisibleReplySent();
+						return mergeFeishuReplyDeliveryResults([...deliveredResults, createFeishuReplyDeliveryResult({
+							results: [closed],
+							visibleReplySent: true,
+							content: resolvedText,
+							kind: "card"
+						})], resolvedText);
+					} catch (error) {
+						params.runtime?.log?.(`feishu[${account.accountId}] model card could not finish in place; sending it as a new card: ${String(error)}`);
+						if (streaming === session) resetStreamingState();
+					}
+				}
 				if (shouldDiscardStreamingPreview) await discardStreamingPreview();
 				if (presentationCard) {
 					if (hasMedia) await collectDelivery(sendMediaReplies(payload));
@@ -3916,7 +4075,10 @@ function createFeishuReplyDispatcher(params) {
 					trim: "both"
 				});
 				if (!cleaned) return false;
-				if (cleaned.trimStart().startsWith("{")) return false;
+				if (cleaned.trimStart().startsWith("{")) {
+					vStreamModelCard(cleaned);
+					return false;
+				}
 				if (!vlab91Commentary.isClosed() && vlab91CommentaryRetiresOnFinal(responsePrefixContextProvider().agentRuntime)) { vlab91Commentary.close(); streamText = ""; snapshotBaseText = ""; lastSnapshotTextLength = 0; lastPartial = ""; }
 				startStreaming();
 				queueStreamingUpdate(cleaned, {

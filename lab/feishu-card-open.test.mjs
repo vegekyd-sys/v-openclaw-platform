@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
-import { FILES, V_MODEL_CARD, nativeFeishuCardText, openNativeFeishuCard, patchMonitor, patchReplyDelivery } from './patch-feishu-card-open.mjs';
+import { FILES, V_MODEL_CARD, vPartialFeishuCard, nativeFeishuCardText, openNativeFeishuCard, patchMonitor, patchReplyDelivery } from './patch-feishu-card-open.mjs';
 import { DEMO_CARD } from './candidate/feishu-card-open.mjs';
 
 const read = (f) => fs.readFileSync(new URL(`../${f.base}/${f.name}`, import.meta.url), 'utf8');
@@ -40,7 +40,9 @@ test('patched files carry their markers once and route cards through the open pa
   assert.match(reply, /async function sendCardFeishuOnce\(params\)/);
   assert.match(reply, /model card rejected, sent as text/);
   const monitor = patchMonitor(read(monitorFile));
-  assert.match(monitor, /if \(cleaned\.trimStart\(\)\.startsWith\("\{"\)\) return false;/);
+  assert.match(monitor, /if \(cleaned\.trimStart\(\)\.startsWith\("\{"\)\) \{\n\t+vStreamModelCard\(cleaned\);/);
+  assert.match(monitor, /async vCloseWithModelCard\(card\)/);
+  assert.match(monitor, /if \(vModelCard && \(streaming\?\.isActive\(\) \|\| streamingStartPromise\)\)/);
   assert.match(monitor, /it as vReadNativeFeishuCardJson, s as vBuildFeishuPayloadCard/);
   assert.match(monitor, /const prepared = vModelCard \? \{/);
 });
@@ -60,14 +62,33 @@ test('release files are the builder output from V bytes', async () => {
   }
 });
 
-test('the skill shows exactly the layouts the candidate sends to Feishu', async () => {
-  const { PATTERNS, skillMarkdown } = await import('./feishu-card-ui-patterns.mjs');
-  const skill = fs.readFileSync(new URL('./feishu-card-ui/SKILL.md', import.meta.url), 'utf8');
-  assert.equal(skill, skillMarkdown());
-  assert.match(skill, /^---\nname: feishu-card-ui\ndescription: .+\n---\n/);
+test('the reply-card reference shows exactly the layouts the candidate sends to Feishu', async () => {
+  const { PATTERNS, replyCardsReference } = await import('./feishu-card-ui-patterns.mjs');
+  const skill = fs.readFileSync(new URL('./feishu-card-ui/reply-cards.md', import.meta.url), 'utf8');
+  assert.equal(skill, replyCardsReference());
   for (const card of Object.values(PATTERNS)) {
     assert.ok(skill.includes(JSON.stringify(card)));
     assert.deepEqual(JSON.parse(JSON.stringify(openNativeFeishuCard(card))), card);
     assert.ok(Buffer.byteLength(JSON.stringify(card)) < 30720);
   }
+});
+
+test('a half-written card shows its header and every finished element, nothing else', () => {
+  const card = JSON.stringify({ schema: '2.0', config: { width_mode: 'fill' }, header: { title: { tag: 'plain_text', content: '标题 {不是对象}' } }, body: { elements: [
+    { tag: 'markdown', content: 'a "}" ] b \\ c' }, { tag: 'chart', chart_spec: { data: { values: [{ x: 1 }] } } }, { tag: 'hr' },
+  ] } });
+  assert.equal(vPartialFeishuCard('好的'), null);
+  assert.equal(vPartialFeishuCard(card.slice(0, 40)), null);
+  const counts = [];
+  for (let n = 1; n <= card.length; n++) {
+    const p = vPartialFeishuCard(card.slice(0, n));
+    if (p && p.count !== counts.at(-1)) counts.push(p.count);
+    if (p) assert.equal(p.card.config.streaming_mode, true);
+  }
+  assert.deepEqual(counts, [1, 2, 3, 4]);
+  const done = vPartialFeishuCard(card);
+  assert.deepEqual(done.card.body.elements, JSON.parse(card).body.elements);
+  assert.deepEqual(done.card.header, JSON.parse(card).header);
+  const headerOnly = vPartialFeishuCard(card.slice(0, card.indexOf('"body"')));
+  assert.deepEqual(headerOnly.card.body.elements, [{ tag: 'markdown', content: '…' }]);
 });

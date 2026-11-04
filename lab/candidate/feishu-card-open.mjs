@@ -150,12 +150,26 @@ async function runInCandidate() {
     }
     fs.writeFileSync(path.join(workspace, name), text);
   }
-  if (AGENTS_ON) {
-    fs.mkdirSync(path.join(workspace, "skills/feishu-card-ui"), { recursive: true });
-    fs.copyFileSync(path.join(REPO, "lab/feishu-card-ui/SKILL.md"), path.join(workspace, "skills/feishu-card-ui/SKILL.md"));
+  // V's feishu-channel-cards skill as it would ship (FCO_SKILL: relpath:sha256, hash-pinned private inputs).
+  const skillFiles = [];
+  for (const entry of (AGENTS_ON ? env.FCO_SKILL ?? "" : "").split(",").filter(Boolean)) {
+    const [rel, sha] = entry.split(":");
+    const [file] = findInputs(`${path.basename(rel)}:${sha}`).values();
+    const to = path.join(workspace, "skills/feishu-channel-cards", rel);
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.copyFileSync(file, to);
+    skillFiles.push(`skills/feishu-channel-cards/${rel}`);
   }
-  summary.workspace.files = [...inputs.keys(), ...(AGENTS_ON ? ["skills/feishu-card-ui/SKILL.md"] : [])];
+  summary.workspace.files = [...inputs.keys(), ...skillFiles];
   summary.workspace.agentsSha256 = S.sha256(fs.readFileSync(path.join(workspace, "AGENTS.md")));
+  if (env.FCO_DEBUG_PARTIAL === "1") {
+    // Candidate-only: log what reaches the Feishu reply dispatcher as partial text.
+    const before = fs.readFileSync(monitorFile, "utf8");
+    const hook = "onPartialReply: previewStreamingEnabled ? (payload) => {\n";
+    assert.equal(before.split(hook).length, 2, "partial hook anchor");
+    fs.writeFileSync(monitorFile, before.replace(hook, hook + "\t\t\t\tparams.runtime.log?.(`fco-partial len=${String(payload.text ?? \"\").length} head=${JSON.stringify(String(payload.text ?? \"\").slice(0, 24))}`);\n"));
+    summary.notes.push("debug: partial texts logged (fco-partial)");
+  }
   summary.notes.push(...cand.notes);
   const ready = await cand.start();
   step("gateway ready", ready);
@@ -245,6 +259,7 @@ async function runInCandidate() {
       }
     }
     summary.cardLog = cand.logSince(0, /model card rejected|Feishu card (send|reply) failed|card/u, 40);
+    summary.partialLog = cand.logSince(0, /fco-partial|Model card|model card/u, 300);
     summary.ok = summary.checks.filter((c) => !c.detail?.optional).every((c) => c.ok);
   } catch (e) {
     summary.ok = false;

@@ -70,6 +70,22 @@ trend / compare / plan / report, each sent to Feishu by the candidate and accept
 In the last round the iPhone Duo comparison (data half missing) and the Saturday plan (V read
 the skill, wrote a time table) stayed markdown; area codes, chat and a quick fact stayed text.
 
+## Round 3: cards in place (2026-11-04 night)
+
+- The monitor now parses a half-written card (`vPartialFeishuCard`: header + finished
+  `body.elements`) and replaces the whole streaming card entity (`PUT /cardkit/v1/cards/:id`,
+  verified on Feishu: text → partial card ×3 → final → close, all code 0). The final reply then
+  finishes that same message (`vCloseWithModelCard`) instead of deleting the preview and sending a
+  new card; on any failure it falls back to the old path.
+- Finding: V's answer text is not token-streamed. In the candidate (worker + deepseek-flash) each
+  assistant message reaches the Feishu dispatcher as one partial (card 1501/3513 chars, chat 48),
+  and V's production `[firsttext-e2e.1]` lines show the same (answer visible 1.5–2 s after its first
+  token, reply ends 0.1 s later). What moves in the card while V works is the tool-progress line.
+  So the card cannot grow piece by piece until the core/worker streams answer deltas; the parser is
+  ready for when it does.
+- `candidate-34fdc984`: spend and trend went progress line → V's card in the same message
+  (charts, metric tiles, tags, panel); chat unchanged.
+
 ## Known costs
 
 - A card reply does not stream: the user sees the progress text, then the card when the whole JSON
