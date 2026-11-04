@@ -59,3 +59,15 @@ test('release files are the builder output from V bytes', async () => {
     assert.equal(createHash('sha256').update(fs.readFileSync(new URL(`../${f.source}`, import.meta.url))).digest('hex'), f.after, f.source);
   }
 });
+
+test('the skill shows exactly the layouts the candidate sends to Feishu', async () => {
+  const { PATTERNS, skillMarkdown } = await import('./feishu-card-ui-patterns.mjs');
+  const skill = fs.readFileSync(new URL('./feishu-card-ui/SKILL.md', import.meta.url), 'utf8');
+  assert.equal(skill, skillMarkdown());
+  assert.match(skill, /^---\nname: feishu-card-ui\ndescription: .+\n---\n/);
+  for (const card of Object.values(PATTERNS)) {
+    assert.ok(skill.includes(JSON.stringify(card)));
+    assert.deepEqual(JSON.parse(JSON.stringify(openNativeFeishuCard(card))), card);
+    assert.ok(Buffer.byteLength(JSON.stringify(card)) < 30720);
+  }
+});

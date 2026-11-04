@@ -19,18 +19,24 @@ import crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import * as S from "./inter-session-support.mjs";
+import { PATTERNS } from "../feishu-card-ui-patterns.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..", "..");
 const ROOM = S.ROOMS[0];
 
 const DEFAULT_PROMPTS = [
-  { id: "compare", expect: "card", text: "帮我对比下 iPhone 17 Pro、Pixel 10 Pro 和三星 S26 Ultra，主要看屏幕、影像、续航和起售价" },
   { id: "trend", expect: "card", text: "我今年 5 到 10 月的跑量是 42、55、38、61、70、66 公里，帮我看看趋势，下个月怎么安排" },
+  { id: "spend", expect: "card", text: "这周花了：餐饮 820、交通 260、购物 1150，预算是 2000，帮我看看" },
+  { id: "compare", expect: "card", text: "帮我对比下 iPhone 17 Pro、Pixel 10 Pro 和三星 S26 Ultra，主要看屏幕、影像、续航和起售价，我该买哪个" },
+  { id: "duo", expect: "card", text: "查下 iPhone duo 跟竞品的比较" },
+  { id: "plan", expect: "card", text: "周六想带爸妈在上海玩一天，老人腿脚一般，帮我排个行程" },
+  { id: "table", expect: "text", text: "把北京、上海、广州、深圳、杭州的电话区号列一下" },
   { id: "chat", expect: "text", text: "今天好累啊，下午连着开了四个会" },
-  { id: "plan", expect: "any", text: "周六想带爸妈在上海玩一天，老人腿脚一般，帮我排个行程" },
   { id: "fact", expect: "text", text: "1 英里等于多少公里" },
 ];
+// Components markdown cannot draw: what makes a card worth sending.
+const UI_TAGS = ["chart", "column_set", "collapsible_panel", "button", "text_tag", "img"];
 
 // The components the AGENTS.md section teaches, in one card. Feishu must accept it as is.
 export const DEMO_CARD = {
@@ -144,7 +150,11 @@ async function runInCandidate() {
     }
     fs.writeFileSync(path.join(workspace, name), text);
   }
-  summary.workspace.files = [...inputs.keys()];
+  if (AGENTS_ON) {
+    fs.mkdirSync(path.join(workspace, "skills/feishu-card-ui"), { recursive: true });
+    fs.copyFileSync(path.join(REPO, "lab/feishu-card-ui/SKILL.md"), path.join(workspace, "skills/feishu-card-ui/SKILL.md"));
+  }
+  summary.workspace.files = [...inputs.keys(), ...(AGENTS_ON ? ["skills/feishu-card-ui/SKILL.md"] : [])];
   summary.workspace.agentsSha256 = S.sha256(fs.readFileSync(path.join(workspace, "AGENTS.md")));
   summary.notes.push(...cand.notes);
   const ready = await cand.start();
@@ -153,9 +163,13 @@ async function runInCandidate() {
 
   try {
     // ---- 2. Feishu accepts the taught components; a rejected card still arrives as text
-    {
+    if (env.FCO_SKIP_PLATFORM !== "1") {
       const r = await cand.feishuApi("POST", "/open-apis/im/v1/messages", { query: { receive_id_type: "chat_id" }, body: { receive_id: ROOM, msg_type: "interactive", content: JSON.stringify(DEMO_CARD), uuid: `fco-demo-${crypto.randomBytes(8).toString("hex")}` } });
       check("feishu-accepts-demo-card", r.code === 0, { code: r.code, msg: r.msg, messageId: r.data?.message_id });
+      for (const [name, card] of Object.entries(PATTERNS)) {
+        const p = await cand.feishuApi("POST", "/open-apis/im/v1/messages", { query: { receive_id_type: "chat_id" }, body: { receive_id: ROOM, msg_type: "interactive", content: JSON.stringify(card), uuid: `fco-${name}-${crypto.randomBytes(8).toString("hex")}` } });
+        check(`feishu-accepts-pattern-${name}`, p.code === 0, { code: p.code, msg: p.msg });
+      }
       const bad = readCard(JSON.stringify({ schema: "2.0", header: { title: { tag: "plain_text", content: "【测试】被拒卡片回退" } }, body: { elements: [{ tag: "markdown", content: "飞书拒收这张卡时，这段文字仍应送达。" }, { tag: "no_such_component", content: "x" }] } }));
       const mark = cand.mark();
       let sent = null, error = null;
@@ -178,7 +192,20 @@ async function runInCandidate() {
         await cand.dm(`${p.text}`);
         // Done when the last transcript entry is an assistant message without tool calls and nothing new arrives for 20 s.
         let lastLen = -1, stableSince = 0;
+        turn.timeline = [];
+        const seen = new Map();
         await S.until(async () => {
+          // What Tianyi sees, every poll: each bot message's visible text length (streaming shows as growth).
+          const live = await cand.feishuApi("GET", "/open-apis/im/v1/messages", { query: { container_id_type: "chat", container_id: S.DM_CHAT, start_time: String(Math.floor(t0 / 1000)), sort_type: "ByCreateTimeAsc", page_size: 50, card_msg_content_type: "raw_card_content" } }).catch(() => null);
+          for (const it of live?.data?.items ?? []) {
+            if (it.sender?.sender_type !== "app") continue;
+            const card = rawCard(it.body?.content);
+            const texts = [];
+            (function walk(v) { if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) { if (k === "content" && typeof x === "string") texts.push(x); else walk(x); } })(card);
+            const text = texts.join("");
+            const state = `${it.deleted ? "deleted" : "live"}:${text.length}`;
+            if (seen.get(it.message_id) !== state) { seen.set(it.message_id, state); turn.timeline.push({ s: +((Date.now() - t0) / 1000).toFixed(1), id: it.message_id.slice(-6), deleted: Boolean(it.deleted), chars: text.length, head: text.slice(0, 60) }); }
+          }
           const h = await cand.history(key, 60);
           if (!Array.isArray(h)) return false;
           const after = h.filter((m) => (m.atMs ?? 0) >= t0 - 1000);
@@ -191,13 +218,15 @@ async function runInCandidate() {
         const h = await cand.history(key, 60);
         const final = h.filter((m) => (m.atMs ?? 0) >= t0 - 1000 && m.role === "assistant" && m.text?.trim()).at(-1);
         turn.replyText = final?.text?.slice(0, 1500);
-        turn.tools = S.toolCalls(h.filter((m) => (m.atMs ?? 0) >= t0 - 1000)).map((t) => t.name);
+        const calls = S.toolCalls(h.filter((m) => (m.atMs ?? 0) >= t0 - 1000));
+        turn.tools = calls.map((t) => t.name);
+        turn.toolCommands = calls.map((t) => t.command ?? "").filter(Boolean);
         await S.sleep(3_000);
         const list = await cand.feishuApi("GET", "/open-apis/im/v1/messages", { query: { container_id_type: "chat", container_id: S.DM_CHAT, start_time: String(Math.floor(t0 / 1000)), sort_type: "ByCreateTimeAsc", page_size: 50, card_msg_content_type: "raw_card_content" } });
         const bot = (list.data?.items ?? []).filter((it) => it.sender?.sender_type === "app" && !it.deleted);
         turn.messages = bot.map((it) => {
           const card = rawCard(it.body?.content);
-          const tags = card ? [...tagsOf(card)] : [];
+          const tags = card ? [...tagsOf(card), ...(/text_?[tT]ag/.test(JSON.stringify(card)) ? ["text_tag"] : [])] : [];
           // V's streaming reply card always ends in the grey "Agent: … | Model: …" note; a card V wrote has none.
           const streamed = JSON.stringify(card ?? "").includes("Agent: V");
           const texts = [];
@@ -206,7 +235,7 @@ async function runInCandidate() {
         });
         const modelCard = /^\s*\{/.test(turn.replyText ?? "");
         const sent = turn.messages.filter((m) => m.modelCard);
-        turn.result = { modelWroteCard: modelCard, delivered: turn.messages.length > 0, modelCards: sent.length, components: [...new Set(sent.flatMap((m) => m.tags))], rawJsonVisible: turn.messages.some((m) => m.showsJson) };
+        turn.result = { modelWroteCard: modelCard, delivered: turn.messages.length > 0, modelCards: sent.length, components: [...new Set(sent.flatMap((m) => m.tags))], ui: [...new Set(sent.flatMap((m) => m.tags.filter((t) => UI_TAGS.includes(t))))], readSkill: (turn.tools ?? []).includes("read") || (turn.toolCommands ?? []).some((c) => c.includes("feishu-card-ui")), rawJsonVisible: turn.messages.some((m) => m.showsJson) };
         check(`turn-${p.id}-delivered`, turn.result.delivered && !turn.result.rawJsonVisible, turn.result);
         if (p.expect === "card") check(`turn-${p.id}-model-chose-card`, modelCard, { optional: true });
         if (p.expect === "text") check(`turn-${p.id}-model-chose-text`, !modelCard, { optional: true });

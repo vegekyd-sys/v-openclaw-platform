@@ -54,6 +54,22 @@ unknown tag reached the room as text. Readback uses `card_msg_content_type=raw_c
 Earlier rounds, kept for the record: round 1 AGENTS.md wording too weak (V used markdown tables
 every time); round 2 V chose cards for 2/5 but they streamed as raw JSON (the dispatcher gap above).
 
+## Round 2: more card UI (2026-11-04 evening)
+
+Tianyi: tables are fine as markdown; cards should bring what markdown cannot. The AGENTS.md
+section now triggers on content (a series of numbers → chart, 2–4 key numbers → metric tiles,
+options → side-by-side columns, a schedule → timeline, good/bad → colour) and points to the
+skill `lab/feishu-card-ui/SKILL.md` (built by `lab/feishu-card-ui-patterns.mjs`: four layouts,
+trend / compare / plan / report, each sent to Feishu by the candidate and accepted).
+
+| Round | Rule | Cards (of 5 data/choice prompts) |
+|---|---|---|
+| `candidate-aed6aca8` | "tables only → markdown" | 0 (V read the skill twice, still chose markdown) |
+| `candidate-c9c44713` | content triggers | 3: trend and spend (metric tiles + chart + tags + panel), compare (columns + tags + panel) |
+
+In the last round the iPhone Duo comparison (data half missing) and the Saturday plan (V read
+the skill, wrote a time table) stayed markdown; area codes, chat and a quick fact stayed text.
+
 ## Known costs
 
 - A card reply does not stream: the user sees the progress text, then the card when the whole JSON
