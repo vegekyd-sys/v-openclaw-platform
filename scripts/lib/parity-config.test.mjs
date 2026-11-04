@@ -35,10 +35,12 @@ test('extracts only names and booleans; unset enabled counts as on', () => {
     plugins: { feishu: true, 'vlab-agent-worker-isolation': true },
     pluginConfig: {},
     channels: {},
+    gatewaySettings: { 'gateway.reload.mode': 'hybrid' },
+    models: {},
   });
   assert.ok(!JSON.stringify(s).includes(SECRET));
   assert.equal(configSwitches(null), null);
-  assert.deepEqual(configSwitches({}), { mcp: {}, plugins: {}, pluginConfig: {}, channels: {} });
+  assert.deepEqual(configSwitches({}), { mcp: {}, plugins: {}, pluginConfig: {}, channels: {}, gatewaySettings: { 'gateway.reload.mode': 'hybrid' }, models: {} });
   assert.deepEqual(configSwitches({ mcp: { servers: { a: null, b: 'x' } } }).mcp, { a: true, b: true });
 });
 
@@ -46,7 +48,7 @@ test('voice-memory on in VLab, off on V: one advisory finding per config', () =>
   const v = { gateway: configSwitches(config({ voiceMemory: false })), worker: configSwitches(config({ voiceMemory: false })) };
   const vlab = { gateway: configSwitches(config({ voiceMemory: true })), worker: configSwitches(config({ voiceMemory: true })) };
   const { compared, findings } = compareConfigSwitches({ v, vlab });
-  assert.equal(compared, 10);
+  assert.equal(compared, 12);
   assert.deepEqual(findings, [
     { target: 'gateway: mcp.servers.voice-memory.enabled', component: 'config', kind: 'config-differs', v: 'false', vlab: 'true', advisory: true },
     { target: 'worker: mcp.servers.voice-memory.enabled', component: 'config', kind: 'config-differs', v: 'false', vlab: 'true', advisory: true },
@@ -136,4 +138,47 @@ test('Feishu renderMode is compared; an account overrides the top level; nothing
   // Same effective mode, spelled differently, still shows at the top level only.
   const same = compareConfigSwitches({ v: { gateway: configSwitches(cfg('auto', { m: {} })), worker: null }, vlab: { gateway: configSwitches(cfg(undefined, { m: {} })), worker: null } });
   assert.deepEqual(same.findings.map((f) => f.target), ['gateway: channels.feishu.renderMode']);
+});
+
+test('gateway reload mode is compared; unset is hybrid', () => {
+  // 2026-11-04: VLab had reload off, V had it unset.
+  const v = { gateway: configSwitches({}), worker: null };
+  const vlab = { gateway: configSwitches({ gateway: { reload: { mode: 'off' } } }), worker: null };
+  assert.deepEqual(compareConfigSwitches({ v, vlab }).findings.map((f) => [f.target, f.kind, f.v, f.vlab]), [
+    ['gateway: gateway.reload.mode', 'config-differs', 'hybrid', 'off'],
+  ]);
+  assert.deepEqual(compareConfigSwitches({ v, vlab: { gateway: configSwitches({ gateway: { reload: { mode: 'hybrid' } } }), worker: null } }).findings, []);
+});
+
+test('model config is compared as credential-free hashes; one-host agents are expected', () => {
+  // 2026-11-04: VLab had no luna row, a 300 s DeepSeek timeout against V's 90 s, and its own agent.
+  const cfg = ({ key, timeout, luna, agents }) => ({
+    models: { providers: {
+      deepseek: { baseUrl: 'https://api.deepseek.test', apiKey: key, timeoutSeconds: timeout, models: [{ id: 'deepseek-flash' }] },
+      openai: { auth: 'oauth', models: luna ? [{ id: 'gpt-6-luna', contextTokens: 850000 }] : [] },
+    } },
+    agents: { defaults: { model: { primary: 'deepseek/deepseek-flash' } }, entries: agents },
+  });
+  const vCfg = cfg({ key: SECRET, timeout: 90, luna: true, agents: { main: { model: 'a' }, makaron: {} } });
+  const sw = configSwitches(vCfg);
+  assert.ok(!JSON.stringify(sw).includes(SECRET));
+  assert.ok(!JSON.stringify(sw).includes('api.deepseek.test'));
+  assert.match(sw.models['models.providers.deepseek'], /^[0-9a-f]{12}$/);
+  // A different credential alone is not a difference.
+  const same = configSwitches(cfg({ key: 'sk-other', timeout: 90, luna: true, agents: { main: { model: 'a' }, makaron: {} } }));
+  assert.deepEqual(compareConfigSwitches({ v: { gateway: sw, worker: null }, vlab: { gateway: same, worker: null } }).findings, []);
+  // Drift is reported per section; an agent only one host has is expected, its models too.
+  const drift = configSwitches(cfg({ key: undefined, timeout: 300, luna: false, agents: { main: { model: 'b' }, makaron: {}, 'hy-codex': { model: 'c' } } }));
+  assert.deepEqual(compareConfigSwitches({ v: { gateway: sw, worker: null }, vlab: { gateway: drift, worker: null } }).findings.map((f) => [f.target, f.kind]), [
+    ['gateway: agents.entries.hy-codex', 'config-expected'],
+    ['gateway: agents.entries.hy-codex.model', 'config-expected'],
+    ['gateway: agents.entries.main.model', 'config-differs'],
+    ['gateway: models.providers.deepseek', 'config-differs'],
+    ['gateway: models.providers.openai', 'config-differs'],
+  ]);
+  // Per-agent models set on one host for an agent both have is drift.
+  const unset = configSwitches(cfg({ key: SECRET, timeout: 90, luna: true, agents: { main: {}, makaron: {} } }));
+  assert.deepEqual(compareConfigSwitches({ v: { gateway: sw, worker: null }, vlab: { gateway: unset, worker: null } }).findings.map((f) => [f.target, f.kind, f.vlab]), [
+    ['gateway: agents.entries.main.model', 'config-differs', 'absent'],
+  ]);
 });
