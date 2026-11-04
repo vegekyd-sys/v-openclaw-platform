@@ -1,4 +1,7 @@
 // Advisory config comparison for scripts/vlab-v-parity.mjs (2026-10-06).
+
+import { createHash } from 'node:crypto';
+import { exportModels } from '../align-vlab-model-config.mjs';
 //
 // Byte parity says nothing about config: VLab reported ALIGNED while its
 // Gateway and Worker configs had MCP voice-memory enabled and V had it off, so
@@ -17,6 +20,16 @@
 //   channels.feishu.renderMode       the Feishu reply render mode, top level and the
 //                                    distinct effective values across accounts, as
 //                                    short lowercase words only
+//   gateway.reload.mode              whether config writes take effect without a restart
+//                                    (2026-11-04: VLab had it off, V unset = hybrid, so a
+//                                    config change tried on VLab needed a restart V never does)
+//   models.providers.<id>, agents.defaults.{model,models,modelPolicy,compaction},
+//   agents.entries.<id>.{model,models}
+//                                    the model configuration, as a 12-character hash of each
+//                                    section with credentials (apiKey, headers) removed, the
+//                                    same sections align-vlab-model-config.mjs copies from V
+//                                    (2026-11-04: VLab's had drifted far, which parity could
+//                                    not see: no luna fallback, other providers and timeouts)
 //
 // `enabled` left unset counts as on, as OpenClaw reads it (`enabled !== false`),
 // except inside plugin config, where only explicit booleans are kept.
@@ -30,6 +43,8 @@
 //   - A channel plugin entry: VLab keeps its own channels (2026-10-06, Tianyi:
 //     「频道是vlab自己有一份」). These are reported as kind 'config-expected'
 //     so they stay visible without reading as drift.
+//   - An agent's models where the agent exists on one host only: each host has
+//     its own agents, and the alignment leaves those alone. Also 'config-expected'.
 
 // Channel plugin entries VLab and V may each have on their own.
 export const EXPECTED_CHANNEL_PLUGINS = new Set(['telegram', 'openclaw-plugin-xiaoai-cloud']);
@@ -70,7 +85,34 @@ const SECTIONS = [
   ['plugins', (cfg) => cfg?.plugins?.entries, 'plugins.entries'],
   ['pluginConfig', null, 'plugins.entries'],
   ['channels', null, null],
+  ['gatewaySettings', null, null],
+  ['models', null, null],
 ];
+
+// Unset is the default, hybrid: hot-apply what can be, restart for the rest.
+function gatewaySettings(cfg) {
+  return { 'gateway.reload.mode': renderModeValue(cfg?.gateway?.reload?.mode) ?? 'hybrid' };
+}
+
+function canonical(value) {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value && typeof value === 'object') return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${canonical(value[k])}`).join(',')}}`;
+  return JSON.stringify(value);
+}
+
+const digest = (value) => createHash('sha256').update(canonical(value)).digest('hex').slice(0, 12);
+
+function modelSettings(cfg) {
+  const m = exportModels(cfg);
+  const out = {};
+  for (const [id, p] of Object.entries(m.providers)) out[`models.providers.${id}`] = digest(p);
+  for (const [k, v] of Object.entries(m.defaults)) out[`agents.defaults.${k}`] = digest(v);
+  for (const [id, agent] of Object.entries(m.entries)) {
+    out[`agents.entries.${id}`] = 'present';
+    for (const [k, v] of Object.entries(agent)) out[`agents.entries.${id}.${k}`] = digest(v);
+  }
+  return out;
+}
 
 function pluginConfigSwitches(cfg) {
   const switches = {};
@@ -83,7 +125,7 @@ function pluginConfigSwitches(cfg) {
 
 // cfg: a parsed openclaw.json, or null when the host has no such file.
 // Returns { mcp: { name: boolean }, plugins: { id: boolean }, pluginConfig: { path: boolean },
-// channels: { path: string } } or null.
+// channels: { path: string }, gatewaySettings: { path: string }, models: { path: hash } } or null.
 export function configSwitches(cfg) {
   if (cfg == null) return null;
   const out = {};
@@ -94,6 +136,14 @@ export function configSwitches(cfg) {
     }
     if (key === 'channels') {
       out[key] = channelSettings(cfg);
+      continue;
+    }
+    if (key === 'gatewaySettings') {
+      out[key] = gatewaySettings(cfg);
+      continue;
+    }
+    if (key === 'models') {
+      out[key] = modelSettings(cfg);
       continue;
     }
     const section = pick(cfg);
@@ -113,7 +163,7 @@ export function configSwitches(cfg) {
 // configSwitches(). Returns findings in the shape evaluateParity() uses, all
 // advisory: { target, component: 'config', kind, v, vlab, advisory } where kind
 // is 'config-differs' or 'config-expected' and v / vlab are 'true' | 'false' | 'absent'
-// (channel settings: their short value, or 'absent').
+// (channel and gateway settings: their short value; models: a hash or 'present'; or 'absent').
 export function compareConfigSwitches({ v, vlab }) {
   const findings = [];
   let compared = 0;
@@ -126,6 +176,8 @@ export function compareConfigSwitches({ v, vlab }) {
       findings.push(finding(`${role}: config file`, a == null ? 'absent' : 'present', b == null ? 'absent' : 'present'));
       continue;
     }
+    const agentsOn = (sw) => new Set(Object.keys(sw.models ?? {}).filter((p) => p.startsWith('agents.entries.')).map((p) => p.split('.')[2]));
+    const agents = { v: agentsOn(a), vlab: agentsOn(b) };
     for (const [key, , path] of SECTIONS) {
       const names = [...new Set([...Object.keys(a[key] ?? {}), ...Object.keys(b[key] ?? {})])].sort();
       for (const name of names) {
@@ -134,7 +186,9 @@ export function compareConfigSwitches({ v, vlab }) {
         const vb = show(b[key]?.[name]);
         if (va === vb) continue;
         if (key === 'mcp' && va !== 'true' && vb !== 'true') continue;
-        const kind = key === 'plugins' && EXPECTED_CHANNEL_PLUGINS.has(name) ? 'config-expected' : 'config-differs';
+        const agent = key === 'models' && name.startsWith('agents.entries.') ? name.split('.')[2] : null;
+        const expected = (key === 'plugins' && EXPECTED_CHANNEL_PLUGINS.has(name)) || (agent && agents.v.has(agent) !== agents.vlab.has(agent));
+        const kind = expected ? 'config-expected' : 'config-differs';
         findings.push(finding(path ? `${role}: ${path}.${name}.enabled` : `${role}: ${name}`, va, vb, kind));
       }
     }

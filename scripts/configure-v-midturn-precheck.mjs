@@ -38,8 +38,10 @@ const targets = {
   "VM-0-4-ubuntu": {
     service: "openclaw-vlab-production-mirror-v8.service",
     files: [
-      "/srv/vlab-production-mirror/labs/instances/db91-parity/state/openclaw.json",
-      "/srv/vlab-production-mirror/labs/instances/db91-parity/state/worker-openclaw.json",
+      // The shared Gateway reads shared-vlab-20260909-v3/ (its OPENCLAW_CONFIG_PATH); state/openclaw.json
+      // is read by nothing (2026-11-04: the luna row written there never took effect).
+      "/srv/vlab-production-mirror/labs/instances/db91-parity/state/shared-vlab-20260909-v3/openclaw.json",
+      "/srv/vlab-production-mirror/labs/instances/db91-parity/state/shared-vlab-20260909-v3/worker-openclaw.json",
     ],
   },
 };
@@ -49,6 +51,12 @@ const want = mode === "restore" ? false : true;
 // is-active exits non-zero when stopped, so read the property instead
 const state = execFileSync("systemctl", ["show", target.service, "-p", "ActiveState", "--value"], { encoding: "utf8" }).trim();
 const active = !["inactive", "failed"].includes(state);
+// Write only the file the running Gateway reads.
+if (active) {
+  const pid = execFileSync("systemctl", ["show", target.service, "-p", "MainPID", "--value"], { encoding: "utf8" }).trim();
+  const live = fs.readFileSync(`/proc/${pid}/environ`, "utf8").split("\0").find((s) => s.startsWith("OPENCLAW_CONFIG_PATH="))?.slice("OPENCLAW_CONFIG_PATH=".length);
+  assert.equal(live ?? target.files[0], target.files[0], `${target.service} reads ${live}, not ${target.files[0]}`);
+}
 
 const read = (file) => {
   assert.equal(fs.realpathSync(file), file, `${file} is a symlink`);

@@ -45,8 +45,8 @@ const targets = {
   "VM-0-4-ubuntu": {
     service: "openclaw-vlab-production-mirror-v8.service",
     core: "/srv/vlab-production-mirror/labs/instances/db91-parity/runtime/openclaw",
-    config: "/srv/vlab-production-mirror/labs/instances/db91-parity/state/openclaw.json",
-    workerConfig: "/srv/vlab-production-mirror/labs/instances/db91-parity/state/worker-openclaw.json",
+    config: "/srv/vlab-production-mirror/labs/instances/db91-parity/state/shared-vlab-20260909-v3/openclaw.json",
+    workerConfig: "/srv/vlab-production-mirror/labs/instances/db91-parity/state/shared-vlab-20260909-v3/worker-openclaw.json",
   },
 };
 
