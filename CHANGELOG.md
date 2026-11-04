@@ -10,6 +10,35 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## feishu-card-images-20261104
+
+上线：2026-11-04 17:59 CST（文件 17:52 装到 V，v-self-restart 等空闲 205 s 后重启生效）  ·  tag `feishu-card-images-20261104`
+
+**摘要**：飞书回复卡片里有外部图片（`![…](https://…)`）时，卡片拒收（200570），卡片关闭后最终写入也被拒（300309），而且任务卡无限重试。「V｜接电话｜1005」群 11/01 00:48 的一张语音交办生图卡因此一直空着，重试了 4916 次。现在外部图片显示为可点击链接，最终回复对已关闭卡片改用整段替换，任务卡在一个进程里连续失败 20 次就停止重试（只记一条日志，下次启动再试一次）。
+
+V 上验收：
+- 重启时那张卡（记录 `1e46fb83…`，卡片 `7702874788834905023`）17:59:38 写入成功，`delivered: true`；群里卡片更新时间 11/04 17:59，图片是链接，正文完整。
+- 测试群 oc_260a… 新消息（vcodex/gpt-6.1-sol）：`CARD-IMG-V-OK` / `[测试图](url)` / 图后一行全部显示；18:01 之后日志 200570、300309、Final replace failed 均为 0。
+- 已知小问题：重启时补写那张旧卡后，卡片脚注（note）更新报了 2 次 300309（17:59:37、17:59:40），正文不受影响，没有重试循环。
+- 未覆盖：重试上限 20 次只在测试和 candidate 中验证过，V 上还没有触发过。
+
+回退：`promote-to-v.mjs --undo /opt/v-release-backups/feishu-card-images-20261104-20261104T095040` 后重启。来源：[PR #553](https://github.com/vegekyd-sys/v-openclaw-platform/pull/553)（含 [PR #542](https://github.com/vegekyd-sys/v-openclaw-platform/pull/542) 的原型），源码 openclaw-versa `cedaa9bf713`。
+
+相对上一版 `v2026.9.1-db91.6-luna-fallback-takeover-20261104`：2 个文件变化。
+
+**经 VLab 发版 `feishu-card-images-20261104`**（feishu-card-images-20261104，dev `2d503b31`）
+> 验收：共享 VLab 验收 2026-11-04 17:48 CST（#553，dev 2d503b31）。「VLab 发布验收 B」群 @V - Lab 要求原样回复含 Markdown 外部图片 ![测试图](https://www.baidu.com/...) 的三行（vds-deepseek-flash/codex）：回复卡片（回复 om_x100b619bbbdd3ca8b0e717e51dfd1a4）内容 CARD-IMG-OK / [测试图](url) 链接 / 图片后一行全部显示；当日 Gateway 日志 200570、300309、Final replace failed 均为 0。故障路径（修复前 200570 拒写、关闭卡片 300309）由 candidate 在 VLab 实际飞书文件上复现。未覆盖：重试上限 20 次只在测试中验证；V 上卡住的记录 1e46fb83…
+- `feishu` dist/monitor.account-WFdlCDhR.js  faa10628 → d642af6e
+- `feishu` dist/v-feishu-task-presentation.mjs  070801aa → 6124ae69
+
+**这期间合入 dev 的 PR**（6 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #553 fix(feishu): 卡片外部图片改链接、已关闭卡片用整段替换收尾、任务卡重试设上限
+- #552 feat(parity): 模型配置/热加载开关进一致性检查；接管页与 V Browser 算版本偏移
+- #551 fix(vlab): accept shared VLab reloading config like V
+- #550 feat(vlab): align shared VLab's model configuration with V
+- #549 fix(config): write shared VLab's live config; record the luna row hot update
+- #548 fix(config): give gpt-6-luna its 850k budget before the first luna turn
+
 
 ## v2026.9.1-db91.6-luna-fallback-takeover-20261104
 
