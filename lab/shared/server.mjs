@@ -32,7 +32,7 @@ function live() {
   const env=Object.fromEntries(fs.readFileSync(`/proc/${p}/environ`,'utf8').split('\0').filter(Boolean).map(s=>{const i=s.indexOf('=');return [s.slice(0,i),s.slice(i+1)];}));
   assert(env.OPENCLAW_STATE_DIR?.startsWith(LAB+'/instances/db91-parity/state'));
   assert(env.OPENCLAW_CONFIG_PATH?.startsWith(env.OPENCLAW_STATE_DIR+'/'));
-  const cfg=read(env.OPENCLAW_CONFIG_PATH);assert.equal(cfg.gateway.port,24993);assert.equal(cfg.gateway.reload?.mode,'off');
+  const cfg=read(env.OPENCLAW_CONFIG_PATH);assert.equal(cfg.gateway.port,24993);assert([undefined,'hybrid'].includes(cfg.gateway.reload?.mode),'shared VLab reloads config like V (gateway.reload unset)');
   const core=activeCore(p);
   return {pid:p,env,cfg,core,configSha:hashFile(env.OPENCLAW_CONFIG_PATH)};
 }
@@ -62,7 +62,7 @@ async function connect() {
 async function rpc(method,params) {const x=await connect();try{return await x.call(method,params);}finally{x.c.stop();}}
 function publicStatus() {
   const l=live();return {service:UNIT,pid:l.pid,port:24993,core:l.core,configSha:l.configSha,state:l.env.OPENCLAW_STATE_DIR,
-    agents:Object.keys(l.cfg.agents.entries??{}),plugins:l.cfg.plugins?.load?.paths??[],reload:l.cfg.gateway.reload.mode,
+    agents:Object.keys(l.cfg.agents.entries??{}),plugins:l.cfg.plugins?.load?.paths??[],reload:l.cfg.gateway.reload?.mode??'hybrid',
     current:fs.existsSync(HOME+'/current.json')?current():null,
     devSource:fs.existsSync(HOME+'/source/.git')?{path:HOME+'/source',commit:run('git',['-C',HOME+'/source','rev-parse','HEAD'])}:null,
     pending:fs.existsSync(HOME+'/pending.json')?read(HOME+'/pending.json'):null,
