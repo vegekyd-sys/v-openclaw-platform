@@ -1405,6 +1405,13 @@
     },
     {
       "layer": "feishu",
+      "path": "dist/monitor.account-WFdlCDhR.js",
+      "sha256": "d642af6e81adf2c8e80cfa9fd354cf637d3460266b39e872b03c306b21f07d11",
+      "source": "versa:cedaa9bf713",
+      "note": "feishu-card-images-20261104: external markdown images become links, final writes replace the element; task cards stop after 20 failures per process (versa/feishu-card-images-20261104)"
+    },
+    {
+      "layer": "feishu",
       "path": "dist/v-feishu-approvals.js",
       "sha256": "2905c12f9bc3cad97416f169ae7a08072878c7ff89a8f33076d710f7282cf71b",
       "source": "versa:b65dc10193e",
@@ -1422,6 +1429,13 @@
       "sha256": "070801aa1b7ec41aa5b7cd02110f7d67e01e2becfe4a0c59efa3b023f5c55de4",
       "source": "versa:7ffcad5bfdf",
       "note": "wave-2 + 10/30 desktop hand-back (versa/port-feishu-presentation-20261030, fast-forwarded into versa/port-backlog-20261029); task presentation, native adapter and inter-session bridge modules are byte-identical to V; hooks are equivalent TS; plugin entry also registers the presentation as V's index.js does; every behaviour hunk fails a test when reverted; 30/30 markers present in the fork build and absent from stock 9.1"
+    },
+    {
+      "layer": "feishu",
+      "path": "dist/v-feishu-task-presentation.mjs",
+      "sha256": "6124ae69f841078c3d80286cc4aeed2d950c1503b052315aee21f8692d034191",
+      "source": "versa:cedaa9bf713",
+      "note": "feishu-card-images-20261104: external markdown images become links, final writes replace the element; task cards stop after 20 failures per process (versa/feishu-card-images-20261104)"
     },
     {
       "layer": "feishu",

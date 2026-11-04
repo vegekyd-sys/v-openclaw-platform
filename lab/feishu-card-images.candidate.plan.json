@@ -1,1 +1,1 @@
-{"tests":["lab/feishu-card-images.test.mjs"],"support":["lab/patch-feishu-card-images.mjs"],"timeoutSeconds":120}
+{"tests":["lab/feishu-card-images.test.mjs"],"support":["lab/patch-feishu-card-images.mjs","lab/build-feishu-card-images.mjs","lab/release-files/desktop-handback-progress/monitor.account-WFdlCDhR.js","lab/release-files/desktop-handback-progress/v-feishu-task-presentation.mjs","lab/release-files/feishu-card-images/monitor.account-WFdlCDhR.js","lab/release-files/feishu-card-images/v-feishu-task-presentation.mjs"],"timeoutSeconds":120}
