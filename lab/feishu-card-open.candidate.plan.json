@@ -1,0 +1,52 @@
+{
+  "support": [
+    "lab/candidate/feishu-card-open.mjs",
+    "lab/candidate/inter-session-support.mjs",
+    "lab/candidate/feishu-fake-open-api.mjs",
+    "lab/candidate/feishu-no-live.cjs",
+    "lab/candidate/inter-session-workspace.mjs",
+    "lab/candidate/lark-cli-shim/lark-cli",
+    "lab/feishu-card-open.agents-section.md",
+    "/Users/tianyicai/v-upgrade-private/feishu-card-open/v-workspace/AGENTS.md",
+    "/Users/tianyicai/v-upgrade-private/feishu-card-open/v-workspace/SOUL.md",
+    "/Users/tianyicai/v-upgrade-private/feishu-card-open/v-workspace/IDENTITY.md",
+    "/Users/tianyicai/v-upgrade-private/feishu-card-open/v-workspace/USER.md",
+    "/Users/tianyicai/v-upgrade-private/feishu-card-open/v-workspace/TOOLS.md",
+    "/Users/tianyicai/v-upgrade-private/feishu-card-open/v-workspace/REDLINES.md",
+    "/Users/tianyicai/v-upgrade-private/feishu-card-open/v-workspace/MEMORY.md",
+    "lab/feishu-card-ui-patterns.mjs",
+    "/Users/tianyicai/v-upgrade-private/feishu-card-open/v-workspace/skills/feishu-channel-cards/SKILL.md",
+    "/Users/tianyicai/v-upgrade-private/feishu-card-open/v-workspace/skills/feishu-channel-cards/references/card-dsl.md",
+    "/Users/tianyicai/v-upgrade-private/feishu-card-open/v-workspace/skills/feishu-channel-cards/references/channel-sdk-notes.md",
+    "/Users/tianyicai/v-upgrade-private/feishu-card-open/v-workspace/skills/feishu-channel-cards/references/feishu-card-json-v2.md",
+    "/Users/tianyicai/v-upgrade-private/feishu-card-open/v-workspace/skills/feishu-channel-cards/references/nightshift-progress.md",
+    "/Users/tianyicai/v-upgrade-private/feishu-card-open/v-workspace/skills/feishu-channel-cards/references/reply-cards.md",
+    "/Users/tianyicai/v-upgrade-private/feishu-card-open/v-workspace/skills/feishu-channel-cards/scripts/card-runner-template.cjs",
+    "/Users/tianyicai/v-upgrade-private/feishu-card-open/v-workspace/skills/feishu-channel-cards/scripts/live-card-state-runner.cjs"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/feishu-card-open/reply-delivery-result-CEFTDA3f.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/reply-delivery-result-CEFTDA3f.js"
+    },
+    {
+      "source": "lab/release-files/feishu-card-open/monitor.account-WFdlCDhR.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/feishu-card-open.mjs",
+    "run"
+  ],
+  "env": {
+    "ISC_FEISHU_MODE": "live",
+    "ISC_ALLOW_LIVE_FEISHU": "1",
+    "RELAY_HARNESS": "worker",
+    "FCO_AGENTS": "on",
+    "FCO_WORKSPACE": "AGENTS.md:d8c5ffeffff223f9fa39e639205c786a7203896f8d245fe679e549241bb5a6d4,SOUL.md:904d2e4ab1ede9da41aaa8d8d6008ef75863650cc0bcadd02494b95f7af1a1e4,IDENTITY.md:250fb684db8e01dc84f886aa079e912dfd3616cd777fbb746cc92787184c16be,USER.md:d1629ee44e7c4df631e7cb8b920417e087ae009bfd0330abe0beca80d956706d,TOOLS.md:f8758e896eb87c41a04be59efd7207c0efe2a8415ecda917f414165806258704,REDLINES.md:2546cad45cae0bead1288c673c305be0257930a46bf9d96bc63ee9a998f1fa5b,MEMORY.md:cafdbc995954f643198c07849acd69d551c54e32db7af80a75c78bda1edf5cb0",
+    "FCO_SKILL": "SKILL.md:e605318563d6e3393f6d33e16106c2270e483a6e194f35740ed233c54ede83c2,references/card-dsl.md:48fb2d8fc739f08b3ab4c60bfc70e474c0ab0c9e9b91a9d61433f042a9f8a250,references/channel-sdk-notes.md:7f9a8759a98b0586ab2fff30fc7d8dd050db125b3bec46b0c9481bee38e22d9a,references/feishu-card-json-v2.md:577a0706964b01fdca63222d8c19b6a23dde29889d2a1e534bb9786b564b0c4b,references/nightshift-progress.md:0d5894554444bae6a99a6f170fc215f71659750a6e6fa0f57d0f388a29ed9585,references/reply-cards.md:672cf69a89db84de92cc2ad8f9050cffcde96774de237ebf29778aff8bf71b69,scripts/card-runner-template.cjs:a06b80d45af4fafe1b635742b7b3e8ce158096111938cd1a7fd82ceaabb32524,scripts/live-card-state-runner.cjs:b3730f9f9fb0c2493c0defdfce3683493b9f8fe80bc3f0c3c082eddd8f186e4b"
+  },
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity"
+}
