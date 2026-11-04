@@ -73,7 +73,7 @@ for (const pair of fs.readFileSync('/proc/' + gatewayPid + '/environ', 'utf8').s
 }
 assert.equal(process.env.OPENCLAW_CONFIG_PATH, configFile);
 const configBytes = fs.readFileSync(configFile), cfg = JSON.parse(configBytes);
-assert.equal(cfg.gateway.port, 24993); assert.equal(cfg.gateway.reload?.mode, 'off');
+assert.equal(cfg.gateway.port, 24993); assert([undefined, 'hybrid'].includes(cfg.gateway.reload?.mode), 'shared VLab reloads config like V (gateway.reload unset)');
 const {GatewayClient} = await import(core + '/dist/plugin-sdk/gateway-runtime.js');
 let client;
 await new Promise((resolve, reject) => {
