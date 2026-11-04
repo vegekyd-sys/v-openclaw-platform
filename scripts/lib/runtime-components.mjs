@@ -126,11 +126,10 @@ export const COMPONENTS = [
     capture: { base: 'none', sudo: true },
   },
   {
-    // 2026-10-05: V was installed from a newer commit than VLab (V has
-    // service/build-viewer.mjs and service/vendor/novnc-1.3.0, VLab does not).
-    // Advisory until the multi-channel release reinstalls VLab's copy from the
-    // commit V runs; then set blocking: true.
-    id: 'handoff', kind: 'sidecar', label: 'desktop handoff', blocking: false,
+    // Blocking since 2026-11-04. It was advisory from 2026-10-05, when V had been
+    // installed from a newer commit, and VLab stayed behind for a month: V runs
+    // apps/v-desktop-handoff of dev, VLab lacked 9 service files of it.
+    id: 'handoff', kind: 'sidecar', label: 'desktop handoff', blocking: true,
     install: 'scripts/install-desktop-host.sh (on V as root, from the same commit)',
     v: { fixed: '/opt/v-desktop-handoff' },
     vlab: { fixed: '/opt/vlab-v-desktop-handoff' },
@@ -155,19 +154,22 @@ export const COMPONENTS = [
   },
   // V Browser (product code in vegekyd-sys/v-browser, docs/v-browser-0.4.7-release-20261001.md):
   // the Gateway plugin, the multi-device Broker and the Browser Gateway that
-  // owns the CDP relays. 2026-10-06: Broker identical; V runs a newer plugin
-  // (0.4.7-wake-lease-20261006) and a patched relay-server than VLab, both
-  // hotfixed on V at 18:49. Advisory until VLab is brought to V's bytes; then
-  // set blocking: true.
+  // owns the CDP relays. Blocking since 2026-11-04: advisory from the 2026-10-06
+  // hotfixes on V until VLab was brought to V's bytes, all of which are in
+  // vegekyd-sys/v-browser: plugin and Broker of main (the plugin's
+  // core/identity.js of ef0d964, before main dropped its wake-turn fallback),
+  // relay-server = the 2026-09-05 bundle + scripts/patch-openclaw-{target-
+  // enumeration-resilience, reattach-after-native-detach, background-without-
+  // focus, stale-interception}.mjs, in that order.
   {
-    id: 'v-browser-plugin', kind: 'sidecar', label: 'V Browser plugin', blocking: false,
+    id: 'v-browser-plugin', kind: 'sidecar', label: 'V Browser plugin', blocking: true,
     install: 'v-browser repo: new /opt/v-browser/releases/<version>/openclaw-plugin + scripts/replace-openclaw-plugin-release.mjs on main and Worker config (Gateway stop/start)',
     v: { loadPath: /\/v-browser\/releases\/[^/]+\/openclaw-plugin\/?$/ },
     vlab: { loadPath: /\/v-browser\/releases\/[^/]+\/openclaw-plugin\/?$/ },
     subdirs: [''],
   },
   {
-    id: 'v-browser-broker', kind: 'sidecar', label: 'V Browser broker', blocking: false,
+    id: 'v-browser-broker', kind: 'sidecar', label: 'V Browser broker', blocking: true,
     install: 'v-browser repo broker/ into the directory v-browser-broker.service runs (restart that unit)',
     // VLab's directory is a full v-browser checkout; its broker/tests are not deployed on V.
     v: { unit: 'v-browser-broker.service', exec: /(\/\S+\/broker)\/main\.mjs\b/ },
@@ -175,7 +177,7 @@ export const COMPONENTS = [
     subdirs: [''], exclude: ['tests'],
   },
   {
-    id: 'v-browser-gateway', kind: 'sidecar', label: 'V Browser Gateway', blocking: false,
+    id: 'v-browser-gateway', kind: 'sidecar', label: 'V Browser Gateway', blocking: true,
     install: 'the dist the openclaw-vlab-browser.service ExecStart runs (restart that unit)',
     v: { unit: 'openclaw-vlab-browser.service', exec: /(\/\S+\/dist)\/index\.js\b/ },
     vlab: { unit: 'openclaw-vlab-browser.service', exec: /(\/\S+\/dist)\/index\.js\b/ },
