@@ -10,6 +10,56 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## feishu-card-open-20261104
+
+上线：2026-11-05 00:50 CST（文件 00:38 装到 V，v-self-restart 00:46 提交、等空闲 32 s 后重启，00:50:15 就绪）  ·  tag `feishu-card-open-20261104`
+
+**摘要**：飞书里 V 可以自己决定什么时候把回复做成卡片：一组数字、几个关键指标、几个选项对比、行程安排或有好坏状态时，整条回复写成一个卡片 JSON 2.0，渠道原样发出、组件不限（图表、指标卡、分栏、时间线、标签、折叠），由进度卡原地定稿成这张卡，不删除重发；飞书拒收时退成同内容的文字。闲聊、短答、罗列信息仍是文字。插件之外，V 工作区（V 自己的 git，`5d17029d`）同时加了 AGENTS.md「飞书卡片 UI（自己决定什么时候用）」一节和 `skills/feishu-channel-cards/references/reply-cards.md`，没有这两处 V 不会主动出卡。Tianyi 定为试用一周（到 11/12），已在测试群告诉 V 并让它记进记忆、到期给小结。
+
+V 上验收（测试群 oc_260a…，gpt-6.1-sol/codex）：
+- 「这周花了：餐饮 820、交通 260、购物 1150，预算是 2000，帮我看看」，没提卡片：回复 `om_x100b618269bd2ca0cef696e5b0a630d` 是 V 自己选的卡片，标题「本周已花 ¥2230，超预算 ¥230」、预算/已花/超出三个指标、柱状图、占比与建议，一条消息定稿。
+- 闲聊「明早喝咖啡还是茶」：回复 `om_x100b618262f5c8a0b4ce6367be40ad8` 仍是普通文字卡带脚注。
+- 重启后日志 model card rejected、200570、300309、Final replace failed 均为 0；v-self-restart postChecks 全部为 0，workers 5 个就绪。
+- 未覆盖：/vds、/vcodex、/vcc 下 V 自主出卡，群聊里自主出卡；卡片按钮回调没有处理器；卡片里的 `<at user_id="all">` 未过滤。已知：卡片回复比文字回复多 3–10 s（整张卡写完才定稿）。
+
+回退：`promote-to-v.mjs --undo /opt/v-release-backups/feishu-card-open-20261104-20261104T163824` 后重启，并在 V 工作区 `git revert 5d17029d`。来源：[PR #555](https://github.com/vegekyd-sys/v-openclaw-platform/pull/555)，源码 openclaw-versa `f73ee277c7e`（分支 `versa/feishu-card-open-20261104`）。
+
+相对上一版 `feishu-card-images-20261104`：2 个文件变化。
+
+**经 VLab 发版 `feishu-card-open-20261104`**（feishu-card-open-20261104，dev `965e0ac2`）
+> 验收：共享 VLab 验收 2026-11-05 00:36 CST（#555，dev 965e0ac2）。「VLab 发布验收 B」群 @V - Lab（vds-deepseek-flash/codex）：要求整条回复为卡片 JSON 2.0（红色标题+VChart 饼图+markdown）→ 回复 om_x100b6181afb4d8a0b1eab750e9d93ce 为 interactive 卡片，标题「本周开支 FCO-OK」、饼图三类数据、超支 230 元，同一条消息定稿（无第二条机器人消息）；闲聊回复 om_x100b6181bc7c14a0cf1a2a98205ae7d 仍是普通文字卡带脚注。部署后 Gateway 日志 model card rejected/200570/300309/Final replace failed 均为 0。V 自主选卡（AGENTS.md 一节+…
+- `feishu` dist/monitor.account-WFdlCDhR.js  d642af6e → 46711745
+- `feishu` dist/reply-delivery-result-CEFTDA3f.js  0cc2f09c → de5f3524
+
+## feishu-card-images-20261104
+
+上线：2026-11-04 17:59 CST（文件 17:52 装到 V，v-self-restart 等空闲 205 s 后重启生效）  ·  tag `feishu-card-images-20261104`
+
+**摘要**：飞书回复卡片里有外部图片（`![…](https://…)`）时，卡片拒收（200570），卡片关闭后最终写入也被拒（300309），而且任务卡无限重试。「V｜接电话｜1005」群 11/01 00:48 的一张语音交办生图卡因此一直空着，重试了 4916 次。现在外部图片显示为可点击链接，最终回复对已关闭卡片改用整段替换，任务卡在一个进程里连续失败 20 次就停止重试（只记一条日志，下次启动再试一次）。
+
+V 上验收：
+- 重启时那张卡（记录 `1e46fb83…`，卡片 `7702874788834905023`）17:59:38 写入成功，`delivered: true`；群里卡片更新时间 11/04 17:59，图片是链接，正文完整。
+- 测试群 oc_260a… 新消息（vcodex/gpt-6.1-sol）：`CARD-IMG-V-OK` / `[测试图](url)` / 图后一行全部显示；18:01 之后日志 200570、300309、Final replace failed 均为 0。
+- 已知小问题：重启时补写那张旧卡后，卡片脚注（note）更新报了 2 次 300309（17:59:37、17:59:40），正文不受影响，没有重试循环。
+- 未覆盖：重试上限 20 次只在测试和 candidate 中验证过，V 上还没有触发过。
+
+回退：`promote-to-v.mjs --undo /opt/v-release-backups/feishu-card-images-20261104-20261104T095040` 后重启。来源：[PR #553](https://github.com/vegekyd-sys/v-openclaw-platform/pull/553)（含 [PR #542](https://github.com/vegekyd-sys/v-openclaw-platform/pull/542) 的原型），源码 openclaw-versa `cedaa9bf713`。
+
+相对上一版 `v2026.9.1-db91.6-luna-fallback-takeover-20261104`：2 个文件变化。
+
+**经 VLab 发版 `feishu-card-images-20261104`**（feishu-card-images-20261104，dev `2d503b31`）
+> 验收：共享 VLab 验收 2026-11-04 17:48 CST（#553，dev 2d503b31）。「VLab 发布验收 B」群 @V - Lab 要求原样回复含 Markdown 外部图片 ![测试图](https://www.baidu.com/...) 的三行（vds-deepseek-flash/codex）：回复卡片（回复 om_x100b619bbbdd3ca8b0e717e51dfd1a4）内容 CARD-IMG-OK / [测试图](url) 链接 / 图片后一行全部显示；当日 Gateway 日志 200570、300309、Final replace failed 均为 0。故障路径（修复前 200570 拒写、关闭卡片 300309）由 candidate 在 VLab 实际飞书文件上复现。未覆盖：重试上限 20 次只在测试中验证；V 上卡住的记录 1e46fb83…
+- `feishu` dist/monitor.account-WFdlCDhR.js  faa10628 → d642af6e
+- `feishu` dist/v-feishu-task-presentation.mjs  070801aa → 6124ae69
+
+**这期间合入 dev 的 PR**（6 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #553 fix(feishu): 卡片外部图片改链接、已关闭卡片用整段替换收尾、任务卡重试设上限
+- #552 feat(parity): 模型配置/热加载开关进一致性检查；接管页与 V Browser 算版本偏移
+- #551 fix(vlab): accept shared VLab reloading config like V
+- #550 feat(vlab): align shared VLab's model configuration with V
+- #549 fix(config): write shared VLab's live config; record the luna row hot update
+- #548 fix(config): give gpt-6-luna its 850k budget before the first luna turn
+
 
 ## v2026.9.1-db91.6-luna-fallback-takeover-20261104
 

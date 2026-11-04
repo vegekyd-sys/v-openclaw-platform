@@ -110,5 +110,6 @@ the skill, wrote a time table) stayed markdown; area codes, chat and a quick fac
   feishu-channel-cards skill gets `references/reply-cards.md` (`lab/feishu-card-ui/reply-cards.md`)
   plus the "两种卡片，先选对" table in SKILL.md. Without them V does not choose cards; the plugin change
   alone only stops raw card JSON from showing.
-- Trial: two days from going live (Tianyi, 2026-11-04). Not covered: /vds, /vcodex, /vcc and group
-  chats; callback buttons have no handler; `<at user_id="all">` is not filtered.
+- Trial: one week, 2026-11-05 00:50 CST to 2026-11-12 (Tianyi set two days on 2026-11-04 and made it
+  a week at go-live). Live on V as `feishu-card-open-20261104`, V workspace commit `5d17029d`.
+  Not covered: /vds, /vcodex, /vcc and group chats; callback buttons have no handler; `<at user_id="all">` is not filtered.
