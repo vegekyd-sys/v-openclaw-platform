@@ -1406,6 +1406,20 @@
     {
       "layer": "feishu",
       "path": "dist/monitor.account-WFdlCDhR.js",
+      "sha256": "46711745f606535264faace8c25d38844be6fc1eaa30c0c4c413b0518ec75b5c",
+      "source": "versa:f73ee277c7e",
+      "note": "feishu-card-open-20261104: model-written cards go out as written (no allowlist), rejected cards resent as text, a card-JSON reply finishes the preview card in place (versa/feishu-card-open-20261104)"
+    },
+    {
+      "layer": "feishu",
+      "path": "dist/reply-delivery-result-CEFTDA3f.js",
+      "sha256": "de5f35242ea4322d69284965a13f348acd2756bff84090615c0c4a45cf1a61c6",
+      "source": "versa:f73ee277c7e",
+      "note": "feishu-card-open-20261104: model-written cards go out as written (no allowlist), rejected cards resent as text, a card-JSON reply finishes the preview card in place (versa/feishu-card-open-20261104)"
+    },
+    {
+      "layer": "feishu",
+      "path": "dist/monitor.account-WFdlCDhR.js",
       "sha256": "d642af6e81adf2c8e80cfa9fd354cf637d3460266b39e872b03c306b21f07d11",
       "source": "versa:cedaa9bf713",
       "note": "feishu-card-images-20261104: external markdown images become links, final writes replace the element; task cards stop after 20 failures per process (versa/feishu-card-images-20261104)"

@@ -94,10 +94,21 @@ the skill, wrote a time table) stayed markdown; area codes, chat and a quick fac
 - Callback buttons have no handler; the section teaches only `open_url` buttons.
 - `<at user_id="all">` in a card would @everyone; nothing filters it now.
 
-## Not done before release
+## Release feishu-card-open-20261104
 
-- Source commit on `openclaw-versa` (`extensions/feishu/src/…`) with tests, and the
-  `release/source-map.json` entries for both new files.
-- V's AGENTS.md: add the section in V's workspace git (Tianyi's call).
-- Only the worker harness was exercised; /vds, /vcodex, /vcc and group chats were not.
+- Source: openclaw-versa `f73ee277c7e` (branch `versa/feishu-card-open-20261104`, on top of
+  `cedaa9bf713` feishu-card-images): `extensions/feishu/src/model-card.ts` (+ test), `native-card.ts`,
+  `presentation-card.ts`, `send.ts`, `streaming-card.ts`, `reply-dispatcher.ts`. Unit tests cover the
+  open card, mentions, envelope, text fallback and the partial parser; the reply-dispatcher and
+  streaming hunks are covered by the VLab candidates above (their versa suites do not load in the
+  local checkout, before or after this change).
+- Release bytes: `node lab/build-feishu-card-open.mjs` from V's bytes (reply-delivery-result stock 9.1,
+  monitor.account = feishu-card-images); plan `lab/feishu-card-open.plan.json`.
 - Needs a Gateway restart (the Feishu plugin does not reload code).
+- With it, on V's workspace (not this repo; V's workspace git): the AGENTS.md section
+  `lab/feishu-card-open.agents-section.md` before `### Makaron Group Service Trigger`, and the
+  feishu-channel-cards skill gets `references/reply-cards.md` (`lab/feishu-card-ui/reply-cards.md`)
+  plus the "两种卡片，先选对" table in SKILL.md. Without them V does not choose cards; the plugin change
+  alone only stops raw card JSON from showing.
+- Trial: two days from going live (Tianyi, 2026-11-04). Not covered: /vds, /vcodex, /vcc and group
+  chats; callback buttons have no handler; `<at user_id="all">` is not filtered.
