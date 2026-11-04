@@ -10,6 +10,27 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## feishu-card-open-20261104
+
+上线：2026-11-05 00:50 CST（文件 00:38 装到 V，v-self-restart 00:46 提交、等空闲 32 s 后重启，00:50:15 就绪）  ·  tag `feishu-card-open-20261104`
+
+**摘要**：飞书里 V 可以自己决定什么时候把回复做成卡片：一组数字、几个关键指标、几个选项对比、行程安排或有好坏状态时，整条回复写成一个卡片 JSON 2.0，渠道原样发出、组件不限（图表、指标卡、分栏、时间线、标签、折叠），由进度卡原地定稿成这张卡，不删除重发；飞书拒收时退成同内容的文字。闲聊、短答、罗列信息仍是文字。插件之外，V 工作区（V 自己的 git，`5d17029d`）同时加了 AGENTS.md「飞书卡片 UI（自己决定什么时候用）」一节和 `skills/feishu-channel-cards/references/reply-cards.md`，没有这两处 V 不会主动出卡。Tianyi 定为试用一周（到 11/12），已在测试群告诉 V 并让它记进记忆、到期给小结。
+
+V 上验收（测试群 oc_260a…，gpt-6.1-sol/codex）：
+- 「这周花了：餐饮 820、交通 260、购物 1150，预算是 2000，帮我看看」，没提卡片：回复 `om_x100b618269bd2ca0cef696e5b0a630d` 是 V 自己选的卡片，标题「本周已花 ¥2230，超预算 ¥230」、预算/已花/超出三个指标、柱状图、占比与建议，一条消息定稿。
+- 闲聊「明早喝咖啡还是茶」：回复 `om_x100b618262f5c8a0b4ce6367be40ad8` 仍是普通文字卡带脚注。
+- 重启后日志 model card rejected、200570、300309、Final replace failed 均为 0；v-self-restart postChecks 全部为 0，workers 5 个就绪。
+- 未覆盖：/vds、/vcodex、/vcc 下 V 自主出卡，群聊里自主出卡；卡片按钮回调没有处理器；卡片里的 `<at user_id="all">` 未过滤。已知：卡片回复比文字回复多 3–10 s（整张卡写完才定稿）。
+
+回退：`promote-to-v.mjs --undo /opt/v-release-backups/feishu-card-open-20261104-20261104T163824` 后重启，并在 V 工作区 `git revert 5d17029d`。来源：[PR #555](https://github.com/vegekyd-sys/v-openclaw-platform/pull/555)，源码 openclaw-versa `f73ee277c7e`（分支 `versa/feishu-card-open-20261104`）。
+
+相对上一版 `feishu-card-images-20261104`：2 个文件变化。
+
+**经 VLab 发版 `feishu-card-open-20261104`**（feishu-card-open-20261104，dev `965e0ac2`）
+> 验收：共享 VLab 验收 2026-11-05 00:36 CST（#555，dev 965e0ac2）。「VLab 发布验收 B」群 @V - Lab（vds-deepseek-flash/codex）：要求整条回复为卡片 JSON 2.0（红色标题+VChart 饼图+markdown）→ 回复 om_x100b6181afb4d8a0b1eab750e9d93ce 为 interactive 卡片，标题「本周开支 FCO-OK」、饼图三类数据、超支 230 元，同一条消息定稿（无第二条机器人消息）；闲聊回复 om_x100b6181bc7c14a0cf1a2a98205ae7d 仍是普通文字卡带脚注。部署后 Gateway 日志 model card rejected/200570/300309/Final replace failed 均为 0。V 自主选卡（AGENTS.md 一节+…
+- `feishu` dist/monitor.account-WFdlCDhR.js  d642af6e → 46711745
+- `feishu` dist/reply-delivery-result-CEFTDA3f.js  0cc2f09c → de5f3524
+
 ## feishu-card-images-20261104
 
 上线：2026-11-04 17:59 CST（文件 17:52 装到 V，v-self-restart 等空闲 205 s 后重启生效）  ·  tag `feishu-card-images-20261104`
