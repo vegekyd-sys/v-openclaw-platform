@@ -1,0 +1,24 @@
+{
+  "support": [
+    "lab/candidate/luna-fallback-takeover.mjs",
+    "lab/patch-luna-fallback-takeover.mjs",
+    "release/captured/v2026.9.1-db91.6-codex-context-batch-20261101/dist/embedded-agent-DaSvA-Yk.js",
+    "release/captured/v2026.9.1-db91.6-codex-context-batch-20261101/dist/openai-chatgpt-provider-BApw3_oy.js",
+    "release/captured/v2026.9.1-db91.6-codex-context-batch-20261101.worker/dist/index.mjs",
+    "lab/patch-session-budget-maintenance.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/luna-fallback-takeover.mjs"
+  ],
+  "env": {
+    "LF_ARMS": "B,D",
+    "LF_SCENARIOS": "chat,s503",
+    "LF_SPEED_N": "0",
+    "LF_LUNA_REAL": "1",
+    "LF_DEBUG_LOG": "1",
+    "LF_LUNA_USAGE": "225000"
+  },
+  "timeoutSeconds": 10800,
+  "user": "lab-db91-parity"
+}

@@ -1,0 +1,18 @@
+{
+  "support": [
+    "lab/candidate/luna-fallback-takeover.mjs",
+    "lab/patch-luna-fallback-takeover.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/luna-fallback-takeover.mjs"
+  ],
+  "env": {
+    "LF_ARMS": "A,B",
+    "LF_SCENARIOS": "hang",
+    "LF_SPEED_N": "0",
+    "LF_DS_TIMEOUT_S": "90"
+  },
+  "timeoutSeconds": 10800,
+  "user": "lab-db91-parity"
+}

@@ -1,0 +1,10 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/session-budget-maintenance/agent-runner-memory-7VF-zwNt.js",
+      "target": "openclaw/dist/agent-runner-memory-7VF-zwNt.js",
+      "before": "befc094d3c6183b8275c1550cc91ccd333dfdd8a989ad9121be95d6c914746f2"
+    }
+  ]
+}
