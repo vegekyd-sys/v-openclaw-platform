@@ -453,6 +453,29 @@ fork 分支 `versa/upgrade-2026.10.10`（演练构建取自 `d19fdd1e0fe`，重�
 - Node 可以升级。
 - 会话间发消息时对方正忙：改用上游的持久排队（消息落盘，对方忙完再处理并回一次），不再回「对方正忙」。合并时 V 的报忙逻辑已去掉，无需改代码。
 
+### 第二阶段：按拍板接回（11/05）
+
+fork 分支同上，平台分支 `claude/upgrade-10line-stage2`。
+
+| 拍板项 | 做法 | 位置 | 验证 |
+|---|---|---|---|
+| Control UI 里的 RTC 不要 | fork 的 Control UI 回到上游：去掉 import map、3 个预编译语音包和换官方 UI 的脚本。v-voice 自己的服务（GPT Live / SeedDuplex / Grok）不经过 Control UI，不受影响 | fork `bb02110ec19` | 契约 `VOICE-RTC/page-modules` 改为 `CONTROL-UI/page-modules`：页面所有模块都能加载、且没有 RTC 包（V 现在带 RTC，这条在 V 上按设计不过） |
+| Telegram 补 `/model` 限制 | 10.10 的 Telegram 命令权限改走新入口，V 的规则在 core 里还在，但收不到命令原文。补上三处：原生命令、模型按钮（算 `/model`）、内置命令 | fork `f35325014f6` | 新测试：非 owner 只能 `/model` 和点模型按钮，owner 全部命令；去掉改动时测试失败。非 owner 发 `/login` 现在在权限这一步就被拒（与 9.1 上的 V 相同），对应上游测试已按 V 改 |
+| sessions_send 目标群看得到 | 上游把对方那一轮写死成只在内部跑。改为：对方会话绑定在某个聊天上（会话 key 带渠道和对象，如飞书群）时，那一轮自动发到它自己的聊天里；发件人仍只收到一次结果。没绑定聊天的（主会话、子 agent）、发给自己的、转到 Cron 父会话的，保持上游行为，避免发进私聊或重复发 | fork `7b64540819e` | 新测试：绑定群的目标走 `deliver:true` 发到自己的群，主会话目标仍在内部；删掉 9.1 遗留的两份过时测试（v3 relay 路径已不存在） |
+| Workshop：V 的 skill 自己应用 | 10.10 已经没有「提案→批准」：Workshop 学到的技能用 `skill_workshop` 改，立即生效、可撤销；工作区里 owner 写的技能是普通文件，agent 直接用文件工具改，同样无需批准。上游本来就满足，不改代码 | — | 契约改写为两条：agent 直接改工作区技能、agent patch 学到的技能，10.10 上都通过 |
+| 去掉 Worker | 9.6 时写的配置转换搬进平台：`scripts/upgrade-lts/noworker-config.mjs`（vlab-worker runtime 改 `openclaw`、Worker 插件停用、空闲 MCP 会话 5 分钟回收、去掉 RTC 语音 provider 的配置；默认语音 provider 还是它时拒绝执行，V 现在是 `openai`）；压缩 provider 单独成插件 `release/components/versa-runtime-providers-0.2.0`（只剩压缩，与 V 上 Worker 的字节一致） | 平台 `ab6e1a72` | 单测 25 条通过；vlab91 的 10.10 演练本来就是按这个转换跑的 |
+
+**测试：** fork 类型检查 0 错误；Telegram 扩展、sessions 工具、Control UI 共 2178 条单测全过。这次顺带发现 Telegram 扩展合并后就有 16 条失败（11/04 的全量单测没覆盖到这个扩展）：上游的 HTTP 派发测试和 bot 测试跑在默认打开的 V 体验上，脚手架没像另一套那样把它关掉，补上后全过；V 体验的工作视图沿用渠道自己的工具行，10.10 显示成「Exec」不带图标，测试已按此调整。fork 已推送到 `7b64540819e`。
+
+**首次派子会话的约 17 秒停顿，原因更正。** 11/04 第一次看 profile 时对时有偏差，归到了 GitHub publication 发现。修复重启后重新抓（证据 `evidence/gate1010/u10f-r1`，停顿从 06:18:11Z 起 16.6 秒），88% 在 `onSubagentEnded` 上：子会话结束时，子会话注册表用另一套缓存参数把全部插件重新加载一遍，主线程上同步复制路径插件的源码和依赖（lstat、realpath、读文件、算哈希）。上游已修：`5862bf7347d`「子会话清理时复用已发布的插件注册表」（#183996，10/25 进主干，已在 `v2026.11.5-beta.1`）。单独挑到 10.10 要连带搬好几个中间提交的接口，不值得；合 10.33 时核对它在不在，不在再单独搬。
+
+**上线当天的备份和磁盘（演练实测得出）：**
+1. 停机前检查数据盘空闲空间至少是状态目录大小的 2 倍。doctor 会给每个库留一份 `.pre-startup-migration-*.bak`，演练机空闲从 55 GB 降到 25 GB。
+2. 备份用我们自己的归档：停 Gateway 后 `tar | zstd` 整个状态目录，校验能解开再继续。doctor 自带的迁移前备份在 makaron 大库上 6.3 分钟后会被杀，它只记一条日志就继续，不能指望。
+3. doctor `--fix` 约 71 分钟（演练机），首启约 4 分钟，停机按 90 分钟准备。
+4. 验收通过后再删 `.bak` 和 doctor 失败留下的 `state.update-captures/doctor-*`（演练机 7 GB）。
+5. 回滚就是恢复第 2 步的归档。10.10 运行期间新写入的内容（新对话、记忆）会丢，所以回滚窗口要定死，比如上线后 24 小时内。
+
 ### 分支安排：升级在单独的分支上验证（10/30 Tianyi 拍板）
 
 升级验证完成之前，不进 dev，也就不会随日常发版上线。
