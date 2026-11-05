@@ -129,9 +129,15 @@ function capability() {
 const contextFor = (cap, prompt, extra = {}) => ({ prompt, sessionId: 's1', liveSession: cap, args: [], env: {}, cwd: '/tmp', modelId: 'claude', command: 'claude', systemPrompt: 'sys', ...extra });
 async function runTurn(runtime, context, during) {
   const events = [];
-  const done = (async () => { for await (const e of runtime.executeClaudeAgentSdk(context)) events.push(e); })();
-  if (during) await during();
-  await done;
+  // The runtime's timers are unref'd (the Gateway keeps the process alive); hold the loop open here.
+  const keepAlive = setInterval(() => {}, 1_000);
+  try {
+    const done = (async () => { for await (const e of runtime.executeClaudeAgentSdk(context)) events.push(e); })();
+    if (during) await during();
+    await done;
+  } finally {
+    clearInterval(keepAlive);
+  }
   return events;
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
