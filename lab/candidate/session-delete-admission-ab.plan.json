@@ -1,0 +1,20 @@
+{
+  "support": [
+    "lab/candidate/session-delete-admission-ab.mjs",
+    "lab/session-delete-admission.plan.json",
+    "lab/release-files/session-delete-admission/session-history-eviction-d5aiCsHS.js",
+    "lab/release-files/session-delete-admission/session-accessor.sqlite-lifecycle-dtL0ZEAl.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "--expose-gc",
+    "lab/candidate/session-delete-admission-ab.mjs"
+  ],
+  "timeoutSeconds": 3600,
+  "env": {
+    "FIXTURE_DIR": "/var/tmp/sdel",
+    "REPEAT": "3",
+    "REAL_ADMISSIONS": "8",
+    "COMPONENTS": "1"
+  }
+}

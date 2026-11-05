@@ -1,0 +1,15 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/session-delete-admission/session-history-eviction-d5aiCsHS.js",
+      "target": "openclaw/dist/session-history-eviction-d5aiCsHS.js",
+      "before": "0c43970f918117a2b350517ab7af9bffc13065c40df54a1c2f270f1745143101"
+    },
+    {
+      "source": "lab/release-files/session-delete-admission/session-accessor.sqlite-lifecycle-dtL0ZEAl.js",
+      "target": "openclaw/dist/session-accessor.sqlite-lifecycle-dtL0ZEAl.js",
+      "before": "1fbfab20a92e3145007017be7df8d6dc5219277eacc60463f71d6e426479e146"
+    }
+  ]
+}
