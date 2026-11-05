@@ -493,7 +493,8 @@
         "lab/feishu-card-open.test.mjs",
         "lab/session-budget-maintenance.test.mjs",
         "lab/session-delete-admission.test.mjs",
-        "lab/session-delete-plugin-cleanup.test.mjs"
+        "lab/session-delete-plugin-cleanup.test.mjs",
+        "lab/vcc-steer.test.mjs"
       ]
     }
   ],

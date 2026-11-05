@@ -1,0 +1,28 @@
+{
+  "support": [
+    "lab/candidate/vcc-steer/fake-claude.mjs",
+    "lab/candidate/vcc-steer/vcc-steer.mjs",
+    "lab/candidate/vcc-steer/fake-claude-exe.c"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/vcc-steer/vcc-steer.mjs"
+  ],
+  "timeoutSeconds": 1800,
+  "files": [
+    {
+      "source": "lab/release-files/vcc-steer/agent-sdk.runtime.js",
+      "target": "openclaw/dist/extensions/anthropic/agent-sdk.runtime.js",
+      "before": "1372aaa4561376b0f99b40268a45ea4b7fb087f22f2ed8c7c43206f5da8b785f"
+    },
+    {
+      "source": "lab/release-files/vcc-steer/execute.runtime-DRmvah87.js",
+      "target": "openclaw/dist/execute.runtime-DRmvah87.js",
+      "before": "106738fad647cff6669f2324360cae9fa73467d9d11661041a6ee600509fb1c9"
+    }
+  ],
+  "env": {
+    "ARM": "fixed",
+    "FAKE_CLAUDE_BIN": "/opt/vlab-fake-claude/bin"
+  }
+}

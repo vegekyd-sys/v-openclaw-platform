@@ -1,0 +1,15 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/vcc-steer/agent-sdk.runtime.js",
+      "target": "openclaw/dist/extensions/anthropic/agent-sdk.runtime.js",
+      "before": "1372aaa4561376b0f99b40268a45ea4b7fb087f22f2ed8c7c43206f5da8b785f"
+    },
+    {
+      "source": "lab/release-files/vcc-steer/execute.runtime-DRmvah87.js",
+      "target": "openclaw/dist/execute.runtime-DRmvah87.js",
+      "before": "106738fad647cff6669f2324360cae9fa73467d9d11661041a6ee600509fb1c9"
+    }
+  ]
+}
