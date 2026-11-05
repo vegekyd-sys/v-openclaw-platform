@@ -1662,6 +1662,20 @@
       "sha256": "fb2bbf0e3abd3c4e28e6c9e6b8a1efec3f50ceb0a0d80fe3bcb5a7db0bfcc28d",
       "source": "pending:third-party-plugin",
       "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+    },
+    {
+      "layer": "core",
+      "path": "session-history-eviction-d5aiCsHS.js",
+      "sha256": "2dce5e13809133fec7c135084d1167aba1a44d2cabf0f3c485bf478a7ba2cbee",
+      "source": "versa:330030030e5",
+      "note": "session-delete-admission-20261105 (#558): the deletion fence reads entries only for admitted keys; deletions that keep transcript state skip the reference set and fence (versa/port-session-delete-admission-20261105)"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-lifecycle-dtL0ZEAl.js",
+      "sha256": "f3f6fdfa5fb552658072ed8d4bf0a17583c3f8dfe5bed70a9d7d82b802fc9eb2",
+      "source": "versa:39242f5b4fc",
+      "note": "session-delete-admission-20261105 (#558): the deletion fence reads entries only for admitted keys; deletions that keep transcript state skip the reference set and fence (versa/port-session-delete-admission-20261105)"
     }
   ]
 }
