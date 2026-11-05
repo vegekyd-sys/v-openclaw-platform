@@ -492,7 +492,8 @@
         "lab/feishu-card-images.test.mjs",
         "lab/feishu-card-open.test.mjs",
         "lab/session-budget-maintenance.test.mjs",
-        "lab/session-delete-admission.test.mjs"
+        "lab/session-delete-admission.test.mjs",
+        "lab/session-delete-plugin-cleanup.test.mjs"
       ]
     }
   ],
