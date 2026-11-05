@@ -10,6 +10,31 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## session-delete-admission-20261105
+
+上线：2026-11-05 23:35 CST（文件 23:18 装到 V，v-self-restart 23:33 提交、等空闲 2 s 后停机，23:35:41 就绪）  ·  tag `session-delete-admission-20261105`
+
+**摘要**：V 每次删会话（主要是定时任务跑完删自己的临时运行会话，11/04 一天 132 次）都要把 session_nodes 全表 entry_json 读进内存（约 2.5 GB）并卡主线程约 9 s，这是每 10–30 分钟一次 rss_growth critical 的来源。#558 让准入保护集合按 key 精确读，并在不删 transcript 时跳过两次整表读。
+
+V 上验收：
+- 测试群 oc_260a… 回复 `om_x100b61fe622b0ca0ce1d78bbc2b52f3`「SDA-V-OK」（gpt-6.1-sol/codex）；v-self-restart postChecks 全 0，workers 5 个就绪。
+- 重启后真实删除 3 次（23:38、23:42、23:53「F页面审核接续失败恢复」）：每次 1.95–2.03 s（以前准备 6–7 s + 事务 1.8–2.0 s ≈ 9 s），后两次没有 rss_growth；23:38 有一次 warning 级 rssGrowth 942 MiB，在重启后 2.5 分钟内。
+- 重启后 50 s 和约 6 分钟各有一次 48 s / 22 s 的 makaron 写入卡顿，上一次重启（11/05 00:48）同样出现 50 s / 21.5 s，属已有的启动期行为，不是本次引入。
+- 未覆盖：剩下约 2 s 是删除事务里 survivingNodes 整表扫描（需反向索引，后续）；sessions.delete RPC 路径（archiveTranscript:true）在 VLab 小库上每次仍 +~290 MB，疑似还有整读，已交 gw-rss-growth 会话追查。
+
+回退：`promote-to-v.mjs --undo /opt/v-release-backups/session-delete-admission-20261105-20261105T151831` + 重启。
+
+相对上一版 `feishu-card-open-20261104`：2 个文件变化。
+
+**经 VLab 发版 `session-delete-admission-20261105`**（session-delete-admission-20261105，dev `68e19995`）
+> 验收：共享 VLab 验收 2026-11-05 23:17 CST（#558，dev 68e19995）。部署后两个 dist 文件 sha256 = after（2dce5e13…/f3f6fdfa…），parity 只差这两个文件。删会话：vlab.mjs test 建临时会话后用实例 CLI gateway call sessions.delete 删除 3 次（含另一回合在跑时、删正在跑的会话、空闲时），均 ok/deleted:true，Gateway 内 sessions.delete 6.5 s，回合被正确中止（Reply operation aborted by user），Gateway 无报错。群 B 可见回复：om_x100b61fdae408ca0cecd78f79170b7c「SDA-OK」（vds-deepseek-flash/codex）。cron 清理路径（11…
+- `core` session-accessor.sqlite-lifecycle-dtL0ZEAl.js  1fbfab20 → f3f6fdfa
+- `core` session-history-eviction-d5aiCsHS.js  0c43970f → 2dce5e13
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #558 fix(sessions): 删会话不再整表读 entry_json（每次 2.5 GB、约 7 s）
+- #556 release: 捕获 feishu-card-open-20261104 并补 CHANGELOG（含 feishu-card-images）
+
 ## feishu-card-open-20261104
 
 上线：2026-11-05 00:50 CST（文件 00:38 装到 V，v-self-restart 00:46 提交、等空闲 32 s 后重启，00:50:15 就绪）  ·  tag `feishu-card-open-20261104`
