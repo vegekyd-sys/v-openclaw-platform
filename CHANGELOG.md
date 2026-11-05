@@ -10,6 +10,33 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## delete-cleanup-vcc-steer-20261106
+
+上线：2026-11-06 02:03 CST（文件 01:36 装到 V；01:36 第一次 v-self-restart 等空闲 15 分钟未果放弃，01:53 重试，02:01 等到空闲停机，02:03:13 就绪）  ·  tag `delete-cleanup-vcc-steer-20261106`
+
+**摘要**：两件事一次重启上线。① /vcc（claude-cli）回复进行中发的消息现在会插进当前回合（#561）：消息写进正在运行的 Claude Code 常驻进程，工具运行中插话在同一回合吸收；回答收尾时插话由 Claude 接着跑一轮，算在同一条回复里。以前一律等回复结束后单独再答。② `sessions.delete` 不再为插件状态清理整表读 entry_json（#559，V 规模每次约 2.6 GB），deleteAfterRun 定时任务和手动删会话受益。
+
+V 上验收：
+- /vcc 插话（测试群 oc_260a…，claude-opus-5-5/claude-cli）：发「用 Bash 运行 sleep 45…」，25 s 后插话「加上 BANANA」→ 只有一条回复 `om_x100b61f81b44fca0ce4e7e4521ce369`「STEP1 完成 BANANA」，V 自述插话在回合进行中收到；日志该会话只有一次 cli exec（50 s），插话没有另起一轮。同时段另一个 /vcc 会话正常完成。测完测试群已切回 `/vcodex`。
+- 删会话：重启后 3 次 cron 清理删除（02:05、02:11、02:20）每次 2.0–2.1 s，没有 rss_growth；重启后到 02:23 还没有 sessions.delete RPC 调用，#559 那条路径在 V 上待真实流量验证（VLab：6.5 s / +287 MB → 2.7 s / +49 MB）。
+- v-self-restart postChecks 全 0，workers 5 个就绪；哨兵 stall 0。重启后 50 s 和约 6 分钟各有一次 22 s 的 makaron 写入卡顿，前两次重启同样出现，属已有启动期行为。
+- 未覆盖：/vcc 带图片的插话、node 派发与托管进程路径仍是排队；vlab-worker（V 默认运行时）不支持插话。
+
+回退：`promote-to-v.mjs --undo /opt/v-release-backups/delete-cleanup-vcc-steer-20261106-20261105T173107` + 重启。
+
+相对上一版 `session-delete-admission-20261105`：3 个文件变化。
+
+**经 VLab 发版 `delete-cleanup-vcc-steer-20261106`**（delete-cleanup-vcc-steer-20261106，dev `2a1ab0ad`）
+> 验收：共享 VLab 验收 2026-11-06 01:30 CST（#559 + #561，dev 2a1ab0ad）。sessions.delete（实例 CLI，空闲临时会话）：Gateway 内 2,689 ms，VmRSS +49 MB；上线前同样测试 6,467 ms、+287 MB。群 B 可见回复 om_x100b61ff9d95b0a4cfea77dd10b40c4「DCV-OK」（vds-deepseek-flash/codex）。/vcc 插话：VLab 的 Claude 登录所在组织关闭了订阅访问，无法跑真 Claude；由 candidate-8053e38d（私有挂载命名空间 + 假 Claude Code，A/B/C 全过）与基线 candidate-7fcb802f 验证，上线后在 V 测试群实测。#559 由 candidate-e2cb6ab8 对照 cand…
+- `core` execute.runtime-DRmvah87.js  106738fa → 1c8902ac
+- `core` extensions/anthropic/agent-sdk.runtime.js  1372aaa4 → 7c1fa81c
+- `core` session-accessor-K0XuW6ln.js  30c7b9d6 → a854b511
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #561 fix(claude-cli): /vcc 回合进行中的插话（steer）进入当前回合
+- #559 fix(sessions): sessions.delete 不再为插件清理整表读 entry_json（V 上每次约 2.6 GB）
+- #560 release: 捕获 session-delete-admission-20261105 并补 CHANGELOG
+
 ## session-delete-admission-20261105
 
 上线：2026-11-05 23:35 CST（文件 23:18 装到 V，v-self-restart 23:33 提交、等空闲 2 s 后停机，23:35:41 就绪）  ·  tag `session-delete-admission-20261105`

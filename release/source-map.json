@@ -1676,6 +1676,27 @@
       "sha256": "f3f6fdfa5fb552658072ed8d4bf0a17583c3f8dfe5bed70a9d7d82b802fc9eb2",
       "source": "versa:39242f5b4fc",
       "note": "session-delete-admission-20261105 (#558): the deletion fence reads entries only for admitted keys; deletions that keep transcript state skip the reference set and fence (versa/port-session-delete-admission-20261105)"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor-K0XuW6ln.js",
+      "sha256": "a854b511ef5d0100ac7a89ecb778dd4ba0aa53e6ae3ffa8e9b522b13171eb674",
+      "source": "versa:b0cbe1db060",
+      "note": "delete-cleanup-vcc-steer-20261106 (#559): sessions.delete plugin-state cleanup picks candidates from the metadata list and reads full entries only for matched keys (versa/port-session-delete-plugin-cleanup-20261105)"
+    },
+    {
+      "layer": "core",
+      "path": "extensions/anthropic/agent-sdk.runtime.js",
+      "sha256": "7c1fa81c15c022af5e04583809f53392a56056d7d12f684d84865693d0784ab4",
+      "source": "versa:6f600039627",
+      "note": "delete-cleanup-vcc-steer-20261106 (#561): live Claude sessions take steered messages and hold the turn for a follow-on answer (versa/port-vcc-steer-20261106)"
+    },
+    {
+      "layer": "core",
+      "path": "execute.runtime-DRmvah87.js",
+      "sha256": "1c8902ac292d49a7e1d98d335972267c1b0bda5571582783084541bef5a5a836",
+      "source": "versa:6f600039627",
+      "note": "delete-cleanup-vcc-steer-20261106 (#561): the plugin-executed claude-cli reply handle exposes messageInjection (versa/port-vcc-steer-20261106)"
     }
   ]
 }
