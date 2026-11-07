@@ -64,7 +64,8 @@ const GRAY_GROUP = "oc_candidategraygroup";
 // CHAIN_COMPARE=1 (with SCENARIOS): the rollout shape (default flash, /vds through modelByChannel) under
 // DeepSeek faults, with the fallback chain in CHAIN (flash,luna or luna). "luna" is a stand-in provider
 // on the Worker runtime whose requests the fault proxy always passes (real DeepSeek flash), because a
-// candidate must not use the ChatGPT login. CHAIN_FAULTS: 503-all and hang-all fail every DeepSeek
+// candidate must not use the ChatGPT login. 503once-all fails only the first request (a blip that must
+// not fall back). CHAIN_FAULTS: 503-all and hang-all fail every DeepSeek
 // request (an outage); 503-codex and hang-codex fail only Codex's /responses (a Codex-path failure).
 const CHAIN_COMPARE = process.env.CHAIN_COMPARE === "1";
 const LUNA_REF = "lunastub/deepseek-flash";
@@ -625,6 +626,8 @@ if (VIA_PROXY) {
     if (req.url.startsWith("/luna/")) { req.url = req.url.slice("/luna".length); mode = "ok"; }
     // hang-after-tool: the first request of the scenario answers, the one carrying the tool result hangs
     if (mode === "hang-after-tool") mode = faultLog.filter((f) => f.url.includes(faultPath)).length === 0 ? "ok" : "hang";
+    // 503once: a transient blip, the first request of the scenario fails and the rest answer
+    if (mode === "503once") mode = faultLog.some((f) => f.mode === "503") ? "ok" : "503";
     faultLog.push({ at: Date.now(), mode, url: req.url });
     const fail = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
     if (mode === "503") return fail(503, { error: { message: "Service is too busy", type: "service_unavailable_error", code: "service_unavailable" } });
