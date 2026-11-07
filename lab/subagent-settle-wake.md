@@ -57,13 +57,29 @@ Source: openclaw-versa `versa/fix-subagent-owner-changed-20261108` (`e02a568d77a
 - versa: `gateway-request-scope.test.ts` +1 (fails without the change), 
   `subagent-completion-admission.store.test.ts` +2 (the CLI-row case fails without the change).
 
+## VLab candidate (end to end)
+
+`lab/candidate/subagent-settle-wake/` (`baseline.plan.json` V's bytes, `fixed.plan.json` the two release
+files): a private candidate Gateway with mock Feishu and real DeepSeek. The parent (a /vds session, whose
+tools run in the Gateway like V's /vcc parent) spawns two `visible=true` children with
+`expectsCompletionMessage=true` and calls `sessions_yield`. Under a Worker parent visible children are
+created with `expectsCompletionMessage: false`, so that harness cannot reproduce this.
+
+| | baseline (V today) | fixed |
+|---|---|---|
+| children | 2 visible (`:dashboard:`), `ok`, `completion_handoff_pending`, yield batch | same |
+| settle wake | `attempt 1 failed; retrying in 30s: In-process gateway dispatch requires a gateway request scope or instance binding`, then attempt 2 | dispatched, no binding failure |
+| parent final card with both children's tokens | none | one |
+
+Receipts: baseline `candidate-6aeb06bf-10ad-4cb9-a93f-d9a471bc32dc` (PASS), fixed
+`candidate-12675a66-ff4b-46f5-a6f1-bcbf375a7245` (PASS), 2026-11-08 02:33–02:36 CST.
+
 ## Not covered yet
 
-- VLab candidate: VLab has been unreachable since 2026-11-07 23:05 (memory exhaustion); the
-  end-to-end run (mixed `sessions.create` + `sessions_spawn` batch under a yielded parent, then the
-  wake) is pending until it is back.
 - The stuck batch on V: it is `dispatching` with attempt 3, so after the restart the wake replays its
   dispatch with the now-working binding (deferring first, up to 10 times, while other children of
   the parent are still running); if that is refused the batch now settles as failed instead of
   looping. Check the group afterwards.
+- The /vcc (claude-cli) parent itself: VLab candidates have no Claude login; /vds exercises the same
+  Gateway-side spawn and settle path.
 - Why a spawn with an explicit model gets a Gateway `cli` row instead of a `subagent` row.

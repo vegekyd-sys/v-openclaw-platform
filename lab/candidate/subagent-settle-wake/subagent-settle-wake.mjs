@@ -26,7 +26,7 @@ const tokenA = `SWA_${tag}_A`;
 const tokenB = `SWA_${tag}_B`;
 const final = `SWA_FINAL_${tag}`;
 
-const c = await prepareCandidate({harness: 'worker', envMode: 'v', plugin: 'absent', maxWorkers: 2});
+const c = await prepareCandidate({harness: process.env.SSW_HARNESS ?? 'vds', envMode: 'v', plugin: 'absent', maxWorkers: 1, workspace: false});
 const loaded = ['gateway-request-scope-CmMd3nUp.js', 'subagent-completion-admission.store-JmpNDYTF.js']
   .map((name) => ({name, patched: fs.readFileSync(path.join(c.dist, name), 'utf8').includes(MARKER)}));
 const proof = {kind: 'subagent-settle-wake', arm: ARM, ok: false, tag, loaded, checks: []};
@@ -42,11 +42,14 @@ const runs = () => {
       .all(parentKey).map((r) => {
         const p = JSON.parse(r.p);
         return {runId: r.runId, child: r.child, taskName: p.taskName, status: p.execution?.status, outcome: p.execution?.outcome?.status,
-          delivery: p.delivery?.status, lastError: p.delivery?.lastError, wake: p.requesterSettleWake && {status: p.requesterSettleWake.status, attempts: p.requesterSettleWake.attemptCount, lastError: p.requesterSettleWake.lastError, yieldBatch: p.requesterSettleWake.requesterYieldBatch === true}};
+          delivery: p.delivery?.status, disposition: p.delivery?.disposition, lastError: p.delivery?.lastError,
+          expects: p.expectsCompletionMessage, yielded: p.requesterTurnYielded, requesterTurnRunId: p.requesterTurnRunId ? 'set' : undefined,
+          suppress: p.suppressCompletionDelivery, reply: p.completion?.terminalReply?.disposition, replyCode: p.completion?.terminalReply?.code, wake: p.requesterSettleWake && {status: p.requesterSettleWake.status, attempts: p.requesterSettleWake.attemptCount, lastError: p.requesterSettleWake.lastError, yieldBatch: p.requesterSettleWake.requesterYieldBatch === true}};
       });
   } finally { db.close(); }
 };
-const finals = () => c.fake.list(GROUP_B).filter((m) => JSON.stringify(m).includes(final));
+// Only V's replies (cards), not the human instruction that names the token.
+const finals = () => c.fake.list(GROUP_B).filter((m) => m.msg_type === 'interactive' && JSON.stringify(m).includes(final));
 const bindingFailures = () => c.lines.filter((x) => x.line.includes('requester settle wake') && x.line.includes(BINDING_ERROR)).map((x) => redact(x.line).slice(0, 300));
 
 try {
@@ -54,13 +57,13 @@ try {
   await c.ensureSession(parentKey);
   await c.humanInGroup(GROUP_B, {text: [
     '这是自动化功能验收，请严格照做。',
-    `第一步：调用 sessions_spawn 两次，两次都必须带 visible=true 和 runtime="subagent"。第一次 taskName=svA，task 写「只回复 ${tokenA}，不要调用任何工具」；第二次 taskName=svB，task 写「只回复 ${tokenB}，不要调用任何工具」。`,
+    `第一步：调用 sessions_spawn 两次，两次都必须带 visible=true 和 runtime="subagent"。两次都必须带 expectsCompletionMessage=true，不要传 collect。第一次 taskName=svA，task 写「只回复 ${tokenA}，不要调用任何工具」；第二次 taskName=svB，task 写「只回复 ${tokenB}，不要调用任何工具」。`,
     '第二步：两个都派出后，立即调用 sessions_yield，不要等待、不要轮询、不要自己代做。',
     `第三步：收到两个子 agent 的结果后，只回复一行：${final} 加上两个子 agent 返回的原文。不要调用 message 工具。`,
   ].join('\n')});
 
   const children = await until(() => {
-    const r = runs().filter((x) => x.taskName === 'svA' || x.taskName === 'svB');
+    const r = runs().filter((x) => /^sv[ab]$/iu.test(x.taskName ?? ''));
     return r.length === 2 && r.every((x) => x.status === 'terminal') ? r : undefined;
   }, {timeoutMs: 360_000, label: 'two visible children finished'});
   proof.children = children;
@@ -88,6 +91,7 @@ try {
   proof.ok = true;
 } catch (e) {
   proof.error = redact(e.stack);
+  proof.parentTools = await c.rpc('chat.history', {sessionKey: parentKey, limit: 40}).then((h) => JSON.stringify(h).match(/"name":"[a-z_]+"|"arguments":"[^"]{0,240}|sessions_(spawn|yield)[^"]{0,200}/gu)?.slice(0, 40)).catch((err) => String(err?.message ?? err));
   proof.runs = runs();
   proof.bindingFailures = bindingFailures();
   proof.finals = finals().length;
