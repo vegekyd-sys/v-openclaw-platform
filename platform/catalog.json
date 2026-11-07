@@ -496,7 +496,8 @@
         "lab/session-delete-admission.test.mjs",
         "lab/session-delete-plugin-cleanup.test.mjs",
         "lab/vcc-steer.test.mjs",
-        "lab/cron-default-owner-tools.test.mjs"
+        "lab/cron-default-owner-tools.test.mjs",
+        "lab/settled-tool-handoff.test.mjs"
       ]
     }
   ],
