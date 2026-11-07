@@ -487,7 +487,8 @@
         "scripts/v-skills-catalog.test.mjs",
         "lab/model-switch-thinking.test.mjs",
         "lab/luna-fallback-takeover.test.mjs",
-        "lab/session-budget-maintenance.test.mjs"
+        "lab/session-budget-maintenance.test.mjs",
+        "lab/settled-tool-handoff.test.mjs"
       ]
     }
   ],
