@@ -1,6 +1,6 @@
 # A fresh Worker's first turn: 18-19 s restoring the subagent registry
 
-Status: candidate-tested, not on V. Branch `claude/firsttext-four-paths-20261107`; fork source
+Status: candidate A/B done (VLab), not on V. Branch `claude/firsttext-four-paths-20261107`; fork source
 `vegekyd-sys/openclaw-versa` `versa/port-subagent-restore-narrow-20261107`.
 
 ## What V shows
@@ -90,7 +90,30 @@ checkout: a temp SQLite store with 15,495 validated Night Shift children of ~80 
 
 ## Candidate results
 
-Candidate A/B (`lab/candidate/subagent-restore-narrow-{base,narrow}.plan.json`): pending. The first
+VLab candidate, 2026-11-08 02:46-03:15 CST (`lab/candidate/subagent-restore-narrow.mjs`): private
+Gateway and one Worker on VLab's runtime, a private agent database with 15,486 Night Shift children of
+~77 KB each, `subagent_runs` (16,663 rows) pointing at them and V-sized `task_runs`; each round rolls the
+Worker pool, sends one turn to the fresh Worker (its first turn) and one more turn after it (warm), and
+times send -> first request at the loopback model. Every turn records the unit's `memory.high` events
+during the turn; turns with throttling are left out.
+
+| send -> first model request | base (V bytes) | patched |
+|---|---|---|
+| fresh Worker's first turn, same runtime (`fallback-dsml-subagent-wake-20261108`) | 60.5 s, 26.2 s | 12.5 s, 11.6 s, 10.8 s |
+| same, earlier runtime (`cron-default-owner-tools-20261107` = V's bytes) | 31.9, 27.5, 27.2, 29.2 s | - |
+| warm turn on the same Worker | 1.40, 1.06, 1.04 s | 0.94, 0.93, 0.99 s |
+
+Left out: base round 3 (27.9 s, 2,707 high events), patched round 4 (15.9 s, 2,592 high events; its warm
+turn then timed out). The earlier-runtime base run predates the per-turn throttle record. All other turns
+completed with visible replies. Without the change the first turn also tripped V's 11/05 failure: with the
+production 30 s ack timeout, `Worker stream acknowledgement timed out` failed it after 65 s; the runs
+above raise that timeout to 180 s so the turn completes and can be timed.
+
+So a fresh Worker's first turn drops by about 16 s on VLab (4 busy cores); warm turns are unchanged.
+The patched candidate ran on the runtime that already has #569 (same file, other functions), with this
+patch rebuilt on those bytes; the release files here are built on V's current bytes.
+
+Earlier attempts: the first
 attempt (both arms with the V-sized registry seeded before the Gateway started) gave one data point
 for the Gateway's own start: base bytes did not answer `hello` within 15 min (182 GB of logical reads),
 patched bytes had forked its Workers about 3.5 min after start (its hello line was not reached because

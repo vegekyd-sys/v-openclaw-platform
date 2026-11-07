@@ -10,8 +10,9 @@
   "user": "lab-db91-parity",
   "env": {
     "ARM": "narrow",
-    "ROUNDS": "3",
-    "SEEDED_START_DEADLINE_MS": "900000"
+    "ROUNDS": "4",
+    "SEEDED_START": "0",
+    "ACK_TIMEOUT_MS": "180000"
   },
   "files": [
     {

@@ -35,8 +35,11 @@ const SEED = process.env.SEED ?? "v";
 // 14,875 of them Night Shift subagent sessions, entry_json 1,255 MB; the VLab mirror has 3,813 / 125 MB)
 const SESSIONS = process.env.SESSIONS ?? "v";
 const N = Number(process.env.N ?? 3);
-const MIN = Number(process.env.MIN_WORKERS ?? 2);
-const MAX = Number(process.env.MAX_WORKERS ?? 8);
+const MIN = Number(process.env.MIN_WORKERS ?? 1);
+const MAX = Number(process.env.MAX_WORKERS ?? 2);
+// VLab candidate units are capped at MemoryHigh 7G (2026-11-08) (page cache of the 1.2 GB private database counts):
+// a throttled unit slows the base arm's whole-entry reads more than the patched arm, so stay below it
+const GATEWAY_HEAP_MB = Number(process.env.GATEWAY_HEAP_MB ?? 6144);
 const SPW = Number(process.env.SESSIONS_PER_WORKER ?? 3);
 const ROUNDS = Number(process.env.ROUNDS ?? 4);
 const MODEL_DELAY_MS = Number(process.env.MODEL_DELAY_MS ?? 1200);
@@ -200,9 +203,12 @@ function buildPrivateDatabase() {
       let json1 = entryJson;
       for (const id of ids) json1 = json1.replaceAll(id, id === template.current_session_id ? sid : id === template.session_key ? key : randomUUID());
       if (labelJson) json1 = json1.replaceAll(labelJson, `"label":${JSON.stringify(label)}`);
+      // parseSqliteSessionEntryRecord rejects a row whose updated_at differs from entry.updatedAt
+      const updatedAt = now - Math.floor(Math.random() * 7 * 86_400_000);
+      if (typeof entry.updatedAt === "number") json1 = json1.replace(`"updatedAt":${entry.updatedAt}`, `"updatedAt":${updatedAt}`);
       const row = { ...template, session_key: key, current_session_id: sid, ...("label" in template ? { label } : {}),
         entry_json: json1,
-        updated_at: now - Math.floor(Math.random() * 7 * 86_400_000), created_at: now - Math.floor(Math.random() * 7 * 86_400_000) };
+        updated_at: typeof entry.updatedAt === "number" ? updatedAt : template.updated_at, created_at: now - Math.floor(Math.random() * 7 * 86_400_000) };
       ins.run(...cols.map((c) => row[c]));
     }
     dst.exec("COMMIT");
@@ -215,6 +221,10 @@ function buildPrivateDatabase() {
 
 // ---- V-sized registries in the private state database (synthetic rows) ----
 const privateStateDb = path.join(stateDir, "state", "openclaw.sqlite");
+function subagentRowCount() {
+  const db = new DatabaseSync(privateStateDb, { readOnly: true });
+  try { return db.prepare("SELECT count(*) n FROM subagent_runs").get().n; } finally { db.close(); }
+}
 function seedRegistries(childKeys) {
   assert(childKeys.length > 0, "no cloned children to point subagent_runs at");
   const db = new DatabaseSync(privateStateDb);
@@ -320,12 +330,12 @@ let gateway, client;
 function startGateway() {
   // Workers inherit the Gateway's execArgv (not NODE_OPTIONS: the pool passes an allowlisted environment)
   const profArgs = PROFILE ? [`--import=${profPreload()}`, "--cpu-prof", `--cpu-prof-dir=${profDir}`, "--cpu-prof-interval=2000"] : [];
-  gateway = spawn(process.execPath, ["--max-old-space-size=8192", ...profArgs, `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
+  gateway = spawn(process.execPath, [`--max-old-space-size=${GATEWAY_HEAP_MB}`, ...profArgs, `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
   for (const s of [gateway.stdout, gateway.stderr]) {
     s.setEncoding("utf8");
     s.on("data", (chunk) => {
       for (const line of chunk.split(/\r?\n/u).filter(Boolean)) lines.push({ at: Date.now(), line });
-      if (lines.length > 200_000) lines.splice(0, lines.length - 200_000);
+      if (lines.length > 60_000) lines.splice(0, lines.length - 60_000);
     });
   }
 }
@@ -417,7 +427,15 @@ async function timedStart(label) {
   log(label, "hello", helloMs, "workers ready", readyMs);
   return { helloMs, readyMs };
 }
+// this candidate's own cgroup: memory.high throttling during a measured turn would slow the base arm's
+// whole-entry reads more than the patched arm, so every turn records the high-event delta
+const cgroupEvents = (() => {
+  try { const rel = fs.readFileSync("/proc/self/cgroup", "utf8").trim().split("\n").find((l) => l.startsWith("0::"))?.slice(3); if (!rel) return null; let dir = `/sys/fs/cgroup${rel}`; while (!fs.existsSync(`${dir}/memory.high`) && dir.includes(".service/")) dir = path.dirname(dir); return `${dir}/memory.events`; } catch { return null; }
+})();
+const memoryHigh = () => { try { return Number(/^high (\d+)/mu.exec(fs.readFileSync(cgroupEvents, "utf8"))?.[1] ?? NaN); } catch { return NaN; } };
+log("cgroup events", cgroupEvents, "high now", memoryHigh(), (() => { try { return fs.readFileSync("/proc/self/cgroup", "utf8").trim(); } catch (e) { return String(e.message); } })());
 async function turn(sessionKey, tag) {
+  const highBefore = memoryHigh();
   const runId = `workboard:${randomUUID()}:${Date.now()}`;
   const sent = Date.now();
   const r = { tag, runId, sent };
@@ -432,6 +450,7 @@ async function turn(sessionKey, tag) {
     } catch (error) { r.waitError = redact(error?.message ?? error).slice(0, 200); await sleep(1_000); }
   }
   await sleep(1_500);
+  r.memoryHighDelta = memoryHigh() - highBefore;
   const mine = calls.filter((c) => c.tag === tag);
   const pm = marks().get(runId) ?? {};
   r.workerPid = pm.pid ?? null;
@@ -441,7 +460,11 @@ async function turn(sessionKey, tag) {
     const h = await client.request("chat.history", { sessionKey, limit: 6 });
     r.replyVisible = JSON.stringify(h?.messages ?? h ?? []).includes(`FTA-DONE ${tag}`);
   } catch (error) { r.historyError = redact(error?.message ?? error).slice(0, 160); }
-  log("turn", tag, JSON.stringify({ status: r.status, pid: r.workerPid, enterToModelMs: r.enterToModelMs, firstModelMs: r.firstModelMs, replyVisible: r.replyVisible }));
+  log("turn", tag, JSON.stringify({ status: r.status, pid: r.workerPid, enterToModelMs: r.enterToModelMs, firstModelMs: r.firstModelMs, replyVisible: r.replyVisible, memoryHighDelta: r.memoryHighDelta, error: r.error, sendError: r.sendError, waitError: r.waitError }));
+  if (r.status !== "ok") {
+    const tail = lines.slice(-400).map((l) => l.line).filter((l) => /error|Error|fail|warn|denied|refus|timed out|worker/iu.test(l) && !/\[skills\]|ExperimentalWarning/u.test(l)).slice(-25);
+    log("gateway tail", redact(tail.join("\n")).slice(0, 6000));
+  }
   return r;
 }
 
@@ -457,8 +480,13 @@ try {
   let keyIndex = 0;
   let seeded;
   for (let round = 1; round <= ROUNDS; round++) {
-    seeded = seedRegistries(built.childKeys);
-    log("seeded", round, JSON.stringify(seeded));
+    // seed once; refill only if a persist shrank the tables (rewriting them under a running Gateway
+    // closed its connection in round 2 of the 02:41 run)
+    if (round === 1 || subagentRowCount() < 16_663) {
+      seeded = seedRegistries(built.childKeys);
+      log("seeded", round, JSON.stringify(seeded));
+    }
+    if (gateway.exitCode !== null) throw new Error(`private Gateway exited ${gateway.exitCode} before round ${round}\n${redact(lines.slice(-80).map((l) => l.line).join("\n")).slice(-8000)}`);
     const before = json("[worker-runtime-prewarm.3]").length;
     const roll = await client.request("vlab.workers.roll", { reason: `candidate subagent-restore-narrow round ${round}` }, { timeoutMs: 600_000 });
     const deadline = Date.now() + 600_000;
@@ -467,8 +495,7 @@ try {
     const a = built.keys[keyIndex++], b = built.keys[keyIndex++];
     const turns = [];
     turns.push({ kind: "cold", ...(await turn(a, `${round}-0`)) });
-    turns.push({ kind: "cold", ...(await turn(b, `${round}-1`)) });
-    turns.push({ kind: "warm", ...(await turn(a, `${round}-2`)) });
+    turns.push({ kind: "warm", ...(await turn(b, `${round}-1`)) });
     rounds.push({ round, rolledGeneration: roll?.generation ?? null, turns });
   }
   const prunedAtStart = restoreLines();
@@ -500,6 +527,7 @@ try {
     firstTurnEnterToModelMs: stat(coldFirst.map((t) => t.enterToModelMs)),
     warmEnterToModelMs: stat(warm.map((t) => t.enterToModelMs)),
     coldSamplesNotFirstOnWorker: cold.length - coldFirst.length,
+    memoryHighDuringTurns: all.map((t) => t.memoryHighDelta), cgroupEvents,
     ok: all.filter((t) => t.status === "ok").length, n: all.length, replyVisible: all.filter((t) => t.replyVisible).length,
     rounds, elapsedS: Math.round((Date.now() - startedAt) / 1000),
   };
