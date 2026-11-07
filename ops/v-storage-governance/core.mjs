@@ -93,10 +93,51 @@ export function eligibleSnapshot(name,tree,{now=Date.now(),ageHours=48,pidExists
   if(pidExists(Number(match[1])))return{eligible:false,reason:'creator-pid-still-exists'};
   if(tree.some(e=>e.type==='link'||e.nlink>1&&e.type==='file'))return{eligible:false,reason:'linked-content'};
   if(tree.some(e=>e.type==='dir'&&e.relative!==''))return{eligible:false,reason:'nested-content'};
-  if(tree.some(e=>e.type==='file'&&!/^(?:openclaw-agent|memory|snapshot|database)\.sqlite(?:-(?:wal|shm))?$/.test(e.relative)))return{eligible:false,reason:'unrecognized-content'};
-  if(!tree.some(e=>e.type==='file'&&e.relative.endsWith('.sqlite')))return{eligible:false,reason:'no-snapshot-database'};
+  // `first` and `second` are OpenClaw's own staging copies (src/infra/sqlite-readonly-location.ts):
+  // it copies the source twice, compares, renames `second` into place and removes `first`.
+  // A process killed in between leaves them behind; they are copies of the same database.
+  if(tree.some(e=>e.type==='file'&&!/^(?:(?:openclaw-agent|memory|snapshot|database)\.sqlite(?:-(?:wal|shm|journal))?|first|second)$/.test(e.relative)))return{eligible:false,reason:'unrecognized-content'};
+  if(!tree.some(e=>e.type==='file'&&(e.relative.endsWith('.sqlite')||e.relative==='first'||e.relative==='second')))return{eligible:false,reason:'no-snapshot-database'};
   if(tree.some(e=>Math.max(e.mtime,e.ctime)>now-ageHours*3600_000))return{eligible:false,reason:'too-recent'};
   return{eligible:true,reason:'expired-orphan-readonly-snapshot'};
+}
+// A snapshot root that is not one of the verified bind mounts (Night Shift sets its
+// own XDG_CACHE_HOME, so its snapshots land on the root disk). It must be a real,
+// canonical directory owned by the service user; anything else is refused.
+export function assertExtraSnapshotRoot(root,{uid}){
+  assert(path.isAbsolute(root),'Snapshot root must be absolute');
+  assert.equal(fs.realpathSync(root),root,'Snapshot root must be canonical, not a symlink');
+  const s=fs.lstatSync(root);assert(s.isDirectory(),'Snapshot root must be a directory');
+  assert.equal(s.uid,uid,'Snapshot root must belong to the service user');
+}
+// Remove expired orphan snapshots under each root. `roots` is [{dir, alternate?}],
+// where alternate is the same directory seen through the data-disk path.
+export function pruneSnapshots(roots,{apply,ageHours,maxDeletes,pidExists,references=processReferences,beforeDelete=()=>{},record=()=>{},now=Date.now()}){
+  const actions=[],skipped=[];let deleted=0;
+  for(const root of roots){
+    const entries=fs.readdirSync(root.dir).filter(n=>/^openclaw-sqlite-readonly-/.test(n)).sort();
+    for(const name of entries){
+      const p=path.join(root.dir,name);let tree;
+      try{tree=inspectTree(p);}catch(e){if(e.code==='ENOENT')continue;skipped.push({root:root.dir,name,reason:'unsafe-or-changing-tree'});continue;}
+      const verdict=eligibleSnapshot(name,tree,{ageHours,pidExists,now});
+      if(!verdict.eligible){skipped.push({root:root.dir,name,reason:verdict.reason});continue;}
+      const paths=root.alternate?[p,path.join(root.alternate,name)]:[p];
+      const busy=references(paths);
+      if(busy.length){skipped.push({root:root.dir,name,reason:'in-use',processes:busy});continue;}
+      if(deleted>=maxDeletes){skipped.push({root:root.dir,name,reason:'per-run-limit'});continue;}
+      const bytes=tree.reduce((n,e)=>n+e.blocks*512,0);
+      if(apply){
+        beforeDelete();
+        assert.equal(references(paths).length,0,'Snapshot acquired by a process');
+        assert(!pidExists(Number(name.split('-')[3])),'Creator PID reappeared');
+        unlinkTreeExact(p,tree);
+        record({at:new Date().toISOString(),root:root.dir,name,reason:verdict.reason,allocatedBytes:bytes});
+      }
+      deleted++;
+      actions.push({root:root.dir,name,action:apply?'removed-expired-snapshot':'would-remove-expired-snapshot',bytes});
+    }
+  }
+  return{actions,skipped};
 }
 export function unlinkTreeExact(root,expected,{allowLinks=false,keepRoot=false}={}){
   assertTreeMatches(inspectTree(root),expected,'Tree changed before deletion');

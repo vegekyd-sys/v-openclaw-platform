@@ -29,4 +29,4 @@ NoNewPrivileges=true
 PrivateTmp=false
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/openclaw/.cache/openclaw /srv/openclaw-data/disk1/openclaw/cache /var/lib/v-storage-governance /run/lock /home/openclaw/.npm /home/openclaw/.local/share/pnpm/store
+ReadWritePaths=/home/openclaw/.cache/openclaw -/home/openclaw/.openclaw/nightshift/.cache/openclaw /srv/openclaw-data/disk1/openclaw/cache /var/lib/v-storage-governance /run/lock /home/openclaw/.npm /home/openclaw/.local/share/pnpm/store

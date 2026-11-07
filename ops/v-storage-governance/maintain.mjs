@@ -3,7 +3,8 @@ import path from 'node:path';
 import os from 'node:os';
 import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
-import {assertMappings,inspectTree,processReferences,eligibleSnapshot,unlinkTreeExact,diskUsage,pressure,writeJsonAtomic} from './core.mjs';
+import {execFileSync} from 'node:child_process';
+import {assertMappings,assertExtraSnapshotRoot,pruneSnapshots,diskUsage,pressure,writeJsonAtomic} from './core.mjs';
 import {prunePackageCaches} from './package-cache.mjs';
 
 const policy=JSON.parse(fs.readFileSync(new URL('./policy.json',import.meta.url),'utf8'));
@@ -19,27 +20,16 @@ try{
   status.level=pressure(policy,status.before.root,status.before.data);
   const ageHours=status.before.data.percent>=policy.warningPercent?policy.cachePressureAgeHours:policy.cacheMaxAgeHours;
   const cache=policy.mappings.find(m=>m.name==='cache');
-  const entries=fs.readdirSync(cache.original).filter(n=>/^openclaw-sqlite-readonly-/.test(n)).sort();
-  let deleted=0;
-  for(const name of entries){
-    const p=path.join(cache.original,name);let tree;
-    try{tree=inspectTree(p);}catch(e){if(e.code==='ENOENT')continue;status.skipped.push({name,reason:'unsafe-or-changing-tree'});continue;}
-    const verdict=eligibleSnapshot(name,tree,{ageHours,pidExists:pid=>fs.existsSync('/proc/'+pid)});
-    if(!verdict.eligible){status.skipped.push({name,reason:verdict.reason});continue;}
-    const alternate=path.join(cache.destination,name);
-    const busy=processReferences([p,alternate]);
-    if(busy.length){status.skipped.push({name,reason:'in-use',processes:busy});continue;}
-    if(deleted>=policy.maxDeletesPerRun){status.skipped.push({name,reason:'per-run-limit'});continue;}
-    if(apply){
-      assertMappings(policy,{allowReadOnlyDiskRoot:true});
-      assert.equal(processReferences([p,alternate]).length,0,'Snapshot acquired by a process');
-      assert(!fs.existsSync('/proc/'+name.split('-')[3]),'Creator PID reappeared');
-      unlinkTreeExact(p,tree);
-      fs.appendFileSync(path.join(policy.stateRoot,'deletions.jsonl'),JSON.stringify({at:new Date().toISOString(),name,reason:verdict.reason,allocatedBytes:tree.reduce((n,e)=>n+e.blocks*512,0)})+'\n',{mode:0o600});
-    }
-    deleted++;
-    status.actions.push({name,action:apply?'removed-expired-snapshot':'would-remove-expired-snapshot',bytes:tree.reduce((n,e)=>n+e.blocks*512,0)});
+  const serviceUid=Number(execFileSync('id',['-u',policy.serviceUser],{encoding:'utf8'}).trim());
+  const roots=[{dir:cache.original,alternate:cache.destination}];
+  for(const dir of policy.extraSnapshotRoots??[]){
+    if(!fs.existsSync(dir))continue;
+    assertExtraSnapshotRoot(dir,{uid:serviceUid});roots.push({dir});
   }
+  const pidExists=pid=>fs.existsSync('/proc/'+pid);
+  const record=entry=>fs.appendFileSync(path.join(policy.stateRoot,'deletions.jsonl'),JSON.stringify(entry)+'\n',{mode:0o600});
+  const snapshots=pruneSnapshots(roots,{apply,ageHours,maxDeletes:policy.maxDeletesPerRun,pidExists,record,beforeDelete:()=>assertMappings(policy,{allowReadOnlyDiskRoot:true})});
+  status.actions.push(...snapshots.actions);status.skipped.push(...snapshots.skipped);
   status.packageCaches=prunePackageCaches(policy,{apply,rootPressure:status.before.root.availableBytes<policy.minimumRootFreeGiB*1024**3||status.before.root.percent>=policy.warningPercent});
   status.after={root:diskUsage('/'),data:diskUsage(policy.diskRoot)};
   status.level=pressure(policy,status.after.root,status.after.data);
@@ -48,4 +38,7 @@ try{
 }catch(e){status.level='critical';status.mountsHealthy??=false;status.error=e.message;}
 if(apply){fs.mkdirSync(policy.stateRoot,{recursive:true,mode:0o700});writeJsonAtomic(path.join(policy.stateRoot,'status-latest.json'),status);}
 console.log(JSON.stringify(status));
-if(status.level!=='normal')process.exitCode=2;
+// Disk pressure is reported in `level` and alerted by v-sentinel. Failing the unit
+// for it made v-storage-governance.service show failed every day since 2026-09-28,
+// which hid the real failures (a run that could not verify the mounts).
+if(status.error)process.exitCode=2;

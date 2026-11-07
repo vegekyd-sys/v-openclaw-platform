@@ -12,7 +12,9 @@
   "criticalPercent": 90,
   "cacheMaxAgeHours": 48,
   "cachePressureAgeHours": 24,
-  "maxDeletesPerRun": 4,
+  "maxDeletesPerRun": 24,
+  "serviceUser": "openclaw",
+  "extraSnapshotRoots": ["/home/openclaw/.openclaw/nightshift/.cache/openclaw"],
   "mappings": [
     {
       "name": "backups",
