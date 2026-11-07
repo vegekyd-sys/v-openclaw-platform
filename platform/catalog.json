@@ -498,7 +498,8 @@
         "lab/vcc-steer.test.mjs",
         "lab/cron-default-owner-tools.test.mjs",
         "lab/settled-tool-handoff.test.mjs",
-        "lab/dsml-spaced-calls.test.mjs"
+        "lab/dsml-spaced-calls.test.mjs",
+        "lab/subagent-settle-wake.test.mjs"
       ]
     }
   ],
