@@ -980,8 +980,10 @@ async function level(arm, size, c, task = "sha") {
   await sleep(SETTLE_MS);
   const m = windowMetrics(from, Date.now());
   const model = MODEL_PROXY ? modelTiming(from, to, results.length) : undefined;
-  // c1: one turn's timeline, in ms from send: each DeepSeek request [start, first byte, end] and each tool span
-  const timeline = MODEL_PROXY && c === 1 ? { requests: faultLog.filter((x) => x.at >= from && x.at <= to).map((x) => [x.url.includes("/responses") ? "R" : "C", x.at - from, x.firstByteAt ? x.firstByteAt - from : null, x.endAt ? x.endAt - from : null]), tools: [...runs.values()].filter((r) => r.sentAt >= from && r.sentAt <= to).flatMap((r) => (r.spans ?? []).map((sp) => [sp.name, sp.startAt - from, sp.endAt ? sp.endAt - from : null])), firstText: [...runs.values()].filter((r) => r.sentAt >= from && r.sentAt <= to).map((r) => [r.firstTextAt ? r.firstTextAt - from : null, r.endAt ? r.endAt - from : null]) } : undefined;
+  // the level's timeline, in ms from the common send: each DeepSeek request [api, start, first byte, end],
+  // each tool span and each turn's [first text, end]. All turns start together, so at cN the first N
+  // requests' starts are the turns' setup before their first model call.
+  const timeline = MODEL_PROXY && c <= 10 ? { requests: faultLog.filter((x) => x.at >= from && x.at <= to).map((x) => [x.url.includes("/responses") ? "R" : "C", x.at - from, x.firstByteAt ? x.firstByteAt - from : null, x.endAt ? x.endAt - from : null]), tools: [...runs.values()].filter((r) => r.sentAt >= from && r.sentAt <= to).flatMap((r) => (r.spans ?? []).map((sp) => [sp.name, sp.startAt - from, sp.endAt ? sp.endAt - from : null])), firstText: [...runs.values()].filter((r) => r.sentAt >= from && r.sentAt <= to).map((r) => [r.firstTextAt ? r.firstTextAt - from : null, r.endAt ? r.endAt - from : null]) } : undefined;
   const failed = results.filter((r) => !r.correct);
   const byRt = {};
   for (const rt of [...new Set(results.map((r) => r.runtime))]) {

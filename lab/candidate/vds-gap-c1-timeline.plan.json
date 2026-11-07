@@ -12,7 +12,7 @@
   "env": {
     "ARMS": "flash:small:bash5,vds:small:bash5",
     "PAIRED": "1",
-    "LEVELS": "1,1,1,1",
+    "LEVELS": "1,1,5,5",
     "CANARY": "0",
     "BIG_COUNT": "0",
     "WORKER_MIN": "2",
