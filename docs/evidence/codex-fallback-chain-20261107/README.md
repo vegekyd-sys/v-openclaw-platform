@@ -47,6 +47,20 @@ V 的 `codex-home/config.toml` 里 `[model_providers.deepseek]` 没写重试次�
 
 **结论：第 1 批的配置里加上这两行。** 只改 V 上 makaron 的 Codex 配置文件，Gateway 重启后新起的 app-server 才读到，正好和 `modelByChannel` 那次重启合并。
 
+## 手动切过模型的会话
+
+V 上有 20 个群是有人手动 `/model` 到 /vds 的。手动选的模型会关掉回退（`resolveModelFallbackAvailability` 返回 `disabled_by_model_override`），`modelByChannel` 也盖不住它。同一个会话依次做（candidate-eac796fe，`[luna]`，Codex 重试 1 次，`override-progress.jsonl`）：
+
+| 步骤 | 结果 |
+|---|---|
+| `sessions.patch model=deepseek/vds-deepseek-flash`（等于群里 `/model vds`），健康 | 7.2 s，Codex，日志 `configured fallbacks disabled by user model override` |
+| 同上，DeepSeek 整体 503 | **11.0 s 报错，不回退** |
+| `sessions.patch model=deepseek/deepseek-flash`（选回配置的默认，等于 `/model deepseek`），健康 | 5.5 s，**仍是 Codex**：手动覆盖被清掉，`modelByChannel` 接管 |
+| 同上，DeepSeek 整体 503 | **6.7 s 回退到 luna**，回复正确 |
+| `sessions.patch model=null`，健康 | 3.6 s，Codex |
+
+所以列进 `modelByChannel` 的群，只要在群里发一次 `/model deepseek`，就从“手动 /vds、无回退”变成“灰度 /vds、有回退”，体验不变。
+
 ## 未覆盖
 
 - 真实 luna（ChatGPT 订阅）：只测路由；luna 的大会话窗口见 #543/#544 的验收。
