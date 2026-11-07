@@ -30,7 +30,7 @@
 | 1 | Codex 对 DeepSeek 503/断流重试 30 次，回退慢 | 第 1 批 | 503：32.4→11.3 s；断流：20.4→9.9 s；瞬时 503 不回退（VLab，`codex-fallback-chain-20261107`） | 第 1 批那次重启里给 makaron 的 `config.toml` 加两行，见下文“第 1 批怎么执行” |
 | 2 | 手动 `/model` 过的会话不进灰度、也没有回退 | 第 1 批 | `override-progress.jsonl`：手动 /vds 遇 503 11.0 s 报错；`/model deepseek` 后仍是 Codex，503 6.7 s 回退 | 操作步骤，不用改代码；列进 map 的群各发一次 `/model deepseek` |
 | 3 | 上游挂起无回复，Codex 不回退 | 第 2 批起 | PR #534 已 rebase 到 dev；当前 core 上整体挂起 95.4 s、仅 Codex 挂起 96.4 s 回退到 luna（VLab）；11/01 的不误杀证据（`sleep 200`、200 s 动态工具、慢响应头）字节未变仍适用 | 请 Tianyi 审 #534，建议先于灰度单独上线 |
-| 4 | 并发时比 Worker 慢 | 第 3 批看指标，第 4 批必过 | 见第 6 节（11/07 VLab 拆分） | 见第 6 节 |
+| 4 | 并发时比 Worker 慢 | 第 3 批看指标，第 4 批必过 | VLab：DeepSeek 不慢；Codex 每回合多 1.2–1.6 次模型往返（目录没开并行工具调用）；c10 时整机 CPU 不够。见第 6 节 | 验证并行工具调用（实验被 VLab 失联打断）；V 主线程忙的原因要 V 上 profile，需 Tianyi 同意 |
 | 5 | relay 启动晚于 1 s 且 Gateway 9 s 不答时，Codex 照样执行工具 | 第 3 批前 | 补丁在本 PR，在 V 当前快路径字节上仍能打上；快路径后 relay 0.08–0.10 s 起来，触发窗口更小；V 上没有插件用拦截做安全控制 | 上线前要在 openclaw-versa 补源码提交和测试（AGENTS.md 要求），未做 |
 | 6 | `write_stdin` 不进钩子 | 第 3 批前 | 一周 172 次真实使用；V 的 shell 本来就是全权限，只影响插件策略，不是提权 | 建议 Tianyi 接受现状 |
 | 7 | Workboard 固定不住模型 | 只挡第 4 批 | 补丁在本 PR，11/07 在 VLab 当前字节 `runtime-api-1CCazqtv.js` 上仍能打上 | 不做第 4 批就不需要 |
@@ -230,6 +230,24 @@ sudo v-self-restart --reason "vds gray batch 1" --requested-by "Tianyi" \
 读日志只用短时间窗（几十分钟），不要 `journalctl --since` 跨多天，那会占满 V 的磁盘读。
 
 **回滚。** 同样的 `v-self-restart --while-stopped`，删掉该批的 map 项，约 2–5 分钟，会话上下文保留（`migrate`）。第 4 批改回两处默认。紧急时可以对单个会话 `sessions.patch` 换模型，不用重启。
+
+## 6. 并发（11/07）
+
+**V 上的旧数字（11/01，bash5 形态）：** c5 /vds 14.8 s vs Worker 9.9 s；c15 23.1–24.6 vs 14.7–16.0 s；Gateway 主线程忙 89–97% vs 39–71%。V 上不再加计时轮次（要 Tianyi 同意）。
+
+**VLab 拆分（`docs/evidence/vds-concurrency-gap-20261107/`，PR #534 分支）：** 两边的 DeepSeek 请求都过本机计时代理，同一个 Gateway 交替跑。
+
+| 档 | 完成 p50 Worker / /vds (s) | 每回合模型请求 | 每回合等模型 (s) | 到首个工具 p50 (s) |
+|---|---|---|---|---|
+| c1 | 10.9 / 13.9 | 6 / 6 | 9.2 / 8.0 | 4.3 / 5.2 |
+| c5（第 2 轮） | 13.9 / 16.9 | 4.8 / 6 | 5.9 / 9.0 | 6.4 / 6.7 |
+| c10 | 13.5 / 27.7 | 4.4 / 6 | 7.0 / 9.9 | 5.3 / 11.7 |
+
+- DeepSeek 单个请求两边一样快（首字节 0.4–0.5 s、时长 1.1–1.5 s），Responses 接口不慢。
+- **Codex 每回合多 1.2–1.6 次模型往返。** Worker 让 DeepSeek 把互不依赖的工具调用放进一次回复；V 的 `v-deepseek-model-catalog.json` 没写 `supports_parallel_tool_calls`，Codex 一个工具一次往返。这是 c5 差距的大半。打开这个字段的对比实验（`lab/candidate/codex-catalog-parallel-tools.mjs`）跑到一半时 VLab 主机失联，结果待补。
+- c10 时 /vds 到首个工具慢一倍，同档 VLab load 到 10（4 核），Gateway 事件循环只占 0.2。VLab 上这段是整机 CPU 不够，与 V 上的主线程忙不是同一个现象；V 上主线程忙的原因仍未拆，需要 V 上的 profile，要 Tianyi 同意。
+
+**对灰度的意义。** 真实交互群在途最多约 10 个回合，夜班留在 Worker。第 1、2 批的并发量很小，不受影响；第 3 批前看 Gateway RSS、liveness 和首字三条线（上面的指标表）。并行工具调用如果验证有效，是一个只改模型目录一个字段的修复，源码在 openclaw-versa 的 `extensions/codex/assets/v-deepseek-model-catalog.json`。
 
 ## 未验证
 
