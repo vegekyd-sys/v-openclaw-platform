@@ -157,8 +157,14 @@ makaron 会话库（在线写入）、`codex-home/*.sqlite`、`agents/makaron/se
 
 | 位置 | 大小 | 增长 | 需要的决定 |
 |---|---|---|---|
-| `workspace/tmp` | 26G（超过 14 天 8.8G） | 约 3G/天 | 是否加 tmpfiles 14 天规则（chenjie 这类任务把正式素材放在 tmp） |
+| `workspace/tmp` | 26G（超过 14 天 8.8G） | 约 3G/天 | 11/07 Tianyi 批准 14 天规则，见下 |
 | `~/.openclaw/media/inbound` | 12G | 约 3G/月 | 官方 `attachments.ttlHours` 最长 7 天，要更长就得自己写 |
 | `/srv/openclaw-data/output-alt` | 59G | 约 20G/月 | 交付后保留多久 |
 | makaron 会话库 | 36.2G | 约 0.55G/天 | 预算线调到多少；源头减量见 4.2 |
 | makaron codex-home rollout | 6.8G | 每月约 1.6k 个文件 | 是否给 Codex rollout 设保留期 |
+
+### workspace/tmp 的 14 天规则
+
+`ops/v-storage-governance/tmpfiles/v-workspace-tmp.conf`：`e <workspace>/tmp - - - cmBM:14d`，由系统自带的 `systemd-tmpfiles-clean.timer`（每天 22:52）执行。
+
+必须写 `cmBM:`。systemd 255 默认按 `abcmABM`（访问、创建、状态变化、修改时间里最新的那个）判断年龄。11/07 tmp 里内容 14 天没改过的 8.8 GB 文件全部在最近两天被读过：agent 的递归搜索会整树读一遍，relatime 每 24 小时刷新一次 atime，默认规则下这里永远不会过期。`cmBM` 让文件只看 ctime/mtime、目录只看创建和修改时间；ctime 让刚解压出来、带旧 mtime 的文件不被误删。`tests/v-workspace-tmpfiles.vlab.sh` 在 vlab91 上用独立的 ext4 镜像和 debugfs 改时间戳验证：默认 `14d` 留下了「旧但刚被读过」的文件，`cmBM:14d` 删掉它，同时保留新文件和刚解压的文件。
