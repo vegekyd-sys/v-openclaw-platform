@@ -1,0 +1,32 @@
+[Unit]
+Description=V verified data-disk mounts and conservative cache retention
+After=local-fs.target
+RequiresMountsFor=/srv/openclaw-data/disk1 /srv/openclaw-data/disk/openclaw-storage/cold-migrated-2/openclaw/backups /home/openclaw/.cache/openclaw
+
+[Service]
+Type=oneshot
+User=root
+Environment=V_STORAGE_LOCK_HELD=1
+ExecStart=/usr/bin/flock --nonblock /run/lock/v-storage-lifecycle.lock /usr/bin/flock --nonblock /run/lock/v-storage-governance.lock /opt/node-v22.23.1/bin/node --max-old-space-size=192 /usr/local/lib/v-storage-governance/maintain.mjs --apply
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=10
+CPUQuota=20%
+IOWeight=10
+IOReadBandwidthMax=/dev/vda 20M
+IOReadBandwidthMax=/dev/vdb 20M
+IOWriteBandwidthMax=/dev/vda 10M
+IOWriteBandwidthMax=/dev/vdb 10M
+MemoryHigh=384M
+MemoryMax=512M
+MemorySwapMax=0
+OOMScoreAdjust=1000
+OOMPolicy=stop
+KillMode=control-group
+TimeoutStartSec=10m
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=false
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/openclaw/.cache/openclaw -/home/openclaw/.openclaw/nightshift/.cache/openclaw /srv/openclaw-data/disk1/openclaw/cache /var/lib/v-storage-governance /run/lock /home/openclaw/.npm /home/openclaw/.local/share/pnpm/store

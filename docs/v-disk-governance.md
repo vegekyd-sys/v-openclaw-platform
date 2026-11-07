@@ -128,3 +128,43 @@ makaron 会话库（在线写入）、`codex-home/*.sqlite`、`agents/makaron/se
 ### 4.7 日志
 
 在 `journald.conf.d` 里设 `SystemMaxUse=2G`，rsyslog 改成轮转时压缩，或者停掉与 journald 重复的 `syslog`。能省约 3 GB，优先级低。
+
+## 5. 2026-11-07 复查
+
+根分区 532G 用 439G（86%），11/01 起约 +11 GB/天。各自动清理机制的体检结果：
+
+| 机制 | 结果 |
+|---|---|
+| tmpfiles（/tmp 3 天、/tmp/openclaw/downloads 2 天） | 正常，/tmp 里超过 3 天的文件为 0 |
+| logrotate、journald（默认上限 4G） | 正常 |
+| 夜班产物保留（数据盘，3 天） | 正常 |
+| Gateway 文件日志 /tmp/openclaw-1002 | 正常，只留两天 |
+| 会话磁盘预算（warn，48gb） | 已到 98.7%，warn 模式超了也不删，只是容量线 |
+| **v-storage-governance** | **失效**，11/02–11/07 每天 `actions=[]`，见下 |
+
+### v-storage-governance 为什么一直没删
+
+1. 残留目录里除了 `database.sqlite` 还有 `first`（有时还有 `second`）。这是 OpenClaw 拷贝库时自己的中间文件（`src/infra/sqlite-readonly-location.ts`：拷两遍、比对、把 `second` 改名成正式文件、删掉 `first`），进程在中间被杀就留下来。白名单不认识它们，全部判成 `unrecognized-content`。
+2. 只扫 `~/.cache/openclaw`（数据盘）。夜班服务设了 `XDG_CACHE_HOME=~/.openclaw/nightshift/.cache`，它的残留落在根分区，没人扫。11/07 有 20 个、10.4 GB，5 天新增 8.2 GB。
+3. 水位不是 normal 就 exit 2，单元从 9/28 起几乎每天 failed，真正的失败（挂载校验不过）反而看不出来。
+4. 源码只在 V 上，不在 git。
+
+修复（`ops/v-storage-governance/`，先原样 capture 再改）：白名单加 `first`/`second`/`-journal`；`policy.extraSnapshotRoots` 加夜班缓存目录（必须是真实目录、属主 openclaw、不是软链）；每次最多删 4 个改为 24 个；只有出错才 exit 2，水位由哨兵告警。安装用 `scripts/install-v-storage-governance.sh v [--apply]`，旧文件留在 `/var/lib/v-storage-governance/previous-<ts>/`。
+
+夜班的残留是怎么来的：11/06 11:41–11:48 每分钟一个，对应夜班每分钟重试一次失败的飞书通知（`Night Shift notification ... failed`）。每次重试调用 openclaw CLI，CLI 先把约 500 MB 的库拷一份再读，被超时杀掉就留下残留。这是 v-nightshift 的问题，清理只是兜底。
+
+### 仍然没有任何机制管、在增长的
+
+| 位置 | 大小 | 增长 | 需要的决定 |
+|---|---|---|---|
+| `workspace/tmp` | 26G（超过 14 天 8.8G） | 约 3G/天 | 11/07 Tianyi 批准 14 天规则，见下 |
+| `~/.openclaw/media/inbound` | 12G | 约 3G/月 | 官方 `attachments.ttlHours` 最长 7 天，要更长就得自己写 |
+| `/srv/openclaw-data/output-alt` | 59G | 约 20G/月 | 交付后保留多久 |
+| makaron 会话库 | 36.2G | 约 0.55G/天 | 预算线调到多少；源头减量见 4.2 |
+| makaron codex-home rollout | 6.8G | 每月约 1.6k 个文件 | 是否给 Codex rollout 设保留期 |
+
+### workspace/tmp 的 14 天规则
+
+`ops/v-storage-governance/tmpfiles/v-workspace-tmp.conf`：`e <workspace>/tmp - - - cmBM:14d`，由系统自带的 `systemd-tmpfiles-clean.timer`（每天 22:52）执行。
+
+必须写 `cmBM:`。systemd 255 默认按 `abcmABM`（访问、创建、状态变化、修改时间里最新的那个）判断年龄。11/07 tmp 里内容 14 天没改过的 8.8 GB 文件全部在最近两天被读过：agent 的递归搜索会整树读一遍，relatime 每 24 小时刷新一次 atime，默认规则下这里永远不会过期。`cmBM` 让文件只看 ctime/mtime、目录只看创建和修改时间；ctime 让刚解压出来、带旧 mtime 的文件不被误删。`tests/v-workspace-tmpfiles.vlab.sh` 在 vlab91 上用独立的 ext4 镜像和 debugfs 改时间戳验证：默认 `14d` 留下了「旧但刚被读过」的文件，`cmBM:14d` 删掉它，同时保留新文件和刚解压的文件。
