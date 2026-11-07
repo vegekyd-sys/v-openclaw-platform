@@ -61,6 +61,9 @@ const SCENARIOS = process.env.SCENARIOS === "1";
 // through channels.modelByChannel, the way a gradual rollout would.
 const CHANNEL_GRAY = process.env.CHANNEL_GRAY === "1";
 const GRAY_GROUP = "oc_candidategraygroup";
+// ROLLOUT_CASE (with SCENARIOS): harness-rollout-scenarios.mjs, for docs/codex-default-harness-rollout.md.
+// ROLLOUT_DEFAULT vds|flash, ROLLOUT_SUBAGENT_PIN=1, ROLLOUT_CHANNEL_MAP json, ROLLOUT_FALLBACKS json.
+const ROLLOUT_CASE = process.env.ROLLOUT_CASE ?? "";
 const LEVELS = (process.env.LEVELS ?? "1,3,5,10,15").split(",").map(Number);
 const MAXC = Math.max(...LEVELS);
 const STEADY_MIN = num("STEADY_MIN", 20);
@@ -137,11 +140,14 @@ const npmEnv = { ...process.env, PATH: `${path.dirname(process.execPath)}:${proc
 
 // ---- V's Codex and Claude Code binaries, private to this run ----
 const codexPrefix = path.join(scratch, `codex-${CODEX_VERSION}`);
-{
+const codexBin = path.join(codexPrefix, "node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex");
+// npm exits 0 when the platform package, an optional dependency, fails to install (a full disk
+// does this), so the binary itself is what says the install worked.
+for (let attempt = 0; attempt < 3 && !fs.existsSync(codexBin); attempt++) {
+  if (attempt > 0) { fs.rmSync(codexPrefix, { recursive: true, force: true }); await sleep(60_000); }
   const r = spawnSync(npm, ["install", "--prefix", codexPrefix, "--no-audit", "--no-fund", `@openai/codex@${CODEX_VERSION}`], { env: npmEnv, encoding: "utf8", timeout: 600_000, maxBuffer: 16 << 20 });
   assert.equal(r.status, 0, `codex install: ${redact(r.stderr).slice(-1500)}`);
 }
-const codexBin = path.join(codexPrefix, "node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex");
 assert(fs.existsSync(codexBin), "Codex binary missing");
 // Claude Code only when an arm drives /vcc. Its login lives in $HOME (the shared instance's); a
 // candidate whose first claude-cli turn finds an expired token refreshes it there and rewrites the
@@ -206,6 +212,15 @@ const V_CODEX_DIST_SHA = process.env.V_CODEX_DIST_SHA ?? "e56145ed44f74a48560d67
     for (const dir of [...codexDists(stateDir), ...codexDists(runtime)]) execFileSync(process.execPath, [path.resolve(script), dir], { stdio: "inherit" });
     emit({ phase: "codex-patch", script });
   }
+}
+
+// ROLLOUT_WORKBOARD_PATCH=1: scripts/apply-workboard-subagent-model-patch.mjs on this run's runtime
+if (process.env.ROLLOUT_WORKBOARD_PATCH === "1") {
+  execFileSync(process.execPath, [path.join(here, "..", "..", "scripts", "apply-workboard-subagent-model-patch.mjs"), `--dist=${path.join(runtime, "openclaw", "dist")}`, "--no-backup"], { stdio: "inherit" });
+}
+
+if (process.env.ROLLOUT_RELAY_DEADLINE_PATCH === "1") {
+  execFileSync(process.execPath, [path.join(here, "..", "..", "scripts", "apply-relay-deadline-process-start-patch.mjs"), `--dist=${path.join(runtime, "openclaw", "dist")}`, "--no-backup"], { stdio: "inherit" });
 }
 
 // ---- probes in the private runtime copy (optional: absent markers are reported, not fatal) ----
@@ -282,7 +297,7 @@ for (const [ref, entry] of Object.entries(entries)) {
   config.agents.entries.makaron.models[ref] = entry;
 }
 const HANG_COMPARE = process.env.HANG_COMPARE === "1";
-if (HANG_COMPARE) config.models.providers.deepseek.baseUrl = `http://127.0.0.1:${FAULT_PORT}/v1`;
+if (HANG_COMPARE || ROLLOUT_CASE) config.models.providers.deepseek.baseUrl = `http://127.0.0.1:${FAULT_PORT}/v1`;
 // V's value is 90; shared VLab's is 300, and a hang's duration follows it
 const PROVIDER_TIMEOUT = process.env.PROVIDER_TIMEOUT_S ? Number(process.env.PROVIDER_TIMEOUT_S) : null;
 if (PROVIDER_TIMEOUT) config.models.providers.deepseek.timeoutSeconds = PROVIDER_TIMEOUT;
@@ -291,6 +306,26 @@ const HANG_RT = process.env.HANG_PRIMARY ?? "flash";
 const defaultModel = HANG_COMPARE ? (HANG_RT === "vds" ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : { primary: FLASH_REF, fallbacks: [VDS_REF] }) : CHANNEL_GRAY ? { primary: FLASH_REF, fallbacks: ["openai/gpt-6-luna"] } : SCENARIOS ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : { primary: FLASH_REF, fallbacks: [] };
 // chat.send arrives as channel "webchat" with no group, so the wildcard entry is what a candidate can reach
 if (CHANNEL_GRAY) config.channels.modelByChannel = { webchat: { "*": VDS_REF } };
+if (ROLLOUT_CASE) {
+  defaultModel.primary = process.env.ROLLOUT_DEFAULT === "vds" ? VDS_REF : FLASH_REF;
+  defaultModel.fallbacks = JSON.parse(process.env.ROLLOUT_FALLBACKS ?? '["openai/gpt-6-luna"]');
+  if (process.env.ROLLOUT_CHANNEL_MAP) config.channels.modelByChannel = JSON.parse(process.env.ROLLOUT_CHANNEL_MAP);
+  if (process.env.ROLLOUT_SUBAGENT_PIN === "1") config.agents.entries.makaron.subagents = { ...(config.agents.entries.makaron.subagents ?? {}), model: FLASH_REF };
+  if (process.env.ROLLOUT_APPROVAL_ROUTE === "1") config.approvals = { ...(config.approvals ?? {}), plugin: { enabled: true, mode: "targets", targets: [{ channel: "telegram", to: "0", accountId: "default" }] } };
+  if (process.env.ROLLOUT_RELOAD_MODE) config.gateway.reload = { ...(config.gateway.reload ?? {}), mode: process.env.ROLLOUT_RELOAD_MODE };
+}
+// the probe plugin, copied so its files belong to this run's user (plugin loading checks ownership)
+const rolloutPlugin = path.join(scratch, "rollout-probe-plugin");
+const addRolloutPlugin = (c) => {
+  (c.plugins.load ??= {}).paths = [...(c.plugins.load.paths ?? []), rolloutPlugin];
+  (c.plugins.entries ??= {})["rollout-probe"] = { enabled: true };
+  if (Array.isArray(c.plugins.allow) && !c.plugins.allow.includes("rollout-probe")) c.plugins.allow.push("rollout-probe");
+  if (Array.isArray(c.tools?.alsoAllow)) for (const t of ["hr_probe", "hr_screenshot"]) if (!c.tools.alsoAllow.includes(t)) c.tools.alsoAllow.push(t);
+};
+if (ROLLOUT_CASE) {
+  fs.cpSync(path.join(here, "rollout-probe-plugin"), rolloutPlugin, { recursive: true });
+  addRolloutPlugin(config);
+}
 config.agents.defaults.model = defaultModel;
 config.agents.entries.makaron.model = defaultModel;
 // every allow list that can apply to makaron (an agent-level one takes precedence over defaults)
@@ -312,7 +347,8 @@ Object.assign(workerPlugin, WORKER_POOL, { warmSpareWorkers: 0 });
   assert(!rel.startsWith(".."), "candidate Worker config escaped state");
   const workerConfig = JSON.parse(fs.readFileSync(path.join(sharedState, rel), "utf8").replaceAll(sharedState, stateDir).replaceAll("/srv/vlab-production-mirror/labs/instances/db91-parity/runtime", runtime));
   workerConfig.channels = {};
-  if (HANG_COMPARE) workerConfig.models.providers.deepseek.baseUrl = `http://127.0.0.1:${FAULT_PORT}/v1`;
+  if (ROLLOUT_CASE) addRolloutPlugin(workerConfig);
+  if (HANG_COMPARE || ROLLOUT_CASE) workerConfig.models.providers.deepseek.baseUrl = `http://127.0.0.1:${FAULT_PORT}/v1`;
   if (PROVIDER_TIMEOUT) workerConfig.models.providers.deepseek.timeoutSeconds = PROVIDER_TIMEOUT;
   workerConfig.models.providers.deepseek.models = (workerConfig.models.providers.deepseek.models ?? []).filter((m) => m.id !== "deepseek-flash").concat([{ id: "deepseek-flash", name: "DeepSeek V4.1 Flash", ...shape }]);
   const workerEntry = { alias: "deepseek", agentRuntime: { id: "openclaw" }, params: { thinking: "high" } };
@@ -589,17 +625,28 @@ const lagProbe = path.join(here, "runtime-concurrency-lag.mjs");
 let faultMode = "ok";
 const faultLog = [];
 let faultPath = null;
+let faultLimit = 0;
+let eventTap = null;
 if (SCENARIOS) {
   const http = await import("node:http");
   const https = await import("node:https");
-  http.createServer((req, res) => {
+  const handle = (req, res, body) => {
     const mode = !faultPath || req.url.includes(faultPath) ? faultMode : "ok";
-    faultLog.push({ at: Date.now(), mode, url: req.url });
+    const logged = { at: Date.now(), mode, url: req.url };
+    if (body) {
+      // what the model was sent: bytes, images, and tool names once per API
+      logged.bytes = body.length;
+      logged.images = (body.toString("latin1").match(/data:image\//gu) ?? []).length;
+      if (!faultLog.some((f) => f.tools && f.url === req.url)) { try { logged.tools = JSON.parse(body.toString("utf8")).tools?.map((t) => t.name ?? t.function?.name ?? t.type); } catch {} }
+    }
+    faultLog.push(logged);
+    res.on("finish", () => { logged.status = res.statusCode; });
     const fail = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
     if (mode === "503") return fail(503, { error: { message: "Service is too busy", type: "service_unavailable_error", code: "service_unavailable" } });
     if (mode === "429") return fail(429, { error: { message: "Rate limit reached", type: "rate_limit_error", code: "rate_limit_exceeded" } });
     if (mode === "402") return fail(402, { error: { message: "Insufficient Balance", type: "insufficient_balance", code: "invalid_request_error" } });
     if (mode === "hang") { req.resume(); return undefined; }
+    if (mode === "size413" && body && body.length > faultLimit) return fail(413, { error: { message: "Request Entity Too Large", type: "invalid_request_error", code: "request_too_large" } });
     const up = https.request(`https://api.deepseek.com${req.url}`, { method: req.method, headers: { ...req.headers, host: "api.deepseek.com" } }, (r) => {
       res.writeHead(r.statusCode, r.headers);
       if (mode === "stall") { r.once("data", (chunk) => { res.write(chunk); r.destroy(); }); return; }
@@ -607,7 +654,14 @@ if (SCENARIOS) {
       r.pipe(res);
     });
     up.on("error", () => res.destroy());
-    req.pipe(up);
+    if (body) up.end(body); else req.pipe(up);
+    return undefined;
+  };
+  http.createServer((req, res) => {
+    if (!ROLLOUT_CASE) return handle(req, res);
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => handle(req, res, Buffer.concat(chunks)));
     return undefined;
   }).listen(FAULT_PORT, "127.0.0.1").unref();
 }
@@ -652,6 +706,7 @@ const { GatewayClient } = await import(`${dist}/plugin-sdk/gateway-runtime.js`);
 const runs = new Map();
 let client;
 function onEvent(e) {
+  eventTap?.(e);
   const p = e.payload;
   const r = runs.get(p?.runId);
   if (!r) return;
@@ -681,7 +736,7 @@ async function connectGateway() {
         const timeout = setTimeout(() => { client?.stop(); reject(new Error("hello timeout")); }, 10_000);
         client = new GatewayClient({
           url: `ws://127.0.0.1:${port}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", caps: ["tool-events"],
-          scopes: ["operator.admin", "operator.read", "operator.write"], onEvent,
+          scopes: ["operator.admin", "operator.read", "operator.write", "operator.approvals"], onEvent,
           onHelloOk: () => { clearTimeout(timeout); resolve(); },
           onConnectError: (error) => { clearTimeout(timeout); reject(error); },
         });
@@ -954,6 +1009,21 @@ async function scenario(name, key, opts = {}) {
 }
 async function runScenarios() {
   const key = (n) => `agent:makaron:explicit:scn-${n}`;
+  if (ROLLOUT_CASE) {
+    const { runRollout } = await import(path.join(here, "harness-rollout-scenarios.mjs"));
+    return runRollout({
+      get client() { return client; }, get gateway() { return gateway; }, runs, lines, faultLog, emit, redact, dist, configPath, sessionsLike, actualRuntime, scenario, fallbackLines, prepareSession,
+      tap: (fn) => { eventTap = fn; },
+      setFault: (mode, api, limit = 0) => { faultMode = mode; faultPath = api; faultLimit = limit; },
+      restartGateway: async () => {
+        client?.stop();
+        if (gateway.exitCode === null) { gateway.kill("SIGTERM"); for (let i = 0; i < 90 && gateway.exitCode === null; i++) await sleep(1000); }
+        if (gateway.exitCode === null) gateway.kill("SIGKILL");
+        startGateway();
+        await connectGateway();
+      },
+    });
+  }
   if (CHANNEL_GRAY) {
     const group = key("gray");
     await scenario("gray-chat", group);

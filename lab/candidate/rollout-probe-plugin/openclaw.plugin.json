@@ -1,0 +1,1 @@
+{"id": "rollout-probe", "name": "Default harness rollout probe (candidate only)", "configSchema": {"type": "object", "additionalProperties": false, "properties": {}}, "activation": {"onStartup": true}, "contracts": {"tools": ["hr_probe", "hr_screenshot"]}}

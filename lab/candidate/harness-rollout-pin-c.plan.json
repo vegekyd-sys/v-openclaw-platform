@@ -1,0 +1,37 @@
+{
+  "support": [
+    "lab/candidate/runtime-concurrency.mjs",
+    "lab/candidate/runtime-concurrency-lag.mjs",
+    "lab/candidate/harness-rollout-scenarios.mjs",
+    "lab/candidate/rollout-probe-plugin/index.js",
+    "lab/candidate/rollout-probe-plugin/openclaw.plugin.json",
+    "lab/candidate/rollout-probe-plugin/package.json",
+    "scripts/apply-workboard-subagent-model-patch.mjs",
+    "scripts/apply-relay-deadline-process-start-patch.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/runtime-concurrency.mjs"
+  ],
+  "timeoutSeconds": 5400,
+  "user": "lab-db91-parity",
+  "env": {
+    "SCENARIOS": "1",
+    "ARMS": "vds:small",
+    "LEVELS": "1",
+    "BIG_COUNT": "0",
+    "WORKER_MIN": "1",
+    "WORKER_MAX": "3",
+    "WORKER_SESSIONS": "3",
+    "STEADY_MIN": "0",
+    "CANARY": "0",
+    "TURN_TIMEOUT_MS": "420000",
+    "V_CODEX_DIST_SHA": "c2bbae59453397ec481d6c96323ed052c587c894263b137a2c1b70f8d813c3ee",
+    "ROLLOUT_CASE": "pin",
+    "ROLLOUT_DEFAULT": "flash",
+    "ROLLOUT_CHANNEL_MAP": "{\"webchat\": {\"*\": \"deepseek/vds-deepseek-flash\"}}",
+    "ROLLOUT_FALLBACK_CHECK": "1",
+    "ROLLOUT_FALLBACKS": "[\"deepseek/deepseek-flash\", \"openai/gpt-6-luna\"]",
+    "OUT_DIR": "/tmp/hr-rollout-pin-c"
+  }
+}
