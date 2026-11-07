@@ -1,0 +1,10 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/dsml-spaced-calls/openai-completions-stream-DZjwK8vp.mjs",
+      "target": "openclaw/node_modules/@openclaw/ai/dist/openai-completions-stream-DZjwK8vp.mjs",
+      "before": "9808e03ccb3d6a0967053e983c2a41a46c9fcec17023e541712ac6b363ca7aec"
+    }
+  ]
+}
