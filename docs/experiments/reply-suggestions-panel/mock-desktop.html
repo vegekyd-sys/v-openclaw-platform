@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>V 面板效果图 · 桌面端</title>
+<style>
+  :root { --ink:#1f2329; --sub:#646a73; --faint:#8f959e; --line:#e4e5e7; --soft:#f5f6f7; --accent:#3370ff; --mine:#e1eaff; --warn:#d46b08; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#dfe1e5; font:14px/1.55 -apple-system,"PingFang SC","Helvetica Neue",sans-serif; color:var(--ink); }
+  .win { width:1440px; height:900px; margin:0; background:#fff; display:flex; overflow:hidden; }
+  .rail { width:64px; background:#eef0f3; display:flex; flex-direction:column; align-items:center; padding-top:18px; gap:18px; }
+  .rail i { width:28px; height:28px; border-radius:8px; background:#cfd3d9; display:block; }
+  .rail i.on { background:var(--accent); }
+  .list { width:280px; border-right:1px solid var(--line); background:#fafbfc; }
+  .search { margin:14px; height:32px; border-radius:8px; background:#eceef1; color:var(--faint); font-size:13px; padding:6px 12px; }
+  .item { display:flex; gap:10px; padding:10px 14px; align-items:center; }
+  .item.on { background:#e8efff; }
+  .av { width:38px; height:38px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:600; font-size:14px; }
+  .av.v { background:linear-gradient(135deg,#6b8cff,#a970ff); }
+  .av.g { background:#9aa4b2; } .av.o { background:#f0a35e; } .av.t { background:#58b7a8; }
+  .item b { font-weight:500; font-size:14px; display:block; }
+  .item span { color:var(--faint); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; width:180px; }
+  .chat { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .head { height:56px; border-bottom:1px solid var(--line); display:flex; align-items:center; padding:0 20px; gap:10px; }
+  .head .av { width:30px; height:30px; font-size:12px; }
+  .head b { font-size:16px; font-weight:600; }
+  .tabs { display:flex; gap:22px; padding:0 20px; border-bottom:1px solid var(--line); height:40px; align-items:flex-end; font-size:13px; color:var(--sub); }
+  .tabs span { padding-bottom:9px; }
+  .tabs .on { color:var(--accent); border-bottom:2px solid var(--accent); font-weight:600; }
+  .tabs .vtab { color:var(--ink); font-weight:600; position:relative; }
+  .tabs .vtab::after { content:""; position:absolute; right:-8px; top:1px; width:6px; height:6px; border-radius:50%; background:#f54a45; }
+  .msgs { flex:1; padding:22px 28px; display:flex; flex-direction:column; gap:16px; overflow:hidden; background:#fff; }
+  .row { display:flex; gap:10px; align-items:flex-start; }
+  .row.me { flex-direction:row-reverse; }
+  .row .av { width:32px; height:32px; font-size:12px; }
+  .bubble { max-width:560px; padding:9px 13px; border-radius:10px; background:var(--mine); }
+  .card { max-width:600px; border:1px solid var(--line); border-radius:10px; padding:12px 16px; background:#fff; }
+  .card h4 { margin:0 0 6px; font-size:14px; }
+  .card table { border-collapse:collapse; font-size:13px; margin:6px 0; }
+  .card td, .card th { border:1px solid var(--line); padding:4px 10px; text-align:left; }
+  .card th { background:var(--soft); font-weight:600; }
+  .foot { color:var(--faint); font-size:12px; border-top:1px solid var(--line); margin-top:10px; padding-top:6px; }
+  .name { color:var(--faint); font-size:12px; margin-bottom:3px; }
+  .input { margin:0 20px 18px; border:1px solid #d0d3d6; border-radius:10px; height:92px; padding:12px 14px; color:var(--faint); }
+  .side { width:390px; border-left:1px solid var(--line); background:#fff; display:flex; flex-direction:column; box-shadow:-6px 0 18px rgba(31,35,41,.06); }
+  .sidehead { height:56px; display:flex; align-items:center; justify-content:space-between; padding:0 18px; border-bottom:1px solid var(--line); }
+  .sidehead b { font-size:15px; }
+  .sidehead span { color:var(--faint); font-size:18px; letter-spacing:6px; }
+  .panel { padding:14px 18px; overflow:hidden; }
+  .h0 { font-size:13px; color:var(--sub); font-weight:600; margin:2px 0 0; }
+  .about { color:var(--faint); font-size:12px; margin:2px 0 6px; }
+  .sg button { display:block; width:100%; text-align:left; margin:8px 0; padding:10px 13px; font:14px/1.4 inherit; font-family:inherit; color:var(--ink); background:#fff; border:1px solid #dee0e3; border-radius:9px; }
+  .sg button::after { content:"↗"; float:right; color:var(--faint); }
+  .sg button.hover { border-color:var(--accent); background:#f3f6ff; }
+  .sg button.hover::after { content:"以你的身份发送 ↗"; color:var(--accent); font-size:12px; }
+  .edit { color:var(--accent); font-size:13px; margin:2px 0 0; }
+  hr { border:0; border-top:1px solid var(--line); margin:16px 0 8px; }
+  h2 { font-size:13px; color:var(--sub); font-weight:600; margin:14px 0 4px; }
+  .now { font-size:15px; font-weight:600; line-height:1.5; margin:4px 0 10px; }
+  .need { background:#f0f4ff; border-radius:8px; padding:8px 11px; font-size:13px; }
+  .need b { color:var(--accent); }
+  ul { list-style:none; padding:0; margin:0; font-size:13px; }
+  li { padding:3px 0; }
+  .done { color:var(--faint); }
+  .risk { color:var(--warn); font-size:13px; }
+  .note { position:absolute; font-size:13px; color:#fff; background:#1f2329; border-radius:6px; padding:6px 10px; box-shadow:0 2px 8px rgba(0,0,0,.2); }
+  .wrap { position:relative; }
+  .dot { position:absolute; width:22px; height:22px; border-radius:50%; background:#f54a45; color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 4px rgba(0,0,0,.25); }
+  .dot.s { position:static; display:inline-flex; margin-right:8px; flex:none; }
+  .legend { position:absolute; width:640px; font-size:13px; color:var(--sub); background:#fafbfc; border:1px dashed #cfd3d9; border-radius:10px; padding:12px 14px; }
+  .legend div { display:flex; align-items:flex-start; margin:5px 0; line-height:1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="win">
+  <div class="rail"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+  <div class="list">
+    <div class="search">搜索（⌘+K）</div>
+    <div class="item on"><div class="av v">V</div><div><b>V - Makaron</b><span>V：两家都测完了，结论如下…</span></div></div>
+    <div class="item"><div class="av g">夜</div><div><b>V｜夜班模式</b><span>吕恒：夜班模式跑哆比生物…</span></div></div>
+    <div class="item"><div class="av o">美</div><div><b>tianyi x 美的代码部署</b><span>V：search 还没验收通过</span></div></div>
+    <div class="item"><div class="av t">星</div><div><b>星擎研发</b><span>康浩源：可以发生产环境了</span></div></div>
+  </div>
+  <div class="chat">
+    <div class="head"><div class="av v">V</div><b>V - Makaron</b></div>
+    <div class="tabs"><span class="on">消息</span><span>文件</span><span>📞 打给 V</span><span class="vtab">V</span></div>
+    <div class="msgs">
+      <div class="row me"><div class="av o">天</div><div class="bubble">交付页在大陆打开太慢了，能不能换个大陆能快速打开的 CDN？你测一下</div></div>
+      <div class="row"><div class="av v">V</div><div>
+        <div class="name">V - Makaron</div>
+        <div class="card">
+          <h4>两家都测完了，结论：大陆打开慢是因为 Cloudflare 在大陆没有节点。</h4>
+          <table>
+            <tr><th></th><th>腾讯云 COS</th><th>七牛</th></tr>
+            <tr><td>首帧（上海，3 次均值）</td><td>0.8 s</td><td>1.0 s</td></tr>
+            <tr><td>比现在快</td><td>2.3 倍</td><td>1.9 倍</td></tr>
+            <tr><td>费用</td><td>约 ¥40 / 月</td><td>10 GB / 月免费</td></tr>
+          </table>
+          两家都能用。我正在把样片压到 6 Mbps，看画质能不能接受。你选定后我改 cdn-upload 的上传目标，并重传最近 3 个交付页。
+          <div class="foot">Agent: V × Makaron | Model: deepseek-flash | Runtime: vlab-worker</div>
+        </div>
+      </div></div>
+    </div>
+    <div class="input">发送给 V - Makaron</div>
+  </div>
+  <div class="side">
+    <div class="sidehead"><b>V</b><span>⟳ ✕</span></div>
+    <div class="panel">
+      <div class="h0">接下来可以说</div>
+      <div class="about">针对 V 14:20 的回复：两家 CDN 测速对比</div>
+      <div class="sg">
+        <button class="hover">用腾讯云 COS，先换最近 3 个交付页</button>
+        <button>七牛超出 10 GB 后怎么收费</button>
+        <button>6 Mbps 的样片先发我看画质</button>
+      </div>
+      <div class="edit">✏️ 改一改再发</div>
+      <hr>
+      <h2>回顾</h2>
+      <div class="now">在给夜班交付页换大陆 CDN。测速做完了，等你选一家。</div>
+      <div class="need">选 CDN：<b>腾讯云 COS</b>（快 2.3 倍，月约 ¥40）还是 <b>七牛</b>（快 1.9 倍，有免费额度）</div>
+      <h2>进展</h2>
+      <ul><li>▶️ 正在把样片压到 6 Mbps，看画质能不能接受</li><li class="done">☑️ 腾讯云 COS、七牛各测 3 次</li><li class="done">☑️ 找到慢的原因：Cloudflare 在大陆没有节点</li></ul>
+      <h2>风险</h2>
+      <div class="risk">⚠️ 七牛免费额度每月 10 GB，夜班跑一晚就会用完</div>
+    </div>
+  </div>
+</div>
+<div class="dot" style="left:1088px; top:16px;">1</div>
+<div class="dot" style="left:556px; top:62px;">2</div>
+<div class="dot" style="left:1046px; top:126px;">3</div>
+<div class="legend" style="left:380px; top:560px;">
+  <div><span class="dot s">1</span>桌面端：「V」面板在聊天右侧的侧边栏里打开，聊天仍然可见；面板开着时，V 每回复一轮，建议就跟着刷新</div>
+  <div><span class="dot s">2</span>每个会话顶部多一个「V」标签页；有新建议时带红点。也可以从群菜单 / 私聊菜单 / 输入框「+」打开</div>
+  <div><span class="dot s">3</span>点一条建议，就以你本人身份把这句话发进聊天（见手机端第 3 屏）；「改一改再发」先改再发</div>
+</div>
+</div>
+</body>
+</html>
