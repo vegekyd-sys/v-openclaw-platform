@@ -84,6 +84,7 @@ collection and entry projection per row, which is how V gets to ~15 s inside the
 Candidate A/B (`lab/candidate/subagent-restore-narrow-{base,narrow}.plan.json`): pending. The first
 attempt (both arms with the V-sized registry seeded before the Gateway started) gave one data point
 for the Gateway's own start: base bytes did not answer `hello` within 15 min (182 GB of logical reads),
-patched bytes answered in about 4 min; both runs shared a busy 4-core VLab and the clone rows still had
-shared identity fields, so this is not a clean number. Running both arms in parallel then exhausted
+patched bytes had forked its Workers about 3.5 min after start (its hello line was not reached because
+the Workers' prewarm then looped on the clone rows); both runs shared a busy 4-core VLab and the clone
+rows still had shared identity fields, so this is a hint, not a number. Running both arms in parallel then exhausted
 VLab's 15 GB and VLab stopped answering (2026-11-07 23:05 CST); the arms must run one at a time.
