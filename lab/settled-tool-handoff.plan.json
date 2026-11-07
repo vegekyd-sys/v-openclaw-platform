@@ -1,0 +1,35 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/settled-tool-handoff/embedded-agent-DaSvA-Yk.js",
+      "target": "openclaw/dist/embedded-agent-DaSvA-Yk.js",
+      "before": "21df02d95ba86c931d5a89a3be390695ab2482d955d00ec67c2733357be34871"
+    },
+    {
+      "source": "lab/release-files/settled-tool-handoff/model-fallback-runner-DOsPfj4O.js",
+      "target": "openclaw/dist/model-fallback-runner-DOsPfj4O.js",
+      "before": "3fd62e0856271064bcd7a913c62b29b398972da125e311dcfaf43fff62c14278"
+    },
+    {
+      "source": "lab/release-files/settled-tool-handoff/worker.mjs",
+      "target": "production-worker/worker.mjs",
+      "before": "198bd1f5c254802f8112df4203a61c18ca98a6a9f23b03cb1c8493d10ec82fde"
+    },
+    {
+      "source": "lab/release-files/settled-tool-handoff/worker-pool.mjs",
+      "target": "production-worker/worker-pool.mjs",
+      "before": "f6ca5d76214d77dda922327dac6bbc804cff99247e924ca4c10efd61b69bb18e"
+    },
+    {
+      "source": "lab/release-files/settled-tool-handoff/index.mjs",
+      "target": "production-worker/index.mjs",
+      "before": "1bf070dc80a0ac091679aba565133e85e6c2590d929af7e7c866f9096ab7cb2c"
+    },
+    {
+      "source": "lab/release-files/settled-tool-handoff/harness-failure.mjs",
+      "target": "production-worker/harness-failure.mjs",
+      "before": "89419679ae076530c9935b4ad9f9986d4400c767e9c2917ca8a02ba24eb0c660"
+    }
+  ]
+}
