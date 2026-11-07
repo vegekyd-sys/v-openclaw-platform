@@ -1697,6 +1697,20 @@
       "sha256": "1c8902ac292d49a7e1d98d335972267c1b0bda5571582783084541bef5a5a836",
       "source": "versa:6f600039627",
       "note": "delete-cleanup-vcc-steer-20261106 (#561): the plugin-executed claude-cli reply handle exposes messageInjection (versa/port-vcc-steer-20261106)"
+    },
+    {
+      "layer": "core",
+      "path": "isolated-agent-BxeXdw5A.js",
+      "sha256": "26104bd310c4f0e2b94a4815d65ee353995073eefb6bc37462a4b273eec4f864",
+      "source": "versa:595ee2bf4aa",
+      "note": "cron-default-owner-tools-20261107 (#563): an automatic creator tool snapshot runs as `*`, so ordinary cron jobs get their owner conversation's tools (claude-cli native tools); backport of upstream #162432 run-time half (versa/port-cron-native-creator-20261107)"
+    },
+    {
+      "layer": "core",
+      "path": "scheduled-tool-policy-WcH3cpLk.js",
+      "sha256": "fab1fdcad8e0e7dc666afa3e69db44e57b0d9a85a6d0625e38586789ea228642",
+      "source": "versa:595ee2bf4aa",
+      "note": "cron-default-owner-tools-20261107 (#563): a `*` tool list keeps the exec pin as is (versa/port-cron-native-creator-20261107)"
     }
   ]
 }
