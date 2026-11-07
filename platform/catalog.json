@@ -247,6 +247,8 @@
         "scripts/bundle-prep-observer.test.mjs",
         "tests/workboard-notes-limit-patch.test.mjs",
         "tests/workboard-owner-concurrency-patch.test.mjs",
+        "tests/workboard-subagent-model-patch.test.mjs",
+        "tests/relay-deadline-process-start-patch.test.mjs",
         "scripts/db91-firstword-files.test.mjs",
         "scripts/db91-hi-trace.test.mjs",
         "scripts/db91-prepared-scope.test.mjs",
