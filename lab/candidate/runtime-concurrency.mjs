@@ -1080,6 +1080,24 @@ async function runScenarios() {
   if (CHAIN_COMPARE) {
     // each fault on a fresh group session: warm (healthy), the faulted turn, then the next message healthy
     for (const fault of (process.env.CHAIN_FAULTS ?? "503-all,hang-all,503-codex,hang-codex").split(",").filter(Boolean)) {
+      // override: a group whose session picked /vds by hand (as 20 V groups have) gets no fallback; does
+      // picking the configured default (or clearing the model) hand it back to modelByChannel and its chain?
+      if (fault === "override") {
+        const k = key(`chain-override-${randomBytes(2).toString("hex")}`);
+        const step = async (name, patch, mode) => {
+          const patchErr = patch === undefined ? null : await client.request("sessions.patch", { key: k, model: patch }).then(() => null, (e) => redact(e?.message ?? e).slice(0, 200));
+          faultPath = null; faultMode = mode ?? "ok";
+          const r = await scenario(`override-${name}`, k);
+          faultMode = "ok";
+          emit({ phase: "override-step", step: name, patch: patch === undefined ? "none" : patch, patchErr, fault: mode ?? "ok", doneMs: r.doneMs, correct: r.correct, ran: r.ran, fallback: r.fallback.filter((l) => /fallback/u.test(l)).map((l) => l.slice(0, 200)) });
+        };
+        await step("manual-vds", VDS_REF);
+        await step("manual-vds-503", undefined, "503");
+        await step("pick-default", FLASH_REF);
+        await step("pick-default-503", undefined, "503");
+        await step("clear-null", null);
+        continue;
+      }
       const [mode, scope] = fault.split("-");
       const k = key(`chain-${fault}-${randomBytes(2).toString("hex")}`);
       await scenario(`warm-${fault}`, k);
