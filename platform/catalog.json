@@ -242,6 +242,7 @@
       "purpose": "各条线在 lab/、scripts/、tests/、worker 实验目录下的离线回归；2026-09-24 从未登记状态收拢，全部离线通过",
       "files": [
         "tests/v-memory-indexer.test.mjs",
+        "tests/v-storage-governance.test.mjs",
         "tests/check-source-map.test.mjs",
         "scripts/bundle-prep-observer.test.mjs",
         "tests/workboard-notes-limit-patch.test.mjs",
@@ -496,7 +497,10 @@
         "lab/session-delete-admission.test.mjs",
         "lab/session-delete-plugin-cleanup.test.mjs",
         "lab/vcc-steer.test.mjs",
-        "lab/cron-default-owner-tools.test.mjs"
+        "lab/cron-default-owner-tools.test.mjs",
+        "lab/settled-tool-handoff.test.mjs",
+        "lab/dsml-spaced-calls.test.mjs",
+        "lab/subagent-settle-wake.test.mjs"
       ]
     }
   ],

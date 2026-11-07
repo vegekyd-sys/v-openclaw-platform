@@ -1,0 +1,137 @@
+{
+ "receipt": {
+  "id": "candidate-836310c8-65e7-4954-be03-67a709cef752",
+  "ok": true,
+  "sourceCommit": "f8d9bc96b4eaca98d906390ea4f5655f1e3bd6e0",
+  "branch": "claude/dsml-spaced-calls",
+  "dirty": false,
+  "inputSha256": "ced1e91261b259a2a441eceb240e70b72bb8fa5d9b717aaa0fca2c43769fefe6",
+  "baseRelease": "cron-default-owner-tools-20261107",
+  "runtimeSha": "d1026c207976bab6148ba71dc055ef4c53ad7298bb0a7f005aff4d2929ad8f1c",
+  "sharedUnchanged": true,
+  "timings": {
+   "inspectMs": 29,
+   "baselineMs": 19,
+   "snapshotMs": 75419,
+   "overlayMs": 1,
+   "testMs": 150100
+  }
+ },
+ "result": {
+  "marker": "dsml-spaced-calls-v1",
+  "runtimeVsV": [
+   {
+    "target": "openclaw/node_modules/@openclaw/ai/dist/openai-completions-stream-DZjwK8vp.mjs",
+    "liveIsV": true
+   }
+  ],
+  "summary": [
+   {
+    "arm": "A",
+    "entry": "chat",
+    "scenario": "dsml",
+    "totalS": 4.981,
+    "deepseekAnswered": false,
+    "toolRuns": 0,
+    "toolResults": 0,
+    "leaked": true,
+    "text": "<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name=\"exec\">\n<｜｜DSML｜｜ parameter name=\"command",
+    "fails": []
+   },
+   {
+    "arm": "A",
+    "entry": "chat",
+    "scenario": "dsml1",
+    "totalS": 2.376,
+    "deepseekAnswered": false,
+    "toolRuns": 0,
+    "toolResults": 0,
+    "leaked": true,
+    "text": "<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name=\"exec\">\n<｜｜DSML｜｜ parameter name=\"command",
+    "fails": []
+   },
+   {
+    "arm": "A",
+    "entry": "chat",
+    "scenario": "dsmlpre",
+    "totalS": 2.487,
+    "deepseekAnswered": false,
+    "toolRuns": 0,
+    "toolResults": 0,
+    "leaked": true,
+    "text": "我先检查一下刚才入表失败的原因。\n\n<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name=\"exec\">\n<｜｜DSML｜｜ param",
+    "fails": []
+   },
+   {
+    "arm": "A",
+    "entry": "cli",
+    "scenario": "dsml",
+    "totalS": 3.336,
+    "deepseekAnswered": false,
+    "toolRuns": 0,
+    "toolResults": 0,
+    "leaked": true,
+    "text": "<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name=\"exec\">\n<｜｜DSML｜｜ parameter name=\"command",
+    "fails": []
+   },
+   {
+    "arm": "B",
+    "entry": "chat",
+    "scenario": "dsml",
+    "totalS": 5.527,
+    "deepseekAnswered": true,
+    "toolRuns": 1,
+    "toolResults": 1,
+    "leaked": false,
+    "text": "DeepSeek 的回答 B-chat-dsml-1。",
+    "fails": []
+   },
+   {
+    "arm": "B",
+    "entry": "chat",
+    "scenario": "dsml1",
+    "totalS": 2.518,
+    "deepseekAnswered": true,
+    "toolRuns": 1,
+    "toolResults": 1,
+    "leaked": false,
+    "text": "DeepSeek 的回答 B-chat-dsml1-1。",
+    "fails": []
+   },
+   {
+    "arm": "B",
+    "entry": "chat",
+    "scenario": "dsmlpre",
+    "totalS": 2.436,
+    "deepseekAnswered": true,
+    "toolRuns": 1,
+    "toolResults": 1,
+    "leaked": false,
+    "text": "DeepSeek 的回答 B-chat-dsmlpre-1。",
+    "fails": []
+   },
+   {
+    "arm": "B",
+    "entry": "cli",
+    "scenario": "dsml",
+    "totalS": 2.826,
+    "deepseekAnswered": true,
+    "toolRuns": 1,
+    "toolResults": 1,
+    "leaked": false,
+    "text": "DeepSeek 的回答 B-cli-dsml-1。",
+    "fails": []
+   }
+  ],
+  "speed": {
+   "A": {
+    "firstRequestMs": 635,
+    "finalMs": 781
+   },
+   "B": {
+    "firstRequestMs": 604,
+    "finalMs": 757
+   }
+  }
+ }
+}

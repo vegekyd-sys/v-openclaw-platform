@@ -1,0 +1,19 @@
+{
+  "support": [
+    "lab/candidate/subagent-settle-wake/subagent-settle-wake.mjs",
+    "lab/candidate/inter-session-support.mjs",
+    "lab/candidate/feishu-fake-open-api.mjs",
+    "lab/candidate/feishu-no-live.cjs",
+    "lab/candidate/inter-session-workspace.mjs",
+    "lab/candidate/lark-cli-shim/lark-cli"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/subagent-settle-wake/subagent-settle-wake.mjs"
+  ],
+  "env": {
+    "ARM": "baseline"
+  },
+  "timeoutSeconds": 1500,
+  "user": "lab-db91-parity"
+}
