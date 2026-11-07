@@ -1,0 +1,16 @@
+{
+  "support": [
+    "lab/candidate/subagent-restore-narrow.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/subagent-restore-narrow.mjs"
+  ],
+  "timeoutSeconds": 7200,
+  "user": "lab-db91-parity",
+  "env": {
+    "ARM": "base",
+    "ROUNDS": "3",
+    "SEEDED_START_DEADLINE_MS": "900000"
+  }
+}
