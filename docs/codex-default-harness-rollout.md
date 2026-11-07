@@ -1,27 +1,45 @@
-# 默认 harness 换 Codex（/vds）：未决项与灰度方案
+# 默认 harness 换 Codex（/vds）：阻塞清单与灰度方案
 
-2026-11-01 CST。这里没有切换，V 的配置和进程都没动。切换要 Tianyi 单独点头。
+2026-11-07 CST 复核（初版 11/01）。这里没有切换，V 的配置和进程都没动。切换要 Tianyi 单独点头。
 
-标注：**(V)** 是在生产 V 上只读得到的，**(VLab)** 是 VLab candidate 实测（4 核、同机还有别的任务，数字说明机制，不代表生产收益），**(代码)** 只读了 V 的 dist 没有运行。证据文件都在 `docs/evidence/codex-default-rollout-20261101/`，文中写作 `pin-a` 等；旧证据在 `docs/evidence/harness-compare-20261031/`。没有向测试群发消息，全部用 candidate。
+标注：**(V)** 是在生产 V 上只读得到的，**(VLab)** 是 VLab candidate 实测（4 核、同机还有别的任务，数字说明机制，不代表生产收益），**(代码)** 只读了 V 的 dist 没有运行。11/01 的证据在 `docs/evidence/codex-default-rollout-20261101/`（文中写作 `pin-a` 等）和 `docs/evidence/harness-compare-20261031/`；11/07 的回退证据在 `docs/evidence/codex-fallback-chain-20261107/`（PR #534）。没有向测试群发消息，全部用 candidate。
+
+## 11/07 复核
+
+**V 这一周的变化。** Codex 插件字节 11/01 13:35 之后没动过（11/06 存档 72 个文件与 11/01 逐一相同，`run-attempt` 仍是 `71a11b78`），所以 11/01 的 Codex 侧证据仍然适用。变的是 core：luna 接住 DeepSeek 故障（#543/#544）、删会话不再整表读（#558/#559）、/vcc 插话（#561）、cron 默认工具（#563）。#529 的 relay 快路径 11/01 已上 V。回退和并发都在当前字节上重测了。
+
+**V 现状 (V，只读)：**
+- 默认 `deepseek/deepseek-flash`（Worker）；`agents.defaults.model` 和 `agents.entries.makaron.model` 的回退都是 `[openai/gpt-6-luna]`，luna 跑在 Worker 上；没有 `channels.modelByChannel`。
+- 近 7 天的飞书群会话：59 个在 Worker flash，**20 个已被人手动 `/model` 到 /vds**，9 个在 /vcodex。手动选的模型会关掉回退（`disabled_by_model_override`），11/06 一天有 48 个回合这样跑。所以这 20 个群今天遇到 DeepSeek 故障直接报错，遇到挂起则一直等。
+- 11/06–11/07 日志里 `another runner`、`Native hook relay timed out`、413 都是 0；11/07 Worker 有 7 次 flash→luna 回退成功、7 次 DeepSeek 500。
+- 近 7 天 makaron 的 Codex 工具调用：`exec_command` 3494 次，`write_stdin` 172 次。
 
 ## 结论
 
-1. **不要改默认模型。** 用 `channels.modelByChannel` 把交互群换到 /vds，默认仍是 flash，夜班、cron、子 agent 就都留在 Worker，不用改代码（`pin-c`）。第 3 批就是目标状态。第 4 批“改默认”可以不做，要做还得先上 Workboard 补丁。
-2. **安全问题的答案：飞书审批没有变宽，但有两种情况比 Worker 宽。** V 上 exec 和原生 shell 都不出审批卡，两边一样；V 没有插件用 `requireApproval`。变宽的是 `before_tool_call` 策略：一是 `write_stdin` 不过钩子，二是 relay 启动晚于 1 s 时 Codex 杀掉钩子后照样执行工具。后者的小补丁在本 PR，已验证；前者要 Tianyi 决定。
-3. **语音不阻塞。** consult 跟默认模型走，所以方案 1 下语音留在 Worker。确认门在 Codex 上真的生效，Worker 上被绕开，但 V 现在是默认放行，两边行为一样。
-4. **长 computer 回合不阻塞灰度，但更贵。** Codex 没有回合内裁剪：20 帧后请求体 8.42 MB，Worker 是 1.03 MB。要到约 117 帧才碰 48 MiB 上限；碰到时回合报错，下一条消息能恢复。
-5. **灰度开关要重启。** 手写配置约 1 s 后 Gateway 就开始自己重启，所以每批都走 `v-self-restart --while-stopped`，一次约 2 分钟（V 启动 91 s）。回退同样一次重启，上下文来回都保留。
+1. **不改默认模型。** 用 `channels.modelByChannel` 逐群列 id，把交互群换到 /vds；夜班、cron、子 agent 留在 Worker，不用改代码（`pin-c`）。第 3 批就是目标状态，第 4 批“改默认”不建议做。
+2. **回退链保持 V 现在的 `[openai/gpt-6-luna]`，不要改成 `[flash, luna]`**（推翻 11/01 的建议）。DeepSeek 整体挂起时，`[flash, luna]` 要 278.6 s 才到 luna，`[luna]` 只要 95.4 s；整体 503 时两者都约 32 s；只有 Codex 坏时两者都约 95 s 接住（VLab，`codex-fallback-chain-20261107`）。所以第 1 批不用改回退链。
+3. **第 1 批新增一项配置：Codex 的 DeepSeek 重试次数。** V 的 `codex-home/config.toml` 没写，Codex 默认请求重试 4 次 × 流重试 5 次，整体 503 时打 30 次请求、32 s 后才交给回退。设成各 1 次后 11.3 s；一次性的瞬时 503 仍在 Codex 内部自愈，不回退 (VLab)。
+4. **手动切过 /vds 的群要发一次 `/model deepseek`。** 手动覆盖优先于 `modelByChannel` 且没有回退。列进 map 后选回默认，会话仍跑 /vds，503 时 6.7 s 回退到 luna (VLab)。两个测试群现在都有手动覆盖，第 1 批也要做这一步。
+5. **#534（挂起看门狗）建议不等灰度，先单独上线。** 它对那 20 个手动 /vds 群今天就有用：挂起从无限等待变成约 187 s 明确报错（无回退时）；有回退时约 95 s 接上。
+6. 安全、语音、长 computer 回合的结论和 11/01 一样，见第 2–4 节。`write_stdin` 一周 172 次是真实用法，建议接受现状，不关 `unified_exec`。
 
-### 仍然阻塞切换的项目
+## 阻塞清单（11/07，按批次排序）
 
-| # | 项目 | 挡住哪一批 | 状态 |
-|---|---|---|---|
-| 1 | 上游挂起无回复：Codex 超过 930 s 不回复也不回退（VLab，旧证据） | 第 2 批起 | PR #534（draft，未合、未上 V）。VLab：挂起和卡死 97–101 s 回退，Worker 185–192 s |
-| 2 | relay 启动晚时策略失效（第 3 节） | 第 2 批起 | 补丁在本 PR，未合、未上 V |
-| 3 | `write_stdin` 绕过策略（第 3 节） | 第 3 批前 | 等 Tianyi 决定接受还是关掉 |
-| 4 | 回退链：V 现在是 `[luna]`，/vds 失败会花 ChatGPT 额度，不会回 flash | 第 1 批 | 配置改一项，见第 5 节 |
-| 5 | 高并发更慢：V 上五步全 shell（不含 `session_status`，贴近真实工具分布）c5 14.8 vs 9.9 s，c15 23.1–24.6 vs 14.7–16.0 s，主线程忙 89–97% vs 39–71%，RSS 2.5–3.2 vs 2.1–2.2 GB（11/01 16:07，`harness-compare-20261031/v-staged-20261101/bash5-*`）。此前含 `session_status` 的 43.5–46 vs 19–22 s 高估了差距 | 第 4 批。夜班留在 Worker 时只看真实交互并发，第 3 批靠指标决定 | c5 主线程只忙 51% 仍慢约 5 s，原因未定 |
-| 6 | Workboard 固定补丁未合未上 | 只挡第 4 批 | 补丁在本 PR |
+| # | 项目 | 挡哪一批 | 现状与证据 | 要做什么 |
+|---|---|---|---|---|
+| 1 | Codex 对 DeepSeek 503/断流重试 30 次，回退慢 | 第 1 批 | 503：32.4→11.3 s；断流：20.4→9.9 s；瞬时 503 不回退（VLab，`codex-fallback-chain-20261107`） | 第 1 批那次重启里给 makaron 的 `config.toml` 加两行，见下文“第 1 批怎么执行” |
+| 2 | 手动 `/model` 过的会话不进灰度、也没有回退 | 第 1 批 | `override-progress.jsonl`：手动 /vds 遇 503 11.0 s 报错；`/model deepseek` 后仍是 Codex，503 6.7 s 回退 | 操作步骤，不用改代码；列进 map 的群各发一次 `/model deepseek` |
+| 3 | 上游挂起无回复，Codex 不回退 | 第 2 批起 | PR #534 已 rebase 到 dev；当前 core 上整体挂起 95.4 s、仅 Codex 挂起 96.4 s 回退到 luna（VLab）；11/01 的不误杀证据（`sleep 200`、200 s 动态工具、慢响应头）字节未变仍适用 | 请 Tianyi 审 #534，建议先于灰度单独上线 |
+| 4 | 并发时比 Worker 慢 | 第 3 批看指标，第 4 批必过 | 见第 6 节（11/07 VLab 拆分） | 见第 6 节 |
+| 5 | relay 启动晚于 1 s 且 Gateway 9 s 不答时，Codex 照样执行工具 | 第 3 批前 | 补丁在本 PR，在 V 当前快路径字节上仍能打上；快路径后 relay 0.08–0.10 s 起来，触发窗口更小；V 上没有插件用拦截做安全控制 | 上线前要在 openclaw-versa 补源码提交和测试（AGENTS.md 要求），未做 |
+| 6 | `write_stdin` 不进钩子 | 第 3 批前 | 一周 172 次真实使用；V 的 shell 本来就是全权限，只影响插件策略，不是提权 | 建议 Tianyi 接受现状 |
+| 7 | Workboard 固定不住模型 | 只挡第 4 批 | 补丁在本 PR，11/07 在 VLab 当前字节 `runtime-api-1CCazqtv.js` 上仍能打上 | 不做第 4 批就不需要 |
+
+已解决、不再阻塞：回退链（保持 `[luna]`）；`another runner`（#524，11/01 上 V）；钩子进程开销（#529/#530，11/01 上 V）。#535（`session_status` 范围读）真实流量每回合只省 120–170 ms，不当闸门。
+
+## 附：11/01 的逐项调查
+
+下面第 1–5 节是 11/01 的原文，只更正了第 5 节的回退链。
 
 ## 1. 夜班和定时任务
 
@@ -149,7 +167,7 @@ sudo v-self-restart --if-busy abort --idle-timeout 3600 --reason "vds gray batch
 
 **时长。** 今天 13:35:28 停、13:36:59 ready，启动 91 s (V)。加上等空闲，按一次 2–5 分钟算。夜班随重启自动暂停和恢复 (记忆 nightshift-gateway-restart-hold)。
 
-**回退链。** V 现在 `fallbacks=[openai/gpt-6-luna]`，map 上的 /vds 失败会先用 luna（ChatGPT 额度）。改成 `[deepseek/deepseek-flash, openai/gpt-6-luna]` 后：503 时 32.5 s 回退到 Worker flash 且回答正确，下一条回到 Codex（`pin-c`）。flash 为主时这个列表里的 flash 没有影响，cron 正常（`pin-c`）。**这只覆盖上游明确报错**，挂起要靠 #534 才会回退，这就是阻塞项 1。
+**回退链（11/07 更正）。** 11/01 这里建议改成 `[deepseek/deepseek-flash, openai/gpt-6-luna]`，依据是 503 时 32.5 s 回到 Worker flash（`pin-c`）。11/07 把 DeepSeek 整体故障也测了：flash 和 /vds 是同一个上游，DeepSeek 挂起时 flash 也挂，`[flash, luna]` 要 278.6 s 才到 luna，`[luna]` 95.4 s。flash 在前只在“只有 Codex 坏”时省一次 ChatGPT 额度，而这类故障 #524 之后日志里没再出现。所以**保持 `[openai/gpt-6-luna]`**，证据见 `docs/evidence/codex-fallback-chain-20261107/`。
 
 **来回切的上下文。** Worker 会话切到 Codex，再切回 Worker，暗号都记得（`migrate`）。
 
@@ -159,12 +177,43 @@ sudo v-self-restart --if-busy abort --idle-timeout 3600 --reason "vds gray batch
 
 | 批 | 范围 | 前置 | 观察 |
 |---|---|---|---|
-| 1 | 两个测试群 `oc_260a94509d8464a58c4f66966093356e`、`oc_ede0fdc8e94dc40d7424691ddf80d948`，加回退链 | 阻塞项 4 | 24 h，自测：文字、多工具、图片、子 agent、定时任务、`/new`、飞书进度卡 |
-| 2 | 2–3 个低风险 makaron 群，由 Tianyi 选 | 阻塞项 1、2；第 1 批通过 | 48 h，含一个夜班高峰 |
-| 3 | 全部 makaron 交互群和私聊，逐个列 id，不含 dealclaw 等 | 阻塞项 3；第 2 批通过 | 72 h，这就是目标状态 |
-| 4 | 改默认（可选，不建议） | 阻塞项 5、6；Tianyi 单独决定 | 见下 |
+| 1 | 两个测试群 `oc_260a94509d8464a58c4f66966093356e`、`oc_ede0fdc8e94dc40d7424691ddf80d948`；Codex 重试次数 | 无代码前置；阻塞项 1、2 是这一批自己的操作 | 24 h，自测：文字、多工具、图片、子 agent、定时任务、`/new`、飞书进度卡 |
+| 2 | 已经手动用 /vds 的 makaron 群（11/07 有 20 个，名单由 Tianyi 圈定），列进 map 后各发一次 `/model deepseek` | #534 上线；第 1 批通过 | 48 h，含一个夜班高峰。这批的用户本来就在用 /vds，换来的是回退，体验不变 |
+| 3 | 其余 makaron 交互群和私聊，逐个列 id，不含 dealclaw、short-v、v-codex 等自带模型的群 | 阻塞项 5、6；第 2 批通过；第 6 节的指标没越线 | 72 h，这就是目标状态 |
+| 4 | 改默认（可选，不建议） | 阻塞项 4、7；Tianyi 单独决定 | 见下 |
 
 第 4 批的配置：`agents.defaults.model` 和 `agents.entries.makaron.model` 改 /vds，`subagents.model=flash`，Workboard 补丁随发版上。语音会跟到 Codex，要先做一次真实通话。
+
+### 第 1 批怎么执行
+
+前提：Tianyi 点头；选 V 的上线窗口（12:30–13:00 或 22:00 后）。在 V 上：
+
+```sh
+# 1. 先只校验，不重启
+sudo v-self-restart --check --reason "vds gray batch 1" \
+  --set 'channels.modelByChannel={"feishu":{"oc_260a94509d8464a58c4f66966093356e":"deepseek/vds-deepseek-flash","oc_ede0fdc8e94dc40d7424691ddf80d948":"deepseek/vds-deepseek-flash"}}'
+```
+
+```sh
+# 2. 真正执行：等空闲后停机，写 map，给 Codex 的 DeepSeek provider 加重试次数，再启动
+sudo v-self-restart --reason "vds gray batch 1" --requested-by "Tianyi" \
+  --chat oc_260a94509d8464a58c4f66966093356e --idle-timeout 900 --if-busy abort \
+  --set 'channels.modelByChannel={"feishu":{"oc_260a94509d8464a58c4f66966093356e":"deepseek/vds-deepseek-flash","oc_ede0fdc8e94dc40d7424691ddf80d948":"deepseek/vds-deepseek-flash"}}' \
+  --while-stopped 'F=/home/openclaw/.openclaw/agents/makaron/agent/codex-home/config.toml; cp -p $F $F.bak-vds-batch1 && (grep -q "^request_max_retries" $F || sed -i "/^\[model_providers.deepseek\]/a request_max_retries = 1\nstream_max_retries = 1" $F) && grep -A5 "^\[model_providers.deepseek\]" $F'
+```
+
+```sh
+# 3. 两个测试群各发一次（以 Tianyi 身份，lark-cli），清掉手动覆盖：
+/model deepseek
+```
+
+验收（每个群各一次，回复要可见）：
+- 发一条带 shell 工具的消息，`session_windows` 里该群的 `agent_harness_id=codex`、`model=vds-deepseek-flash`。
+- 日志里该回合没有 `configured fallbacks disabled by user model override`。
+- `config.toml` 的 `[model_providers.deepseek]` 下有两行重试设置；`v-self-restart` 的 postChecks 全 0，workers 就绪。
+- 然后按 `AGENTS.md` 做 capture PR，`scripts/vlab-v-parity.mjs` 到 ALIGNED。`config.toml` 不在 parity 范围里，在 capture PR 里写明。
+
+**回滚：** 同样走 `v-self-restart`，`--set 'channels.modelByChannel={}'`（或删掉两项），`--while-stopped 'cp -p $F.bak-vds-batch1 $F'`。紧急时不重启、只救一个群：在群里 `/model` 选一个 Worker 上的非默认模型（例如 `/model ds-flash`），它是手动覆盖，立刻生效但没有回退；之后删掉 map 项再 `/model deepseek` 回到默认。注意 `/model deepseek` 本身会回到 map 上的 /vds，不能用来回 Worker。
 
 ### 指标和回滚线
 
@@ -195,7 +244,7 @@ sudo v-self-restart --if-busy abort --idle-timeout 3600 --reason "vds gray batch
 
 ## 本 PR 的改动
 
-都没有合入，也没有上 V。
+都没有合入，也没有上 V。11/07 的回退和重试实验、并发拆分的压测台改动在 PR #534 的分支上（`CHAIN_COMPARE`、`MODEL_PROXY`），本 PR 只引用其证据。
 
 - `scripts/apply-relay-deadline-process-start-patch.mjs` + 测试：relay 期限从进程启动算。上线时要在目标 dist 上重打，`lab/release-files/cli-startup-fast/` 里那份是整文件替换，发版要一起更新。
 - `scripts/apply-workboard-subagent-model-patch.mjs` + 测试：Workboard 读 `subagents.model`。没配这个键时行为不变。
