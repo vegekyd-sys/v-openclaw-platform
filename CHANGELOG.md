@@ -10,6 +10,108 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## delete-cleanup-vcc-steer-20261106
+
+上线：2026-11-06 02:03 CST（文件 01:36 装到 V；01:36 第一次 v-self-restart 等空闲 15 分钟未果放弃，01:53 重试，02:01 等到空闲停机，02:03:13 就绪）  ·  tag `delete-cleanup-vcc-steer-20261106`
+
+**摘要**：两件事一次重启上线。① /vcc（claude-cli）回复进行中发的消息现在会插进当前回合（#561）：消息写进正在运行的 Claude Code 常驻进程，工具运行中插话在同一回合吸收；回答收尾时插话由 Claude 接着跑一轮，算在同一条回复里。以前一律等回复结束后单独再答。② `sessions.delete` 不再为插件状态清理整表读 entry_json（#559，V 规模每次约 2.6 GB），deleteAfterRun 定时任务和手动删会话受益。
+
+V 上验收：
+- /vcc 插话（测试群 oc_260a…，claude-opus-5-5/claude-cli）：发「用 Bash 运行 sleep 45…」，25 s 后插话「加上 BANANA」→ 只有一条回复 `om_x100b61f81b44fca0ce4e7e4521ce369`「STEP1 完成 BANANA」，V 自述插话在回合进行中收到；日志该会话只有一次 cli exec（50 s），插话没有另起一轮。同时段另一个 /vcc 会话正常完成。测完测试群已切回 `/vcodex`。
+- 删会话：重启后 3 次 cron 清理删除（02:05、02:11、02:20）每次 2.0–2.1 s，没有 rss_growth；重启后到 02:23 还没有 sessions.delete RPC 调用，#559 那条路径在 V 上待真实流量验证（VLab：6.5 s / +287 MB → 2.7 s / +49 MB）。
+- v-self-restart postChecks 全 0，workers 5 个就绪；哨兵 stall 0。重启后 50 s 和约 6 分钟各有一次 22 s 的 makaron 写入卡顿，前两次重启同样出现，属已有启动期行为。
+- 未覆盖：/vcc 带图片的插话、node 派发与托管进程路径仍是排队；vlab-worker（V 默认运行时）不支持插话。
+
+回退：`promote-to-v.mjs --undo /opt/v-release-backups/delete-cleanup-vcc-steer-20261106-20261105T173107` + 重启。
+
+相对上一版 `session-delete-admission-20261105`：3 个文件变化。
+
+**经 VLab 发版 `delete-cleanup-vcc-steer-20261106`**（delete-cleanup-vcc-steer-20261106，dev `2a1ab0ad`）
+> 验收：共享 VLab 验收 2026-11-06 01:30 CST（#559 + #561，dev 2a1ab0ad）。sessions.delete（实例 CLI，空闲临时会话）：Gateway 内 2,689 ms，VmRSS +49 MB；上线前同样测试 6,467 ms、+287 MB。群 B 可见回复 om_x100b61ff9d95b0a4cfea77dd10b40c4「DCV-OK」（vds-deepseek-flash/codex）。/vcc 插话：VLab 的 Claude 登录所在组织关闭了订阅访问，无法跑真 Claude；由 candidate-8053e38d（私有挂载命名空间 + 假 Claude Code，A/B/C 全过）与基线 candidate-7fcb802f 验证，上线后在 V 测试群实测。#559 由 candidate-e2cb6ab8 对照 cand…
+- `core` execute.runtime-DRmvah87.js  106738fa → 1c8902ac
+- `core` extensions/anthropic/agent-sdk.runtime.js  1372aaa4 → 7c1fa81c
+- `core` session-accessor-K0XuW6ln.js  30c7b9d6 → a854b511
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #561 fix(claude-cli): /vcc 回合进行中的插话（steer）进入当前回合
+- #559 fix(sessions): sessions.delete 不再为插件清理整表读 entry_json（V 上每次约 2.6 GB）
+- #560 release: 捕获 session-delete-admission-20261105 并补 CHANGELOG
+
+## session-delete-admission-20261105
+
+上线：2026-11-05 23:35 CST（文件 23:18 装到 V，v-self-restart 23:33 提交、等空闲 2 s 后停机，23:35:41 就绪）  ·  tag `session-delete-admission-20261105`
+
+**摘要**：V 每次删会话（主要是定时任务跑完删自己的临时运行会话，11/04 一天 132 次）都要把 session_nodes 全表 entry_json 读进内存（约 2.5 GB）并卡主线程约 9 s，这是每 10–30 分钟一次 rss_growth critical 的来源。#558 让准入保护集合按 key 精确读，并在不删 transcript 时跳过两次整表读。
+
+V 上验收：
+- 测试群 oc_260a… 回复 `om_x100b61fe622b0ca0ce1d78bbc2b52f3`「SDA-V-OK」（gpt-6.1-sol/codex）；v-self-restart postChecks 全 0，workers 5 个就绪。
+- 重启后真实删除 3 次（23:38、23:42、23:53「F页面审核接续失败恢复」）：每次 1.95–2.03 s（以前准备 6–7 s + 事务 1.8–2.0 s ≈ 9 s），后两次没有 rss_growth；23:38 有一次 warning 级 rssGrowth 942 MiB，在重启后 2.5 分钟内。
+- 重启后 50 s 和约 6 分钟各有一次 48 s / 22 s 的 makaron 写入卡顿，上一次重启（11/05 00:48）同样出现 50 s / 21.5 s，属已有的启动期行为，不是本次引入。
+- 未覆盖：剩下约 2 s 是删除事务里 survivingNodes 整表扫描（需反向索引，后续）；sessions.delete RPC 路径（archiveTranscript:true）在 VLab 小库上每次仍 +~290 MB，疑似还有整读，已交 gw-rss-growth 会话追查。
+
+回退：`promote-to-v.mjs --undo /opt/v-release-backups/session-delete-admission-20261105-20261105T151831` + 重启。
+
+相对上一版 `feishu-card-open-20261104`：2 个文件变化。
+
+**经 VLab 发版 `session-delete-admission-20261105`**（session-delete-admission-20261105，dev `68e19995`）
+> 验收：共享 VLab 验收 2026-11-05 23:17 CST（#558，dev 68e19995）。部署后两个 dist 文件 sha256 = after（2dce5e13…/f3f6fdfa…），parity 只差这两个文件。删会话：vlab.mjs test 建临时会话后用实例 CLI gateway call sessions.delete 删除 3 次（含另一回合在跑时、删正在跑的会话、空闲时），均 ok/deleted:true，Gateway 内 sessions.delete 6.5 s，回合被正确中止（Reply operation aborted by user），Gateway 无报错。群 B 可见回复：om_x100b61fdae408ca0cecd78f79170b7c「SDA-OK」（vds-deepseek-flash/codex）。cron 清理路径（11…
+- `core` session-accessor.sqlite-lifecycle-dtL0ZEAl.js  1fbfab20 → f3f6fdfa
+- `core` session-history-eviction-d5aiCsHS.js  0c43970f → 2dce5e13
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #558 fix(sessions): 删会话不再整表读 entry_json（每次 2.5 GB、约 7 s）
+- #556 release: 捕获 feishu-card-open-20261104 并补 CHANGELOG（含 feishu-card-images）
+
+## feishu-card-open-20261104
+
+上线：2026-11-05 00:50 CST（文件 00:38 装到 V，v-self-restart 00:46 提交、等空闲 32 s 后重启，00:50:15 就绪）  ·  tag `feishu-card-open-20261104`
+
+**摘要**：飞书里 V 可以自己决定什么时候把回复做成卡片：一组数字、几个关键指标、几个选项对比、行程安排或有好坏状态时，整条回复写成一个卡片 JSON 2.0，渠道原样发出、组件不限（图表、指标卡、分栏、时间线、标签、折叠），由进度卡原地定稿成这张卡，不删除重发；飞书拒收时退成同内容的文字。闲聊、短答、罗列信息仍是文字。插件之外，V 工作区（V 自己的 git，`5d17029d`）同时加了 AGENTS.md「飞书卡片 UI（自己决定什么时候用）」一节和 `skills/feishu-channel-cards/references/reply-cards.md`，没有这两处 V 不会主动出卡。Tianyi 定为试用一周（到 11/12），已在测试群告诉 V 并让它记进记忆、到期给小结。
+
+V 上验收（测试群 oc_260a…，gpt-6.1-sol/codex）：
+- 「这周花了：餐饮 820、交通 260、购物 1150，预算是 2000，帮我看看」，没提卡片：回复 `om_x100b618269bd2ca0cef696e5b0a630d` 是 V 自己选的卡片，标题「本周已花 ¥2230，超预算 ¥230」、预算/已花/超出三个指标、柱状图、占比与建议，一条消息定稿。
+- 闲聊「明早喝咖啡还是茶」：回复 `om_x100b618262f5c8a0b4ce6367be40ad8` 仍是普通文字卡带脚注。
+- 重启后日志 model card rejected、200570、300309、Final replace failed 均为 0；v-self-restart postChecks 全部为 0，workers 5 个就绪。
+- 未覆盖：/vds、/vcodex、/vcc 下 V 自主出卡，群聊里自主出卡；卡片按钮回调没有处理器；卡片里的 `<at user_id="all">` 未过滤。已知：卡片回复比文字回复多 3–10 s（整张卡写完才定稿）。
+
+回退：`promote-to-v.mjs --undo /opt/v-release-backups/feishu-card-open-20261104-20261104T163824` 后重启，并在 V 工作区 `git revert 5d17029d`。来源：[PR #555](https://github.com/vegekyd-sys/v-openclaw-platform/pull/555)，源码 openclaw-versa `f73ee277c7e`（分支 `versa/feishu-card-open-20261104`）。
+
+相对上一版 `feishu-card-images-20261104`：2 个文件变化。
+
+**经 VLab 发版 `feishu-card-open-20261104`**（feishu-card-open-20261104，dev `965e0ac2`）
+> 验收：共享 VLab 验收 2026-11-05 00:36 CST（#555，dev 965e0ac2）。「VLab 发布验收 B」群 @V - Lab（vds-deepseek-flash/codex）：要求整条回复为卡片 JSON 2.0（红色标题+VChart 饼图+markdown）→ 回复 om_x100b6181afb4d8a0b1eab750e9d93ce 为 interactive 卡片，标题「本周开支 FCO-OK」、饼图三类数据、超支 230 元，同一条消息定稿（无第二条机器人消息）；闲聊回复 om_x100b6181bc7c14a0cf1a2a98205ae7d 仍是普通文字卡带脚注。部署后 Gateway 日志 model card rejected/200570/300309/Final replace failed 均为 0。V 自主选卡（AGENTS.md 一节+…
+- `feishu` dist/monitor.account-WFdlCDhR.js  d642af6e → 46711745
+- `feishu` dist/reply-delivery-result-CEFTDA3f.js  0cc2f09c → de5f3524
+
+## feishu-card-images-20261104
+
+上线：2026-11-04 17:59 CST（文件 17:52 装到 V，v-self-restart 等空闲 205 s 后重启生效）  ·  tag `feishu-card-images-20261104`
+
+**摘要**：飞书回复卡片里有外部图片（`![…](https://…)`）时，卡片拒收（200570），卡片关闭后最终写入也被拒（300309），而且任务卡无限重试。「V｜接电话｜1005」群 11/01 00:48 的一张语音交办生图卡因此一直空着，重试了 4916 次。现在外部图片显示为可点击链接，最终回复对已关闭卡片改用整段替换，任务卡在一个进程里连续失败 20 次就停止重试（只记一条日志，下次启动再试一次）。
+
+V 上验收：
+- 重启时那张卡（记录 `1e46fb83…`，卡片 `7702874788834905023`）17:59:38 写入成功，`delivered: true`；群里卡片更新时间 11/04 17:59，图片是链接，正文完整。
+- 测试群 oc_260a… 新消息（vcodex/gpt-6.1-sol）：`CARD-IMG-V-OK` / `[测试图](url)` / 图后一行全部显示；18:01 之后日志 200570、300309、Final replace failed 均为 0。
+- 已知小问题：重启时补写那张旧卡后，卡片脚注（note）更新报了 2 次 300309（17:59:37、17:59:40），正文不受影响，没有重试循环。
+- 未覆盖：重试上限 20 次只在测试和 candidate 中验证过，V 上还没有触发过。
+
+回退：`promote-to-v.mjs --undo /opt/v-release-backups/feishu-card-images-20261104-20261104T095040` 后重启。来源：[PR #553](https://github.com/vegekyd-sys/v-openclaw-platform/pull/553)（含 [PR #542](https://github.com/vegekyd-sys/v-openclaw-platform/pull/542) 的原型），源码 openclaw-versa `cedaa9bf713`。
+
+相对上一版 `v2026.9.1-db91.6-luna-fallback-takeover-20261104`：2 个文件变化。
+
+**经 VLab 发版 `feishu-card-images-20261104`**（feishu-card-images-20261104，dev `2d503b31`）
+> 验收：共享 VLab 验收 2026-11-04 17:48 CST（#553，dev 2d503b31）。「VLab 发布验收 B」群 @V - Lab 要求原样回复含 Markdown 外部图片 ![测试图](https://www.baidu.com/...) 的三行（vds-deepseek-flash/codex）：回复卡片（回复 om_x100b619bbbdd3ca8b0e717e51dfd1a4）内容 CARD-IMG-OK / [测试图](url) 链接 / 图片后一行全部显示；当日 Gateway 日志 200570、300309、Final replace failed 均为 0。故障路径（修复前 200570 拒写、关闭卡片 300309）由 candidate 在 VLab 实际飞书文件上复现。未覆盖：重试上限 20 次只在测试中验证；V 上卡住的记录 1e46fb83…
+- `feishu` dist/monitor.account-WFdlCDhR.js  faa10628 → d642af6e
+- `feishu` dist/v-feishu-task-presentation.mjs  070801aa → 6124ae69
+
+**这期间合入 dev 的 PR**（6 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #553 fix(feishu): 卡片外部图片改链接、已关闭卡片用整段替换收尾、任务卡重试设上限
+- #552 feat(parity): 模型配置/热加载开关进一致性检查；接管页与 V Browser 算版本偏移
+- #551 fix(vlab): accept shared VLab reloading config like V
+- #550 feat(vlab): align shared VLab's model configuration with V
+- #549 fix(config): write shared VLab's live config; record the luna row hot update
+- #548 fix(config): give gpt-6-luna its 850k budget before the first luna turn
+
 
 ## v2026.9.1-db91.6-luna-fallback-takeover-20261104
 
@@ -24,6 +126,12 @@
 未验证：DeepSeek 503/卡住→luna 只在 candidate 里用替身验证过（c1d0a1d5、87f1e6b5、64d56e34、7f25adfc、ba3e0630、8f1d9747），V 和共享 VLab 都没人为制造故障；V 上的大会话不压缩没测（飞书消息装不下几十万 token），依据是字节与共享 VLab 一致。
 
 已知遗留：手动切到 luna 的**第一回合**，Gateway 回合前检查按目录缓存 272000 判断（阈值 25.2 万），超过的会话会先压缩一次，第二回合起按 85 万；DeepSeek→luna 回退不受影响。sessions.list、/status 对 luna 一直显示 272000，是 Gateway 现算的展示值，不是 worker 用的存储值。工具调用之后才 503 的回合（C 类）和用户手选 v4-pro 的回合（E 类）没修。
+
+**11/04 10:09 CST 配置热更新（不改文件，不重启）**：第一回合的缺口已补。[PR #548](https://github.com/vegekyd-sys/v-openclaw-platform/pull/548) 的 `/opt/v-ops/configure-v-luna-context.mjs apply-hot` 给两份配置加了 `models.providers.openai.models` 的 `gpt-6-luna` 行（contextTokens 850000、contextWindow 1050000，元数据同合成条目），随后 `v-workers-roll.mjs luna-context` 把 worker 从第 2 代换到第 3 代；Gateway 进程未重启（00:14 启动的那个）。备份 `/home/openclaw/.openclaw/openclaw.json.bak-luna-context-20261104T020922`。
+- 验收（测试群 oc_260a…）：`/luna` 之后、第一轮之前，sessions.list 对 luna 就显示 850000（之前 272000；和回合前检查是同一个查找函数）；真实回合 `LUNA-CTX-OK openai/gpt-6-luna`；只读 entry_json 的 contextTokens 850000、compactionCount 0；已切回 `/vcodex`。
+- candidate-8acb1f16：现在 V 的代码在 Gateway 冷启动首轮报 272000/252000，加配置行后 850000/830000；回合后两臂都是 830000。
+- 共享 VLab **没有**改：它的 Gateway 读 `state/shared-vlab-20260909-v3/openclaw.json`，里面没有 `models.providers.openai`（V 的 terra 行也没有）。11/03 那次在 VLab 上「加了配置行没生效」就是写到了没人读的 `state/openclaw.json`。
+- 回退：`configure-v-luna-context.mjs restore-hot` 后 `v-workers-roll.mjs`。
 
 回退：`promote-to-v.mjs --undo /opt/v-release-backups/v2026.9.1-db91.6-luna-fallback-takeover-20261104` 后重启。来源：[PR #543](https://github.com/vegekyd-sys/v-openclaw-platform/pull/543)、[PR #544](https://github.com/vegekyd-sys/v-openclaw-platform/pull/544)。
 

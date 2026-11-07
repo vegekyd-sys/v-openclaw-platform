@@ -148,15 +148,15 @@ test('parity pairs: existing three unchanged; DingTalk/WeCom follow VLab\'s load
     ['session-relay', 'extensions/v-session-relay', '/home/openclaw/.openclaw/extensions/v-session-relay', `${VLAB_RUNTIME}/extensions/v-session-relay`, true, true]);
   assert.equal(after.slice(0, 7).some((p) => p.optional), false, 'every other runtime directory must exist');
   assert.deepEqual(after.slice(8).map((p) => [p.component, p.prefix, p.v, p.vlab, p.blocking]), [
-    ['handoff', 'sidecar:handoff/plugin', '/opt/v-desktop-handoff/plugin', '/opt/vlab-v-desktop-handoff/plugin', false],
-    ['handoff', 'sidecar:handoff/service', '/opt/v-desktop-handoff/service', '/opt/vlab-v-desktop-handoff/service', false],
-    ['handoff', 'sidecar:handoff/desktop', '/opt/v-desktop-handoff/desktop', '/opt/vlab-v-desktop-handoff/desktop', false],
+    ['handoff', 'sidecar:handoff/plugin', '/opt/v-desktop-handoff/plugin', '/opt/vlab-v-desktop-handoff/plugin', true],
+    ['handoff', 'sidecar:handoff/service', '/opt/v-desktop-handoff/service', '/opt/vlab-v-desktop-handoff/service', true],
+    ['handoff', 'sidecar:handoff/desktop', '/opt/v-desktop-handoff/desktop', '/opt/vlab-v-desktop-handoff/desktop', true],
     ['secret-entry', 'sidecar:secret-entry', '/opt/v-secret-entry', '/opt/vlab-v-secret-entry', true],
     ['browser-fill', 'sidecar:browser-fill/plugin', '/opt/v-browser-fill/plugin', '/opt/vlab-v-browser-fill/plugin', true],
     // V Browser: not resolved here (no sidecarDirs), so absent on both sides.
-    ['v-browser-plugin', 'sidecar:v-browser-plugin', null, null, false],
-    ['v-browser-broker', 'sidecar:v-browser-broker', null, null, false],
-    ['v-browser-gateway', 'sidecar:v-browser-gateway', null, null, false],
+    ['v-browser-plugin', 'sidecar:v-browser-plugin', null, null, true],
+    ['v-browser-broker', 'sidecar:v-browser-broker', null, null, true],
+    ['v-browser-gateway', 'sidecar:v-browser-gateway', null, null, true],
   ]);
 
   // Before the prep: compared where VLab loads them, under the target prefix they will have.
@@ -202,7 +202,7 @@ test('V Browser sidecars: plugin from main config load paths, Broker and Browser
 
   const pairs = parityPairs({ vDirs, vlabGlob, sidecarDirs: dirs, only: ['v-browser-plugin', 'v-browser-broker', 'v-browser-gateway'] });
   assert.deepEqual(pairs.map((p) => [p.prefix, p.exclude ?? null, p.blocking]), [
-    ['sidecar:v-browser-plugin', null, false], ['sidecar:v-browser-broker', ['tests'], false], ['sidecar:v-browser-gateway', null, false]]);
+    ['sidecar:v-browser-plugin', null, true], ['sidecar:v-browser-broker', ['tests'], true], ['sidecar:v-browser-gateway', null, true]]);
   assert.match(pairs[1].note, /node-v24/);
 
   // Worker loading another copy than main: compared on main, said out loud.
@@ -218,12 +218,12 @@ test('V Browser sidecars: plugin from main config load paths, Broker and Browser
     /v-browser-plugin: v main config loads 2 copies/);
 });
 
-test('V Browser drift is advisory: reported, does not decide the state', () => {
+test('V Browser drift decides the state (blocking since 2026-11-04)', () => {
   const pairs = pairsFor('v-browser-plugin');
   const r = evaluateParity({ pairs, trees: [{ v: T({ 'index.js': h('a'), 'core/session-actor-memory.js': h('b') }), vlab: T({ 'index.js': h('c') }) }] });
-  assert.equal(r.state, 'ALIGNED');
+  assert.equal(r.state, 'DIVERGED');
   assert.deepEqual(r.findings.map((f) => [f.kind, f.target, f.advisory]), [
-    ['only-on-v', 'sidecar:v-browser-plugin/core/session-actor-memory.js', true], ['differs', 'sidecar:v-browser-plugin/index.js', true]]);
+    ['only-on-v', 'sidecar:v-browser-plugin/core/session-actor-memory.js', undefined], ['differs', 'sidecar:v-browser-plugin/index.js', undefined]]);
 });
 
 const T = (o) => new Map(Object.entries(o));
@@ -233,7 +233,7 @@ const pairsFor = (...ids) => {
   return all.filter((p) => ids.includes(p.component));
 };
 
-test('parity state: aligned, pending release, drift in a new channel plugin, advisory and pending sidecars', () => {
+test('parity state: aligned, pending release, drift in a new channel plugin, drifting and pending sidecars', () => {
   const pairs = pairsFor('core', 'wecom', 'handoff', 'secret-entry');
   const same = { v: T({ 'dist/a.js': h('a') }), vlab: T({ 'dist/a.js': h('a') }) };
   const absent = { v: null, vlab: null };
@@ -248,11 +248,11 @@ test('parity state: aligned, pending release, drift in a new channel plugin, adv
   assert.equal(drift.state, 'DIVERGED');
   assert.deepEqual(drift.findings.map((f) => [f.component, f.kind, f.target]), [['wecom', 'differs', 'extensions/wecom-openclaw-plugin/dist/a.js']]);
 
-  // Handoff differs: reported, but advisory while blocking is false.
+  // Handoff differs: drift (it stayed advisory, and behind on VLab, from 2026-10-05 to 2026-11-04).
   const handoff = [same, same, { v: T({ 'index.js': h('a'), 'vendor/x.js': h('c') }), vlab: T({ 'index.js': h('a') }) }, same, same, absent];
-  const adv = evaluateParity({ pairs, trees: handoff });
-  assert.equal(adv.state, 'ALIGNED');
-  assert.deepEqual(adv.findings.map((f) => [f.kind, f.target, f.advisory]), [['only-on-v', 'sidecar:handoff/plugin/vendor/x.js', true]]);
+  const hd = evaluateParity({ pairs, trees: handoff });
+  assert.equal(hd.state, 'DIVERGED');
+  assert.deepEqual(hd.findings.map((f) => [f.kind, f.target, f.advisory]), [['only-on-v', 'sidecar:handoff/plugin/vendor/x.js', undefined]]);
 
   // Secret entry installed on VLab only: drift, unless the pending release installs it.
   const secret = [...base.slice(0, 5), { v: null, vlab: T({ 'server.mjs': h('d') }) }];

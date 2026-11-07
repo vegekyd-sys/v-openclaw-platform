@@ -1,0 +1,15 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/feishu-card-open/reply-delivery-result-CEFTDA3f.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/reply-delivery-result-CEFTDA3f.js",
+      "before": "0cc2f09c3f541e522bbb05344dc09abd1a200bd73f53405a8f75cf8652a65a82"
+    },
+    {
+      "source": "lab/release-files/feishu-card-open/monitor.account-WFdlCDhR.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+      "before": "d642af6e81adf2c8e80cfa9fd354cf637d3460266b39e872b03c306b21f07d11"
+    }
+  ]
+}

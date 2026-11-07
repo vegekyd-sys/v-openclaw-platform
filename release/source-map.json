@@ -1405,6 +1405,27 @@
     },
     {
       "layer": "feishu",
+      "path": "dist/monitor.account-WFdlCDhR.js",
+      "sha256": "46711745f606535264faace8c25d38844be6fc1eaa30c0c4c413b0518ec75b5c",
+      "source": "versa:f73ee277c7e",
+      "note": "feishu-card-open-20261104: model-written cards go out as written (no allowlist), rejected cards resent as text, a card-JSON reply finishes the preview card in place (versa/feishu-card-open-20261104)"
+    },
+    {
+      "layer": "feishu",
+      "path": "dist/reply-delivery-result-CEFTDA3f.js",
+      "sha256": "de5f35242ea4322d69284965a13f348acd2756bff84090615c0c4a45cf1a61c6",
+      "source": "versa:f73ee277c7e",
+      "note": "feishu-card-open-20261104: model-written cards go out as written (no allowlist), rejected cards resent as text, a card-JSON reply finishes the preview card in place (versa/feishu-card-open-20261104)"
+    },
+    {
+      "layer": "feishu",
+      "path": "dist/monitor.account-WFdlCDhR.js",
+      "sha256": "d642af6e81adf2c8e80cfa9fd354cf637d3460266b39e872b03c306b21f07d11",
+      "source": "versa:cedaa9bf713",
+      "note": "feishu-card-images-20261104: external markdown images become links, final writes replace the element; task cards stop after 20 failures per process (versa/feishu-card-images-20261104)"
+    },
+    {
+      "layer": "feishu",
       "path": "dist/v-feishu-approvals.js",
       "sha256": "2905c12f9bc3cad97416f169ae7a08072878c7ff89a8f33076d710f7282cf71b",
       "source": "versa:b65dc10193e",
@@ -1422,6 +1443,13 @@
       "sha256": "070801aa1b7ec41aa5b7cd02110f7d67e01e2becfe4a0c59efa3b023f5c55de4",
       "source": "versa:7ffcad5bfdf",
       "note": "wave-2 + 10/30 desktop hand-back (versa/port-feishu-presentation-20261030, fast-forwarded into versa/port-backlog-20261029); task presentation, native adapter and inter-session bridge modules are byte-identical to V; hooks are equivalent TS; plugin entry also registers the presentation as V's index.js does; every behaviour hunk fails a test when reverted; 30/30 markers present in the fork build and absent from stock 9.1"
+    },
+    {
+      "layer": "feishu",
+      "path": "dist/v-feishu-task-presentation.mjs",
+      "sha256": "6124ae69f841078c3d80286cc4aeed2d950c1503b052315aee21f8692d034191",
+      "source": "versa:cedaa9bf713",
+      "note": "feishu-card-images-20261104: external markdown images become links, final writes replace the element; task cards stop after 20 failures per process (versa/feishu-card-images-20261104)"
     },
     {
       "layer": "feishu",
@@ -1634,6 +1662,41 @@
       "sha256": "fb2bbf0e3abd3c4e28e6c9e6b8a1efec3f50ceb0a0d80fe3bcb5a7db0bfcc28d",
       "source": "pending:third-party-plugin",
       "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+    },
+    {
+      "layer": "core",
+      "path": "session-history-eviction-d5aiCsHS.js",
+      "sha256": "2dce5e13809133fec7c135084d1167aba1a44d2cabf0f3c485bf478a7ba2cbee",
+      "source": "versa:330030030e5",
+      "note": "session-delete-admission-20261105 (#558): the deletion fence reads entries only for admitted keys; deletions that keep transcript state skip the reference set and fence (versa/port-session-delete-admission-20261105)"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-lifecycle-dtL0ZEAl.js",
+      "sha256": "f3f6fdfa5fb552658072ed8d4bf0a17583c3f8dfe5bed70a9d7d82b802fc9eb2",
+      "source": "versa:39242f5b4fc",
+      "note": "session-delete-admission-20261105 (#558): the deletion fence reads entries only for admitted keys; deletions that keep transcript state skip the reference set and fence (versa/port-session-delete-admission-20261105)"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor-K0XuW6ln.js",
+      "sha256": "a854b511ef5d0100ac7a89ecb778dd4ba0aa53e6ae3ffa8e9b522b13171eb674",
+      "source": "versa:b0cbe1db060",
+      "note": "delete-cleanup-vcc-steer-20261106 (#559): sessions.delete plugin-state cleanup picks candidates from the metadata list and reads full entries only for matched keys (versa/port-session-delete-plugin-cleanup-20261105)"
+    },
+    {
+      "layer": "core",
+      "path": "extensions/anthropic/agent-sdk.runtime.js",
+      "sha256": "7c1fa81c15c022af5e04583809f53392a56056d7d12f684d84865693d0784ab4",
+      "source": "versa:6f600039627",
+      "note": "delete-cleanup-vcc-steer-20261106 (#561): live Claude sessions take steered messages and hold the turn for a follow-on answer (versa/port-vcc-steer-20261106)"
+    },
+    {
+      "layer": "core",
+      "path": "execute.runtime-DRmvah87.js",
+      "sha256": "1c8902ac292d49a7e1d98d335972267c1b0bda5571582783084541bef5a5a836",
+      "source": "versa:6f600039627",
+      "note": "delete-cleanup-vcc-steer-20261106 (#561): the plugin-executed claude-cli reply handle exposes messageInjection (versa/port-vcc-steer-20261106)"
     }
   ]
 }

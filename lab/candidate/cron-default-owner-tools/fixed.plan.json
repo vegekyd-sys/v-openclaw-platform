@@ -1,0 +1,28 @@
+{
+  "support": [
+    "lab/candidate/cron-default-owner-tools/fake-claude.mjs",
+    "lab/candidate/cron-default-owner-tools/cron-default-owner-tools.mjs",
+    "lab/candidate/cron-default-owner-tools/fake-claude-exe.c"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/cron-default-owner-tools/cron-default-owner-tools.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "files": [
+    {
+      "source": "lab/release-files/cron-default-owner-tools/isolated-agent-BxeXdw5A.js",
+      "target": "openclaw/dist/isolated-agent-BxeXdw5A.js",
+      "before": "2613b14741ab4cf2a03c0c4e6be90a0594ee406009324876aae1d634734f8698"
+    },
+    {
+      "source": "lab/release-files/cron-default-owner-tools/scheduled-tool-policy-WcH3cpLk.js",
+      "target": "openclaw/dist/scheduled-tool-policy-WcH3cpLk.js",
+      "before": "b788e48c757ea29c8a57a1d01f25cf32d5e015c086d72d35723a65049d369b37"
+    }
+  ],
+  "env": {
+    "ARM": "fixed",
+    "FAKE_CLAUDE_BIN": "/opt/vlab-fake-claude-cron/bin"
+  }
+}
