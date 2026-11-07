@@ -31,7 +31,7 @@
 | 2 | 手动 `/model` 过的会话不进灰度、也没有回退 | 第 1 批 | `override-progress.jsonl`：手动 /vds 遇 503 11.0 s 报错；`/model deepseek` 后仍是 Codex，503 6.7 s 回退 | 操作步骤，不用改代码；列进 map 的群各发一次 `/model deepseek` |
 | 3 | 上游挂起无回复，Codex 不回退 | 第 2 批起 | PR #534 已 rebase 到 dev；当前 core 上整体挂起 95.4 s、仅 Codex 挂起 96.4 s 回退到 luna（VLab）；11/01 的不误杀证据（`sleep 200`、200 s 动态工具、慢响应头）字节未变仍适用 | 请 Tianyi 审 #534，建议先于灰度单独上线 |
 | 4 | 并发时比 Worker 慢 | 第 3 批看指标，第 4 批必过 | VLab：DeepSeek 不慢；Codex 每回合多 1.2–1.6 次模型往返（目录没开并行工具调用）；c10 时整机 CPU 不够。见第 6 节 | 验证并行工具调用（实验被 VLab 失联打断）；V 主线程忙的原因要 V 上 profile，需 Tianyi 同意 |
-| 5 | relay 启动晚于 1 s 且 Gateway 9 s 不答时，Codex 照样执行工具 | 第 3 批前 | 补丁在本 PR，在 V 当前快路径字节上仍能打上；快路径后 relay 0.08–0.10 s 起来，触发窗口更小；V 上没有插件用拦截做安全控制 | 上线前要在 openclaw-versa 补源码提交和测试（AGENTS.md 要求），未做 |
+| 5 | relay 启动晚于 1 s 且 Gateway 9 s 不答时，Codex 照样执行工具 | 第 3 批前 | 补丁在本 PR，在 V 当前快路径字节上仍能打上；快路径后 relay 0.08–0.10 s 起来，触发窗口更小；V 上没有插件用拦截做安全控制 | 源码已补：openclaw-versa 分支 `versa/port-relay-deadline-20261107`（`df437a4b1f8`，入口传入进程已运行时长，单测去掉修复会失败），未合 port-backlog；上线时 source-map 指向它 |
 | 6 | `write_stdin` 不进钩子 | 第 3 批前 | 一周 172 次真实使用；V 的 shell 本来就是全权限，只影响插件策略，不是提权 | 建议 Tianyi 接受现状 |
 | 7 | Workboard 固定不住模型 | 只挡第 4 批 | 补丁在本 PR，11/07 在 VLab 当前字节 `runtime-api-1CCazqtv.js` 上仍能打上 | 不做第 4 批就不需要 |
 
