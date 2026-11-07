@@ -1,0 +1,1630 @@
+{
+ "phase": "summary",
+ "built": {
+  "big": null
+ },
+ "probes": {
+  "hold": true,
+  "fencedRead": true,
+  "contextRead": true
+ },
+ "models": {
+  "vds": "deepseek/vds-deepseek-flash",
+  "vcc": "anthropic/claude-haiku-5-5",
+  "canary": "deepseek/deepseek-flash"
+ },
+ "levels": [
+  {
+   "arm": "vdsp",
+   "size": "small",
+   "task": "multi",
+   "c": 5,
+   "cpuByCmd": {
+    "codex -c model_catalog_json=\"v-deepseek-model-catalog.json\" -c instruc": 41.9,
+    "chrome --type=renderer --crashpad-handler-pid=233539 --enable-crash-re": 20.8,
+    "chrome --type=gpu-process --ozone-platform=x11 --crashpad-handler-pid=": 19.4,
+    "node --import=runtime-concurrency-lag.mjs --experimental-async-context": 13.5,
+    "node --inspect=127.0.0.1:9229 --max-old-space-size=8192 index.js gatew": 2.2,
+    "node --experimental-async-context-frame --max-old-space-size=12288 --i": 1.8,
+    "/usr/local/qcloud/YunJing/YDEyes/YDService ": 1.5,
+    "?": 1.3
+   },
+   "threadCpu": {
+    "byComm": {
+     "main": 7.9,
+     "node": 2.8,
+     "libuv-worker": 0.2,
+     "DelayedTaskSche": 0
+    },
+    "childrenSec": 0
+   },
+   "host": {
+    "gcSwap": false,
+    "sharedGatewayInspect": true,
+    "otherCandidates": 0,
+    "load": "5.27 5.42 6.28 3/2139 1925377"
+   },
+   "ran": {
+    "lt-vdsp-small-00": "codex|deepseek/vds-deepseek-flash|openai-completions|in=155 cache=54400 out=9",
+    "lt-vdsp-small-01": "codex|deepseek/vds-deepseek-flash|openai-completions|in=225 cache=53504 out=10",
+    "lt-vdsp-small-02": "codex|deepseek/vds-deepseek-flash|openai-completions|in=213 cache=53504 out=8",
+    "lt-vdsp-small-03": "codex|deepseek/vds-deepseek-flash|openai-completions|in=137 cache=53632 out=8",
+    "lt-vdsp-small-04": "codex|deepseek/vds-deepseek-flash|openai-completions|in=229 cache=53632 out=9",
+    "lt-flash-canary-00": "vlab-worker|deepseek/deepseek-flash|openai-completions|in=159 cache=52480 out=8"
+   },
+   "wallS": 29,
+   "failed": 0,
+   "failRate": 0,
+   "byRuntime": {
+    "vdsp": {
+     "n": 5,
+     "ok": 5,
+     "firstP50": 7.2,
+     "firstP95": 28.5,
+     "doneP50": 26.9,
+     "doneP95": 28.8
+    }
+   },
+   "errors": {},
+   "canary": {
+    "label": "canary-vdsp-small-c5-0",
+    "runtime": "flash",
+    "key": "lt-flash-canary-00",
+    "terminal": "final",
+    "correct": true,
+    "tool": true,
+    "tools": [
+     "exec"
+    ],
+    "firstMs": 6382,
+    "doneMs": 6531
+   },
+   "stallMaxMs": 309,
+   "stallCpuMs": 1696,
+   "stallAt": "2026-10-31T20:14:38.288Z",
+   "delayMaxMs": 438,
+   "stallsOver1s": 0,
+   "stallsOver5s": 0,
+   "eluAvg": 0.131,
+   "heapMaxMB": 480,
+   "liveness": 0,
+   "livenessOverdueMaxMs": 0,
+   "streamAckTimeouts": 0,
+   "lockTimeouts": 0,
+   "workerStartFailures": 0,
+   "workerProcMax": 6,
+   "workerRssMaxMB": 2492,
+   "otherProcMax": 0,
+   "otherRssMaxMB": 0,
+   "treeRssMaxMB": 3831,
+   "codexInspection": 0,
+   "codexInspectionDeadline": 0,
+   "codexReap": 0,
+   "rateLimited": 0,
+   "memoryFlush": 0,
+   "readsN": 0,
+   "readsMaxMs": 0,
+   "readsSumMs": 0,
+   "readsByKind": {
+    "context": 0,
+    "fenced": 0
+   },
+   "holdsMaxMs": 0,
+   "holdsN": 0,
+   "holdsSumMs": 0,
+   "holdsByOp": {},
+   "gwCpuAvgPct": 27,
+   "gwCpuMaxPct": 159,
+   "gwRssMaxMB": 821,
+   "codexProcMax": 3,
+   "codexRssMaxMB": 523,
+   "claudeProcMax": 0,
+   "claudeRssMaxMB": 0,
+   "hostAvailMinMB": 5365,
+   "swapUsedMaxMB": 8332,
+   "loadMax": 6.23,
+   "runs": [
+    {
+     "label": "vdsp-small-multi-c5-0-b0bc73",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-00",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 26591,
+     "doneMs": 26916
+    },
+    {
+     "label": "vdsp-small-multi-c5-1-60b286",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-01",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 6711,
+     "doneMs": 26469
+    },
+    {
+     "label": "vdsp-small-multi-c5-2-7b869a",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-02",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 7190,
+     "doneMs": 26362
+    },
+    {
+     "label": "vdsp-small-multi-c5-3-ce30b3",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-03",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 6868,
+     "doneMs": 27828
+    },
+    {
+     "label": "vdsp-small-multi-c5-4-e22b29",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-04",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 28483,
+     "doneMs": 28767
+    }
+   ]
+  },
+  {
+   "arm": "vds",
+   "size": "small",
+   "task": "multi",
+   "c": 5,
+   "cpuByCmd": {
+    "codex -c model_catalog_json=\"v-deepseek-model-catalog.json\" -c instruc": 41.6,
+    "chrome --type=renderer --crashpad-handler-pid=233539 --enable-crash-re": 24.2,
+    "chrome --type=gpu-process --ozone-platform=x11 --crashpad-handler-pid=": 22.2,
+    "node --import=runtime-concurrency-lag.mjs --experimental-async-context": 12.3,
+    "node --experimental-async-context-frame --max-old-space-size=12288 --i": 2.3,
+    "/usr/local/qcloud/YunJing/YDEyes/YDService ": 1.6,
+    "Xtigervnc :99 -geometry 1280x800 -depth 24 -localhost yes -rfbport 590": 1.3,
+    "node --inspect=127.0.0.1:9229 --max-old-space-size=8192 index.js gatew": 1.1
+   },
+   "threadCpu": {
+    "byComm": {
+     "main": 7.1,
+     "node": 2.3,
+     "libuv-worker": 0.1,
+     "DelayedTaskSche": 0
+    },
+    "childrenSec": 0
+   },
+   "host": {
+    "gcSwap": false,
+    "sharedGatewayInspect": true,
+    "otherCandidates": 0,
+    "load": "3.08 4.32 5.68 3/2132 1926665"
+   },
+   "ran": {
+    "lt-vds-small-00": "codex|deepseek/vds-deepseek-flash|openai-completions|in=157 cache=53632 out=10",
+    "lt-vds-small-01": "codex|deepseek/vds-deepseek-flash|openai-completions|in=195 cache=53376 out=9",
+    "lt-vds-small-02": "codex|deepseek/vds-deepseek-flash|openai-completions|in=179 cache=53504 out=6",
+    "lt-vds-small-03": "codex|deepseek/vds-deepseek-flash|openai-completions|in=173 cache=53632 out=8",
+    "lt-vds-small-04": "codex|deepseek/vds-deepseek-flash|openai-completions|in=528 cache=52992 out=9",
+    "lt-flash-canary-00": "vlab-worker|deepseek/deepseek-flash|openai-completions|in=191 cache=52608 out=8"
+   },
+   "wallS": 32,
+   "failed": 0,
+   "failRate": 0,
+   "byRuntime": {
+    "vds": {
+     "n": 5,
+     "ok": 5,
+     "firstP50": 5.9,
+     "firstP95": 25.2,
+     "doneP50": 25.4,
+     "doneP95": 31.4
+    }
+   },
+   "errors": {},
+   "canary": {
+    "label": "canary-vds-small-c5-1",
+    "runtime": "flash",
+    "key": "lt-flash-canary-00",
+    "terminal": "final",
+    "correct": true,
+    "tool": true,
+    "tools": [
+     "exec"
+    ],
+    "firstMs": 6118,
+    "doneMs": 6536
+   },
+   "stallMaxMs": 364,
+   "stallCpuMs": 1477,
+   "stallAt": "2026-10-31T20:17:54.848Z",
+   "delayMaxMs": 442,
+   "stallsOver1s": 0,
+   "stallsOver5s": 0,
+   "eluAvg": 0.106,
+   "heapMaxMB": 501,
+   "liveness": 0,
+   "livenessOverdueMaxMs": 0,
+   "streamAckTimeouts": 0,
+   "lockTimeouts": 0,
+   "workerStartFailures": 0,
+   "workerProcMax": 5,
+   "workerRssMaxMB": 2408,
+   "otherProcMax": 0,
+   "otherRssMaxMB": 0,
+   "treeRssMaxMB": 3793,
+   "codexInspection": 0,
+   "codexInspectionDeadline": 0,
+   "codexReap": 0,
+   "rateLimited": 0,
+   "memoryFlush": 0,
+   "readsN": 0,
+   "readsMaxMs": 0,
+   "readsSumMs": 0,
+   "readsByKind": {
+    "context": 0,
+    "fenced": 0
+   },
+   "holdsMaxMs": 0,
+   "holdsN": 0,
+   "holdsSumMs": 0,
+   "holdsByOp": {},
+   "gwCpuAvgPct": 22,
+   "gwCpuMaxPct": 134,
+   "gwRssMaxMB": 847,
+   "codexProcMax": 3,
+   "codexRssMaxMB": 539,
+   "claudeProcMax": 0,
+   "claudeRssMaxMB": 0,
+   "hostAvailMinMB": 5112,
+   "swapUsedMaxMB": 8328,
+   "loadMax": 4.13,
+   "runs": [
+    {
+     "label": "vds-small-multi-c5-0-8f09aa",
+     "runtime": "vds",
+     "key": "lt-vds-small-00",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 25172,
+     "doneMs": 25361
+    },
+    {
+     "label": "vds-small-multi-c5-1-f04964",
+     "runtime": "vds",
+     "key": "lt-vds-small-01",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 15636,
+     "doneMs": 31433
+    },
+    {
+     "label": "vds-small-multi-c5-2-39484e",
+     "runtime": "vds",
+     "key": "lt-vds-small-02",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 5871,
+     "doneMs": 25559
+    },
+    {
+     "label": "vds-small-multi-c5-3-2572c7",
+     "runtime": "vds",
+     "key": "lt-vds-small-03",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 5350,
+     "doneMs": 23090
+    },
+    {
+     "label": "vds-small-multi-c5-4-0c463f",
+     "runtime": "vds",
+     "key": "lt-vds-small-04",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 5153,
+     "doneMs": 15541
+    }
+   ]
+  },
+  {
+   "arm": "vdsp",
+   "size": "small",
+   "task": "multi",
+   "c": 5,
+   "cpuByCmd": {
+    "/sbin/init showopts ": 493.1,
+    "codex -c model_catalog_json=\"v-deepseek-model-catalog.json\" -c instruc": 43.7,
+    "node --experimental-async-context-frame --max-old-space-size=12288 --i": 22.2,
+    "chrome --type=renderer --crashpad-handler-pid=233539 --enable-crash-re": 19.5,
+    "chrome --type=gpu-process --ozone-platform=x11 --crashpad-handler-pid=": 18.2,
+    "node --import=runtime-concurrency-lag.mjs --experimental-async-context": 12.5,
+    "?": 2.1,
+    "/usr/local/qcloud/YunJing/YDEyes/YDService ": 1.7
+   },
+   "threadCpu": {
+    "byComm": {
+     "main": 7.6,
+     "node": 2,
+     "libuv-worker": 0,
+     "DelayedTaskSche": 0
+    },
+    "childrenSec": 0
+   },
+   "host": {
+    "gcSwap": false,
+    "sharedGatewayInspect": true,
+    "otherCandidates": 0,
+    "load": "4.93 4.11 5.30 6/2078 1928133"
+   },
+   "ran": {
+    "lt-vdsp-small-00": "codex|deepseek/vds-deepseek-flash|openai-completions|in=141 cache=56960 out=8",
+    "lt-vdsp-small-01": "codex|deepseek/vds-deepseek-flash|openai-completions|in=160 cache=55680 out=8",
+    "lt-vdsp-small-02": "codex|deepseek/vds-deepseek-flash|openai-completions|in=153 cache=55680 out=8",
+    "lt-vdsp-small-03": "codex|deepseek/vds-deepseek-flash|openai-completions|in=216 cache=55680 out=7",
+    "lt-vdsp-small-04": "codex|deepseek/vds-deepseek-flash|openai-completions|in=166 cache=55808 out=8",
+    "lt-flash-canary-00": "vlab-worker|deepseek/deepseek-flash|openai-completions|in=224 cache=52736 out=7"
+   },
+   "wallS": 32,
+   "failed": 0,
+   "failRate": 0,
+   "byRuntime": {
+    "vdsp": {
+     "n": 5,
+     "ok": 5,
+     "firstP50": 30.7,
+     "firstP95": 32,
+     "doneP50": 31.1,
+     "doneP95": 32.4
+    }
+   },
+   "errors": {},
+   "canary": {
+    "label": "canary-vdsp-small-c5-2",
+    "runtime": "flash",
+    "key": "lt-flash-canary-00",
+    "terminal": "final",
+    "correct": true,
+    "tool": true,
+    "tools": [
+     "exec"
+    ],
+    "firstMs": 6030,
+    "doneMs": 6570
+   },
+   "stallMaxMs": 281,
+   "stallCpuMs": 1104,
+   "stallAt": "2026-10-31T20:21:08.336Z",
+   "delayMaxMs": 489,
+   "stallsOver1s": 0,
+   "stallsOver5s": 0,
+   "eluAvg": 0.124,
+   "heapMaxMB": 504,
+   "liveness": 0,
+   "livenessOverdueMaxMs": 0,
+   "streamAckTimeouts": 0,
+   "lockTimeouts": 0,
+   "workerStartFailures": 0,
+   "workerProcMax": 5,
+   "workerRssMaxMB": 2415,
+   "otherProcMax": 0,
+   "otherRssMaxMB": 0,
+   "treeRssMaxMB": 3815,
+   "codexInspection": 0,
+   "codexInspectionDeadline": 0,
+   "codexReap": 0,
+   "rateLimited": 0,
+   "memoryFlush": 0,
+   "readsN": 0,
+   "readsMaxMs": 0,
+   "readsSumMs": 0,
+   "readsByKind": {
+    "context": 0,
+    "fenced": 0
+   },
+   "holdsMaxMs": 0,
+   "holdsN": 0,
+   "holdsSumMs": 0,
+   "holdsByOp": {},
+   "gwCpuAvgPct": 21,
+   "gwCpuMaxPct": 110,
+   "gwRssMaxMB": 854,
+   "codexProcMax": 3,
+   "codexRssMaxMB": 546,
+   "claudeProcMax": 0,
+   "claudeRssMaxMB": 0,
+   "hostAvailMinMB": 5473,
+   "swapUsedMaxMB": 8325,
+   "loadMax": 5,
+   "runs": [
+    {
+     "label": "vdsp-small-multi-c5-0-7f71d9",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-00",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 31106,
+     "doneMs": 31413
+    },
+    {
+     "label": "vdsp-small-multi-c5-1-817899",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-01",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 30728,
+     "doneMs": 31148
+    },
+    {
+     "label": "vdsp-small-multi-c5-2-f13c66",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-02",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 30136,
+     "doneMs": 30537
+    },
+    {
+     "label": "vdsp-small-multi-c5-3-1cfcbf",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-03",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 27423,
+     "doneMs": 27976
+    },
+    {
+     "label": "vdsp-small-multi-c5-4-84a384",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-04",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 32020,
+     "doneMs": 32353
+    }
+   ]
+  },
+  {
+   "arm": "vds",
+   "size": "small",
+   "task": "multi",
+   "c": 5,
+   "cpuByCmd": {
+    "codex -c model_catalog_json=\"v-deepseek-model-catalog.json\" -c instruc": 40.4,
+    "chrome --type=renderer --crashpad-handler-pid=233539 --enable-crash-re": 18.6,
+    "chrome --type=gpu-process --ozone-platform=x11 --crashpad-handler-pid=": 17.1,
+    "node --import=runtime-concurrency-lag.mjs --experimental-async-context": 11.5,
+    "node --experimental-async-context-frame --max-old-space-size=12288 --i": 1.7,
+    "/usr/local/qcloud/YunJing/YDEyes/YDService ": 1.2,
+    "Xtigervnc :99 -geometry 1280x800 -depth 24 -localhost yes -rfbport 590": 0.9,
+    "?": 0.7
+   },
+   "threadCpu": {
+    "byComm": {
+     "main": 6.9,
+     "node": 2,
+     "libuv-worker": 0.1,
+     "DelayedTaskSche": 0
+    },
+    "childrenSec": 0
+   },
+   "host": {
+    "gcSwap": false,
+    "sharedGatewayInspect": true,
+    "otherCandidates": 0,
+    "load": "7.02 5.31 5.56 6/2174 1929564"
+   },
+   "ran": {
+    "lt-vds-small-00": "codex|deepseek/vds-deepseek-flash|openai-completions|in=215 cache=55680 out=7",
+    "lt-vds-small-01": "codex|deepseek/vds-deepseek-flash|openai-completions|in=189 cache=55552 out=10",
+    "lt-vds-small-02": "codex|deepseek/vds-deepseek-flash|openai-completions|in=225 cache=55552 out=7",
+    "lt-vds-small-03": "codex|deepseek/vds-deepseek-flash|openai-completions|in=233 cache=55680 out=9",
+    "lt-vds-small-04": "codex|deepseek/vds-deepseek-flash|openai-completions|in=166 cache=55808 out=9",
+    "lt-flash-canary-00": "vlab-worker|deepseek/deepseek-flash|openai-completions|in=253 cache=52864 out=6"
+   },
+   "wallS": 25,
+   "failed": 0,
+   "failRate": 0,
+   "byRuntime": {
+    "vds": {
+     "n": 5,
+     "ok": 5,
+     "firstP50": 24.2,
+     "firstP95": 24.9,
+     "doneP50": 24.5,
+     "doneP95": 25.2
+    }
+   },
+   "errors": {},
+   "canary": {
+    "label": "canary-vds-small-c5-3",
+    "runtime": "flash",
+    "key": "lt-flash-canary-00",
+    "terminal": "final",
+    "correct": true,
+    "tool": true,
+    "tools": [
+     "exec"
+    ],
+    "firstMs": 5385,
+    "doneMs": 5634
+   },
+   "stallMaxMs": 370,
+   "stallCpuMs": 1478,
+   "stallAt": "2026-10-31T20:24:27.571Z",
+   "delayMaxMs": 449,
+   "stallsOver1s": 0,
+   "stallsOver5s": 0,
+   "eluAvg": 0.116,
+   "heapMaxMB": 499,
+   "liveness": 0,
+   "livenessOverdueMaxMs": 0,
+   "streamAckTimeouts": 0,
+   "lockTimeouts": 0,
+   "workerStartFailures": 0,
+   "workerProcMax": 5,
+   "workerRssMaxMB": 2418,
+   "otherProcMax": 0,
+   "otherRssMaxMB": 0,
+   "treeRssMaxMB": 3829,
+   "codexInspection": 0,
+   "codexInspectionDeadline": 0,
+   "codexReap": 0,
+   "rateLimited": 0,
+   "memoryFlush": 0,
+   "readsN": 0,
+   "readsMaxMs": 0,
+   "readsSumMs": 0,
+   "readsByKind": {
+    "context": 0,
+    "fenced": 0
+   },
+   "holdsMaxMs": 0,
+   "holdsN": 0,
+   "holdsSumMs": 0,
+   "holdsByOp": {},
+   "gwCpuAvgPct": 23,
+   "gwCpuMaxPct": 114,
+   "gwRssMaxMB": 864,
+   "codexProcMax": 3,
+   "codexRssMaxMB": 547,
+   "claudeProcMax": 0,
+   "claudeRssMaxMB": 0,
+   "hostAvailMinMB": 5083,
+   "swapUsedMaxMB": 8318,
+   "loadMax": 7.02,
+   "runs": [
+    {
+     "label": "vds-small-multi-c5-0-9e49c6",
+     "runtime": "vds",
+     "key": "lt-vds-small-00",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 21514,
+     "doneMs": 21942
+    },
+    {
+     "label": "vds-small-multi-c5-1-05bef6",
+     "runtime": "vds",
+     "key": "lt-vds-small-01",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 24219,
+     "doneMs": 24462
+    },
+    {
+     "label": "vds-small-multi-c5-2-e88194",
+     "runtime": "vds",
+     "key": "lt-vds-small-02",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 24655,
+     "doneMs": 24899
+    },
+    {
+     "label": "vds-small-multi-c5-3-191859",
+     "runtime": "vds",
+     "key": "lt-vds-small-03",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 5343,
+     "doneMs": 22748
+    },
+    {
+     "label": "vds-small-multi-c5-4-ad919d",
+     "runtime": "vds",
+     "key": "lt-vds-small-04",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 24860,
+     "doneMs": 25239
+    }
+   ]
+  },
+  {
+   "arm": "vdsp",
+   "size": "small",
+   "task": "multi",
+   "c": 5,
+   "cpuByCmd": {
+    "codex -c model_catalog_json=\"v-deepseek-model-catalog.json\" -c instruc": 44.2,
+    "chrome --type=renderer --crashpad-handler-pid=233539 --enable-crash-re": 20.5,
+    "chrome --type=gpu-process --ozone-platform=x11 --crashpad-handler-pid=": 19.3,
+    "node --experimental-async-context-frame --max-old-space-size=12288 --i": 19.3,
+    "node --import=runtime-concurrency-lag.mjs --experimental-async-context": 11.7,
+    "/usr/local/qcloud/YunJing/YDEyes/YDService ": 1.4,
+    "?": 1.3,
+    "node --inspect=127.0.0.1:9229 --max-old-space-size=8192 index.js gatew": 1.1
+   },
+   "threadCpu": {
+    "byComm": {
+     "main": 7.4,
+     "node": 2,
+     "libuv-worker": 0,
+     "DelayedTaskSche": 0
+    },
+    "childrenSec": 0
+   },
+   "host": {
+    "gcSwap": false,
+    "sharedGatewayInspect": true,
+    "otherCandidates": 0,
+    "load": "5.36 4.86 5.30 6/2174 1930958"
+   },
+   "ran": {
+    "lt-vdsp-small-00": "codex|deepseek/vds-deepseek-flash|openai-completions|in=259 cache=59392 out=8",
+    "lt-vdsp-small-01": "codex|deepseek/vds-deepseek-flash|openai-completions|in=220 cache=57728 out=8",
+    "lt-vdsp-small-02": "codex|deepseek/vds-deepseek-flash|openai-completions|in=207 cache=57728 out=10",
+    "lt-vdsp-small-03": "codex|deepseek/vds-deepseek-flash|openai-completions|in=149 cache=57856 out=8",
+    "lt-vdsp-small-04": "codex|deepseek/vds-deepseek-flash|openai-completions|in=219 cache=57856 out=10",
+    "lt-flash-canary-00": "vlab-worker|deepseek/deepseek-flash|openai-completions|in=157 cache=53120 out=9"
+   },
+   "wallS": 33,
+   "failed": 0,
+   "failRate": 0,
+   "byRuntime": {
+    "vdsp": {
+     "n": 5,
+     "ok": 5,
+     "firstP50": 31.5,
+     "firstP95": 31.7,
+     "doneP50": 32,
+     "doneP95": 32.5
+    }
+   },
+   "errors": {},
+   "canary": {
+    "label": "canary-vdsp-small-c5-4",
+    "runtime": "flash",
+    "key": "lt-flash-canary-00",
+    "terminal": "final",
+    "correct": true,
+    "tool": true,
+    "tools": [
+     "exec"
+    ],
+    "firstMs": 4451,
+    "doneMs": 4824
+   },
+   "stallMaxMs": 258,
+   "stallCpuMs": 1543,
+   "stallAt": "2026-10-31T20:27:55.769Z",
+   "delayMaxMs": 505,
+   "stallsOver1s": 0,
+   "stallsOver5s": 0,
+   "eluAvg": 0.113,
+   "heapMaxMB": 502,
+   "liveness": 0,
+   "livenessOverdueMaxMs": 0,
+   "streamAckTimeouts": 0,
+   "lockTimeouts": 0,
+   "workerStartFailures": 0,
+   "workerProcMax": 5,
+   "workerRssMaxMB": 2422,
+   "otherProcMax": 0,
+   "otherRssMaxMB": 0,
+   "treeRssMaxMB": 3848,
+   "codexInspection": 0,
+   "codexInspectionDeadline": 0,
+   "codexReap": 0,
+   "rateLimited": 0,
+   "memoryFlush": 0,
+   "readsN": 0,
+   "readsMaxMs": 0,
+   "readsSumMs": 0,
+   "readsByKind": {
+    "context": 0,
+    "fenced": 0
+   },
+   "holdsMaxMs": 0,
+   "holdsN": 0,
+   "holdsSumMs": 0,
+   "holdsByOp": {},
+   "gwCpuAvgPct": 21,
+   "gwCpuMaxPct": 149,
+   "gwRssMaxMB": 875,
+   "codexProcMax": 3,
+   "codexRssMaxMB": 552,
+   "claudeProcMax": 0,
+   "claudeRssMaxMB": 0,
+   "hostAvailMinMB": 4899,
+   "swapUsedMaxMB": 8315,
+   "loadMax": 6.04,
+   "runs": [
+    {
+     "label": "vdsp-small-multi-c5-0-9e425c",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-00",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 31529,
+     "doneMs": 31974
+    },
+    {
+     "label": "vdsp-small-multi-c5-1-e92eb4",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-01",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 28228,
+     "doneMs": 28662
+    },
+    {
+     "label": "vdsp-small-multi-c5-2-52fe57",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-02",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 28824,
+     "doneMs": 29146
+    },
+    {
+     "label": "vdsp-small-multi-c5-3-7fad11",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-03",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 31743,
+     "doneMs": 32362
+    },
+    {
+     "label": "vdsp-small-multi-c5-4-6ad90d",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-04",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 31723,
+     "doneMs": 32475
+    }
+   ]
+  },
+  {
+   "arm": "vds",
+   "size": "small",
+   "task": "multi",
+   "c": 5,
+   "cpuByCmd": {
+    "codex -c model_catalog_json=\"v-deepseek-model-catalog.json\" -c instruc": 46.8,
+    "node --experimental-async-context-frame --max-old-space-size=12288 wor": 32.5,
+    "chrome --type=renderer --crashpad-handler-pid=233539 --enable-crash-re": 23.2,
+    "chrome --type=gpu-process --ozone-platform=x11 --crashpad-handler-pid=": 22,
+    "node --experimental-async-context-frame --max-old-space-size=12288 --i": 19.1,
+    "node --import=runtime-concurrency-lag.mjs --experimental-async-context": 13.7,
+    "node mcp-server.mjs ": 9.1,
+    "bash gate-cycle.sh prod91today c3f2-r2 ": 3.9
+   },
+   "threadCpu": {
+    "byComm": {
+     "main": 8.4,
+     "node": 2.4,
+     "libuv-worker": 0.1,
+     "DelayedTaskSche": 0
+    },
+    "childrenSec": 0
+   },
+   "host": {
+    "gcSwap": false,
+    "sharedGatewayInspect": true,
+    "otherCandidates": 0,
+    "load": "9.89 6.31 5.69 5/2280 1932456"
+   },
+   "ran": {
+    "lt-vds-small-00": "codex|deepseek/vds-deepseek-flash|openai-completions|in=257 cache=57728 out=7",
+    "lt-vds-small-01": "codex|deepseek/vds-deepseek-flash|openai-completions|in=238 cache=57600 out=6",
+    "lt-vds-small-02": "codex|deepseek/vds-deepseek-flash|openai-completions|in=147 cache=57728 out=9",
+    "lt-vds-small-03": "codex|deepseek/vds-deepseek-flash|openai-completions|in=170 cache=57856 out=7",
+    "lt-vds-small-04": "codex|deepseek/vds-deepseek-flash|openai-completions|in=220 cache=57856 out=9",
+    "lt-flash-canary-00": "vlab-worker|deepseek/deepseek-flash|openai-completions|in=190 cache=53248 out=8"
+   },
+   "wallS": 46,
+   "failed": 0,
+   "failRate": 0,
+   "byRuntime": {
+    "vds": {
+     "n": 5,
+     "ok": 5,
+     "firstP50": 44,
+     "firstP95": 45.8,
+     "doneP50": 44.3,
+     "doneP95": 46.1
+    }
+   },
+   "errors": {},
+   "canary": {
+    "label": "canary-vds-small-c5-5",
+    "runtime": "flash",
+    "key": "lt-flash-canary-00",
+    "terminal": "final",
+    "correct": true,
+    "tool": true,
+    "tools": [
+     "exec"
+    ],
+    "firstMs": 6359,
+    "doneMs": 6730
+   },
+   "stallMaxMs": 355,
+   "stallCpuMs": 1296,
+   "stallAt": "2026-10-31T20:30:54.463Z",
+   "delayMaxMs": 734,
+   "stallsOver1s": 0,
+   "stallsOver5s": 0,
+   "eluAvg": 0.129,
+   "heapMaxMB": 502,
+   "liveness": 0,
+   "livenessOverdueMaxMs": 0,
+   "streamAckTimeouts": 0,
+   "lockTimeouts": 0,
+   "workerStartFailures": 0,
+   "workerProcMax": 5,
+   "workerRssMaxMB": 2425,
+   "otherProcMax": 2,
+   "otherRssMaxMB": 20,
+   "treeRssMaxMB": 3859,
+   "codexInspection": 0,
+   "codexInspectionDeadline": 0,
+   "codexReap": 0,
+   "rateLimited": 1,
+   "memoryFlush": 0,
+   "readsN": 0,
+   "readsMaxMs": 0,
+   "readsSumMs": 0,
+   "readsByKind": {
+    "context": 0,
+    "fenced": 0
+   },
+   "holdsMaxMs": 0,
+   "holdsN": 0,
+   "holdsSumMs": 0,
+   "holdsByOp": {},
+   "gwCpuAvgPct": 18,
+   "gwCpuMaxPct": 106,
+   "gwRssMaxMB": 885,
+   "codexProcMax": 3,
+   "codexRssMaxMB": 546,
+   "claudeProcMax": 0,
+   "claudeRssMaxMB": 0,
+   "hostAvailMinMB": 4151,
+   "swapUsedMaxMB": 8312,
+   "loadMax": 11.66,
+   "runs": [
+    {
+     "label": "vds-small-multi-c5-0-d31ade",
+     "runtime": "vds",
+     "key": "lt-vds-small-00",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 45772,
+     "doneMs": 46085
+    },
+    {
+     "label": "vds-small-multi-c5-1-28d485",
+     "runtime": "vds",
+     "key": "lt-vds-small-01",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 44014,
+     "doneMs": 44288
+    },
+    {
+     "label": "vds-small-multi-c5-2-e900fa",
+     "runtime": "vds",
+     "key": "lt-vds-small-02",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 40951,
+     "doneMs": 41791
+    },
+    {
+     "label": "vds-small-multi-c5-3-2944da",
+     "runtime": "vds",
+     "key": "lt-vds-small-03",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 6036,
+     "doneMs": 44068
+    },
+    {
+     "label": "vds-small-multi-c5-4-60fa81",
+     "runtime": "vds",
+     "key": "lt-vds-small-04",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 44628,
+     "doneMs": 44931
+    }
+   ]
+  },
+  {
+   "arm": "vdsp",
+   "size": "small",
+   "task": "multi",
+   "c": 5,
+   "cpuByCmd": {
+    "codex -c model_catalog_json=\"v-deepseek-model-catalog.json\" -c instruc": 46.4,
+    "chrome --type=renderer --crashpad-handler-pid=233539 --enable-crash-re": 23.8,
+    "chrome --type=gpu-process --ozone-platform=x11 --crashpad-handler-pid=": 21.5,
+    "node --import=runtime-concurrency-lag.mjs --experimental-async-context": 15.1,
+    "node --experimental-async-context-frame --max-old-space-size=12288 --i": 4.7,
+    "/usr/local/qcloud/YunJing/YDEyes/YDService ": 1.5,
+    "Xtigervnc :99 -geometry 1280x800 -depth 24 -localhost yes -rfbport 590": 1.1,
+    "?": 0.9
+   },
+   "threadCpu": {
+    "byComm": {
+     "main": 9.4,
+     "node": 2,
+     "libuv-worker": 0,
+     "DelayedTaskSche": 0
+    },
+    "childrenSec": 0
+   },
+   "host": {
+    "gcSwap": false,
+    "sharedGatewayInspect": true,
+    "otherCandidates": 0,
+    "load": "6.42 6.08 5.70 5/2271 1933547"
+   },
+   "ran": {
+    "lt-vdsp-small-00": "codex|deepseek/vds-deepseek-flash|openai-completions|in=240 cache=61952 out=10",
+    "lt-vdsp-small-01": "codex|deepseek/vds-deepseek-flash|openai-completions|in=149 cache=59904 out=9",
+    "lt-vdsp-small-02": "codex|deepseek/vds-deepseek-flash|openai-completions|in=257 cache=59776 out=9",
+    "lt-vdsp-small-03": "codex|deepseek/vds-deepseek-flash|openai-completions|in=210 cache=59904 out=9",
+    "lt-vdsp-small-04": "codex|deepseek/vds-deepseek-flash|openai-completions|in=137 cache=60032 out=7",
+    "lt-flash-canary-00": "vlab-worker|deepseek/deepseek-flash|openai-completions|in=225 cache=53376 out=9"
+   },
+   "wallS": 32,
+   "failed": 0,
+   "failRate": 0,
+   "byRuntime": {
+    "vdsp": {
+     "n": 5,
+     "ok": 5,
+     "firstP50": 30.5,
+     "firstP95": 31.6,
+     "doneP50": 31.1,
+     "doneP95": 31.8
+    }
+   },
+   "errors": {},
+   "canary": {
+    "label": "canary-vdsp-small-c5-6",
+    "runtime": "flash",
+    "key": "lt-flash-canary-00",
+    "terminal": "final",
+    "correct": true,
+    "tool": true,
+    "tools": [
+     "exec"
+    ],
+    "firstMs": 6483,
+    "doneMs": 6897
+   },
+   "stallMaxMs": 459,
+   "stallCpuMs": 1291,
+   "stallAt": "2026-10-31T20:34:28.672Z",
+   "delayMaxMs": 904,
+   "stallsOver1s": 0,
+   "stallsOver5s": 0,
+   "eluAvg": 0.129,
+   "heapMaxMB": 504,
+   "liveness": 0,
+   "livenessOverdueMaxMs": 0,
+   "streamAckTimeouts": 0,
+   "lockTimeouts": 0,
+   "workerStartFailures": 0,
+   "workerProcMax": 5,
+   "workerRssMaxMB": 2431,
+   "otherProcMax": 0,
+   "otherRssMaxMB": 0,
+   "treeRssMaxMB": 3885,
+   "codexInspection": 0,
+   "codexInspectionDeadline": 0,
+   "codexReap": 0,
+   "rateLimited": 0,
+   "memoryFlush": 0,
+   "readsN": 0,
+   "readsMaxMs": 0,
+   "readsSumMs": 0,
+   "readsByKind": {
+    "context": 0,
+    "fenced": 0
+   },
+   "holdsMaxMs": 0,
+   "holdsN": 0,
+   "holdsSumMs": 0,
+   "holdsByOp": {},
+   "gwCpuAvgPct": 26,
+   "gwCpuMaxPct": 148,
+   "gwRssMaxMB": 892,
+   "codexProcMax": 3,
+   "codexRssMaxMB": 565,
+   "claudeProcMax": 0,
+   "claudeRssMaxMB": 0,
+   "hostAvailMinMB": 4379,
+   "swapUsedMaxMB": 8306,
+   "loadMax": 6.6,
+   "runs": [
+    {
+     "label": "vdsp-small-multi-c5-0-eb488c",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-00",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 31617,
+     "doneMs": 31821
+    },
+    {
+     "label": "vdsp-small-multi-c5-1-f1c1a8",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-01",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 30539,
+     "doneMs": 31109
+    },
+    {
+     "label": "vdsp-small-multi-c5-2-345668",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-02",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 30676,
+     "doneMs": 31407
+    },
+    {
+     "label": "vdsp-small-multi-c5-3-ed65e7",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-03",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 30216,
+     "doneMs": 30561
+    },
+    {
+     "label": "vdsp-small-multi-c5-4-d084af",
+     "runtime": "vdsp",
+     "key": "lt-vdsp-small-04",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 28007,
+     "doneMs": 28465
+    }
+   ]
+  },
+  {
+   "arm": "vds",
+   "size": "small",
+   "task": "multi",
+   "c": 5,
+   "cpuByCmd": {
+    "codex -c model_catalog_json=\"v-deepseek-model-catalog.json\" -c instruc": 40.3,
+    "chrome --type=renderer --crashpad-handler-pid=233539 --enable-crash-re": 19.6,
+    "chrome --type=gpu-process --ozone-platform=x11 --crashpad-handler-pid=": 17.9,
+    "node --import=runtime-concurrency-lag.mjs --experimental-async-context": 10.5,
+    "node --experimental-async-context-frame --max-old-space-size=12288 --i": 4.7,
+    "/usr/local/qcloud/YunJing/YDEyes/YDService ": 1.3,
+    "Xtigervnc :99 -geometry 1280x800 -depth 24 -localhost yes -rfbport 590": 1,
+    "node --inspect=127.0.0.1:9229 --max-old-space-size=8192 index.js gatew": 0.9
+   },
+   "threadCpu": {
+    "byComm": {
+     "main": 6.5,
+     "node": 1.7,
+     "libuv-worker": 0,
+     "DelayedTaskSche": 0
+    },
+    "childrenSec": 0
+   },
+   "host": {
+    "gcSwap": false,
+    "sharedGatewayInspect": true,
+    "otherCandidates": 0,
+    "load": "5.50 5.36 5.46 4/2249 1934654"
+   },
+   "ran": {
+    "lt-vds-small-00": "codex|deepseek/vds-deepseek-flash|openai-completions|in=174 cache=59904 out=10",
+    "lt-vds-small-01": "codex|deepseek/vds-deepseek-flash|openai-completions|in=154 cache=59776 out=6",
+    "lt-vds-small-02": "codex|deepseek/vds-deepseek-flash|openai-completions|in=194 cache=59776 out=8",
+    "lt-vds-small-03": "codex|deepseek/vds-deepseek-flash|openai-completions|in=231 cache=59904 out=8",
+    "lt-vds-small-04": "codex|deepseek/vds-deepseek-flash|openai-completions|in=142 cache=60032 out=6",
+    "lt-flash-canary-00": "vlab-worker|deepseek/deepseek-flash|openai-completions|in=256 cache=53504 out=6"
+   },
+   "wallS": 27,
+   "failed": 0,
+   "failRate": 0,
+   "byRuntime": {
+    "vds": {
+     "n": 5,
+     "ok": 5,
+     "firstP50": 24.4,
+     "firstP95": 26.4,
+     "doneP50": 26,
+     "doneP95": 26.7
+    }
+   },
+   "errors": {},
+   "canary": {
+    "label": "canary-vds-small-c5-7",
+    "runtime": "flash",
+    "key": "lt-flash-canary-00",
+    "terminal": "final",
+    "correct": true,
+    "tool": true,
+    "tools": [
+     "exec"
+    ],
+    "firstMs": 5285,
+    "doneMs": 5500
+   },
+   "stallMaxMs": 257,
+   "stallCpuMs": 1227,
+   "stallAt": "2026-10-31T20:37:42.652Z",
+   "delayMaxMs": 584,
+   "stallsOver1s": 0,
+   "stallsOver5s": 0,
+   "eluAvg": 0.11,
+   "heapMaxMB": 505,
+   "liveness": 0,
+   "livenessOverdueMaxMs": 0,
+   "streamAckTimeouts": 0,
+   "lockTimeouts": 0,
+   "workerStartFailures": 0,
+   "workerProcMax": 5,
+   "workerRssMaxMB": 2435,
+   "otherProcMax": 0,
+   "otherRssMaxMB": 0,
+   "treeRssMaxMB": 3896,
+   "codexInspection": 0,
+   "codexInspectionDeadline": 0,
+   "codexReap": 0,
+   "rateLimited": 0,
+   "memoryFlush": 0,
+   "readsN": 0,
+   "readsMaxMs": 0,
+   "readsSumMs": 0,
+   "readsByKind": {
+    "context": 0,
+    "fenced": 0
+   },
+   "holdsMaxMs": 0,
+   "holdsN": 0,
+   "holdsSumMs": 0,
+   "holdsByOp": {},
+   "gwCpuAvgPct": 21,
+   "gwCpuMaxPct": 114,
+   "gwRssMaxMB": 896,
+   "codexProcMax": 3,
+   "codexRssMaxMB": 566,
+   "claudeProcMax": 0,
+   "claudeRssMaxMB": 0,
+   "hostAvailMinMB": 4442,
+   "swapUsedMaxMB": 8303,
+   "loadMax": 6.5,
+   "runs": [
+    {
+     "label": "vds-small-multi-c5-0-9cfcce",
+     "runtime": "vds",
+     "key": "lt-vds-small-00",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 24361,
+     "doneMs": 24679
+    },
+    {
+     "label": "vds-small-multi-c5-1-990ef9",
+     "runtime": "vds",
+     "key": "lt-vds-small-01",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 26427,
+     "doneMs": 26676
+    },
+    {
+     "label": "vds-small-multi-c5-2-f61114",
+     "runtime": "vds",
+     "key": "lt-vds-small-02",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 22453,
+     "doneMs": 22857
+    },
+    {
+     "label": "vds-small-multi-c5-3-9c0671",
+     "runtime": "vds",
+     "key": "lt-vds-small-03",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 4990,
+     "doneMs": 26333
+    },
+    {
+     "label": "vds-small-multi-c5-4-fa08d9",
+     "runtime": "vds",
+     "key": "lt-vds-small-04",
+     "terminal": "final",
+     "correct": true,
+     "tool": true,
+     "tools": [
+      "bash",
+      "bash",
+      "bash",
+      "session_status",
+      "bash"
+     ],
+     "firstMs": 25712,
+     "doneMs": 26043
+    }
+   ]
+  }
+ ],
+ "stoppedAt": {},
+ "steady": {
+  "waitedS": 240,
+  "rssMB": 744
+ },
+ "hostAtStart": {
+  "load": "4.12 5.22 6.27 4/2115 1924455",
+  "availMB": 5803,
+  "swapUsedMB": 8332,
+  "gcSwapExperiment": [],
+  "sharedGatewayInspect": [
+   {
+    "pid": 1143378,
+    "inspect": true,
+    "rssMB": 707
+   },
+   {
+    "pid": 696489,
+    "inspect": false,
+    "rssMB": 286
+   }
+  ],
+  "otherCandidates": [],
+  "topRss": [
+   "744MB /opt/vlab/node-v22.23.1-linux-x64/bin/node --import=/srv/vlab-production-mirror/labs/candi",
+   "731MB /opt/vlab/node-v22.23.1-linux-x64/bin/node --experimental-async-context-frame --max-old-sp",
+   "707MB /opt/vlab/node-v22.23.1-linux-x64/bin/node --inspect=127.0.0.1:9229 --max-old-space-size=8",
+   "518MB /opt/vlab/node-v22.23.1-linux-x64/bin/node --import=/srv/vlab-production-mirror/labs/candi",
+   "514MB /opt/vlab/node-v22.23.1-linux-x64/bin/node --experimental-async-context-frame --max-old-sp",
+   "480MB /opt/vlab/node-v22.23.1-linux-x64/bin/node --experimental-async-context-frame --max-old-sp",
+   "479MB /opt/vlab/node-v22.23.1-linux-x64/bin/node --experimental-async-context-frame --max-old-sp",
+   "476MB /opt/vlab/node-v22.23.1-linux-x64/bin/node --experimental-async-context-frame --max-old-sp"
+  ]
+ },
+ "codexAppServersSpawned": 3,
+ "gatewayStarts": 1
+}

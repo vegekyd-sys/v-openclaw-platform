@@ -206,6 +206,37 @@ const V_CODEX_DIST_SHA = process.env.V_CODEX_DIST_SHA ?? "e56145ed44f74a48560d67
     for (const dir of [...codexDists(stateDir), ...codexDists(runtime)]) execFileSync(process.execPath, [path.resolve(script), dir], { stdio: "inherit" });
     emit({ phase: "codex-patch", script });
   }
+  // CODEX_SHARDS=N: sessions of the vdsp arm spread over N app-servers instead of the one shared
+  // process, so one Gateway compares both. Disposable copies only; hooks live in the lag probe.
+  if (process.env.CODEX_SHARDS) {
+    const patched = [];
+    for (const dir of [...codexDists(stateDir), ...codexDists(runtime)]) {
+      const client = path.join(dir, fs.readdirSync(dir).find((f) => /^shared-client-.*\.js$/u.test(f)));
+      const attempt = path.join(dir, fs.readdirSync(dir).find((f) => /^run-attempt-.*\.js$/u.test(f)));
+      const c = fs.readFileSync(client, "utf8");
+      const c2 = c.replace("`${baseKey}\\0runtime-artifact:capture-v1:${expectedRuntimeArtifactKey}` : baseKey;", "`${baseKey}\\0runtime-artifact:capture-v1:${expectedRuntimeArtifactKey}` : (globalThis.__ltCodexShard?.() ? `${baseKey}\\0lt-shard:${globalThis.__ltCodexShard()}` : baseKey);");
+      const t = fs.readFileSync(attempt, "utf8");
+      const t2 = t.replace("async function runCodexAppServerAttempt(params, options) {", "async function runCodexAppServerAttempt(params, options) { return globalThis.__ltCodexRun ? globalThis.__ltCodexRun(params, () => runCodexAppServerAttempt0(params, options)) : runCodexAppServerAttempt0(params, options); }\nasync function runCodexAppServerAttempt0(params, options) {");
+      assert(c2 !== c && t2 !== t, "Codex shard patch did not apply");
+      fs.writeFileSync(client, c2); fs.writeFileSync(attempt, t2);
+      patched.push(path.basename(dir));
+    }
+    emit({ phase: "codex-shards", shards: Number(process.env.CODEX_SHARDS), patched: patched.length });
+  }
+  // CODEX_NORELAY=1: sessions of the vdsn arm run without the native hook relay, which starts a Node
+  // CLI per tool event. Measurement only: it also drops before_tool_call policy for those sessions.
+  if (process.env.CODEX_NORELAY) {
+    let patched = 0;
+    for (const dir of [...codexDists(stateDir), ...codexDists(runtime)]) {
+      const attempt = path.join(dir, fs.readdirSync(dir).find((f) => /^run-attempt-.*\.js$/u.test(f)));
+      const t = fs.readFileSync(attempt, "utf8");
+      const t2 = t.replace("async function runCodexAppServerAttempt(params, options) {", "async function runCodexAppServerAttempt(params, options) {\n\tif (String(params?.sessionKey ?? \"\").includes(\"lt-vdsn-\")) options = { ...options, nativeHookRelay: { enabled: false } };");
+      assert(t2 !== t, "Codex no-relay patch did not apply");
+      fs.writeFileSync(attempt, t2);
+      patched++;
+    }
+    emit({ phase: "codex-norelay", patched });
+  }
 }
 
 // ---- probes in the private runtime copy (optional: absent markers are reported, not fatal) ----
@@ -364,7 +395,7 @@ const SESSION_TABLES = ["transcript_events", "transcript_event_identities", "ses
 // explicit keys, as vlab.mjs test uses: an operator-admin chat.send on them gets the owner's tools
 // (a feishu:direct key for an unknown peer is filtered to read/write/apply_patch)
 const keyFor = (runtimeId, size, i) => `agent:makaron:explicit:lt-${runtimeId}-${size}-${String(i).padStart(2, "0")}`;
-const harnessOf = { flash: { model: "deepseek-flash", provider: "deepseek", harness: "vlab-worker" }, vds: { model: "vds-deepseek-flash", provider: "deepseek", harness: "codex" }, vcc: { model: VCC_REF.split("/")[1], provider: VCC_REF.split("/")[0], harness: "claude-cli" } };
+const harnessOf = { vdsp: { model: "vds-deepseek-flash", provider: "deepseek", harness: "codex" }, vdsn: { model: "vds-deepseek-flash", provider: "deepseek", harness: "codex" }, flash: { model: "deepseek-flash", provider: "deepseek", harness: "vlab-worker" }, vds: { model: "vds-deepseek-flash", provider: "deepseek", harness: "codex" }, vcc: { model: VCC_REF.split("/")[1], provider: VCC_REF.split("/")[0], harness: "claude-cli" } };
 function buildDatabase() {
   const vec = path.join(runtime, "openclaw", "node_modules", "sqlite-vec-linux-x64", "vec0.so");
   const src = new DatabaseSync(path.join(sharedState, dbRel), { readOnly: true, allowExtension: true });
@@ -631,7 +662,7 @@ function startGateway() {
   gatewayStartedAt = Date.now();
   // GATEWAY_CPU_PROF=1: a V8 CPU profile of the whole run (5 ms sampling), written to OUT_DIR on exit
   const prof = process.env.GATEWAY_CPU_PROF === "1" ? ["--cpu-prof", `--cpu-prof-dir=${OUT_DIR}`, "--cpu-prof-interval=5000"] : [];
-  gateway = spawn(process.execPath, [`--import=${lagProbe}`, ...prof, "--experimental-async-context-frame", "--max-old-space-size=12288", `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
+  gateway = spawn(process.execPath, [`--import=${lagProbe}`, ...prof, "--experimental-async-context-frame", "--max-old-space-size=12288", `${dist}/index.js`, "gateway", "--port", String(port)], { env: { ...env, ...(PROFILE_DIR ? { LT_PROFILE_DIR: PROFILE_DIR } : {}), ...(process.env.CODEX_SHARDS ? { LT_CODEX_SHARDS: process.env.CODEX_SHARDS } : {}) }, stdio: ["ignore", "pipe", "pipe"] });
   for (const s of [gateway.stdout, gateway.stderr]) {
     s.setEncoding("utf8");
     let rest = "";
@@ -818,7 +849,7 @@ async function send(key, runtimeId, label, task = "sha") {
   return { label, runtime: runtimeId, key: key.split(":").pop(), terminal: r.terminal, correct: r.correct, tool: Boolean(r.firstToolAt), tools: r.tools,
     firstMs: r.firstTextAt ? r.firstTextAt - r.sentAt : null, doneMs: r.endAt - r.sentAt, error: r.error, text: r.correct ? undefined : redact(r.text ?? "").slice(0, 160) };
 }
-const REF = { vds: VDS_REF, vcc: VCC_REF, flash: FLASH_REF };
+const REF = { vds: VDS_REF, vdsp: VDS_REF, vdsn: VDS_REF, vcc: VCC_REF, flash: FLASH_REF };
 const smallReady = new Set();
 async function sessionsFor(arm, size, c) {
   const want = [];
@@ -887,9 +918,38 @@ function lastEvents(key, n = 8) {
     return db.prepare("SELECT json_extract(event_json,'$.type') AS t, json_extract(event_json,'$.message.role') AS role, substr(json_extract(event_json,'$.customType'),1,40) AS ct, substr(json_extract(event_json,'$.message.content'),1,220) AS c FROM transcript_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?").all(w.sid, n);
   } catch (error) { return String(error?.message ?? error).slice(0, 200); } finally { db.close(); }
 }
+// PROFILE=1: where the Gateway's own CPU goes, per thread, plus reaped children; the lag probe adds a
+// main-thread profile and live heap sample for each level.
+const PROFILE_DIR = process.env.PROFILE === "1" ? path.join(OUT_DIR, "profiles") : null;
+if (PROFILE_DIR) fs.mkdirSync(PROFILE_DIR, { recursive: true });
+let profileN = 0;
+function gatewayThreads() {
+  const out = { threads: {}, childrenSec: 0 };
+  const pid = String(gateway.pid);
+  try {
+    const main = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+    const mf = main.slice(main.lastIndexOf(")") + 2).split(" ");
+    out.childrenSec = (Number(mf[13]) + Number(mf[14])) / TICK;
+    for (const tid of fs.readdirSync(`/proc/${pid}/task`)) {
+      const st = fs.readFileSync(`/proc/${pid}/task/${tid}/stat`, "utf8");
+      const f = st.slice(st.lastIndexOf(")") + 2).split(" ");
+      const comm = tid === pid ? "main" : st.slice(st.indexOf("(") + 1, st.lastIndexOf(")"));
+      out.threads[`${comm}#${tid}`] = (Number(f[11]) + Number(f[12])) / TICK;
+    }
+  } catch {}
+  return out;
+}
+function threadsDiff(a, b) {
+  const byComm = {};
+  for (const [k, v] of Object.entries(b.threads)) { const comm = k.split("#")[0]; byComm[comm] = (byComm[comm] ?? 0) + Math.max(0, v - (a.threads[k] ?? 0)); }
+  return { byComm: Object.fromEntries(Object.entries(byComm).sort((x, y) => y[1] - x[1]).slice(0, 10).map(([k, v]) => [k, Math.round(v * 10) / 10])), childrenSec: Math.round((b.childrenSec - a.childrenSec) * 10) / 10 };
+}
 async function level(arm, size, c, task = "sha") {
   const plan = await sessionsFor(arm, size, c);
   const cpuFrom = cpuTable();
+  const threadsFrom = gatewayThreads();
+  const profName = `${arm}-${size}-${task}-c${c}-${profileN++}`;
+  if (PROFILE_DIR) { fs.writeFileSync(path.join(PROFILE_DIR, `start.${profName}`), ""); await sleep(1_000); }
   const from = Date.now();
   const jobs = plan.map((p, i) => send(p.key, p.rt, `${arm}-${size}-${task}-c${c}-${i}-${randomBytes(3).toString("hex")}`, task));
   const canary = CANARY ? send(await canaryKey(), "flash", `canary-${arm}-${size}-c${c}-${canaryN++}`) : null;
@@ -897,6 +957,8 @@ async function level(arm, size, c, task = "sha") {
   const canaryResult = canary ? await canary : null;
   const to = Date.now();
   const cpuByCmd = cpuDiff(cpuFrom, cpuTable());
+  const threadCpu = threadsDiff(threadsFrom, gatewayThreads());
+  if (PROFILE_DIR) fs.writeFileSync(path.join(PROFILE_DIR, `stop.${profName}`), "");
   for (const r of results.filter((x) => !x.correct).slice(0, 2)) emit({ phase: "failed-turn", label: r.label, events: lastEvents(`agent:makaron:explicit:${r.key}`), logs: lines.filter((l) => l.at >= from && /memory.?flush|read.*write|tool.*(?:deny|filter)|toolsAllow/iu.test(l.line)).slice(-8).map((l) => redact(l.line).slice(0, 260)) });
   await sleep(SETTLE_MS);
   const m = windowMetrics(from, Date.now());
@@ -913,7 +975,7 @@ async function level(arm, size, c, task = "sha") {
   const h = hostContext();
   const host = { gcSwap: h.gcSwapExperiment.length > 0, sharedGatewayInspect: h.sharedGatewayInspect.some((g) => g.inspect), otherCandidates: h.otherCandidates.length, load: h.load };
   const ran = actualRuntime([...plan.map((p) => p.key), ...(CANARY ? [await canaryKey()] : [])]);
-  return { arm, size, task, c, cpuByCmd, host, ran, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
+  return { arm, size, task, c, cpuByCmd, threadCpu, host, ran, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
 }
 
 async function waitSteady(label, minUptimeMin) {
@@ -1100,7 +1162,7 @@ try {
     throw Object.assign(new Error("scenarios done"), { done: true });
   }
   const warm = [];
-  for (const rt of ["flash", "vds", "vcc"]) if (ARMS.some((a) => a.arm === rt || (a.arm === "mix" && rt !== "flash"))) {
+  for (const rt of ["flash", "vds", "vdsp", "vdsn", "vcc"]) if (ARMS.some((a) => a.arm === rt || (a.arm === "mix" && rt !== "flash"))) {
     const key = keyFor(rt, "warm", 0);
     await prepareSession(key, REF[rt]);
     warm.push(await send(key, rt, `warm-${rt}`));
