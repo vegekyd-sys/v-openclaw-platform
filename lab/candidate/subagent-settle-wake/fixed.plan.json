@@ -1,0 +1,29 @@
+{
+  "support": [
+    "lab/candidate/subagent-settle-wake/subagent-settle-wake.mjs",
+    "lab/candidate/inter-session-support.mjs",
+    "lab/candidate/feishu-fake-open-api.mjs",
+    "lab/candidate/feishu-no-live.cjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/subagent-settle-wake/subagent-settle-wake.mjs"
+  ],
+  "env": {
+    "ARM": "fixed"
+  },
+  "timeoutSeconds": 1500,
+  "user": "lab-db91-parity",
+  "files": [
+    {
+      "source": "lab/release-files/subagent-settle-wake/gateway-request-scope-CmMd3nUp.js",
+      "target": "openclaw/dist/gateway-request-scope-CmMd3nUp.js",
+      "before": "7a0b33d95299c96598f5f6dac26fd4ef3695a796487240a7c9ceab5bdedf1c1d"
+    },
+    {
+      "source": "lab/release-files/subagent-settle-wake/subagent-completion-admission.store-JmpNDYTF.js",
+      "target": "openclaw/dist/subagent-completion-admission.store-JmpNDYTF.js",
+      "before": "c106a6cec9ba3c5def63297f43a23f9bcabe4543c373d61872f3cac7bad48c43"
+    }
+  ]
+}
