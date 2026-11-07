@@ -79,6 +79,15 @@ V, read-only (`/opt/node-v22.23.1`, `ionice -c3`, 2026-11-07 23:20 CST), the 15,
 That is the floor of the old path; OpenClaw adds a Kysely build, the canonical-key assertion, lookup-key
 collection and entry projection per row, which is how V gets to ~15 s inside the 18-19 s gap.
 
+The real code at V's size (`lab/bench/subagent-restore-live-children.bench.test.ts`, run in the fork
+checkout: a temp SQLite store with 15,495 validated Night Shift children of ~80 KB, then
+`resolveSubagentRunOrphanReason` over every run as restore calls it, Node 22.23.1, Mac):
+
+| restore orphan check, 15,495 runs | time | kept |
+|---|---|---|
+| before (exact read per child) | 20,677 ms | 15,495 |
+| after (column prefetch, then the check) | 668 ms | 15,495 |
+
 ## Candidate results
 
 Candidate A/B (`lab/candidate/subagent-restore-narrow-{base,narrow}.plan.json`): pending. The first
