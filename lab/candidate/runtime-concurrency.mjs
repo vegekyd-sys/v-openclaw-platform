@@ -61,6 +61,18 @@ const SCENARIOS = process.env.SCENARIOS === "1";
 // through channels.modelByChannel, the way a gradual rollout would.
 const CHANNEL_GRAY = process.env.CHANNEL_GRAY === "1";
 const GRAY_GROUP = "oc_candidategraygroup";
+// CHAIN_COMPARE=1 (with SCENARIOS): the rollout shape (default flash, /vds through modelByChannel) under
+// DeepSeek faults, with the fallback chain in CHAIN (flash,luna or luna). "luna" is a stand-in provider
+// on the Worker runtime whose requests the fault proxy always passes (real DeepSeek flash), because a
+// candidate must not use the ChatGPT login. CHAIN_FAULTS: 503-all and hang-all fail every DeepSeek
+// request (an outage); 503-codex and hang-codex fail only Codex's /responses (a Codex-path failure).
+const CHAIN_COMPARE = process.env.CHAIN_COMPARE === "1";
+const LUNA_REF = "lunastub/deepseek-flash";
+// MODEL_PROXY=1 (load levels): both runtimes reach DeepSeek through the local pass-through proxy, which
+// times every request (headers, first byte, end, bytes), so a level splits into time spent waiting on
+// DeepSeek and everything else. The proxy adds one loopback hop to both arms alike.
+const MODEL_PROXY = process.env.MODEL_PROXY === "1";
+const VIA_PROXY = SCENARIOS || MODEL_PROXY;
 const LEVELS = (process.env.LEVELS ?? "1,3,5,10,15").split(",").map(Number);
 const MAXC = Math.max(...LEVELS);
 const STEADY_MIN = num("STEADY_MIN", 20);
@@ -288,9 +300,20 @@ const PROVIDER_TIMEOUT = process.env.PROVIDER_TIMEOUT_S ? Number(process.env.PRO
 if (PROVIDER_TIMEOUT) config.models.providers.deepseek.timeoutSeconds = PROVIDER_TIMEOUT;
 const HANG_RT = process.env.HANG_PRIMARY ?? "flash";
 // a session on the default model keeps its fallback; a sessions.patch override would not
-const defaultModel = HANG_COMPARE ? (HANG_RT === "vds" && process.env.HANG_MANUAL !== "1" ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : process.env.HANG_MANUAL === "1" ? { primary: FLASH_REF, fallbacks: [] } : { primary: FLASH_REF, fallbacks: [VDS_REF] }) : CHANNEL_GRAY ? { primary: FLASH_REF, fallbacks: ["openai/gpt-6-luna"] } : SCENARIOS ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : { primary: FLASH_REF, fallbacks: [] };
+const CHAIN = (process.env.CHAIN ?? "flash,luna").split(",").filter(Boolean).map((c) => ({ flash: FLASH_REF, luna: LUNA_REF })[c] ?? c);
+const defaultModel = CHAIN_COMPARE ? { primary: FLASH_REF, fallbacks: CHAIN } : HANG_COMPARE ? (HANG_RT === "vds" && process.env.HANG_MANUAL !== "1" ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : process.env.HANG_MANUAL === "1" ? { primary: FLASH_REF, fallbacks: [] } : { primary: FLASH_REF, fallbacks: [VDS_REF] }) : CHANNEL_GRAY ? { primary: FLASH_REF, fallbacks: ["openai/gpt-6-luna"] } : SCENARIOS ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : { primary: FLASH_REF, fallbacks: [] };
 // chat.send arrives as channel "webchat" with no group, so the wildcard entry is what a candidate can reach
-if (CHANNEL_GRAY) config.channels.modelByChannel = { webchat: { "*": VDS_REF } };
+if (MODEL_PROXY) config.models.providers.deepseek.baseUrl = `http://127.0.0.1:${FAULT_PORT}/v1`;
+if (CHANNEL_GRAY || CHAIN_COMPARE) config.channels.modelByChannel = { webchat: { "*": VDS_REF } };
+const lunaProvider = (deepseek) => ({ ...deepseek, apiKey: deepseek.apiKey ?? "${DEEPSEEK_API_KEY}", baseUrl: `http://127.0.0.1:${FAULT_PORT}/luna/v1`, models: [{ id: "deepseek-flash", name: "Luna stand-in (DeepSeek flash)", ...shape }] });
+if (CHAIN_COMPARE) {
+  config.models.providers.deepseek.baseUrl = `http://127.0.0.1:${FAULT_PORT}/v1`;
+  config.models.providers.lunastub = lunaProvider(config.models.providers.deepseek);
+  const lunaEntry = { alias: "lunastub", agentRuntime: { id: "vlab-worker" }, params: { thinking: "high" } };
+  config.agents.defaults.models[LUNA_REF] = lunaEntry;
+  config.agents.entries.makaron.models[LUNA_REF] = lunaEntry;
+  entries[LUNA_REF] = lunaEntry;
+}
 config.agents.defaults.model = defaultModel;
 config.agents.entries.makaron.model = defaultModel;
 // every allow list that can apply to makaron (an agent-level one takes precedence over defaults)
@@ -312,19 +335,23 @@ Object.assign(workerPlugin, WORKER_POOL, { warmSpareWorkers: 0 });
   assert(!rel.startsWith(".."), "candidate Worker config escaped state");
   const workerConfig = JSON.parse(fs.readFileSync(path.join(sharedState, rel), "utf8").replaceAll(sharedState, stateDir).replaceAll("/srv/vlab-production-mirror/labs/instances/db91-parity/runtime", runtime));
   workerConfig.channels = {};
-  if (HANG_COMPARE) workerConfig.models.providers.deepseek.baseUrl = `http://127.0.0.1:${FAULT_PORT}/v1`;
+  if (HANG_COMPARE || CHAIN_COMPARE || MODEL_PROXY) workerConfig.models.providers.deepseek.baseUrl = `http://127.0.0.1:${FAULT_PORT}/v1`;
   if (PROVIDER_TIMEOUT) workerConfig.models.providers.deepseek.timeoutSeconds = PROVIDER_TIMEOUT;
   workerConfig.models.providers.deepseek.models = (workerConfig.models.providers.deepseek.models ?? []).filter((m) => m.id !== "deepseek-flash").concat([{ id: "deepseek-flash", name: "DeepSeek V4.1 Flash", ...shape }]);
   const workerEntry = { alias: "deepseek", agentRuntime: { id: "openclaw" }, params: { thinking: "high" } };
   workerConfig.models.providers.deepseek.models = workerConfig.models.providers.deepseek.models.filter((m) => m.id !== "vds-deepseek-flash").concat([{ id: "vds-deepseek-flash", name: "DeepSeek V4.1 Flash (Codex vds alias)", ...shape }]);
   workerConfig.agents.defaults.models = { ...(workerConfig.agents.defaults.models ?? {}), [FLASH_REF]: workerEntry, [VDS_REF]: entries[VDS_REF] };
+  if (CHAIN_COMPARE) {
+    workerConfig.models.providers.lunastub = lunaProvider(workerConfig.models.providers.deepseek);
+    workerConfig.agents.defaults.models[LUNA_REF] = { alias: "lunastub", agentRuntime: { id: "openclaw" }, params: { thinking: "high" } };
+  }
   workerConfig.agents.defaults.model = defaultModel;
   if (workerConfig.agents.entries?.makaron) {
     workerConfig.agents.entries.makaron.models = { ...(workerConfig.agents.entries.makaron.models ?? {}), [FLASH_REF]: workerEntry, [VDS_REF]: entries[VDS_REF] };
     workerConfig.agents.entries.makaron.model = defaultModel;
   }
   const wallow = workerConfig.agents.defaults.modelPolicy?.allow;
-  if (Array.isArray(wallow)) for (const ref of [FLASH_REF, VDS_REF]) if (!wallow.includes(ref)) wallow.push(ref);
+  if (Array.isArray(wallow)) for (const ref of [FLASH_REF, VDS_REF, ...(CHAIN_COMPARE ? [LUNA_REF] : [])]) if (!wallow.includes(ref)) wallow.push(ref);
   fs.mkdirSync(path.dirname(workerPlugin.workerConfigPath), { recursive: true });
   fs.writeFileSync(workerPlugin.workerConfigPath, `${JSON.stringify(workerConfig, null, 2)}\n`, { mode: 0o600 });
   workerPlugin.gatewayConfigPath = configPath;
@@ -345,7 +372,7 @@ trust_level = "trusted"
 
 [model_providers.deepseek]
 name = "DeepSeek"
-base_url = "${SCENARIOS ? `http://127.0.0.1:${FAULT_PORT}/v1` : "https://api.deepseek.com/v1"}"
+base_url = "${VIA_PROXY ? `http://127.0.0.1:${FAULT_PORT}/v1` : "https://api.deepseek.com/v1"}"
 wire_api = "responses"
 env_key = "DEEPSEEK_API_KEY"
 ${(process.env.CODEX_PROVIDER_TOML ?? "").replaceAll(";", "\n")}
@@ -589,11 +616,13 @@ const lagProbe = path.join(here, "runtime-concurrency-lag.mjs");
 let faultMode = "ok";
 const faultLog = [];
 let faultPath = null;
-if (SCENARIOS) {
+if (VIA_PROXY) {
   const http = await import("node:http");
   const https = await import("node:https");
   http.createServer((req, res) => {
     let mode = !faultPath || req.url.includes(faultPath) ? faultMode : "ok";
+    // the luna stand-in: always healthy, real DeepSeek behind it
+    if (req.url.startsWith("/luna/")) { req.url = req.url.slice("/luna".length); mode = "ok"; }
     // hang-after-tool: the first request of the scenario answers, the one carrying the tool result hangs
     if (mode === "hang-after-tool") mode = faultLog.filter((f) => f.url.includes(faultPath)).length === 0 ? "ok" : "hang";
     faultLog.push({ at: Date.now(), mode, url: req.url });
@@ -613,7 +642,15 @@ if (SCENARIOS) {
       }, num("SLOW_HEADERS_S", 75) * 1000));
       return undefined;
     }
+    const timing = faultLog.at(-1);
+    timing.reqBytes = 0;
+    req.on("data", (c) => { timing.reqBytes += c.length; });
     const up = https.request(`https://api.deepseek.com${req.url}`, { method: req.method, headers: { ...req.headers, host: "api.deepseek.com" } }, (r) => {
+      timing.headersAt = Date.now();
+      timing.status = r.statusCode;
+      timing.resBytes = 0;
+      r.on("data", (c) => { timing.firstByteAt ??= Date.now(); timing.resBytes += c.length; });
+      r.on("end", () => { timing.endAt = Date.now(); });
       res.writeHead(r.statusCode, r.headers);
       if (mode === "stall") { r.once("data", (chunk) => { res.write(chunk); r.destroy(); }); return; }
       // stall-mid: real model output reached Codex, then silence with the connection open
@@ -691,7 +728,8 @@ function onEvent(e) {
   const now = Date.now();
   if (e.event === "agent" && p.stream === "assistant" && typeof p.data?.text === "string" && p.data.text.trim() && !r.firstTextAt) r.firstTextAt = now;
   if (e.event === "agent" && p.stream === "tool" && !r.firstToolAt) r.firstToolAt = now;
-  if (e.event === "agent" && p.stream === "tool" && p.data?.phase === "start") (r.tools ??= []).push(String(p.data?.name ?? "?"));
+  if (e.event === "agent" && p.stream === "tool" && p.data?.phase === "start") { (r.tools ??= []).push(String(p.data?.name ?? "?")); (r.spans ??= []).push({ name: String(p.data?.name ?? "?"), startAt: now }); }
+  if (e.event === "agent" && p.stream === "tool" && p.data?.phase === "result") { const span = (r.spans ?? []).find((x) => !x.endAt && x.name === String(p.data?.name ?? "?")); if (span) span.endAt = now; }
   if (e.event === "chat" && p.state === "delta" && !r.firstTextAt) r.firstTextAt = now;
   if (e.event === "chat" && ["final", "error", "aborted"].includes(p.state) && !r.terminal) {
     r.terminal = p.state;
@@ -827,7 +865,8 @@ async function send(key, runtimeId, label, task = "sha") {
   const longDynamic = `（自动化验证）先调用一次 session_status 工具，然后用 shell 执行一次 \`printf %s ${label} | sha256sum | cut -c1-12\`，然后只回复它输出的那 12 个字符，不要别的文字。`;
   const think = `（自动化验证）先认真推理：一个 8 位二进制数翻转所有位后加 1，结果和原数相等的有哪些？想清楚但不用写出来。然后用 shell 执行一次 \`printf %s ${label} | sha256sum | cut -c1-12\`，然后只回复它输出的那 12 个字符，不要别的文字。`;
   const bigArgs = `（自动化验证）用 shell 的 heredoc 把一篇你现写的、不少于 ${num("BIG_ARGS_CHARS", 12000)} 字的中文长文写进 /tmp/bigargs-${label}.txt（内容必须直接写在这一条命令里，一次写完，不要分成多条命令或多次追加），然后再用 shell 执行一次 \`rm -f /tmp/bigargs-${label}.txt; printf %s ${label} | sha256sum | cut -c1-12\`，最后只回复它输出的那 12 个字符，不要别的文字。`;
-  const message = task === "think" ? think : task === "long-shell" ? longShell : task === "long-dynamic" ? longDynamic : task === "big-args" ? bigArgs : task === "multi"
+  const bash5 = `（自动化并发压测）按顺序做，一步也不要省：1) 用 shell 执行 \`uname -r\`；2) 用 shell 执行 \`ls /tmp | wc -l\`；3) 用读文件工具读工作区 AGENTS.md（只需前 5 行）；4) 用 shell 执行 \`date +%s\`；5) 用 shell 执行 \`printf %s ${label} | sha256sum | cut -c1-12\`。全部做完后只回复第 5 步输出的那 12 个字符，不要别的文字。`;
+  const message = task === "bash5" ? bash5 : task === "think" ? think : task === "long-shell" ? longShell : task === "long-dynamic" ? longDynamic : task === "big-args" ? bigArgs : task === "multi"
     ? `（自动化并发压测）按顺序做，一步也不要省：1) 用 shell 执行 \`uname -r\`；2) 用 shell 执行 \`ls /tmp | wc -l\`；3) 用读文件工具读工作区 AGENTS.md（只需前 5 行）；4) 调用 session_status 工具；5) 用 shell 执行 \`printf %s ${label} | sha256sum | cut -c1-12\`。全部做完后只回复第 5 步输出的那 12 个字符，不要别的文字。`
     : `（自动化并发压测）用 shell 执行一次 \`printf %s ${label} | sha256sum | cut -c1-12\`，然后只回复它输出的那 12 个字符，不要别的文字。`;
   r.expected = createHash("sha256").update(label).digest("hex").slice(0, 12);
@@ -852,7 +891,7 @@ async function send(key, runtimeId, label, task = "sha") {
     } catch {}
   }
   r.correct = r.terminal === "final" && (r.text ?? "").includes(r.expected);
-  return { label, runtime: runtimeId, key: key.split(":").pop(), terminal: r.terminal, correct: r.correct, tool: Boolean(r.firstToolAt), tools: r.tools,
+  return { label, runtime: runtimeId, key: key.split(":").pop(), terminal: r.terminal, correct: r.correct, tool: Boolean(r.firstToolAt), tools: r.tools, firstToolMs: r.firstToolAt ? r.firstToolAt - r.sentAt : null, toolMs: (r.spans ?? []).filter((x) => x.endAt).reduce((t, x) => t + x.endAt - x.startAt, 0),
     firstMs: r.firstTextAt ? r.firstTextAt - r.sentAt : null, doneMs: r.endAt - r.sentAt, error: r.error, text: r.correct ? undefined : redact(r.text ?? "").slice(0, 160) };
 }
 const REF = { vds: VDS_REF, vcc: VCC_REF, flash: FLASH_REF };
@@ -937,12 +976,14 @@ async function level(arm, size, c, task = "sha") {
   for (const r of results.filter((x) => !x.correct).slice(0, 2)) emit({ phase: "failed-turn", label: r.label, events: lastEvents(`agent:makaron:explicit:${r.key}`), logs: lines.filter((l) => l.at >= from && /memory.?flush|read.*write|tool.*(?:deny|filter)|toolsAllow/iu.test(l.line)).slice(-8).map((l) => redact(l.line).slice(0, 260)) });
   await sleep(SETTLE_MS);
   const m = windowMetrics(from, Date.now());
+  const model = MODEL_PROXY ? modelTiming(from, to, results.length) : undefined;
   const failed = results.filter((r) => !r.correct);
   const byRt = {};
   for (const rt of [...new Set(results.map((r) => r.runtime))]) {
     const rs = results.filter((r) => r.runtime === rt);
     byRt[rt] = { n: rs.length, ok: rs.filter((r) => r.correct).length,
       firstP50: pct(rs.map((r) => r.firstMs).filter((x) => x != null), 0.5), firstP95: pct(rs.map((r) => r.firstMs).filter((x) => x != null), 0.95),
+      firstToolP50: pct(rs.map((r) => r.firstToolMs).filter((x) => x != null), 0.5), toolMsP50: pct(rs.map((r) => r.toolMs).filter((x) => x != null), 0.5),
       doneP50: pct(rs.filter((r) => r.terminal === "final").map((r) => r.doneMs), 0.5), doneP95: pct(rs.filter((r) => r.terminal === "final").map((r) => r.doneMs), 0.95) };
   }
   const errors = {};
@@ -950,9 +991,24 @@ async function level(arm, size, c, task = "sha") {
   const h = hostContext();
   const host = { gcSwap: h.gcSwapExperiment.length > 0, sharedGatewayInspect: h.sharedGatewayInspect.some((g) => g.inspect), otherCandidates: h.otherCandidates.length, load: h.load };
   const ran = actualRuntime([...plan.map((p) => p.key), ...(CANARY ? [await canaryKey()] : [])]);
-  return { arm, size, task, c, cpuByCmd, host, ran, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
+  return { arm, size, task, c, model, cpuByCmd, host, ran, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
 }
 
+// DeepSeek time per turn in a level: requests that started inside it, by API (Codex /responses, Worker
+// /chat/completions)
+function modelTiming(from, to, turns) {
+  const out = {};
+  for (const f of faultLog.filter((x) => x.at >= from && x.at <= to && !x.url.startsWith("/luna/"))) {
+    const api = f.url.includes("/responses") ? "responses" : f.url.includes("/chat/completions") ? "completions" : f.url.split("?")[0];
+    const o = (out[api] ??= { n: 0, busyMs: 0, ttfb: [], dur: [], reqKB: [], status: {} });
+    o.n += 1;
+    o.status[f.status ?? "none"] = (o.status[f.status ?? "none"] ?? 0) + 1;
+    if (f.endAt) { o.busyMs += f.endAt - f.at; o.dur.push(f.endAt - f.at); }
+    if (f.firstByteAt) o.ttfb.push(f.firstByteAt - f.at);
+    o.reqKB.push(Math.round((f.reqBytes ?? 0) / 1024));
+  }
+  return Object.fromEntries(Object.entries(out).map(([k, o]) => [k, { n: o.n, perTurn: Math.round(10 * o.n / turns) / 10, modelMsPerTurn: Math.round(o.busyMs / turns), ttfbP50: pct(o.ttfb, 0.5), ttfbP95: pct(o.ttfb, 0.95), durP50: pct(o.dur, 0.5), durP95: pct(o.dur, 0.95), reqKBP50: pct(o.reqKB, 0.5), status: o.status }]));
+}
 async function waitSteady(label, minUptimeMin) {
   let ok = 0;
   let last;
@@ -1016,6 +1072,22 @@ async function runScenarios() {
     await sleep(25_000);
     emit({ phase: "scenario", name: "gray-config-removed", pidBefore, pidAfter: gateway.pid, exited: gateway.exitCode, reloadLines: lines.filter(inWin(from, Date.now())).filter((l) => /reload|restart/iu.test(l.line)).map((l) => redact(l.line).slice(0, 260)).slice(-10) });
     if (gateway.exitCode === null) await scenario("gray-after-removal", key("after"), { rt: "flash" });
+    return;
+  }
+  if (CHAIN_COMPARE) {
+    // each fault on a fresh group session: warm (healthy), the faulted turn, then the next message healthy
+    for (const fault of (process.env.CHAIN_FAULTS ?? "503-all,hang-all,503-codex,hang-codex").split(",").filter(Boolean)) {
+      const [mode, scope] = fault.split("-");
+      const k = key(`chain-${fault}-${randomBytes(2).toString("hex")}`);
+      await scenario(`warm-${fault}`, k);
+      faultPath = scope === "codex" ? "/responses" : null;
+      faultMode = mode;
+      const r = await scenario(`fault-${fault}`, k);
+      faultMode = "ok";
+      faultPath = null;
+      const next = await scenario(`after-${fault}`, k);
+      emit({ phase: "chain-result", chain: CHAIN, fault, doneMs: r.doneMs, correct: r.correct, ran: r.ran, proxyModes: r.proxyModes, nextDoneMs: next.doneMs, nextCorrect: next.correct, nextRan: next.ran });
+    }
     return;
   }
   if (HANG_COMPARE) {
