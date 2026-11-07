@@ -1,0 +1,16 @@
+{
+  "support": [
+    "lab/candidate/cron-default-owner-tools/fake-claude.mjs",
+    "lab/candidate/cron-default-owner-tools/cron-default-owner-tools.mjs",
+    "lab/candidate/cron-default-owner-tools/fake-claude-exe.c"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/cron-default-owner-tools/cron-default-owner-tools.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "env": {
+    "ARM": "baseline",
+    "FAKE_CLAUDE_BIN": "/opt/vlab-fake-claude-cron/bin"
+  }
+}
