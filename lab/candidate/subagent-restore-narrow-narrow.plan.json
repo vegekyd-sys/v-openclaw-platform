@@ -1,0 +1,28 @@
+{
+  "support": [
+    "lab/candidate/subagent-restore-narrow.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/subagent-restore-narrow.mjs"
+  ],
+  "timeoutSeconds": 7200,
+  "user": "lab-db91-parity",
+  "env": {
+    "ARM": "narrow",
+    "ROUNDS": "3",
+    "SEEDED_START_DEADLINE_MS": "900000"
+  },
+  "files": [
+    {
+      "source": "lab/release-files/subagent-restore-narrow/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "target": "openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "before": "789fca01601893b6437154543628936dc28eb93c19070ad95f5a4ff1607c8f61"
+    },
+    {
+      "source": "lab/release-files/subagent-restore-narrow/subagent-completion-admission.store-JmpNDYTF.js",
+      "target": "openclaw/dist/subagent-completion-admission.store-JmpNDYTF.js",
+      "before": "c106a6cec9ba3c5def63297f43a23f9bcabe4543c373d61872f3cac7bad48c43"
+    }
+  ]
+}
