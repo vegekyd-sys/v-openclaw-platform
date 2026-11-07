@@ -1,0 +1,9 @@
+{
+  "name": "v-feishu-recap",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Recap page for a Feishu group, opened from a pinned banner link",
+  "scripts": { "test": "node --test tests/*.test.mjs" },
+  "engines": { "node": ">=22.13" }
+}
