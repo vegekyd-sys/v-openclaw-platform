@@ -618,6 +618,26 @@ fork 分支同上，平台分支 `claude/upgrade-10line-stage2`。
 - 启动就绪前有一次 19.5 秒的主线程停顿，没有用户请求在等。
 - memory_search 仍然没法比：演练机的 Gemini key 被拒，10.10 只返回关键词结果（首次 10.4 秒，之后 196 / 417 ms），9.1 什么都不返回。
 
+**大会话慢的原因和修复（11/07，fork `versa/s3-big`，合并后 `versa/upgrade-2026.10.10` 推到 `9a0b8aa5eb2`）：**
+
+演练机日志里 10.10 自带的 `slow chat send` 分段说明了时间去向：第二条消息从发送到调模型要 1.6–2.0 秒，涨得多的是 `attempt.session-runtime`（526–664 ms）、`attempt.actor`、`attempt.history` 和用户消息写入（ack 220–260 ms）。这段时间主线程大部分空闲，钱花在 SQLite worker 里。
+
+本机复现：新脚本 `scripts/bench-big-transcript-session.mts` 用 `chat.inject` 和 `sessions.compact` 把一个会话长到 V 的规模（6,127 条、压缩后 54 MB、120 次压缩），重启后测每轮。大会话首字 2.0–2.1 秒，小会话 0.17 秒；两者送给模型的请求一样大（约 80 KB），所以不是上下文变多。
+
+逐层计时后定位到一处：每轮读模型上下文时，`readCacheTtlProjectionPrefix` 要找 cache-TTL 标记，查询把 `transcript_event_identities` 左连接进来。库里没有 ANALYZE 统计，SQLite 选了覆盖索引 `(session_id, event_type, seq)`，只能用上 session_id，于是每一条活跃事件都把整个会话的身份行重扫一遍，6k 条就是约 3,600 万次比较。同一个库上直接跑这条 SQL：
+
+| 查询 | CPU |
+|---|---|
+| 10.10 原样 | 1.60 秒 |
+| 修复后（先按类型找标记行） | 0.00 秒 |
+| 旧格式前缀路径（指定 `(session_id, seq)` 索引） | 0.01 秒 |
+
+上游 10.10 之后已经修了这一处（`e55a4e66004` #174275 改成按类型先找标记行，`3d4fc940304` #189284 给旧格式前缀加索引提示），整提交依赖其他重构，所以只回移这个文件的查询和它的查询计划测试。去掉修复时 4 个用例里 3 个失败（有统计信息的旧格式路径本来就选对索引）。本机修复后 `attempt.history` 从约 820 ms 降到 87–354 ms，但当时本机负载 16–43，整轮数字不可比，以演练机复测为准。
+
+- 9.1 没有这条查询：`session-cache-ttl-prefix` 是 10 月线新增的，9.1 的 V 源码（`b61c13eb1a3`）里没有这个文件。
+- 其他把 `transcript_event_identities` 左连接进来的查询看过：导航那条只取 seq，读取那条按主键 `(session_id, event_id)`，不会走错索引。
+- 演练机的 Gemini key 换成了 V 的（Tianyi 11/07 同意）：`secrets.env` 加 `GOOGLE_API_KEY`，四份配置的 `memory.search.remote.apiKey` 改成 `${GOOGLE_API_KEY}`，原值备份在 `c3/cache/gemini-swap-20261107T2118/`。缓存身份里不含 key，换 key 不会让缓存失效；复测期间盯着演练机和 V 有没有 429。
+
 ### 分支安排：升级在单独的分支上验证（10/30 Tianyi 拍板）
 
 升级验证完成之前，不进 dev，也就不会随日常发版上线。
