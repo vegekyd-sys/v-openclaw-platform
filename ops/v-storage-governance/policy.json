@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "host": "VM-8-2-ubuntu",
+  "diskUuid": "6b71eaad-4cb7-453c-b1e0-3aca161681f2",
+  "diskSerial": "disk-n2q8rj3e",
+  "diskRoot": "/srv/openclaw-data/disk1",
+  "marker": "/srv/openclaw-data/disk1/openclaw/.v-storage-volume.json",
+  "stateRoot": "/var/lib/v-storage-governance",
+  "minimumRootFreeGiB": 80,
+  "minimumDataFreeGiB": 30,
+  "warningPercent": 80,
+  "criticalPercent": 90,
+  "cacheMaxAgeHours": 48,
+  "cachePressureAgeHours": 24,
+  "maxDeletesPerRun": 24,
+  "serviceUser": "openclaw",
+  "extraSnapshotRoots": ["/home/openclaw/.openclaw/nightshift/.cache/openclaw"],
+  "mappings": [
+    {
+      "name": "backups",
+      "original": "/srv/openclaw-data/disk/openclaw-storage/cold-migrated-2/openclaw/backups",
+      "destination": "/srv/openclaw-data/disk1/openclaw/backups",
+      "aliases": ["/home/openclaw/.openclaw/backups"]
+    },
+    {
+      "name": "cache",
+      "original": "/home/openclaw/.cache/openclaw",
+      "destination": "/srv/openclaw-data/disk1/openclaw/cache",
+      "aliases": []
+    }
+  ]
+}
