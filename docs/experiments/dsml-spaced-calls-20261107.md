@@ -49,13 +49,22 @@
 - A 臂：工具执行 0 次、标记可见（证明故障路径触发）。
 - B 臂：工具执行 1 次、转录里有 1 个工具结果、DeepSeek 给出最终回答、标记不可见。
 
-**状态**：VLab 主机 2026-11-07 23:0x 起从本机和 V 都连不上（Tailscale relay 无应答），candidate 未跑。恢复后执行：
+场景 dsmlpre：替身在 DSML 标记前先写一句「我先检查一下刚才入表失败的原因。」。入口：chat（飞书式 chat.send）与 cli（agentCommand，夜班/cron 路径）。
 
-```
-node /Users/tianyicai/vlab-dev/lab/vlab.mjs candidate --repo "$PWD" --owner pi-harness-dsml --plan "$PWD/lab/candidate/dsml-spaced-calls.plan.json"
-```
+**结果**：candidate-836310c8（2026-11-08 01:24–01:28 CST，提交 f8d9bc96，clean，基线 cron-default-owner-tools-20261107，目标文件与 V 当前字节一致，共享 Gateway 未受影响），8/8 符合预期。证据 `docs/evidence/dsml-spaced-calls-20261107/candidate-836310c8.json`。
 
-前置说明场景（dsmlpre）建议同时加入 candidate。
+| 臂 | 入口 | 场景 | 工具执行 | 转录工具结果 | DeepSeek 最终回答 | 标记可见 |
+|---|---|---|---|---|---|---|
+| A | chat | dsml | 0 | 0 | 否 | **是** |
+| A | chat | dsml1 | 0 | 0 | 否 | **是** |
+| A | chat | dsmlpre | 0 | 0 | 否 | **是**（说明 + 标记） |
+| A | cli | dsml | 0 | 0 | 否 | **是** |
+| B | chat | dsml | 1 | 1 | 是 | 否 |
+| B | chat | dsml1 | 1 | 1 | 是 | 否 |
+| B | chat | dsmlpre | 1 | 1 | 是 | 否（说明保留为文字，stopReason=toolUse） |
+| B | cli | dsml | 1 | 1 | 是 | 否 |
+
+A 臂完整复现了 V 上用户看到的现象（故障路径确实触发）；B 臂四种形式都执行了工具并由 DeepSeek 拿工具结果作答。普通回合速度无变化：中位首请求 A 635 ms / B 604 ms，最终回复 A 781 ms / B 757 ms（各 6 轮）。
 
 ## 5. 上线
 
