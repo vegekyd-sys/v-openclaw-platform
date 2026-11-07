@@ -1,0 +1,30 @@
+{
+  "support": [
+    "lab/candidate/runtime-concurrency.mjs",
+    "lab/candidate/runtime-concurrency-lag.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/runtime-concurrency.mjs"
+  ],
+  "timeoutSeconds": 7200,
+  "user": "lab-db91-parity",
+  "env": {
+    "ARMS": "flash:small:bash5,vds:small:bash5",
+    "PAIRED": "1",
+    "LEVELS": "1,5,5,10",
+    "CANARY": "0",
+    "BIG_COUNT": "0",
+    "WORKER_MIN": "2",
+    "WORKER_MAX": "6",
+    "WORKER_SESSIONS": "3",
+    "STEADY_MIN": "5",
+    "COOLDOWN_MS": "30000",
+    "TURN_TIMEOUT_MS": "300000",
+    "V_CODEX_DIST_SHA": "c2bbae59453397ec481d6c96323ed052c587c894263b137a2c1b70f8d813c3ee",
+    "MODEL_PROXY": "1",
+    "FAULT_PORT": "29893",
+    "PROVIDER_TIMEOUT_S": "90",
+    "OUT_DIR": "/tmp/vds-gap-bash5"
+  }
+}
