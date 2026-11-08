@@ -32,7 +32,7 @@
 
 不传 config 的调用仍直接返回 `record.enabled`，不进缓存。
 
-- **源码：** openclaw-versa `versa/plugin-enabled-memo-20261108` @aa8511f40f0，带 vitest 单测，去掉改动后单测失败；现有的 installed-plugin-index 测试（含兼容模式切换）全部通过。
+- **源码：** openclaw-versa `versa/plugin-enabled-memo-20261108-pb` @4e7ad1e1dde（基于 `versa/port-backlog-20261029`；基于 versa/main 的 @aa8511f40f0 作废），带 vitest 单测，去掉改动后单测失败；现有的 installed-plugin-index 测试（含兼容模式切换）全部通过。
 - **开关：** dist 版本多一个开关 `OPENCLAW_V_PLUGIN_ENABLED_MEMO=0`，每次调用时读取，打开它就每次重新计算。
 
 ## 风险
@@ -51,4 +51,4 @@
 
 - 在共享测量台上做 A/B：`AB_ENVS=OPENCLAW_V_PLUGIN_ENABLED_MEMO`，/vds c10。要看三样：每回合主线程 CPU、到首个工具的时间、profile 里 `normalizePluginsConfig` 是否大幅下降。
 - 核实 Gateway 里 Codex 回合拿到的 `params.config` 是不是跨回合同一个对象。如果每回合都是新对象，就只能省掉回合内的重复计算。
-- 上线前：versa 分支合入 versa/main；捕获 PR 映射 source-map；按线上字节重建。
+- 上线前：versa 分支合入 port-backlog 线；捕获 PR 映射 source-map；按线上字节重建。

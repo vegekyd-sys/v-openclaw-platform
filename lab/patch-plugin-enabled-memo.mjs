@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 // on the Gateway's main thread. The answer depends only on the index record, the config object and, for
 // bundled provider compat plugins, the bundled-discovery mode, so it is memoized per record and config
 // object (config snapshots are replaced on reload, not mutated) and cleared with the other plugin metadata
-// memos. See lab/plugin-enabled-memo.md. Source: openclaw-versa versa/plugin-enabled-memo-20261108 @aa8511f40f0.
+// memos. See lab/plugin-enabled-memo.md. Source: openclaw-versa 4e7ad1e1dde (branch versa/plugin-enabled-memo-20261108-pb on versa/port-backlog-20261029).
 // OPENCLAW_V_PLUGIN_ENABLED_MEMO=0 skips the memo, read on each call.
 
 export const MARKER = 'plugin-enabled-memo';
