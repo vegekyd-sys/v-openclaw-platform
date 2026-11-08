@@ -1,0 +1,66 @@
+{
+  "support": [
+    "lab/candidate/runtime-concurrency.mjs",
+    "lab/candidate/runtime-concurrency-lag.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/runtime-concurrency.mjs"
+  ],
+  "timeoutSeconds": 10800,
+  "user": "lab-db91-parity",
+  "env": {
+    "ARMS": "flash:small:bash5,vds:small:bash5",
+    "CANARY": "0",
+    "BIG_COUNT": "0",
+    "WORKER_MIN": "5",
+    "WORKER_MAX": "24",
+    "WORKER_SESSIONS": "3",
+    "STEADY_MIN": "10",
+    "STEADY_SAMPLE_MS": "30000",
+    "COOLDOWN_MS": "30000",
+    "TURN_TIMEOUT_MS": "300000",
+    "GATE_FAIL_RATE": "1.1",
+    "V_CODEX_DIST_SHA": "302964b4de674927f06e2468ad4946e9bf177d831ff2b9a17982687ceb48b0bb",
+    "MODEL_PROXY": "1",
+    "FAULT_PORT": "29897",
+    "PROVIDER_TIMEOUT_S": "90",
+    "SEED_REGISTRY": "1",
+    "SEED_TOPOLOGY": "/var/tmp/vdsdeep-20261108/topo.json.gz",
+    "SEED_CHILD_ENTRY_KB": "0",
+    "SEED_ANALYZE": "1",
+    "OUT_DIR": "/var/tmp/vdsdeep-20261108/run6",
+    "SUBSCRIBE_SESSIONS": "1",
+    "GATE_STALL_MS": "600000",
+    "AB_ROUNDS": "3",
+    "AB_C": "10",
+    "AB_TASKS": "bash5",
+    "AB_ENVS": "OPENCLAW_V_SUBAGENT_ROW_INDEX",
+    "AB_PROFILE": "1",
+    "PROFILE_RAW": "1",
+    "LEVELS": "10",
+    "AB_ARMS": "vds,flash"
+  },
+  "files": [
+    {
+      "source": "lab/release-files/harness-tasks-filter-first/plugin-sdk/agent-harness-task-runtime.js",
+      "target": "openclaw/dist/plugin-sdk/agent-harness-task-runtime.js",
+      "before": "50dc439b5cbb8a16860aab0bd8b4f4fd485f16a246f881820be5c0ea9c0754e3"
+    },
+    {
+      "source": "lab/release-files/plugin-enabled-memo/installed-plugin-index-DzUab7zi.js",
+      "target": "openclaw/dist/installed-plugin-index-DzUab7zi.js",
+      "before": "3d177fdc4cff00363fa39864bfb0dd188fccc6cb1cfa8d0528cfb3a38839192c"
+    },
+    {
+      "source": "lab/release-files/subagent-row-index/subagent-registry.store.sqlite-hzGu4QSk.js",
+      "target": "openclaw/dist/subagent-registry.store.sqlite-hzGu4QSk.js",
+      "before": "4bc27059fa5b0127892c1f0f3f6285d3334a98333f781e9f1dab245ab9bba9e7"
+    },
+    {
+      "source": "lab/release-files/subagent-row-index/session-utils-list-BUP03AzS.js",
+      "target": "openclaw/dist/session-utils-list-BUP03AzS.js",
+      "before": "a6d40fb5ae98bb8b61ff157487b4a59942c32f126620eda56869c24fc06b3de2"
+    }
+  ]
+}

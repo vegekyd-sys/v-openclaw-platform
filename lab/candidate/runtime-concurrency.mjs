@@ -1341,16 +1341,21 @@ function registryRows() {
 // ---- A/B on one Gateway: the lag probe polls AB_SWITCH_FILE and sets the switches for its process ----
 async function runAb() {
   const setSide = async (side) => { fs.writeFileSync(abSwitchFile, side); await sleep(1_500); };
+  // AB_ARMS: the arms each side runs, one after the other (default vds); a switch in the Gateway
+  // process can matter for the Worker runtime too (session rows are built there)
+  const abArms = (process.env.AB_ARMS ?? "vds").split(",").filter(Boolean);
   const one = async (task, side, round, profiled) => {
     await setSide(side);
-    profileNow = profiled ? `${task}-${side}` : null;
-    const res = await level("vds", "small", AB_C, task);
-    profileNow = null;
-    const { runs: levelRuns, ...head } = res;
-    emit({ phase: "ab-level", side, round, profiled, rows: registryRows(), ...head });
-    emit({ phase: "level-runs", side, round, task, runs: levelRuns });
-    summary.levels.push({ side, round, profiled, ...res });
-    await sleep(COOLDOWN_MS);
+    for (const arm of abArms) {
+      profileNow = profiled ? `${arm === "vds" ? "" : `${arm}-`}${task}-${side}` : null;
+      const res = await level(arm, "small", AB_C, task);
+      profileNow = null;
+      const { runs: levelRuns, ...head } = res;
+      emit({ phase: "ab-level", side, round, profiled, rows: registryRows(), ...head });
+      emit({ phase: "level-runs", side, round, task, arm, runs: levelRuns });
+      summary.levels.push({ side, round, profiled, ...res });
+      await sleep(COOLDOWN_MS);
+    }
   };
   for (const task of AB_TASKS) await one(task, "on", "warm", false);
   for (let round = 0; round < AB_ROUNDS; round += 1) {
