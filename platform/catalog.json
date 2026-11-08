@@ -481,6 +481,7 @@
         "lab/subagent-active-precheck.test.mjs",
         "lab/subagent-restore-narrow.test.mjs",
         "lab/harness-tasks-filter-first.test.mjs",
+        "lab/subagent-row-index.test.mjs",
         "lab/cli-startup-fast.test.mjs",
         "lab/doctor-subprocess.test.mjs",
         "lab/sessions-search-candidate-rows.test.mjs",
