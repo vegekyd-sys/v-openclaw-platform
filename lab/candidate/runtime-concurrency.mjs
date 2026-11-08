@@ -1009,6 +1009,7 @@ function threadsDiff(a, b) {
   return { byComm: Object.fromEntries(Object.entries(byComm).sort((x, y) => y[1] - x[1]).slice(0, 10).map(([k, v]) => [k, Math.round(v * 10) / 10])), childrenSec: Math.round((b.childrenSec - a.childrenSec) * 10) / 10 };
 }
 async function level(arm, size, c, task = "sha") {
+  await ensureClient(`${arm}-${size}-${task}-c${c}`);
   const plan = await sessionsFor(arm, size, c);
   const cpuFrom = cpuTable();
   const threadsFrom = gatewayThreads();
@@ -1318,6 +1319,7 @@ async function seedRegistry() {
   if (process.env.SEED_ANALYZE === "1") agentDb.exec("ANALYZE");
   agentDb.close();
   if (process.env.SEED_ANALYZE === "1") { const st = new DatabaseSync(path.join(stateDir, "state", "openclaw.sqlite")); st.exec("PRAGMA busy_timeout = 30000; ANALYZE"); st.close(); }
+  if (process.env.SEED_STAT1_FROM_V) applyPlannerStatsFromV(process.env.SEED_STAT1_FROM_V);
   emit({ phase: "seed-registry", ms: Date.now() - started, counts });
   startGateway();
   await connectGateway();
@@ -1331,10 +1333,15 @@ function registryRows() {
 // ---- A/B on one Gateway: the lag probe polls AB_SWITCH_FILE and sets the switches for its process ----
 async function runAb() {
   const setSide = async (side) => { fs.writeFileSync(abSwitchFile, side); await sleep(1_500); };
-  const one = async (task, side, round, profiled) => {
+  // AB_TASKS entries may carry their own arm, concurrency and round count:
+  // "bash5@vds:5,bash5@vds:15,bash5@flash:15#1" (the last runs in round 0 only)
+  const roundsOf = (taskSpec) => Number(taskSpec.split("#")[1] ?? AB_ROUNDS);
+  const one = async (taskSpec, side, round, profiled) => {
+    const [task, armC = ""] = taskSpec.split("#")[0].split("@");
+    const [abArm = "vds", abC = String(AB_C)] = armC ? armC.split(":") : [];
     await setSide(side);
-    profileNow = profiled ? `${task}-${side}` : null;
-    const res = await level("vds", "small", AB_C, task);
+    profileNow = profiled ? `${taskSpec}-${side}` : null;
+    const res = await level(abArm, "small", Number(abC), task);
     profileNow = null;
     const { runs: levelRuns, ...head } = res;
     emit({ phase: "ab-level", side, round, profiled, rows: registryRows(), ...head });
@@ -1344,10 +1351,162 @@ async function runAb() {
   };
   for (const task of AB_TASKS) await one(task, "on", "warm", false);
   for (let round = 0; round < AB_ROUNDS; round += 1) {
-    for (const task of AB_TASKS) for (const side of round % 2 === 0 ? ["off", "on"] : ["on", "off"]) await one(task, side, round, false);
+    for (const task of AB_TASKS) if (round < roundsOf(task)) for (const side of round % 2 === 0 ? ["off", "on"] : ["on", "off"]) await one(task, side, round, false);
     emit({ phase: "ab-round", round, host: hostContext() });
   }
   if (PROFILE_DIR) for (const task of AB_TASKS) for (const side of ["off", "on"]) await one(task, side, "profile", true);
+}
+
+// ---- the client closes itself on a tick timeout (a stalled Gateway or runner, e.g. a throttled candidate
+// slice) and every later turn then fails with "gateway not connected"; before a level, wait for its own
+// reconnect, then connect a new client (connectGateway subscribes again) ----
+async function ensureClient(label) {
+  await ensureClientConnected(label);
+  if (process.env.SUBSCRIBE_SECOND_CLIENT === "1") await ensureSecondSubscriber(label);
+}
+async function ensureClientConnected(label) {
+  for (let i = 0; i < 30; i += 1) {
+    try {
+      await client.request("health", {}, { timeoutMs: 30_000 });
+      if (i > 0) emit({ phase: "client-reconnected", label, waitedS: i * 2 });
+      return;
+    } catch (error) {
+      if (!/not connected|closed/iu.test(String(error?.message ?? error))) return;
+    }
+    await sleep(2_000);
+  }
+  emit({ phase: "client-reconnect", label });
+  try { client?.stop(); } catch {}
+  await connectGateway();
+}
+// SUBSCRIBE_SECOND_CLIENT=1: one more connection subscribed to session events and nothing else, as V's voice
+// H5 server or a Control UI tab is. The tool-event client is excluded from session.tool, so only a second
+// connection makes a tool event reach both the tool-event client and session subscribers, as a run started
+// from the Control UI does on V.
+let secondSubscriber = null;
+const secondSubscriberEvents = {};
+let secondSubscriberHook = null;
+async function ensureSecondSubscriber(label) {
+  try {
+    if (secondSubscriber) { await secondSubscriber.request("health", {}, { timeoutMs: 30_000 }); return; }
+  } catch { try { secondSubscriber.stop(); } catch {} secondSubscriber = null; }
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("second subscriber hello timeout")), 30_000);
+    secondSubscriber = new GatewayClient({
+      url: `ws://127.0.0.1:${port}`, token, deviceIdentity: null, clientName: "cli", mode: "cli", caps: [],
+      scopes: ["operator.read"], onEvent: (e) => { secondSubscriberEvents[e.event] = (secondSubscriberEvents[e.event] ?? 0) + 1; secondSubscriberHook?.(e); },
+      onHelloOk: () => { clearTimeout(timeout); resolve(); },
+      onConnectError: (error) => { clearTimeout(timeout); reject(error); },
+    });
+    secondSubscriber.start();
+  });
+  emit({ phase: "second-subscriber", label, result: await secondSubscriber.request("sessions.subscribe", {}).then(() => "ok", (e) => String(e?.message ?? e)), eventsSoFar: { ...secondSubscriberEvents } });
+}
+
+// ---- SEED_STAT1_FROM_V=<json> (with SEED_ANALYZE=1): V's planner statistics instead of the seeded data's ----
+// ANALYZE over the seeded registry sees 16,7xx child rows with spawned_by and parent_session_key NULL, so the
+// planner reads "parent_session_key = ? OR spawned_by = ? ORDER BY session_key" (listSessionChildEntriesReadOnly,
+// every session snapshot) as a whole-table walk in key order; V's statistics (2,001 rows, 44/151 per value)
+// give the two index searches V runs. The file holds V's sqlite_stat1 rows (numbers and index names only,
+// read with mode=ro); V's state database has no sqlite_stat1, so the candidate's is emptied.
+function applyPlannerStatsFromV(file) {
+  const v = JSON.parse(fs.readFileSync(file, "utf8"));
+  const apply = (dbFile, rows) => {
+    const db = new DatabaseSync(dbFile);
+    try {
+      db.exec("PRAGMA busy_timeout = 30000");
+      const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','index')").all().map((r) => r.name));
+      db.exec("BEGIN IMMEDIATE");
+      db.exec("DELETE FROM sqlite_stat1");
+      const ins = db.prepare("INSERT INTO sqlite_stat1 (tbl, idx, stat) VALUES (?, ?, ?)");
+      let n = 0;
+      for (const r of rows) if (tables.has(r.tbl) && (r.idx === null || tables.has(r.idx))) { ins.run(r.tbl, r.idx, r.stat); n += 1; }
+      db.exec("COMMIT");
+      return n;
+    } finally { db.close(); }
+  };
+  emit({ phase: "planner-stats-from-v", agentRows: apply(dbPath, v.agent ?? []), stateRows: apply(path.join(stateDir, "state", "openclaw.sqlite"), v.state ?? []) });
+}
+
+// ---- EQ_SCENARIOS (lab/session-event-snapshot.md): the same scenario with the switches off and on ----
+// Needs SUBSCRIBE_SECOND_CLIENT=1 (so a tool event has two snapshot calls to share) and AB_ROUNDS>0 (so the
+// Gateway polls the switch file). Per side: a five-step /vds turn (tool start/result, lifecycle start/end), a
+// rename, a turn, a model switch to the Worker, a turn, then a /vds turn that spawns a subagent and waits for
+// it. The second subscriber's session.tool and sessions.changed frames are kept, reduced to the session fields
+// that do not depend on time or on the side's key; with OPENCLAW_V_SNAPSHOT_PROBE_SHADOW=1 the probe also
+// rebuilds every shared row at the moment it is served.
+const eqFrames = [];
+let eqStep = null;
+const EQ_VOLATILE = new Set(["key", "sessionId", "updatedAt", "lastActivityAt", "startedAt", "endedAt", "runtimeMs", "createdAt", "lastRunId", "inputTokens", "outputTokens", "totalTokens", "totalTokensFresh", "contextTokens", "estimatedCostUsd", "responseUsage", "effectiveResponseUsage", "activeRunIds", "lastReadAt", "deliveryContext", "origin", "displayName", "subject", "lastTo", "previousSessionId"]);
+function eqReduce(payload) {
+  const s = payload?.session;
+  if (!s) return null;
+  const out = {};
+  for (const key of Object.keys(s).sort()) if (!EQ_VOLATILE.has(key)) out[key] = key === "childSessions" ? (s[key]?.length ?? 0) : key === "label" ? String(s[key] ?? "").replace(/-(off|on)\b/u, "") : s[key];
+  return out;
+}
+async function sendCustom(key, message, label) {
+  const id = randomUUID();
+  const r = { id, key, runtime: "eq", label, sentAt: Date.now() };
+  runs.set(id, r);
+  try { await client.request("chat.send", { agentId: "makaron", sessionKey: key, message, deliver: false, idempotencyKey: id, timeoutMs: TURN_TIMEOUT_MS }, { timeoutMs: 120_000 }); } catch (error) { r.terminal = "send-error"; r.error = redact(error?.message ?? error).slice(0, 200); }
+  const deadline = Date.now() + TURN_TIMEOUT_MS + 30_000;
+  while (!r.terminal && Date.now() < deadline) await sleep(250);
+  return { label, terminal: r.terminal ?? "timeout", tools: r.tools, text: redact(r.text ?? "").slice(0, 120), error: r.error };
+}
+async function eqScenarios() {
+  await ensureClient("eq");
+  secondSubscriberHook = (e) => {
+    if (eqStep && (e.event === "session.tool" || e.event === "sessions.changed")) eqFrames.push({ side: eqStep.side, step: eqStep.step, event: e.event, phase: e.payload?.phase ?? e.payload?.data?.phase, tool: e.payload?.data?.name, snapshot: eqReduce(e.payload) });
+  };
+  const results = [];
+  for (const side of ["off", "on"]) {
+    fs.writeFileSync(abSwitchFile, side);
+    await sleep(1_500);
+    const a = `agent:makaron:explicit:lt-eq-${side}-a`;
+    const b = `agent:makaron:explicit:lt-eq-${side}-b`;
+    const step = async (name, fn) => { eqStep = { side, step: name }; const res = await fn(); await sleep(3_000); eqStep = null; results.push({ side, step: name, res }); };
+    await prepareSession(a, VDS_REF);
+    await step("tools", () => send(a, "vds", `eq-${side}-tools`, "bash5"));
+    await step("rename", async () => { await client.request("sessions.patch", { key: a, label: `eq renamed-${side}` }); return send(a, "vds", `eq-${side}-rename`, "sha"); });
+    await step("model", async () => { await client.request("sessions.patch", { key: a, model: FLASH_REF }); return send(a, "flash", `eq-${side}-model`, "sha"); });
+    await prepareSession(b, VDS_REF);
+    await step("subagent", () => sendCustom(b, `（自动化测试）用 sessions_spawn 启动一个子 agent，任务是：用 shell 执行 \`printf %s eq-${side} | sha256sum | cut -c1-12\` 并只回复输出。启动后用 sessions_yield 等它完成，再用 shell 执行 \`date +%s\`，最后只回复子 agent 给出的 12 个字符。`, `eq-${side}-subagent`));
+  }
+  const bySide = (side) => eqFrames.filter((f) => f.side === side).map(({ side: _s, ...rest }) => rest);
+  const off = bySide("off");
+  const on = bySide("on");
+  const keyOf = (f) => `${f.step}|${f.event}|${f.phase ?? ""}|${f.tool ?? ""}`;
+  const group = (frames) => { const m = new Map(); for (const f of frames) { const k = keyOf(f); if (!m.has(k)) m.set(k, []); m.get(k).push(JSON.stringify(f.snapshot)); } return m; };
+  const gOff = group(off);
+  const gOn = group(on);
+  const comparison = [...new Set([...gOff.keys(), ...gOn.keys()])].map((k) => ({ k, off: gOff.get(k)?.length ?? 0, on: gOn.get(k)?.length ?? 0, sameFirst: (gOff.get(k)?.[0] ?? null) === (gOn.get(k)?.[0] ?? null), sameSet: JSON.stringify([...new Set(gOff.get(k) ?? [])].sort()) === JSON.stringify([...new Set(gOn.get(k) ?? [])].sort()) }));
+  fs.writeFileSync(path.join(OUT_DIR, "eq-frames.json"), JSON.stringify({ results, off, on, comparison }, null, 1));
+  emit({ phase: "eq-scenarios", results, comparison, secondSubscriberEvents });
+}
+
+// ---- SNAPSHOT_BENCH (lab/session-event-snapshot.md): one session row's cost on an idle Gateway ----
+// SNAPSHOT_BENCH_KEYS=k1,k2 with the probed server-chat (OPENCLAW_V_SNAPSHOT_PROBE_FILE): after steady, each key
+// gets an entry if it has none (sessions.patch label), then the Gateway times SNAPSHOT_BENCH_N loads of its
+// row back to back (the 500 ms registry snapshot reused) and 700 ms apart (reloaded each time).
+async function snapshotBench(label) {
+  const keys = (process.env.SNAPSHOT_BENCH_KEYS ?? "").split(",").filter(Boolean);
+  const file = process.env.OPENCLAW_V_SNAPSHOT_PROBE_FILE;
+  if (!keys.length || !file) return;
+  for (const key of keys) {
+    try { await client.request("sessions.patch", { key, label: `snapshot-bench ${key.split(":").pop()}` }); } catch (error) { emit({ phase: "snapshot-bench-patch-error", key, err: redact(error?.message ?? error).slice(0, 200) }); }
+  }
+  for (const gapMs of [0, 700]) {
+    fs.rmSync(`${file}.bench-result`, { force: true });
+    fs.writeFileSync(`${file}.bench-request`, JSON.stringify({ keys: keys.map((key) => ({ key, agentId: "makaron" })), n: num("SNAPSHOT_BENCH_N", 20), gapMs }));
+    const deadline = Date.now() + 600_000;
+    let result = null;
+    while (!result && Date.now() < deadline) {
+      await sleep(500);
+      try { result = JSON.parse(fs.readFileSync(`${file}.bench-result`, "utf8")); } catch {}
+    }
+    emit({ phase: "snapshot-bench", label, gapMs, result });
+  }
 }
 
 // ---- run ----
@@ -1385,6 +1544,14 @@ try {
   summary.steady = await waitSteady("initial", STEADY_MIN);
   summary.hostAtStart = hostContext();
   emit({ phase: "steady", ...summary.steady, host: summary.hostAtStart });
+  await snapshotBench("steady");
+  if (process.env.EQ_SCENARIOS === "1") {
+    // the probe rebuilds shared rows while <probe file>.shadow exists: on for the scenarios, off for any A/B after
+    const shadowFile = process.env.OPENCLAW_V_SNAPSHOT_PROBE_FILE ? `${process.env.OPENCLAW_V_SNAPSHOT_PROBE_FILE}.shadow` : null;
+    if (shadowFile) { fs.writeFileSync(shadowFile, ""); await sleep(1_500); }
+    try { await eqScenarios(); } finally { if (shadowFile) { fs.rmSync(shadowFile, { force: true }); await sleep(1_500); } }
+    if (!(AB_ROUNDS > 0 && process.env.AB_TASKS)) throw Object.assign(new Error("eq done"), { done: true });
+  }
   if (AB_ROUNDS > 0) {
     await runAb();
     const abOut = { phase: "summary", ...summary, levels: summary.levels.map(({ runs: _r, ...l }) => l) };

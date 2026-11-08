@@ -1,0 +1,14 @@
+{
+  "tests": ["lab/session-event-snapshot.test.mjs"],
+  "support": ["lab/patch-session-event-snapshot.mjs"],
+  "files": [
+    {
+      "source": "lab/release-files/session-event-snapshot-coalesce/server-chat-Mh_L0_2e.js",
+      "target": "openclaw/dist/server-chat-Mh_L0_2e.js",
+      "before": "9c2f1bb1fd63684edfc89c1314fb668c5e4363b98e269507b9caf81ec052faed",
+      "after": "011bef28c77f96b4e727394019032ff1a50b2f50bba2554e0597f58f630da854"
+    }
+  ],
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 600
+}

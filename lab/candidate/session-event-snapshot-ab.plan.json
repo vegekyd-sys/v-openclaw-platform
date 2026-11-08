@@ -1,0 +1,57 @@
+{
+  "support": [
+    "lab/candidate/runtime-concurrency.mjs",
+    "lab/candidate/runtime-concurrency-lag.mjs"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/session-event-snapshot-coalesce/probe-patched/server-chat-Mh_L0_2e.js",
+      "target": "openclaw/dist/server-chat-Mh_L0_2e.js",
+      "before": "9c2f1bb1fd63684edfc89c1314fb668c5e4363b98e269507b9caf81ec052faed"
+    },
+    {
+      "source": "lab/release-files/session-event-snapshot-coalesce/probe-patched/server-session-events-B8swmjJ9.js",
+      "target": "openclaw/dist/server-session-events-B8swmjJ9.js",
+      "before": "008c6ec6aee78a7dbb05def3ccd5e02a4b1dc22171b7c32feb65928c61db2152"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/runtime-concurrency.mjs"
+  ],
+  "timeoutSeconds": 10800,
+  "user": "lab-db91-parity",
+  "env": {
+    "ARMS": "vds:small:bash5,flash:small:bash5",
+    "CANARY": "0",
+    "BIG_COUNT": "0",
+    "WORKER_MIN": "2",
+    "WORKER_MAX": "6",
+    "WORKER_SESSIONS": "3",
+    "STEADY_MIN": "10",
+    "STEADY_SAMPLE_MS": "30000",
+    "COOLDOWN_MS": "30000",
+    "TURN_TIMEOUT_MS": "300000",
+    "GATE_FAIL_RATE": "1.1",
+    "V_CODEX_DIST_SHA": "302964b4de674927f06e2468ad4946e9bf177d831ff2b9a17982687ceb48b0bb",
+    "MODEL_PROXY": "1",
+    "FAULT_PORT": "29913",
+    "PROVIDER_TIMEOUT_S": "90",
+    "SEED_REGISTRY": "1",
+    "SEED_TOPOLOGY": "/var/tmp/snapcoal-20261108/topo.json.gz",
+    "SEED_CHILD_ENTRY_KB": "0",
+    "SEED_ANALYZE": "1",
+    "SUBSCRIBE_SESSIONS": "1",
+    "OPENCLAW_V_SNAPSHOT_PROBE_FILE": "/var/tmp/snapcoal-20261108/ab/probe.jsonl",
+    "OUT_DIR": "/var/tmp/snapcoal-20261108/ab",
+    "SUBSCRIBE_SECOND_CLIENT": "1",
+    "AB_ROUNDS": "3",
+    "AB_C": "15",
+    "AB_TASKS": "bash5@vds:1#1,bash5@flash:1#1,bash5@flash:5#1,bash5@vds:5,bash5@vds:15,bash5@flash:15#1",
+    "AB_ENVS": "OPENCLAW_V_SESSION_EVENT_SNAPSHOT_COALESCE",
+    "SEED_STAT1_FROM_V": "/var/tmp/snapcoal-20261108/v-stat1.json",
+    "SNAPSHOT_BENCH_KEYS": "agent:makaron:main,agent:makaron:explicit:lt-vds-small-00",
+    "SNAPSHOT_BENCH_N": "20",
+    "EQ_SCENARIOS": "1"
+  }
+}
