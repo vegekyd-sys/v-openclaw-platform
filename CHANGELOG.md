@@ -10,6 +10,38 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## vds-tasks-rowindex-20261108
+
+上线：2026-11-08 18:43 CST（18:38 文件装到 V；v-self-restart 等到空闲重启，18:43:06 就绪，workers 5、postChecks 全 0）  ·  tag `vds-tasks-rowindex-20261108`
+
+**摘要**：两处 Gateway 主线程减负，/vds 高并发下明显变快。① /vds（Codex）每回合不再把全部任务（V 上约 1.9 万条）克隆排序后再过滤，改为先过滤再克隆（#574）。② 建会话行（会话事件快照、列表、状态）时子 agent run 走索引，不再两次扫整个注册表（1.3–1.6 万个 run），Worker 和 /vds 都受益（#578）。#576（插件启用判断记忆，成对 A/B 约 25 ms/回合）收益太小未上。
+
+V 上验收：
+- 上线前后同法对比（11/08，经 Tianyi 同意在 V 上压测：Gateway `agent` 接口给 10 个一次性显式会话各先 `/vds` 再并发派 3 步 exec 任务，不进任何群；上线后在重启 23 分钟后、避开 19:00 定时任务）：
+
+| /vds 10 并发 | 上线前 18:14 | 上线后 19:06 |
+|---|---|---|
+| 到第一次调用工具 | 12.8–15.0 s，p50 14.1 | 7.6–9.0 s，p50 8.1 |
+| 完成 | 47.8–51.9 s，p50 49.8 | 41.9–44.0 s，p50 43.3 |
+| Gateway RSS 峰值 / 停顿 | 2.4 GB / 0 | 2.6 GB / 0 |
+
+  两次是不同时段的单独运行（DeepSeek 时延会有波动），幅度与 VLab 成对 A/B（#574：c10 到首个工具快 2.6–6.6 s）一致。
+- 测试群 oc_260a… `/vds`：三个并行 echo 正确回复；派两个可见子 agent 后 yield，18:46 最终卡片带两个结果；重启后 owner changed / 绑定报错 / settle wake failed 均为 0。测完切回 `/vcodex`。
+- 共享 VLab（18:27–18:40）：/vds 并行工具、子 agent 交回、sessions.list、Worker 冒烟均正常，journal 无报错。
+
+相对上一版 `loopback-early-status-20261108`：3 个文件变化。
+
+**经 VLab 发版 `vds-tasks-rowindex-20261108`**（vds-tasks-rowindex-20261108，dev `84ce10f4`）
+> 验收：共享 VLab 验收 2026-11-08 18:27–18:40 CST（#574 #578，dev 84ce10f4）。部署后 Gateway 就绪、journal 无 TypeError/uncaught。/vds（codex）三个并行 echo 正确回复；/vds 父会话派 2 个可见子 agent 后 sessions_yield，最终回复 VTR_FINAL VTR_SA VTR_SB；sessions.list 正常（20 行，8 行带子 agent 信息）；Worker exec 冒烟 VTR_W 正常。性能证据见 #574/#578 的 VLab 成对 A/B（c10 到首个工具快 2.6–6.6 s；每回合约 95 ms），上线后在 V 上用同法 /vds c10 前后对比（上线前基线 V 18:14：首个工具 p50≈14.1 s、完成 p50≈49.8 s）。
+- `core` plugin-sdk/agent-harness-task-runtime.js  50dc439b → 595673bc
+- `core` session-utils-list-BUP03AzS.js  a6d40fb5 → 5392dd65
+- `core` subagent-registry.store.sqlite-hzGu4QSk.js  4bc27059 → 23154eac
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #578 perf(gateway): 会话行选子 agent run 走索引，不再两次扫整个注册表
+- #574 perf(gateway): Codex 回合先过滤再克隆任务，不再整表克隆
+- #580 release: 捕获 loopback-early-status-20261108 并补 CHANGELOG
+
 ## loopback-early-status-20261108
 
 上线：2026-11-08 17:10 CST（17:05 文件装到 V，避开 17:00 定时任务；v-self-restart 等到空闲，17:05:51 重启，17:10:37 就绪，workers 5、postChecks 全 0）  ·  tag `loopback-early-status-20261108`
