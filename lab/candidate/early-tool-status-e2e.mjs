@@ -279,7 +279,9 @@ const modelServer = http.createServer((req, res) => {
     const m = all[all.length - 1];
     if (!m && !modelSample) modelSample = JSON.stringify(messages.slice(-2)).slice(0, 1500);
     const kind = m?.[1] ?? "other", tag = m?.[2] ?? null;
-    const toolDone = messages[messages.length - 1]?.role === "tool";
+    // one tool call per tool turn: the next request of the same turn answers (messages after the
+    // tool result vary, so the turn's own history decides)
+    const toolDone = calls.some((c) => c.tag === tag && c.tag !== null && c.tool);
     const names = (body.tools ?? []).map((t) => t?.function?.name).filter(Boolean);
     const tool = TOOL_PREFERENCE.find((n) => names.includes(n));
     const call = { tag, kind, at, toolDone, tool: null };
@@ -399,7 +401,7 @@ function startGateway() {
     s.on("data", (chunk) => {
       const parts = (rest + chunk).split(/\r?\n/u);
       rest = parts.pop() ?? "";
-      lines.push(...parts.filter(Boolean).map((l) => `${Date.now()} ${l}`));
+      lines.push(...parts.filter(Boolean).map((l) => `${Date.now()} ${l.replace(/\x1b\[[0-9;]*m/gu, "")}`)); // no ANSI colors
       if (lines.length > 40000) lines.splice(0, lines.length - 40000);
     });
   }
