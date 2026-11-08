@@ -30,9 +30,9 @@
     "SEED_REGISTRY": "1",
     "SEED_TOPOLOGY": "/var/tmp/vdsdeep-20261108/topo.json.gz",
     "SEED_CHILD_ENTRY_KB": "0",
-    "SEED_ANALYZE": "1",
-    "OUT_DIR": "/var/tmp/vdsdeep-20261108/run3",
+    "OUT_DIR": "/var/tmp/vdsdeep-20261108/run7",
     "SUBSCRIBE_SESSIONS": "1",
-    "GATE_STALL_MS": "600000"
+    "GATE_STALL_MS": "600000",
+    "SEED_STAT1": "/var/tmp/vdsdeep-20261108/v-agent-stat1.json"
   }
 }
