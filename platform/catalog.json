@@ -480,6 +480,7 @@
         "lab/sessions-search-exact-read.test.mjs",
         "lab/subagent-active-precheck.test.mjs",
         "lab/subagent-restore-narrow.test.mjs",
+        "lab/registry-lazy-first-turn.test.mjs",
         "lab/cli-startup-fast.test.mjs",
         "lab/doctor-subprocess.test.mjs",
         "lab/sessions-search-candidate-rows.test.mjs",
