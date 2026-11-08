@@ -10,6 +10,32 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## loopback-early-status-20261108
+
+上线：2026-11-08 17:10 CST（17:05 文件装到 V，避开 17:00 定时任务；v-self-restart 等到空闲，17:05:51 重启，17:10:37 就绪，workers 5、postChecks 全 0）  ·  tag `loopback-early-status-20261108`
+
+**摘要**：两件事一次重启上线。① /vcc（claude-cli）的定时任务点名要 `exec` 时，经 MCP 回环调 OpenClaw exec 不再报「Secret egress proxy requires an admitted agent run instance」（#573）：十二家群「每日当天行程置顶」从 11/06 08:00 起每天连 `echo ok` 都失败、lark-cli 一次没跑起来。② Worker 回复的第一个可见事件是工具调用时，模型一开始流工具调用就推「正在 …」状态行，不再等参数流完（#575）。
+
+V 上验收（测试群 oc_260a…，lark-cli 以 Tianyi 身份）：
+- 上线前基线：#575 V 11/05–07 工具类回复「工具事件 → 卡片开始」P50 0.55 s / P90 1.86 s；#573 当天 claude-cli 转录里 egress 报错 13 处。
+- #575：测试群切到默认（`/model deepseek/deepseek-flash --runtime default -s`，Runtime vlab-worker），三条「exec sleep 2 && echo」消息，「工具事件 → 卡片开始」3 / 3 / 250 ms；卡片开始 → 创建完成 540–613 ms 是飞书接口耗时。
+- #573：测试群建一次性定时任务（isolated、`--model anthropic/claude-opus-5-5`、`--tools exec,message`，与置顶任务同形），17:15 运行：转录里是 `mcp__openclaw__exec`，`echo EXEC_OK_573` 与 `lark-cli im +chat-list` 都成功（rc=0），无 egress 报错，回复「EXEC=成功 LARK=成功」；任务运行后自动删除，测完测试群切回 `/vcodex`。十二家的真实任务明早 08:00/08:05 自然运行时再确认。
+- 未覆盖：共享 VLab 上没有复测飞书（入站被同 appId 的 versa-mirror95 分走）和 secret egress（VLab 未开）。
+
+相对上一版 `restore-narrow-settle-parallel-20261108`：4 个文件变化。
+
+**经 VLab 发版 `loopback-early-status-20261108`**（loopback-early-status-20261108，dev `0bd3a629`）
+> 验收：共享 VLab 验收 2026-11-08 16:47–16:58 CST（#573 #575，dev 0bd3a629）。部署后 Gateway 就绪；Worker 工具回合冒烟（exec echo LES_42 → 回复 LES_42）正常。#575 飞书端到端证据为 PR 内 candidate 三组 A/B（V 飞书插件 + vlab-worker + 假飞书，工具回合卡片首推 3469→1887 ms，正文路径不变，开关关闭=改前）；共享 VLab 的飞书入站此时被 versa-mirror95（同 appId cli_aae2c999，16:54 启动）分走，未在共享 VLab 复测飞书。#573 的 secret egress proxy 在共享 VLab 未开启、且无 claude 登录，证据为 PR 内 candidate 对照（candidate-214db0f2 改前…
+- `core` agent-runner.runtime-CAdsMsQt.js  09f1b500 → ec866319
+- `core` builtin-openclaw-zQV8Wwjr.js  a44b846a → 10af16f4
+- `core` mcp-http-BL3X6y4w.js  6a1e20fc → c10aece4
+- `core` tool-resolution-Con11qMn.js  aa63296c → 055335eb
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #575 首字：工具调用一开始就推状态行（early-tool-status 在 V 当前字节上重建 + 飞书端到端 A/B）
+- #573 fix(vcc): 定时任务里 OpenClaw exec 报 Secret egress proxy requires an admitted agent run instance
+- #572 release: 捕获 fallback-dsml-subagent-wake-20261108 与 restore-narrow-settle-parallel-20261108 并补 CHANGELOG
+
 ## restore-narrow-settle-parallel-20261108
 
 上线：2026-11-08 10:04 CST（09:56 文件装到 V；v-self-restart 等到空闲，10:00:04 重启，10:04:42 就绪。10:08:35 Gateway 因钉钉 WebSocket 握手 400 未捕获异常崩溃一次，10:08:41 自动拉起，见下）  ·  tag `restore-narrow-settle-parallel-20261108`
