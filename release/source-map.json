@@ -1760,6 +1760,34 @@
       "sha256": "70e6e032318e0b74b5aca5ecfbcbbebd75398c5bb51baecb61d466870879862a",
       "source": "versa:9a64665f56b",
       "note": "restore-narrow-settle-parallel-20261108 (#570): supports_parallel_tool_calls for the /vds DeepSeek catalog (versa/vds-parallel-tool-calls-20261108)"
+    },
+    {
+      "layer": "core",
+      "path": "mcp-http-BL3X6y4w.js",
+      "sha256": "c10aece48b15cb8195f6ac51f31758fa65daf6d1e2745e3502f7e793f13e213e",
+      "source": "versa:647f1203f38",
+      "note": "loopback-early-status-20261108 (#573): loopback MCP passes the grant-bound admitted run instance to tool resolution (versa/fix-loopback-exec-run-instance-20261108)"
+    },
+    {
+      "layer": "core",
+      "path": "tool-resolution-Con11qMn.js",
+      "sha256": "055335ebf0286c2763e9e4f99e3620d81b752efebeb63dafdddc88dcdff87741",
+      "source": "versa:647f1203f38",
+      "note": "loopback-early-status-20261108 (#573): exec built with the admitted run instance, tool cache keyed by it (versa/fix-loopback-exec-run-instance-20261108)"
+    },
+    {
+      "layer": "core",
+      "path": "builtin-openclaw-zQV8Wwjr.js",
+      "sha256": "10af16f4f27e7c87115d3d923bc9c6ed01729e27053052a4b78087b73e49348d",
+      "source": "versa:ad7497575da",
+      "note": "loopback-early-status-20261108 (#575): early tool status on input_start (versa/port-early-tool-status-20261108)"
+    },
+    {
+      "layer": "core",
+      "path": "agent-runner.runtime-CAdsMsQt.js",
+      "sha256": "ec866319e0125f124acd499d42a76bc49672b92618a8f358a1b7afc343e4a2d3",
+      "source": "versa:ad7497575da",
+      "note": "loopback-early-status-20261108 (#575): reply runner treats input_start as tool start (versa/port-early-tool-status-20261108)"
     }
   ]
 }
