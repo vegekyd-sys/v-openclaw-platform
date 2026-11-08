@@ -261,6 +261,7 @@ const reactionsTo = (id) => fake.reactions.filter((r) => r.to === id).length;
 
 // ---------------------------------------------------------------- loopback DeepSeek
 const calls = []; // { tag, kind, at, headerAt, argsEndAt, textAt }
+let modelSample = null; // first request without a marker, for diagnosis
 const ccChunk = (model, delta, finish, usage) => `data: ${JSON.stringify({ id: "c1", object: "chat.completion.chunk", created: 1, model, choices: [{ index: 0, delta, finish_reason: finish }], ...(usage ? { usage } : {}) })}\n\n`;
 const flatten = (c) => typeof c === "string" ? c : Array.isArray(c) ? c.map((b) => typeof b === "string" ? b : b?.text ?? "").join("") : "";
 const TOOL_PREFERENCE = ["session_status", "sessions_list", "agents_list"];
@@ -273,8 +274,10 @@ const modelServer = http.createServer((req, res) => {
     try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch {}
     if (!/\/chat\/completions\b/u.test(req.url ?? "")) { res.writeHead(404); return res.end(); }
     const messages = Array.isArray(body.messages) ? body.messages : [];
-    const users = messages.filter((m) => m.role === "user").map((m) => flatten(m.content));
-    const m = /\[ets (tool|text) ([\w-]+)\]/u.exec(users[users.length - 1] ?? "");
+    // the newest marker anywhere in the request (Feishu wraps the user's text in its own envelope)
+    const all = [...JSON.stringify(messages).matchAll(/\[ets (tool|text) ([\w-]+)\]/gu)];
+    const m = all[all.length - 1];
+    if (!m && !modelSample) modelSample = JSON.stringify(messages.slice(-2)).slice(0, 1500);
     const kind = m?.[1] ?? "other", tag = m?.[2] ?? null;
     const toolDone = messages[messages.length - 1]?.role === "tool";
     const names = (body.tools ?? []).map((t) => t?.function?.name).filter(Boolean);
@@ -391,7 +394,14 @@ function startGateway() {
   gateway = spawn(process.execPath, ["--max-old-space-size=4096", ...profArgs(), `${runtime}/openclaw/dist/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
   for (const s of [gateway.stdout, gateway.stderr]) {
     s.setEncoding("utf8");
-    s.on("data", (chunk) => { lines.push(...chunk.split(/\r?\n/u).filter(Boolean).map((l) => `${Date.now()} ${l}`)); if (lines.length > 40000) lines.splice(0, lines.length - 40000); });
+    // keep a partial last line until its newline arrives: long [firsttext-e2e.1] lines span chunks
+    let rest = "";
+    s.on("data", (chunk) => {
+      const parts = (rest + chunk).split(/\r?\n/u);
+      rest = parts.pop() ?? "";
+      lines.push(...parts.filter(Boolean).map((l) => `${Date.now()} ${l}`));
+      if (lines.length > 40000) lines.splice(0, lines.length - 40000);
+    });
   }
 }
 async function stopGateway() {
@@ -536,6 +546,8 @@ if (PROFILE && evidence.turns) {
 evidence.unknownFeishuCalls = Object.fromEntries(fake.unknown);
 evidence.errorsLog = logMatches(/feishu.*(error|failed)/iu).slice(-15).map((l) => redact(l.slice(14)));
 evidence.turnErrorLog = logMatches(/outcome=error|FailoverError|No API key|api key|401|403|rate limit|model.*(error|failed)|embedded.*(error|failed)/iu).filter((l) => !/card-phase/u.test(l)).slice(0, 12).map((l) => redact(l.slice(14)).slice(0, 600));
+evidence.modelSample = modelSample;
+evidence.e2eSample = (lines.find((l) => l.includes("[firsttext-e2e.1]")) ?? "").slice(0, 1200);
 evidence.failure = failure ?? null;
 evidence.ok = !failure && evidence.checks.length > 0 && evidence.checks.every((c) => c.ok);
 console.log(JSON.stringify(evidence, null, 1));
