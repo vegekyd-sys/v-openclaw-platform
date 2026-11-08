@@ -1,0 +1,10 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/subagent-settle-wake-missing-task/subagent-completion-admission.store-JmpNDYTF.js",
+      "target": "openclaw/dist/subagent-completion-admission.store-JmpNDYTF.js",
+      "before": "8f8adebe18223078ed3fed1776c37bea01359d74a8e367cba0f055660551db4f"
+    }
+  ]
+}
