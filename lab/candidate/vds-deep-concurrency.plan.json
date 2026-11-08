@@ -29,12 +29,12 @@
     "PROVIDER_TIMEOUT_S": "90",
     "SEED_REGISTRY": "1",
     "SEED_TOPOLOGY": "/var/tmp/vdsdeep-20261108/topo.json.gz",
-    "SEED_CHILD_ENTRY_KB": "77",
+    "SEED_CHILD_ENTRY_KB": "0",
     "SEED_ANALYZE": "1",
     "AB_PROFILE": "1",
     "PROFILE_C": "10",
     "PROFILE_RAW": "1",
-    "OUT_DIR": "/var/tmp/vdsdeep-20261108/run1",
+    "OUT_DIR": "/var/tmp/vdsdeep-20261108/run2",
     "SUBSCRIBE_SESSIONS": "1"
   }
 }

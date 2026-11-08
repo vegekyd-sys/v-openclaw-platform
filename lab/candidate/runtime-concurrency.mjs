@@ -1008,7 +1008,17 @@ function threadsDiff(a, b) {
   for (const [k, v] of Object.entries(b.threads)) { const comm = k.split("#")[0]; byComm[comm] = (byComm[comm] ?? 0) + Math.max(0, v - (a.threads[k] ?? 0)); }
   return { byComm: Object.fromEntries(Object.entries(byComm).sort((x, y) => y[1] - x[1]).slice(0, 10).map(([k, v]) => [k, Math.round(v * 10) / 10])), childrenSec: Math.round((b.childrenSec - a.childrenSec) * 10) / 10 };
 }
+// GatewayClient closes its socket on a tick timeout (a long main-thread stall) and does not come
+// back by itself; without this every later level fails at once with "gateway not connected".
+async function ensureClient(label) {
+  const alive = await Promise.race([client.request("health", {}).then(() => true, () => false), sleep(20_000).then(() => false)]);
+  if (alive) return;
+  emit({ phase: "client-reconnect", label });
+  try { client?.stop(); } catch {}
+  await connectGateway();
+}
 async function level(arm, size, c, task = "sha") {
+  await ensureClient(`${arm}-${task}-c${c}`);
   const plan = await sessionsFor(arm, size, c);
   const cpuFrom = cpuTable();
   const threadsFrom = gatewayThreads();
