@@ -30,7 +30,7 @@
 | 1 | Codex 对 DeepSeek 503/断流重试 30 次，回退慢 | 第 1 批 | 503：32.4→11.3 s；断流：20.4→9.9 s；瞬时 503 不回退（VLab，`codex-fallback-chain-20261107`） | 第 1 批那次重启里给 makaron 的 `config.toml` 加两行，见下文“第 1 批怎么执行” |
 | 2 | 手动 `/model` 过的会话不进灰度、也没有回退 | 第 1 批 | `override-progress.jsonl`：手动 /vds 遇 503 11.0 s 报错；`/model deepseek` 后仍是 Codex，503 6.7 s 回退 | 操作步骤，不用改代码；列进 map 的群各发一次 `/model deepseek` |
 | 3 | 上游挂起无回复，Codex 不回退 | 第 2 批起 | PR #534 已 rebase 到 dev；当前 core 上整体挂起 95.4 s、仅 Codex 挂起 96.4 s 回退到 luna（VLab）；11/01 的不误杀证据（`sleep 200`、200 s 动态工具、慢响应头）字节未变仍适用 | 请 Tianyi 审 #534，建议先于灰度单独上线 |
-| 4 | 并发时比 Worker 慢 | 第 3 批看指标，第 4 批必过 | VLab：DeepSeek 不慢；Codex 每回合多 1.2–1.6 次模型往返（目录没开并行工具调用）；c10 时整机 CPU 不够。11/08 打开并行后 c5/c10 每回合 6→4.9–5.2 次、和 Worker 的完成差距 0.9–2.8 s，c1 没变。见第 6 节 | PR #570（目录加一项，第 3 批前上线）；V 主线程忙的原因要 V 上 profile，需 Tianyi 同意 |
+| 4 | 并发时比 Worker 慢 | 第 3 批前 | 11/08 深测（VLab、V 规模数据、V 的规划器统计、订阅会话事件）：c10 完成 p50 Worker 13.3 s、/vds 19.9 s；差距一半在 Codex 回合准备排 Gateway 主线程（最后一个回合首次请求模型晚约 4 s），一半在模型往返。并行工具调用 11/08 09:51 已上 V。#574+#576+#578 打上后 /vds 准备排队追平 Worker，c10 完成 15.2–18.6 s。见第 7 节 | #574、#578、#576 一起上线；上线后看 V 的真实首字 |
 | 5 | relay 启动晚于 1 s 且 Gateway 9 s 不答时，Codex 照样执行工具 | 第 3 批前 | 补丁在本 PR，在 V 当前快路径字节上仍能打上；快路径后 relay 0.08–0.10 s 起来，触发窗口更小；V 上没有插件用拦截做安全控制 | 源码已补：openclaw-versa 分支 `versa/port-relay-deadline-20261107`（`df437a4b1f8`，入口传入进程已运行时长，单测去掉修复会失败），未合 port-backlog；上线时 source-map 指向它 |
 | 6 | `write_stdin` 不进钩子 | 第 3 批前 | 一周 172 次真实使用；V 的 shell 本来就是全权限，只影响插件策略，不是提权 | 建议 Tianyi 接受现状 |
 | 7 | Workboard 固定不住模型 | 只挡第 4 批 | 补丁在本 PR，11/07 在 VLab 当前字节 `runtime-api-1CCazqtv.js` 上仍能打上 | 不做第 4 批就不需要 |
@@ -179,7 +179,7 @@ sudo v-self-restart --if-busy abort --idle-timeout 3600 --reason "vds gray batch
 |---|---|---|---|
 | 1 | 两个测试群 `oc_260a94509d8464a58c4f66966093356e`、`oc_ede0fdc8e94dc40d7424691ddf80d948`；Codex 重试次数 | 无代码前置；阻塞项 1、2 是这一批自己的操作 | 24 h，自测：文字、多工具、图片、子 agent、定时任务、`/new`、飞书进度卡 |
 | 2 | 已经手动用 /vds 的 makaron 群（11/07 有 20 个，名单由 Tianyi 圈定），列进 map 后各发一次 `/model deepseek` | #534 上线；第 1 批通过 | 48 h，含一个夜班高峰。这批的用户本来就在用 /vds，换来的是回退，体验不变 |
-| 3 | 其余 makaron 交互群和私聊，逐个列 id，不含 dealclaw、short-v、v-codex 等自带模型的群 | 阻塞项 5、6；PR #570 上线；第 2 批通过；第 6 节的指标没越线 | 72 h，这就是目标状态 |
+| 3 | 其余 makaron 交互群和私聊，逐个列 id，不含 dealclaw、short-v、v-codex 等自带模型的群 | 阻塞项 5、6；#574、#576、#578 上线（#570 已于 11/08 上 V）；第 2 批通过；第 6 节的指标没越线 | 72 h，这就是目标状态 |
 | 4 | 改默认（可选，不建议） | 阻塞项 4、7；Tianyi 单独决定 | 见下 |
 
 第 4 批的配置：`agents.defaults.model` 和 `agents.entries.makaron.model` 改 /vds，`subagents.model=flash`，Workboard 补丁随发版上。语音会跟到 Codex，要先做一次真实通话。
@@ -248,6 +248,54 @@ sudo v-self-restart --reason "vds gray batch 1" --requested-by "Tianyi" \
 - c10 时 /vds 到首个工具慢一倍，同档 VLab load 到 10（4 核），Gateway 事件循环只占 0.2。VLab 上这段是整机 CPU 不够，与 V 上的主线程忙不是同一个现象；V 上主线程忙的原因仍未拆，需要 V 上的 profile，要 Tianyi 同意。
 
 **对灰度的意义。** 真实交互群在途最多约 10 个回合，夜班留在 Worker。第 1、2 批的并发量很小，不受影响；第 3 批前看 Gateway RSS、liveness 和首字三条线（上面的指标表）。并行工具调用已验证有效（c5/c10），修复是模型目录加一个字段：PR #570，源码 openclaw-versa `versa/vds-parallel-tool-calls-20261108` `9a64665f56b`，随下一次 Codex 插件发版捕获。
+
+## 7. 并发深测（11/08）
+
+和 session「对比 Codex 与 vlab-worker 并发」协同完成。测量台在分支 `claude/vds-concurrency-deep`，完整数据在共享笔记 `vds-concurrency-deep-20261108.md`。
+
+**V 真实流量（只读）。**
+- 11/01–11/06 的 2,518 条消息（create_time→首次推送）：/vds 首字 p50/p90 9.8/18.2 s，Worker 11.4/27.5 s。
+- 同时在途回合 p99 是 7，最大 11。
+- /vds 在途 ≥5 时首字 320–739 s 的那几条，都出在 11/03 DeepSeek 故障里，原因是手动 `/model` 关掉了回退、也没有挂起看门狗（阻塞项 2、3），与并发无关。
+- 交互回合每回合工具调用：Worker 5.7 次，/vds 6.7 次；assistant 消息 6.1 条对 9.3 条（并行工具调用上线之前）。
+
+**VLab 测量台怎么搭的。**
+- 用 V 当前字节。
+- 注册表按 V 规模铺：从 V 只读导出 16,748 条子 agent 运行、18,867 条任务。
+- 抄 V agent 库的 `sqlite_stat1`，不跑 ANALYZE。ANALYZE 会把几条会话查询变成全表扫描。
+- 客户端像 V 上的 voice H5 server 一样订阅会话事件。不订阅的话，Gateway 会跳过每次转录更新的会话快照，以前所有 candidate 都漏测了这一项。
+
+**稳态对比（run7，无补丁，取第二轮，全部答对）。**
+| 档 | Worker 完成 p50 | /vds 完成 p50 | Gateway 主线程/回合 W / vds | 模型请求/回合 W / vds | 最后一个回合首次请求模型 W / vds |
+|---|---|---|---|---|---|
+| c5 | 7.7 s | 15.4 s | 0.78 / 1.64 s | 3.6 / 6 | 3.6 / 5.4 s |
+| c10 | 13.3 s | 19.9 s | 0.72 / 1.55 s | 4.4 / 5.4 | 5.2 / 9.0 s |
+| c15 | 14.2 s | 25.0 s | 0.65 / 1.45 s | 4.1 / 5.6 | — |
+
+- **差距一：回合准备排主线程。** /vds 每回合有约 0.5 s 准备工作在 Gateway 主线程上做，同时开始的回合越多，排队越久。Worker 的准备在 worker 进程里。
+- **差距二：模型往返。** bash5 提示写的是「按顺序做」，/vds 上的 DeepSeek 照做，Worker 上的 DeepSeek 把 5 个命令并成一次调用。这部分有一半是测试任务造成的。
+- **内存。** Gateway RSS：Worker 1.04–1.07 GB，/vds 1.16–1.30 GB。Codex app-server 0.13–0.29 GB。worker 进程（最少 5 个）3.8–3.9 GB。V 上现在 5 个 worker 共 5.7 GB。
+- **Worker 自身的风险。** 新 worker 第一轮会持有 state 库写锁 33–131 s，Gateway 同步等这把锁，停顿 10–204 s。在 VLab 4 核上复现了三次。V 上 6 h 内没有出现 `database is locked`。
+
+**补丁（都是草稿 PR，开关均为 `=0` 关闭）。**
+| PR | 改什么 | 效果（VLab c10 /vds） |
+|---|---|---|
+| #574 | Codex 回合开始时，任务列表先过滤再克隆 | 到首个工具每轮快 2.6–6.6 s；profile 里子 agent 监控归零 |
+| #578 | 建会话行时按索引挑子 agent run | `buildSingleRowSubagentRunIndex` 103→9 ms/回合，快照 239→146 ms/回合 |
+| #576 | 插件启用判断记忆 | 约 25 ms/回合，单测看不出 |
+| #577 | 同一事件只建一次会话行 | 飞书回合没有工具事件客户端，拿不到收益，先不合 |
+
+- 三个一起打上（run6）：/vds c10 完成 15.2–18.6 s，主线程 0.90–1.18 s/回合。最后一个回合首次请求模型 5.2–6.5 s，已追平 Worker 的 5.2–6.6 s。
+- 剩下的差距基本是模型往返。这是跨 run 的对照，不是同一 Gateway 上的 A/B。
+
+**VLab profile 的局限。**
+- SQL 型热点会被冷缓存放大。转录锚点查询在 VLab 上约 450 ms/回合，V 上只读实测是 0.1–0.4 ms/次。
+- 所以 SQL 型的数字要先在 V 上只读计时，才能信。
+- 测量台在打了 dist 补丁时，worker 池起不来（`no active service generation`），所以 #578 对 Worker 的效果没测到。
+
+**还没验证。**
+- 真实流量下 Codex 回合的模型往返次数：Codex 回合不打 firsttext-metrics，要补埋点。
+- 上线后 V 的真实首字。
 
 ## 未验证
 
