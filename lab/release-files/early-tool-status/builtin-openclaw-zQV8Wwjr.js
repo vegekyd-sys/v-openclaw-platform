@@ -1,3 +1,4 @@
+// subagent-completion-projection-v3: admitted-attempt-readiness-and-native-yield-claim
 // gpt-live-projection-readiness-v1: admitted-voice-prompt
 // gpt-live-voice-tool-order-v1: native-builtin
 import {bundlePrepObserver} from "./bundle-prep-observer.mjs";
@@ -6706,7 +6707,7 @@ function resolveIncompleteTurnPayloadText(params) {
 	const stopReason = assistant?.stopReason;
 	if (!incompleteTerminalAssistant && !assistantState.reasoningOnly && !thinkingOnlyTerminal && !assistantState.emptyResponse && stopReason !== "error") return null;
 	if (stopReason === "length" && assistantState.visibleText.length === 0) return "⚠️ 模型提前结束，未生成正文。已停止自动续写；请先检查输出预算并压缩上下文。历史和任务状态保留，恢复前请核对已执行操作，避免重复执行。";
-	if (params.hadPotentialSideEffects || params.attempt.replayMetadata.hadPotentialSideEffects) return "⚠️ Agent couldn't generate a response. Note: some tool actions may have already been executed — please verify before retrying.";
+	if (params.hadPotentialSideEffects || params.attempt.replayMetadata.hadPotentialSideEffects) return "⚠️ 这一轮没能完成：模型服务中途出错，部分操作可能已经执行。请先核对结果；需要继续时直接回复「继续」，我会从中断处接着做。"; // upstream-5xx-fallback-v1
 	if (assistant && isProviderRefusalAssistantError(assistant)) return formatUserFacingAssistantErrorText(assistant);
 	const authFailure = params.terminalAuthFailure;
 	const reason = authFailure?.assistantProfileFailureReason;
@@ -6721,7 +6722,7 @@ function resolveIncompleteTurnPayloadText(params) {
 			env: process.env
 		})
 	});
-	return "⚠️ Agent couldn't generate a response. Please try again.";
+	return "⚠️ 这一轮没能生成回复。请稍后再试，或直接回复「继续」。"; // upstream-5xx-fallback-v1
 }
 /**
 * Allows one retry when the provider returned no assistant turn at all and the
@@ -6740,6 +6741,8 @@ function shouldRetryMissingAssistantTurn(params) {
 }
 /** Continuation evidence for a yielded turn — sources that will produce future output. */
 function hasYieldContinuationEvidence(attempt) {
+	// Native onYield already claimed a pending child, possibly from a prior turn.
+	if (attempt.yieldDetected === true && attempt.nativeYieldClaimed === true) return true;
 	return (attempt.clientToolCalls?.length ?? 0) > 0 || attempt.didSendDeterministicApprovalPrompt === true || hasCommittedMessagingToolDeliveryEvidence({
 		messagingToolSentTexts: attempt.messagingToolSentTexts ?? [],
 		messagingToolSentMediaUrls: attempt.messagingToolSentMediaUrls ?? [],
@@ -7062,6 +7065,9 @@ function completeEmbeddedAttemptResult(input) {
 		compactionCount: getCompactionCount(),
 		compactionTokensAfter: getLastCompactionTokensAfter(),
 		clientToolCalls,
+		// onYield runs only after the pending-child claim succeeds. Yield may abort
+		// before tool-end metadata arrives, so preserve its native receipt directly.
+		...state.yieldDetected === true ? { nativeYieldClaimed: true } : {},
 		yieldDetected: state.yieldDetected || void 0,
 		yieldAcknowledgment: state.yieldAcknowledgment
 	};
@@ -17014,6 +17020,24 @@ async function prepareEmbeddedAttemptSessionBoundary(input) {
 		}
 	};
 }
+// transcript-projection-checkpoint-v1: a turn that starts while its projection rebuilds waits for it instead of failing
+async function openAttemptSessionManagerWhenProjected(target, cwd, limits, abortSignal) {
+	for (let waits = 0;; waits += 1) {
+		try {
+			return SessionManager.open(target, cwd, limits);
+		} catch (error) {
+			if (error?.name !== "SessionTranscriptProjectionUnavailableError" || error.sessionId !== target.sessionId || waits >= 4) throw error;
+		}
+		abortSignal?.throwIfAborted();
+		const { waitForSessionTranscriptProjection } = await import("./session-transcript-reconcile-DFsDtc9l.js");
+		try {
+			await waitForSessionTranscriptProjection(target, abortSignal);
+		} catch (error) {
+			if (error?.name !== "SessionTranscriptProjectionUnavailableError") throw error;
+		}
+		abortSignal?.throwIfAborted();
+	}
+}
 async function prepareEmbeddedAttemptSessionManager(input) {
 	const { attempt } = input;
 	const transcriptState = await resolveExistingAttemptTranscriptState({
@@ -17043,10 +17067,10 @@ async function prepareEmbeddedAttemptSessionManager(input) {
 	let latestRuntimeUserMessage;
 	let latestUserTurnTranscriptRecorder = attempt.userTurnTranscriptRecorder;
 	const userTranscriptContextRegistry = createUserTranscriptContextRegistry();
-	const sessionManager = guardSessionManager(attempt.sessionManager ?? (attempt.sessionTarget ? SessionManager.open(attempt.sessionTarget, input.effectiveCwd, {
+	const sessionManager = guardSessionManager(attempt.sessionManager ?? (attempt.sessionTarget ? await openAttemptSessionManagerWhenProjected(attempt.sessionTarget, input.effectiveCwd, {
 		maxBytes: Math.min(67108864, Math.max(1024, (attempt.contextTokenBudget ?? 128e3) * 8)),
 		maxEvents: 1e4
-	}) : SessionManager.inMemory(input.effectiveCwd)), {
+	}, input.abortSignal) : SessionManager.inMemory(input.effectiveCwd)), {
 		agentId: input.sessionAgentId,
 		runId: attempt.runId,
 		sessionKey: attempt.sessionKey,
@@ -18635,6 +18659,25 @@ function createEmbeddedAttemptTranscriptLifecycle(params) {
 //#endregion
 //#region src/agents/embedded-agent-runner/run/attempt-transcript-lifecycle-prepare.ts
 /** Prepares the admitted writer context and teardown tracker for one attempt. */
+/** Wait inside the admitted attempt, after any previous completion has left its lane. */
+async function waitForSubagentCompletionProjection(input) {
+	const { attempt, sessionTarget, externalAbortController, initialWriter } = input;
+	const provenance = attempt.inputProvenance;
+	if (provenance?.kind !== "inter_session" || !["subagent_announce", "agent_harness_task"].includes(provenance.sourceTool)) return;
+	const assertCurrent = () => {
+		externalAbortController.throwIfFired();
+		attempt.abortSignal?.throwIfAborted();
+		initialWriter?.assertActive();
+		if (!sessionTarget?.sessionId || sessionTarget.sessionId !== attempt.sessionId || !sessionTarget.agentId || !sessionTarget.storePath || !sessionTarget.sessionKey || attempt.sessionKey && sessionTarget.sessionKey !== attempt.sessionKey) throw new Error("Subagent completion projection wait requires the admitted session target");
+	};
+	assertCurrent();
+	const { waitForSessionTranscriptProjection } = await import("./session-transcript-reconcile-DFsDtc9l.js");
+	assertCurrent();
+	// The existing native waiter is bounded and validates the canonical generation.
+	// Do not acquire a transcript write context, replay a prompt, or retry a run.
+	await waitForSessionTranscriptProjection(sessionTarget, attempt.abortSignal, { assertActive: assertCurrent });
+	assertCurrent();
+}
 async function prepareEmbeddedAttemptTranscriptLifecycle(input) {
 	const { attempt, externalAbortController } = input;
 	const initialWriter = getOwnedSessionTranscriptInitialWriter({
@@ -18653,6 +18696,7 @@ async function prepareEmbeddedAttemptTranscriptLifecycle(input) {
 	});
 	await externalAbortController.throwIfFiredAfterPrepCleanup();
 	initialWriter?.assertActive();
+	await waitForSubagentCompletionProjection({ attempt, sessionTarget, externalAbortController, initialWriter });
 	const transcriptLifecycle = createEmbeddedAttemptTranscriptLifecycle({
 		runId: attempt.runId,
 		sessionId: attempt.sessionId
