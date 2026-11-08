@@ -1,0 +1,15 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/loopback-exec-run-instance/mcp-http-BL3X6y4w.js",
+      "target": "openclaw/dist/mcp-http-BL3X6y4w.js",
+      "before": "6a1e20fca020096809a48fc2882e147084144c620004c2ebca23697c563d0371"
+    },
+    {
+      "source": "lab/release-files/loopback-exec-run-instance/tool-resolution-Con11qMn.js",
+      "target": "openclaw/dist/tool-resolution-Con11qMn.js",
+      "before": "aa63296c842b933f1c50fc8f879b3e82446766b4549758e60ef297b42b8d33a8"
+    }
+  ]
+}
