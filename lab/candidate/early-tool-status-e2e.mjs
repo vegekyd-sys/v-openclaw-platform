@@ -11,7 +11,7 @@
 // [firsttext-e2e.1] record and from the fake Feishu's card writes.
 //
 // ETS_ARM=base  V's bytes (no plan files)
-// ETS_ARM=on    + lab/release-files/early-tool-status-v2-20261108 (builtin + agent-runner)
+// ETS_ARM=on    + lab/release-files/early-tool-status (builtin + agent-runner, built on V 2026-11-08)
 // ETS_ARM=off   the patched files with OPENCLAW_EARLY_TOOL_STATUS=0 (kill switch must equal base)
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
