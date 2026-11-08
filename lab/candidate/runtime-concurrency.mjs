@@ -1437,7 +1437,7 @@ function applyPlannerStatsFromV(file) {
 // rebuilds every shared row at the moment it is served.
 const eqFrames = [];
 let eqStep = null;
-const EQ_VOLATILE = new Set(["key", "sessionId", "updatedAt", "lastActivityAt", "startedAt", "endedAt", "runtimeMs", "createdAt", "lastRunId", "inputTokens", "outputTokens", "totalTokens", "totalTokensFresh", "contextTokens", "estimatedCostUsd", "responseUsage", "effectiveResponseUsage", "activeRunIds", "lastReadAt", "deliveryContext", "origin", "displayName", "subject", "lastTo", "previousSessionId"]);
+const EQ_VOLATILE = new Set(["key", "sessionId", "updatedAt", "lastActivityAt", "startedAt", "endedAt", "runtimeMs", "createdAt", "lastRunId", "inputTokens", "outputTokens", "totalTokens", "totalTokensFresh", "contextTokens", "estimatedCostUsd", "responseUsage", "effectiveResponseUsage", "activeRunIds", "lastReadAt", "deliveryContext", "origin", "displayName", "subject", "lastTo", "previousSessionId", "lastInteractionAt", "contextBudgetStatus"]);
 function eqReduce(payload) {
   const s = payload?.session;
   if (!s) return null;
@@ -1457,7 +1457,7 @@ async function sendCustom(key, message, label) {
 async function eqScenarios() {
   await ensureClient("eq");
   secondSubscriberHook = (e) => {
-    if (eqStep && (e.event === "session.tool" || e.event === "sessions.changed")) eqFrames.push({ side: eqStep.side, step: eqStep.step, event: e.event, phase: e.payload?.phase ?? e.payload?.data?.phase, tool: e.payload?.data?.name, snapshot: eqReduce(e.payload) });
+    if (eqStep && (e.event === "session.tool" || e.event === "sessions.changed") && e.payload?.sessionKey === eqStep.key) eqFrames.push({ side: eqStep.side, step: eqStep.step, event: e.event, phase: e.payload?.phase ?? e.payload?.data?.phase, tool: e.payload?.data?.name, snapshot: eqReduce(e.payload) });
   };
   const results = [];
   for (const side of ["off", "on"]) {
@@ -1465,13 +1465,13 @@ async function eqScenarios() {
     await sleep(1_500);
     const a = `agent:makaron:explicit:lt-eq-${side}-a`;
     const b = `agent:makaron:explicit:lt-eq-${side}-b`;
-    const step = async (name, fn) => { eqStep = { side, step: name }; const res = await fn(); await sleep(3_000); eqStep = null; results.push({ side, step: name, res }); };
+    const step = async (name, fn, key = a) => { eqStep = { side, step: name, key }; const res = await fn(); await sleep(3_000); eqStep = null; results.push({ side, step: name, res }); };
     await prepareSession(a, VDS_REF);
     await step("tools", () => send(a, "vds", `eq-${side}-tools`, "bash5"));
     await step("rename", async () => { await client.request("sessions.patch", { key: a, label: `eq renamed-${side}` }); return send(a, "vds", `eq-${side}-rename`, "sha"); });
     await step("model", async () => { await client.request("sessions.patch", { key: a, model: FLASH_REF }); return send(a, "flash", `eq-${side}-model`, "sha"); });
     await prepareSession(b, VDS_REF);
-    await step("subagent", () => sendCustom(b, `（自动化测试）用 sessions_spawn 启动一个子 agent，任务是：用 shell 执行 \`printf %s eq-${side} | sha256sum | cut -c1-12\` 并只回复输出。启动后用 sessions_yield 等它完成，再用 shell 执行 \`date +%s\`，最后只回复子 agent 给出的 12 个字符。`, `eq-${side}-subagent`));
+    await step("subagent", () => sendCustom(b, `（自动化测试）用 sessions_spawn 启动一个子 agent，任务是：用 shell 执行 \`printf %s eq-${side} | sha256sum | cut -c1-12\` 并只回复输出。启动后用 sessions_yield 等它完成，再用 shell 执行 \`date +%s\`，最后只回复子 agent 给出的 12 个字符。`, `eq-${side}-subagent`), b);
   }
   const bySide = (side) => eqFrames.filter((f) => f.side === side).map(({ side: _s, ...rest }) => rest);
   const off = bySide("off");

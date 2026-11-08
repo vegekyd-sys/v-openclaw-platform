@@ -1,0 +1,2667 @@
+{
+ "run": "candidate-f664d2fd-01f0-409a-81b6-8db45df50705, VLab 4 cores, 2026-11-08 14:27-15:07 CST; another session's load candidate (run4) overlapped until about 14:38 CST: the single-row bench, the equivalence scenarios and part of the warm levels; the measured pairs (from 14:45 CST) ran with no other candidate active",
+ "plan": "lab/candidate/session-event-snapshot-ab.plan.json",
+ "note": "ms are wall time inside the synchronous call (performance.now); shareOfMain divides by the main thread's CPU seconds for the level and its 15 s settle, so it is an upper bound on a 4-core host shared with Worker processes",
+ "pairs": [
+  {
+   "arm": "vds",
+   "c": 5,
+   "round": 0,
+   "mainCpuS": [
+    7.5,
+    7.4
+   ],
+   "completionP50S": [
+    12.2,
+    13.4
+   ],
+   "snapshotMsPerTurn": [
+    315.7,
+    208
+   ],
+   "snapshotShareOfMainPct": [
+    21.05,
+    14.06
+   ],
+   "correct": [
+    "5/5",
+    "5/5"
+   ],
+   "stallMaxMs": [
+    393,
+    298
+   ]
+  },
+  {
+   "arm": "vds",
+   "c": 5,
+   "round": 1,
+   "mainCpuS": [
+    8,
+    7.8
+   ],
+   "completionP50S": [
+    13.6,
+    13.2
+   ],
+   "snapshotMsPerTurn": [
+    336.1,
+    188.1
+   ],
+   "snapshotShareOfMainPct": [
+    21,
+    12.06
+   ],
+   "correct": [
+    "5/5",
+    "5/5"
+   ],
+   "stallMaxMs": [
+    279,
+    1091
+   ]
+  },
+  {
+   "arm": "vds",
+   "c": 5,
+   "round": 2,
+   "mainCpuS": [
+    8.2,
+    7.6
+   ],
+   "completionP50S": [
+    14.4,
+    14.2
+   ],
+   "snapshotMsPerTurn": [
+    318.3,
+    188.6
+   ],
+   "snapshotShareOfMainPct": [
+    19.41,
+    12.41
+   ],
+   "correct": [
+    "5/5",
+    "5/5"
+   ],
+   "stallMaxMs": [
+    773,
+    847
+   ]
+  },
+  {
+   "arm": "vds",
+   "c": 15,
+   "round": 0,
+   "mainCpuS": [
+    24.6,
+    22.7
+   ],
+   "completionP50S": [
+    26.9,
+    24.4
+   ],
+   "snapshotMsPerTurn": [
+    443.1,
+    249.7
+   ],
+   "snapshotShareOfMainPct": [
+    27.02,
+    16.5
+   ],
+   "correct": [
+    "15/15",
+    "15/15"
+   ],
+   "stallMaxMs": [
+    1045,
+    554
+   ]
+  },
+  {
+   "arm": "vds",
+   "c": 15,
+   "round": 1,
+   "mainCpuS": [
+    26,
+    22.5
+   ],
+   "completionP50S": [
+    31.7,
+    24.5
+   ],
+   "snapshotMsPerTurn": [
+    515.6,
+    257.8
+   ],
+   "snapshotShareOfMainPct": [
+    29.75,
+    17.19
+   ],
+   "correct": [
+    "15/15",
+    "15/15"
+   ],
+   "stallMaxMs": [
+    1921,
+    874
+   ]
+  },
+  {
+   "arm": "vds",
+   "c": 15,
+   "round": 2,
+   "mainCpuS": [
+    27.2,
+    21.9
+   ],
+   "completionP50S": [
+    30.1,
+    23.8
+   ],
+   "snapshotMsPerTurn": [
+    525.7,
+    249.3
+   ],
+   "snapshotShareOfMainPct": [
+    28.99,
+    17.08
+   ],
+   "correct": [
+    "15/15",
+    "15/15"
+   ],
+   "stallMaxMs": [
+    2402,
+    801
+   ]
+  },
+  {
+   "arm": "flash",
+   "c": 15,
+   "round": 0,
+   "mainCpuS": [
+    14.5,
+    12.6
+   ],
+   "completionP50S": [
+    17.9,
+    17.4
+   ],
+   "snapshotMsPerTurn": [
+    565.6,
+    429.3
+   ],
+   "snapshotShareOfMainPct": [
+    58.51,
+    51.11
+   ],
+   "correct": [
+    "15/15",
+    "15/15"
+   ],
+   "stallMaxMs": [
+    753,
+    505
+   ]
+  },
+  {
+   "arm": "flash",
+   "c": 5,
+   "round": 0,
+   "mainCpuS": [
+    5,
+    3.2
+   ],
+   "completionP50S": [
+    7,
+    5.6
+   ],
+   "snapshotMsPerTurn": [
+    461.4,
+    249.4
+   ],
+   "snapshotShareOfMainPct": [
+    46.14,
+    38.96
+   ],
+   "correct": [
+    "5/5",
+    "5/5"
+   ],
+   "stallMaxMs": [
+    515,
+    113
+   ]
+  },
+  {
+   "arm": "flash",
+   "c": 1,
+   "round": 0,
+   "mainCpuS": [
+    1.8,
+    0.8
+   ],
+   "completionP50S": [
+    4.9,
+    4.2
+   ],
+   "snapshotMsPerTurn": [
+    566.4,
+    257.1
+   ],
+   "snapshotShareOfMainPct": [
+    31.47,
+    32.14
+   ],
+   "correct": [
+    "1/1",
+    "1/1"
+   ],
+   "stallMaxMs": [
+    571,
+    1
+   ]
+  },
+  {
+   "arm": "vds",
+   "c": 1,
+   "round": 0,
+   "mainCpuS": [
+    2.6,
+    2.1
+   ],
+   "completionP50S": [
+    10.9,
+    11
+   ],
+   "snapshotMsPerTurn": [
+    372.6,
+    201.2
+   ],
+   "snapshotShareOfMainPct": [
+    14.33,
+    9.58
+   ],
+   "correct": [
+    "1/1",
+    "1/1"
+   ],
+   "stallMaxMs": [
+    601,
+    107
+   ]
+  }
+ ],
+ "levels": [
+  {
+   "side": "on",
+   "round": "warm",
+   "arm": "vds",
+   "task": "bash5",
+   "c": 1,
+   "turns": 1,
+   "correct": 1,
+   "otherSessionRows": 4,
+   "mainCpuS": 9,
+   "snapshot": {
+    "calls": 26,
+    "perTurn": 26,
+    "p50": 52.61,
+    "p95": 119.28,
+    "msPerTurn": 1129,
+    "totalMs": 1129,
+    "shareOfMain": 12.54,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 2,
+      "perTurn": 2,
+      "p50": 106.46,
+      "p95": 106.46,
+      "ms": 184
+     },
+     "tool.agent": {
+      "n": 10,
+      "perTurn": 10,
+      "p50": 64.65,
+      "p95": 136.44,
+      "ms": 682
+     },
+     "tool.sessionTool": {
+      "n": 12,
+      "perTurn": 12,
+      "p50": 0.08,
+      "p95": 72.71,
+      "ms": 126
+     },
+     "lifecycle.end": {
+      "n": 2,
+      "perTurn": 2,
+      "p50": 74.95,
+      "p95": 74.95,
+      "ms": 136
+     }
+    },
+    "sameAsPreviousRow": 0.91,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 20,
+    "perTurn": 20,
+    "p50": 60.9,
+    "p95": 127.43,
+    "totalMs": 1340,
+    "shareOfMain": 14.89
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 127,
+    "perTurn": 127,
+    "totalMs": 1305,
+    "shareOfMain": 14.5,
+    "byStream": {
+     "run_status": 3,
+     "codex_app_server.lifecycle": 6,
+     "lifecycle": 6,
+     "codex_app_server.item": 24,
+     "item": 34,
+     "usage": 14,
+     "codex_app_server.hook": 12,
+     "tool": 12,
+     "assistant": 16
+    }
+   },
+   "completionP50S": 28.5,
+   "stallMaxMs": 878
+  },
+  {
+   "side": "on",
+   "round": "warm",
+   "arm": "flash",
+   "task": "bash5",
+   "c": 1,
+   "turns": 1,
+   "correct": 1,
+   "otherSessionRows": 0,
+   "mainCpuS": 2.8,
+   "snapshot": {
+    "calls": 29,
+    "perTurn": 29,
+    "p50": 13.93,
+    "p95": 36.6,
+    "msPerTurn": 327.1,
+    "totalMs": 327,
+    "shareOfMain": 11.68,
+    "bySite": {
+     "tool.agent": {
+      "n": 14,
+      "perTurn": 14,
+      "p50": 18.58,
+      "p95": 36.67,
+      "ms": 301
+     },
+     "tool.sessionTool": {
+      "n": 14,
+      "perTurn": 14,
+      "p50": 0.08,
+      "p95": 0.09,
+      "ms": 1
+     },
+     "lifecycle.end": {
+      "n": 1,
+      "perTurn": 1,
+      "p50": 24.69,
+      "p95": 24.69,
+      "ms": 25
+     }
+    },
+    "sameAsPreviousRow": 0.96,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 2,
+    "perTurn": 2,
+    "p50": 23.22,
+    "p95": 23.22,
+    "totalMs": 46,
+    "shareOfMain": 1.65
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 25,
+    "perTurn": 25,
+    "totalMs": 337,
+    "shareOfMain": 12.05,
+    "byStream": {
+     "run_status": 3,
+     "tool": 14,
+     "assistant": 7,
+     "lifecycle": 1
+    }
+   },
+   "completionP50S": 7.1,
+   "stallMaxMs": 1545
+  },
+  {
+   "side": "on",
+   "round": "warm",
+   "arm": "flash",
+   "task": "bash5",
+   "c": 5,
+   "turns": 5,
+   "correct": 5,
+   "otherSessionRows": 0,
+   "mainCpuS": 8.6,
+   "snapshot": {
+    "calls": 145,
+    "perTurn": 29,
+    "p50": 15.73,
+    "p95": 41.17,
+    "msPerTurn": 417.3,
+    "totalMs": 2086,
+    "shareOfMain": 24.26,
+    "bySite": {
+     "tool.agent": {
+      "n": 70,
+      "perTurn": 14,
+      "p50": 23.43,
+      "p95": 52.67,
+      "ms": 1921
+     },
+     "tool.sessionTool": {
+      "n": 70,
+      "perTurn": 14,
+      "p50": 0.08,
+      "p95": 0.13,
+      "ms": 6
+     },
+     "lifecycle.end": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 35.89,
+      "p95": 41.17,
+      "ms": 159
+     }
+    },
+    "sameAsPreviousRow": 0.96,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 10,
+    "perTurn": 2,
+    "p50": 45.66,
+    "p95": 57.57,
+    "totalMs": 381,
+    "shareOfMain": 4.44
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 111,
+    "perTurn": 22.2,
+    "totalMs": 2233,
+    "shareOfMain": 25.96,
+    "byStream": {
+     "run_status": 15,
+     "tool": 70,
+     "assistant": 21,
+     "lifecycle": 5
+    }
+   },
+   "completionP50S": 13.8,
+   "stallMaxMs": 999
+  },
+  {
+   "side": "on",
+   "round": "warm",
+   "arm": "vds",
+   "task": "bash5",
+   "c": 5,
+   "turns": 5,
+   "correct": 5,
+   "otherSessionRows": 0,
+   "mainCpuS": 7.7,
+   "snapshot": {
+    "calls": 94,
+    "perTurn": 18.8,
+    "p50": 14.98,
+    "p95": 24.87,
+    "msPerTurn": 192.3,
+    "totalMs": 962,
+    "shareOfMain": 12.49,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 26.54,
+      "p95": 36.85,
+      "ms": 132
+     },
+     "tool.agent": {
+      "n": 42,
+      "perTurn": 8.4,
+      "p50": 16.93,
+      "p95": 23.06,
+      "ms": 746
+     },
+     "tool.sessionTool": {
+      "n": 42,
+      "perTurn": 8.4,
+      "p50": 0.08,
+      "p95": 0.1,
+      "ms": 3
+     },
+     "lifecycle.end": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 15.66,
+      "p95": 20.16,
+      "ms": 80
+     }
+    },
+    "sameAsPreviousRow": 0.94,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 67,
+    "perTurn": 13.4,
+    "p50": 18.15,
+    "p95": 24.47,
+    "totalMs": 1233,
+    "shareOfMain": 16.01
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 374,
+    "perTurn": 74.8,
+    "totalMs": 1105,
+    "shareOfMain": 14.35,
+    "byStream": {
+     "run_status": 15,
+     "codex_app_server.lifecycle": 15,
+     "lifecycle": 15,
+     "codex_app_server.item": 76,
+     "item": 93,
+     "usage": 44,
+     "codex_app_server.hook": 42,
+     "tool": 42,
+     "assistant": 32
+    }
+   },
+   "completionP50S": 14.1,
+   "stallMaxMs": 525
+  },
+  {
+   "side": "on",
+   "round": "warm",
+   "arm": "vds",
+   "task": "bash5",
+   "c": 15,
+   "turns": 15,
+   "correct": 15,
+   "otherSessionRows": 0,
+   "mainCpuS": 22.6,
+   "snapshot": {
+    "calls": 318,
+    "perTurn": 21.2,
+    "p50": 14.05,
+    "p95": 29.46,
+    "msPerTurn": 231.4,
+    "totalMs": 3472,
+    "shareOfMain": 15.36,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 22.81,
+      "p95": 55.57,
+      "ms": 397
+     },
+     "tool.agent": {
+      "n": 144,
+      "perTurn": 9.6,
+      "p50": 17.88,
+      "p95": 32.05,
+      "ms": 2819
+     },
+     "tool.sessionTool": {
+      "n": 144,
+      "perTurn": 9.6,
+      "p50": 0.08,
+      "p95": 0.1,
+      "ms": 15
+     },
+     "lifecycle.end": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 14.96,
+      "p95": 21.63,
+      "ms": 241
+     }
+    },
+    "sameAsPreviousRow": 0.95,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 219,
+    "perTurn": 14.6,
+    "p50": 18.04,
+    "p95": 28.73,
+    "totalMs": 4463,
+    "shareOfMain": 19.75
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 1264,
+    "perTurn": 84.3,
+    "totalMs": 3963,
+    "shareOfMain": 17.54,
+    "byStream": {
+     "run_status": 45,
+     "codex_app_server.lifecycle": 45,
+     "lifecycle": 45,
+     "codex_app_server.item": 246,
+     "item": 319,
+     "codex_app_server.hook": 144,
+     "usage": 158,
+     "tool": 144,
+     "assistant": 118
+    }
+   },
+   "completionP50S": 23.7,
+   "stallMaxMs": 1105
+  },
+  {
+   "side": "on",
+   "round": "warm",
+   "arm": "flash",
+   "task": "bash5",
+   "c": 15,
+   "turns": 15,
+   "correct": 15,
+   "otherSessionRows": 0,
+   "mainCpuS": 11.8,
+   "snapshot": {
+    "calls": 417,
+    "perTurn": 27.8,
+    "p50": 13.58,
+    "p95": 35.28,
+    "msPerTurn": 316.3,
+    "totalMs": 4744,
+    "shareOfMain": 40.2,
+    "bySite": {
+     "tool.agent": {
+      "n": 201,
+      "perTurn": 13.4,
+      "p50": 18.25,
+      "p95": 43.83,
+      "ms": 4361
+     },
+     "tool.sessionTool": {
+      "n": 201,
+      "perTurn": 13.4,
+      "p50": 0.07,
+      "p95": 0.1,
+      "ms": 15
+     },
+     "lifecycle.end": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 20.56,
+      "p95": 49.63,
+      "ms": 368
+     }
+    },
+    "sameAsPreviousRow": 0.96,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 30,
+    "perTurn": 2,
+    "p50": 16.52,
+    "p95": 19.43,
+    "totalMs": 498,
+    "shareOfMain": 4.22
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 364,
+    "perTurn": 24.3,
+    "totalMs": 4990,
+    "shareOfMain": 42.29,
+    "byStream": {
+     "run_status": 45,
+     "tool": 201,
+     "assistant": 103,
+     "lifecycle": 15
+    }
+   },
+   "completionP50S": 19,
+   "stallMaxMs": 831
+  },
+  {
+   "side": "off",
+   "round": 0,
+   "arm": "vds",
+   "task": "bash5",
+   "c": 1,
+   "turns": 1,
+   "correct": 1,
+   "otherSessionRows": 0,
+   "mainCpuS": 2.6,
+   "snapshot": {
+    "calls": 22,
+    "perTurn": 22,
+    "p50": 17.01,
+    "p95": 21.89,
+    "msPerTurn": 372.6,
+    "totalMs": 373,
+    "shareOfMain": 14.33,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 1,
+      "perTurn": 1,
+      "p50": 17.85,
+      "p95": 17.85,
+      "ms": 18
+     },
+     "tool.agent": {
+      "n": 10,
+      "perTurn": 10,
+      "p50": 15.43,
+      "p95": 18.39,
+      "ms": 152
+     },
+     "tool.sessionTool": {
+      "n": 10,
+      "perTurn": 10,
+      "p50": 18.45,
+      "p95": 21.94,
+      "ms": 189
+     },
+     "lifecycle.end": {
+      "n": 1,
+      "perTurn": 1,
+      "p50": 13.85,
+      "p95": 13.85,
+      "ms": 14
+     }
+    },
+    "sameAsPreviousRow": 0.95,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 14,
+    "perTurn": 14,
+    "p50": 14.78,
+    "p95": 26.57,
+    "totalMs": 224,
+    "shareOfMain": 8.62
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 80,
+    "perTurn": 80,
+    "totalMs": 407,
+    "shareOfMain": 15.66,
+    "byStream": {
+     "run_status": 3,
+     "codex_app_server.lifecycle": 3,
+     "lifecycle": 3,
+     "codex_app_server.item": 14,
+     "usage": 12,
+     "codex_app_server.hook": 10,
+     "item": 18,
+     "tool": 10,
+     "assistant": 7
+    }
+   },
+   "completionP50S": 10.9,
+   "stallMaxMs": 601
+  },
+  {
+   "side": "on",
+   "round": 0,
+   "arm": "vds",
+   "task": "bash5",
+   "c": 1,
+   "turns": 1,
+   "correct": 1,
+   "otherSessionRows": 0,
+   "mainCpuS": 2.1,
+   "snapshot": {
+    "calls": 22,
+    "perTurn": 22,
+    "p50": 13.56,
+    "p95": 20.34,
+    "msPerTurn": 201.2,
+    "totalMs": 201,
+    "shareOfMain": 9.58,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 1,
+      "perTurn": 1,
+      "p50": 20.82,
+      "p95": 20.82,
+      "ms": 21
+     },
+     "tool.agent": {
+      "n": 10,
+      "perTurn": 10,
+      "p50": 16.43,
+      "p95": 20.34,
+      "ms": 164
+     },
+     "tool.sessionTool": {
+      "n": 10,
+      "perTurn": 10,
+      "p50": 0.08,
+      "p95": 0.09,
+      "ms": 1
+     },
+     "lifecycle.end": {
+      "n": 1,
+      "perTurn": 1,
+      "p50": 15.19,
+      "p95": 15.19,
+      "ms": 15
+     }
+    },
+    "sameAsPreviousRow": 0.95,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 14,
+    "perTurn": 14,
+    "p50": 15.69,
+    "p95": 25.94,
+    "totalMs": 239,
+    "shareOfMain": 11.4
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 80,
+    "perTurn": 80,
+    "totalMs": 234,
+    "shareOfMain": 11.13,
+    "byStream": {
+     "run_status": 3,
+     "codex_app_server.lifecycle": 3,
+     "lifecycle": 3,
+     "codex_app_server.item": 14,
+     "codex_app_server.hook": 10,
+     "usage": 12,
+     "item": 18,
+     "tool": 10,
+     "assistant": 7
+    }
+   },
+   "completionP50S": 11,
+   "stallMaxMs": 107
+  },
+  {
+   "side": "off",
+   "round": 0,
+   "arm": "flash",
+   "task": "bash5",
+   "c": 1,
+   "turns": 1,
+   "correct": 1,
+   "otherSessionRows": 0,
+   "mainCpuS": 1.8,
+   "snapshot": {
+    "calls": 29,
+    "perTurn": 29,
+    "p50": 18.73,
+    "p95": 28.59,
+    "msPerTurn": 566.4,
+    "totalMs": 566,
+    "shareOfMain": 31.47,
+    "bySite": {
+     "tool.agent": {
+      "n": 14,
+      "perTurn": 14,
+      "p50": 18.08,
+      "p95": 28.59,
+      "ms": 271
+     },
+     "tool.sessionTool": {
+      "n": 14,
+      "perTurn": 14,
+      "p50": 19.88,
+      "p95": 30.27,
+      "ms": 279
+     },
+     "lifecycle.end": {
+      "n": 1,
+      "perTurn": 1,
+      "p50": 16.15,
+      "p95": 16.15,
+      "ms": 16
+     }
+    },
+    "sameAsPreviousRow": 0.96,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 2,
+    "perTurn": 2,
+    "p50": 19.21,
+    "p95": 19.21,
+    "totalMs": 36,
+    "shareOfMain": 1.99
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 24,
+    "perTurn": 24,
+    "totalMs": 596,
+    "shareOfMain": 33.11,
+    "byStream": {
+     "run_status": 3,
+     "tool": 14,
+     "assistant": 6,
+     "lifecycle": 1
+    }
+   },
+   "completionP50S": 4.9,
+   "stallMaxMs": 571
+  },
+  {
+   "side": "on",
+   "round": 0,
+   "arm": "flash",
+   "task": "bash5",
+   "c": 1,
+   "turns": 1,
+   "correct": 1,
+   "otherSessionRows": 0,
+   "mainCpuS": 0.8,
+   "snapshot": {
+    "calls": 29,
+    "perTurn": 29,
+    "p50": 15.75,
+    "p95": 20.27,
+    "msPerTurn": 257.1,
+    "totalMs": 257,
+    "shareOfMain": 32.14,
+    "bySite": {
+     "tool.agent": {
+      "n": 14,
+      "perTurn": 14,
+      "p50": 16.64,
+      "p95": 20.44,
+      "ms": 240
+     },
+     "tool.sessionTool": {
+      "n": 14,
+      "perTurn": 14,
+      "p50": 0.07,
+      "p95": 0.08,
+      "ms": 1
+     },
+     "lifecycle.end": {
+      "n": 1,
+      "perTurn": 1,
+      "p50": 16.42,
+      "p95": 16.42,
+      "ms": 16
+     }
+    },
+    "sameAsPreviousRow": 0.96,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 2,
+    "perTurn": 2,
+    "p50": 20.02,
+    "p95": 20.02,
+    "totalMs": 40,
+    "shareOfMain": 5
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 24,
+    "perTurn": 24,
+    "totalMs": 278,
+    "shareOfMain": 34.7,
+    "byStream": {
+     "run_status": 3,
+     "tool": 14,
+     "assistant": 6,
+     "lifecycle": 1
+    }
+   },
+   "completionP50S": 4.2,
+   "stallMaxMs": 1
+  },
+  {
+   "side": "off",
+   "round": 0,
+   "arm": "flash",
+   "task": "bash5",
+   "c": 5,
+   "turns": 5,
+   "correct": 5,
+   "otherSessionRows": 0,
+   "mainCpuS": 5,
+   "snapshot": {
+    "calls": 145,
+    "perTurn": 29,
+    "p50": 15.25,
+    "p95": 20.39,
+    "msPerTurn": 461.4,
+    "totalMs": 2307,
+    "shareOfMain": 46.14,
+    "bySite": {
+     "tool.agent": {
+      "n": 70,
+      "perTurn": 14,
+      "p50": 15.04,
+      "p95": 21.22,
+      "ms": 1114
+     },
+     "tool.sessionTool": {
+      "n": 70,
+      "perTurn": 14,
+      "p50": 15.54,
+      "p95": 19.02,
+      "ms": 1115
+     },
+     "lifecycle.end": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 15.23,
+      "p95": 16.98,
+      "ms": 78
+     }
+    },
+    "sameAsPreviousRow": 0.96,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 10,
+    "perTurn": 2,
+    "p50": 14.68,
+    "p95": 22.46,
+    "totalMs": 157,
+    "shareOfMain": 3.14
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 124,
+    "perTurn": 24.8,
+    "totalMs": 2422,
+    "shareOfMain": 48.43,
+    "byStream": {
+     "run_status": 15,
+     "tool": 70,
+     "assistant": 34,
+     "lifecycle": 5
+    }
+   },
+   "completionP50S": 7,
+   "stallMaxMs": 515
+  },
+  {
+   "side": "on",
+   "round": 0,
+   "arm": "flash",
+   "task": "bash5",
+   "c": 5,
+   "turns": 5,
+   "correct": 5,
+   "otherSessionRows": 0,
+   "mainCpuS": 3.2,
+   "snapshot": {
+    "calls": 145,
+    "perTurn": 29,
+    "p50": 13.17,
+    "p95": 21.14,
+    "msPerTurn": 249.4,
+    "totalMs": 1247,
+    "shareOfMain": 38.96,
+    "bySite": {
+     "tool.agent": {
+      "n": 70,
+      "perTurn": 14,
+      "p50": 14.57,
+      "p95": 23.99,
+      "ms": 1168
+     },
+     "tool.sessionTool": {
+      "n": 70,
+      "perTurn": 14,
+      "p50": 0.07,
+      "p95": 0.09,
+      "ms": 6
+     },
+     "lifecycle.end": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 14.05,
+      "p95": 16.84,
+      "ms": 73
+     }
+    },
+    "sameAsPreviousRow": 0.96,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 10,
+    "perTurn": 2,
+    "p50": 16.87,
+    "p95": 18.69,
+    "totalMs": 169,
+    "shareOfMain": 5.29
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 130,
+    "perTurn": 26,
+    "totalMs": 1374,
+    "shareOfMain": 42.92,
+    "byStream": {
+     "run_status": 15,
+     "tool": 70,
+     "assistant": 40,
+     "lifecycle": 5
+    }
+   },
+   "completionP50S": 5.6,
+   "stallMaxMs": 113
+  },
+  {
+   "side": "off",
+   "round": 0,
+   "arm": "vds",
+   "task": "bash5",
+   "c": 5,
+   "turns": 5,
+   "correct": 5,
+   "otherSessionRows": 0,
+   "mainCpuS": 7.5,
+   "snapshot": {
+    "calls": 94,
+    "perTurn": 18.8,
+    "p50": 16.3,
+    "p95": 21.87,
+    "msPerTurn": 315.7,
+    "totalMs": 1579,
+    "shareOfMain": 21.05,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 18.21,
+      "p95": 20.92,
+      "ms": 94
+     },
+     "tool.agent": {
+      "n": 42,
+      "perTurn": 8.4,
+      "p50": 16.27,
+      "p95": 22.47,
+      "ms": 708
+     },
+     "tool.sessionTool": {
+      "n": 42,
+      "perTurn": 8.4,
+      "p50": 16.03,
+      "p95": 21.44,
+      "ms": 699
+     },
+     "lifecycle.end": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 14.75,
+      "p95": 18.53,
+      "ms": 78
+     }
+    },
+    "sameAsPreviousRow": 0.94,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 65,
+    "perTurn": 13,
+    "p50": 16.79,
+    "p95": 22.9,
+    "totalMs": 1127,
+    "shareOfMain": 15.02
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 358,
+    "perTurn": 71.6,
+    "totalMs": 1722,
+    "shareOfMain": 22.97,
+    "byStream": {
+     "run_status": 15,
+     "codex_app_server.lifecycle": 15,
+     "lifecycle": 15,
+     "codex_app_server.item": 68,
+     "item": 85,
+     "usage": 44,
+     "codex_app_server.hook": 42,
+     "tool": 42,
+     "assistant": 32
+    }
+   },
+   "completionP50S": 12.2,
+   "stallMaxMs": 393
+  },
+  {
+   "side": "on",
+   "round": 0,
+   "arm": "vds",
+   "task": "bash5",
+   "c": 5,
+   "turns": 5,
+   "correct": 5,
+   "otherSessionRows": 0,
+   "mainCpuS": 7.4,
+   "snapshot": {
+    "calls": 94,
+    "perTurn": 18.8,
+    "p50": 15,
+    "p95": 28.06,
+    "msPerTurn": 208,
+    "totalMs": 1040,
+    "shareOfMain": 14.06,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 26.72,
+      "p95": 34.98,
+      "ms": 132
+     },
+     "tool.agent": {
+      "n": 42,
+      "perTurn": 8.4,
+      "p50": 18.08,
+      "p95": 28.06,
+      "ms": 825
+     },
+     "tool.sessionTool": {
+      "n": 42,
+      "perTurn": 8.4,
+      "p50": 0.08,
+      "p95": 0.1,
+      "ms": 4
+     },
+     "lifecycle.end": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 15,
+      "p95": 19.05,
+      "ms": 79
+     }
+    },
+    "sameAsPreviousRow": 0.94,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 64,
+    "perTurn": 12.8,
+    "p50": 16.08,
+    "p95": 23,
+    "totalMs": 1094,
+    "shareOfMain": 14.79
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 362,
+    "perTurn": 72.4,
+    "totalMs": 1200,
+    "shareOfMain": 16.22,
+    "byStream": {
+     "run_status": 15,
+     "codex_app_server.lifecycle": 15,
+     "lifecycle": 15,
+     "codex_app_server.item": 66,
+     "item": 87,
+     "usage": 44,
+     "codex_app_server.hook": 42,
+     "tool": 42,
+     "assistant": 36
+    }
+   },
+   "completionP50S": 13.4,
+   "stallMaxMs": 298
+  },
+  {
+   "side": "off",
+   "round": 0,
+   "arm": "vds",
+   "task": "bash5",
+   "c": 15,
+   "turns": 15,
+   "correct": 15,
+   "otherSessionRows": 0,
+   "mainCpuS": 24.6,
+   "snapshot": {
+    "calls": 314,
+    "perTurn": 20.9,
+    "p50": 18.11,
+    "p95": 37.03,
+    "msPerTurn": 443.1,
+    "totalMs": 6647,
+    "shareOfMain": 27.02,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 20.2,
+      "p95": 36.76,
+      "ms": 332
+     },
+     "tool.agent": {
+      "n": 142,
+      "perTurn": 9.47,
+      "p50": 18.17,
+      "p95": 40.04,
+      "ms": 3031
+     },
+     "tool.sessionTool": {
+      "n": 142,
+      "perTurn": 9.47,
+      "p50": 18.22,
+      "p95": 36.01,
+      "ms": 3028
+     },
+     "lifecycle.end": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 16.62,
+      "p95": 20.25,
+      "ms": 256
+     }
+    },
+    "sameAsPreviousRow": 0.95,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 212,
+    "perTurn": 14.1,
+    "p50": 17.39,
+    "p95": 34.1,
+    "totalMs": 4163,
+    "shareOfMain": 16.92
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 1182,
+    "perTurn": 78.8,
+    "totalMs": 7219,
+    "shareOfMain": 29.35,
+    "byStream": {
+     "run_status": 45,
+     "codex_app_server.lifecycle": 45,
+     "lifecycle": 45,
+     "codex_app_server.item": 222,
+     "item": 281,
+     "codex_app_server.hook": 142,
+     "usage": 156,
+     "tool": 142,
+     "assistant": 104
+    }
+   },
+   "completionP50S": 26.9,
+   "stallMaxMs": 1045
+  },
+  {
+   "side": "on",
+   "round": 0,
+   "arm": "vds",
+   "task": "bash5",
+   "c": 15,
+   "turns": 15,
+   "correct": 15,
+   "otherSessionRows": 0,
+   "mainCpuS": 22.7,
+   "snapshot": {
+    "calls": 314,
+    "perTurn": 20.9,
+    "p50": 14.38,
+    "p95": 31.11,
+    "msPerTurn": 249.7,
+    "totalMs": 3746,
+    "shareOfMain": 16.5,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 20.47,
+      "p95": 24.98,
+      "ms": 301
+     },
+     "tool.agent": {
+      "n": 142,
+      "perTurn": 9.47,
+      "p50": 19.38,
+      "p95": 42.13,
+      "ms": 3139
+     },
+     "tool.sessionTool": {
+      "n": 142,
+      "perTurn": 9.47,
+      "p50": 0.08,
+      "p95": 0.27,
+      "ms": 24
+     },
+     "lifecycle.end": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 18.49,
+      "p95": 29.23,
+      "ms": 283
+     }
+    },
+    "sameAsPreviousRow": 0.95,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 205,
+    "perTurn": 13.7,
+    "p50": 17.39,
+    "p95": 28.77,
+    "totalMs": 3829,
+    "shareOfMain": 16.87
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 1156,
+    "perTurn": 77.1,
+    "totalMs": 4323,
+    "shareOfMain": 19.04,
+    "byStream": {
+     "run_status": 45,
+     "codex_app_server.lifecycle": 45,
+     "lifecycle": 45,
+     "codex_app_server.item": 208,
+     "usage": 156,
+     "codex_app_server.hook": 142,
+     "item": 268,
+     "tool": 142,
+     "assistant": 105
+    }
+   },
+   "completionP50S": 24.4,
+   "stallMaxMs": 554
+  },
+  {
+   "side": "off",
+   "round": 0,
+   "arm": "flash",
+   "task": "bash5",
+   "c": 15,
+   "turns": 15,
+   "correct": 15,
+   "otherSessionRows": 0,
+   "mainCpuS": 14.5,
+   "snapshot": {
+    "calls": 419,
+    "perTurn": 27.9,
+    "p50": 18.8,
+    "p95": 33.42,
+    "msPerTurn": 565.6,
+    "totalMs": 8484,
+    "shareOfMain": 58.51,
+    "bySite": {
+     "tool.agent": {
+      "n": 202,
+      "perTurn": 13.47,
+      "p50": 18.59,
+      "p95": 35.28,
+      "ms": 4090
+     },
+     "tool.sessionTool": {
+      "n": 202,
+      "perTurn": 13.47,
+      "p50": 18.8,
+      "p95": 31.14,
+      "ms": 4033
+     },
+     "lifecycle.end": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 24.58,
+      "p95": 38.81,
+      "ms": 361
+     }
+    },
+    "sameAsPreviousRow": 0.96,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 30,
+    "perTurn": 2,
+    "p50": 14.63,
+    "p95": 22.15,
+    "totalMs": 484,
+    "shareOfMain": 3.34
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 363,
+    "perTurn": 24.2,
+    "totalMs": 8858,
+    "shareOfMain": 61.09,
+    "byStream": {
+     "run_status": 45,
+     "tool": 202,
+     "assistant": 101,
+     "lifecycle": 15
+    }
+   },
+   "completionP50S": 17.9,
+   "stallMaxMs": 753
+  },
+  {
+   "side": "on",
+   "round": 0,
+   "arm": "flash",
+   "task": "bash5",
+   "c": 15,
+   "turns": 15,
+   "correct": 15,
+   "otherSessionRows": 0,
+   "mainCpuS": 12.6,
+   "snapshot": {
+    "calls": 417,
+    "perTurn": 27.8,
+    "p50": 13.34,
+    "p95": 57.57,
+    "msPerTurn": 429.3,
+    "totalMs": 6440,
+    "shareOfMain": 51.11,
+    "bySite": {
+     "tool.agent": {
+      "n": 201,
+      "perTurn": 13.4,
+      "p50": 22.06,
+      "p95": 73.36,
+      "ms": 5937
+     },
+     "tool.sessionTool": {
+      "n": 201,
+      "perTurn": 13.4,
+      "p50": 0.07,
+      "p95": 0.1,
+      "ms": 31
+     },
+     "lifecycle.end": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 31.44,
+      "p95": 57.57,
+      "ms": 472
+     }
+    },
+    "sameAsPreviousRow": 0.96,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 30,
+    "perTurn": 2,
+    "p50": 15.65,
+    "p95": 25.18,
+    "totalMs": 515,
+    "shareOfMain": 4.09
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 361,
+    "perTurn": 24.1,
+    "totalMs": 7022,
+    "shareOfMain": 55.73,
+    "byStream": {
+     "run_status": 45,
+     "tool": 201,
+     "assistant": 100,
+     "lifecycle": 15
+    }
+   },
+   "completionP50S": 17.4,
+   "stallMaxMs": 505
+  },
+  {
+   "side": "on",
+   "round": 1,
+   "arm": "vds",
+   "task": "bash5",
+   "c": 5,
+   "turns": 5,
+   "correct": 5,
+   "otherSessionRows": 0,
+   "mainCpuS": 7.8,
+   "snapshot": {
+    "calls": 94,
+    "perTurn": 18.8,
+    "p50": 14.32,
+    "p95": 22.59,
+    "msPerTurn": 188.1,
+    "totalMs": 940,
+    "shareOfMain": 12.06,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 21.99,
+      "p95": 22.93,
+      "ms": 108
+     },
+     "tool.agent": {
+      "n": 42,
+      "perTurn": 8.4,
+      "p50": 17.12,
+      "p95": 22.76,
+      "ms": 752
+     },
+     "tool.sessionTool": {
+      "n": 42,
+      "perTurn": 8.4,
+      "p50": 0.08,
+      "p95": 0.09,
+      "ms": 3
+     },
+     "lifecycle.end": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 14.6,
+      "p95": 17.18,
+      "ms": 76
+     }
+    },
+    "sameAsPreviousRow": 0.94,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 63,
+    "perTurn": 12.6,
+    "p50": 16.73,
+    "p95": 23.31,
+    "totalMs": 1102,
+    "shareOfMain": 14.12
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 348,
+    "perTurn": 69.6,
+    "totalMs": 1083,
+    "shareOfMain": 13.89,
+    "byStream": {
+     "run_status": 15,
+     "codex_app_server.lifecycle": 15,
+     "lifecycle": 15,
+     "codex_app_server.item": 64,
+     "codex_app_server.hook": 42,
+     "usage": 44,
+     "item": 80,
+     "tool": 42,
+     "assistant": 31
+    }
+   },
+   "completionP50S": 13.2,
+   "stallMaxMs": 1091
+  },
+  {
+   "side": "off",
+   "round": 1,
+   "arm": "vds",
+   "task": "bash5",
+   "c": 5,
+   "turns": 5,
+   "correct": 5,
+   "otherSessionRows": 0,
+   "mainCpuS": 8,
+   "snapshot": {
+    "calls": 94,
+    "perTurn": 18.8,
+    "p50": 17.15,
+    "p95": 26.55,
+    "msPerTurn": 336.1,
+    "totalMs": 1680,
+    "shareOfMain": 21,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 20.04,
+      "p95": 21.76,
+      "ms": 100
+     },
+     "tool.agent": {
+      "n": 42,
+      "perTurn": 8.4,
+      "p50": 16.28,
+      "p95": 26.55,
+      "ms": 731
+     },
+     "tool.sessionTool": {
+      "n": 42,
+      "perTurn": 8.4,
+      "p50": 17.53,
+      "p95": 25.18,
+      "ms": 771
+     },
+     "lifecycle.end": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 16.13,
+      "p95": 17.53,
+      "ms": 79
+     }
+    },
+    "sameAsPreviousRow": 0.94,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 63,
+    "perTurn": 12.6,
+    "p50": 15.29,
+    "p95": 26.21,
+    "totalMs": 1045,
+    "shareOfMain": 13.06
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 354,
+    "perTurn": 70.8,
+    "totalMs": 1811,
+    "shareOfMain": 22.64,
+    "byStream": {
+     "run_status": 15,
+     "codex_app_server.lifecycle": 15,
+     "lifecycle": 15,
+     "codex_app_server.item": 64,
+     "item": 83,
+     "usage": 44,
+     "codex_app_server.hook": 42,
+     "tool": 42,
+     "assistant": 34
+    }
+   },
+   "completionP50S": 13.6,
+   "stallMaxMs": 279
+  },
+  {
+   "side": "on",
+   "round": 1,
+   "arm": "vds",
+   "task": "bash5",
+   "c": 15,
+   "turns": 15,
+   "correct": 15,
+   "otherSessionRows": 0,
+   "mainCpuS": 22.5,
+   "snapshot": {
+    "calls": 314,
+    "perTurn": 20.9,
+    "p50": 15.37,
+    "p95": 32.85,
+    "msPerTurn": 257.8,
+    "totalMs": 3867,
+    "shareOfMain": 17.19,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 20.01,
+      "p95": 44.62,
+      "ms": 349
+     },
+     "tool.agent": {
+      "n": 142,
+      "perTurn": 9.47,
+      "p50": 20.11,
+      "p95": 38.24,
+      "ms": 3215
+     },
+     "tool.sessionTool": {
+      "n": 142,
+      "perTurn": 9.47,
+      "p50": 0.08,
+      "p95": 0.12,
+      "ms": 19
+     },
+     "lifecycle.end": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 18.47,
+      "p95": 26.5,
+      "ms": 285
+     }
+    },
+    "sameAsPreviousRow": 0.95,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 204,
+    "perTurn": 13.6,
+    "p50": 18.42,
+    "p95": 31.09,
+    "totalMs": 4026,
+    "shareOfMain": 17.89
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 1154,
+    "perTurn": 76.9,
+    "totalMs": 4406,
+    "shareOfMain": 19.58,
+    "byStream": {
+     "run_status": 45,
+     "codex_app_server.lifecycle": 45,
+     "lifecycle": 45,
+     "codex_app_server.item": 206,
+     "item": 267,
+     "usage": 156,
+     "codex_app_server.hook": 142,
+     "tool": 142,
+     "assistant": 106
+    }
+   },
+   "completionP50S": 24.5,
+   "stallMaxMs": 874
+  },
+  {
+   "side": "off",
+   "round": 1,
+   "arm": "vds",
+   "task": "bash5",
+   "c": 15,
+   "turns": 15,
+   "correct": 15,
+   "otherSessionRows": 0,
+   "mainCpuS": 26,
+   "snapshot": {
+    "calls": 314,
+    "perTurn": 20.9,
+    "p50": 20.1,
+    "p95": 50.16,
+    "msPerTurn": 515.6,
+    "totalMs": 7734,
+    "shareOfMain": 29.75,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 22.52,
+      "p95": 60.3,
+      "ms": 406
+     },
+     "tool.agent": {
+      "n": 142,
+      "perTurn": 9.47,
+      "p50": 19.6,
+      "p95": 59.68,
+      "ms": 3511
+     },
+     "tool.sessionTool": {
+      "n": 142,
+      "perTurn": 9.47,
+      "p50": 20.77,
+      "p95": 49.43,
+      "ms": 3523
+     },
+     "lifecycle.end": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 20.05,
+      "p95": 27.06,
+      "ms": 295
+     }
+    },
+    "sameAsPreviousRow": 0.95,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 205,
+    "perTurn": 13.7,
+    "p50": 19.69,
+    "p95": 45.37,
+    "totalMs": 4776,
+    "shareOfMain": 18.37
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 1160,
+    "perTurn": 77.3,
+    "totalMs": 8351,
+    "shareOfMain": 32.12,
+    "byStream": {
+     "run_status": 45,
+     "codex_app_server.lifecycle": 45,
+     "lifecycle": 45,
+     "codex_app_server.item": 208,
+     "item": 270,
+     "codex_app_server.hook": 142,
+     "usage": 156,
+     "tool": 142,
+     "assistant": 107
+    }
+   },
+   "completionP50S": 31.7,
+   "stallMaxMs": 1921
+  },
+  {
+   "side": "off",
+   "round": 2,
+   "arm": "vds",
+   "task": "bash5",
+   "c": 5,
+   "turns": 5,
+   "correct": 5,
+   "otherSessionRows": 0,
+   "mainCpuS": 8.2,
+   "snapshot": {
+    "calls": 94,
+    "perTurn": 18.8,
+    "p50": 16.16,
+    "p95": 25.36,
+    "msPerTurn": 318.3,
+    "totalMs": 1591,
+    "shareOfMain": 19.41,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 18.2,
+      "p95": 36.76,
+      "ms": 107
+     },
+     "tool.agent": {
+      "n": 42,
+      "perTurn": 8.4,
+      "p50": 16.03,
+      "p95": 25.36,
+      "ms": 720
+     },
+     "tool.sessionTool": {
+      "n": 42,
+      "perTurn": 8.4,
+      "p50": 16.33,
+      "p95": 22.41,
+      "ms": 692
+     },
+     "lifecycle.end": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 13.49,
+      "p95": 17.75,
+      "ms": 72
+     }
+    },
+    "sameAsPreviousRow": 0.94,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 63,
+    "perTurn": 12.6,
+    "p50": 16.89,
+    "p95": 21.65,
+    "totalMs": 1098,
+    "shareOfMain": 13.39
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 366,
+    "perTurn": 73.2,
+    "totalMs": 1756,
+    "shareOfMain": 21.41,
+    "byStream": {
+     "run_status": 15,
+     "codex_app_server.lifecycle": 15,
+     "lifecycle": 15,
+     "codex_app_server.item": 64,
+     "item": 89,
+     "codex_app_server.hook": 42,
+     "usage": 44,
+     "tool": 42,
+     "assistant": 40
+    }
+   },
+   "completionP50S": 14.4,
+   "stallMaxMs": 773
+  },
+  {
+   "side": "on",
+   "round": 2,
+   "arm": "vds",
+   "task": "bash5",
+   "c": 5,
+   "turns": 5,
+   "correct": 5,
+   "otherSessionRows": 0,
+   "mainCpuS": 7.6,
+   "snapshot": {
+    "calls": 94,
+    "perTurn": 18.8,
+    "p50": 14.26,
+    "p95": 22.91,
+    "msPerTurn": 188.6,
+    "totalMs": 943,
+    "shareOfMain": 12.41,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 21.58,
+      "p95": 26.67,
+      "ms": 104
+     },
+     "tool.agent": {
+      "n": 42,
+      "perTurn": 8.4,
+      "p50": 17.12,
+      "p95": 22.97,
+      "ms": 759
+     },
+     "tool.sessionTool": {
+      "n": 42,
+      "perTurn": 8.4,
+      "p50": 0.08,
+      "p95": 0.1,
+      "ms": 3
+     },
+     "lifecycle.end": {
+      "n": 5,
+      "perTurn": 1,
+      "p50": 14.27,
+      "p95": 19.12,
+      "ms": 77
+     }
+    },
+    "sameAsPreviousRow": 0.94,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 63,
+    "perTurn": 12.6,
+    "p50": 15.94,
+    "p95": 22.39,
+    "totalMs": 1052,
+    "shareOfMain": 13.85
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 362,
+    "perTurn": 72.4,
+    "totalMs": 1088,
+    "shareOfMain": 14.31,
+    "byStream": {
+     "run_status": 15,
+     "codex_app_server.lifecycle": 15,
+     "lifecycle": 15,
+     "codex_app_server.item": 64,
+     "codex_app_server.hook": 42,
+     "usage": 44,
+     "item": 87,
+     "tool": 42,
+     "assistant": 38
+    }
+   },
+   "completionP50S": 14.2,
+   "stallMaxMs": 847
+  },
+  {
+   "side": "off",
+   "round": 2,
+   "arm": "vds",
+   "task": "bash5",
+   "c": 15,
+   "turns": 15,
+   "correct": 15,
+   "otherSessionRows": 0,
+   "mainCpuS": 27.2,
+   "snapshot": {
+    "calls": 314,
+    "perTurn": 20.9,
+    "p50": 18.65,
+    "p95": 59.04,
+    "msPerTurn": 525.7,
+    "totalMs": 7885,
+    "shareOfMain": 28.99,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 22.16,
+      "p95": 88.79,
+      "ms": 570
+     },
+     "tool.agent": {
+      "n": 142,
+      "perTurn": 9.47,
+      "p50": 18.23,
+      "p95": 55.09,
+      "ms": 3470
+     },
+     "tool.sessionTool": {
+      "n": 142,
+      "perTurn": 9.47,
+      "p50": 18.84,
+      "p95": 53.34,
+      "ms": 3520
+     },
+     "lifecycle.end": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 17.21,
+      "p95": 38.28,
+      "ms": 325
+     }
+    },
+    "sameAsPreviousRow": 0.95,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 205,
+    "perTurn": 13.7,
+    "p50": 16.98,
+    "p95": 45.81,
+    "totalMs": 4605,
+    "shareOfMain": 16.93
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 1176,
+    "perTurn": 78.4,
+    "totalMs": 8516,
+    "shareOfMain": 31.31,
+    "byStream": {
+     "run_status": 45,
+     "codex_app_server.lifecycle": 45,
+     "lifecycle": 45,
+     "codex_app_server.item": 208,
+     "item": 278,
+     "usage": 156,
+     "codex_app_server.hook": 142,
+     "tool": 142,
+     "assistant": 115
+    }
+   },
+   "completionP50S": 30.1,
+   "stallMaxMs": 2402
+  },
+  {
+   "side": "on",
+   "round": 2,
+   "arm": "vds",
+   "task": "bash5",
+   "c": 15,
+   "turns": 15,
+   "correct": 15,
+   "otherSessionRows": 0,
+   "mainCpuS": 21.9,
+   "snapshot": {
+    "calls": 314,
+    "perTurn": 20.9,
+    "p50": 14.13,
+    "p95": 32.88,
+    "msPerTurn": 249.3,
+    "totalMs": 3740,
+    "shareOfMain": 17.08,
+    "bySite": {
+     "lifecycle.start": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 17.97,
+      "p95": 67.22,
+      "ms": 371
+     },
+     "tool.agent": {
+      "n": 142,
+      "perTurn": 9.47,
+      "p50": 18.65,
+      "p95": 38.18,
+      "ms": 3080
+     },
+     "tool.sessionTool": {
+      "n": 142,
+      "perTurn": 9.47,
+      "p50": 0.08,
+      "p95": 0.13,
+      "ms": 13
+     },
+     "lifecycle.end": {
+      "n": 15,
+      "perTurn": 1,
+      "p50": 16.77,
+      "p95": 32.07,
+      "ms": 275
+     }
+    },
+    "sameAsPreviousRow": 0.95,
+    "shadow": {
+     "compared": 0,
+     "differ": 0,
+     "diffKeys": [],
+     "sharedObject": 0
+    }
+   },
+   "transcriptRow": {
+    "calls": 204,
+    "perTurn": 13.6,
+    "p50": 16.69,
+    "p95": 27.09,
+    "totalMs": 3709,
+    "shareOfMain": 16.94
+   },
+   "loadOutsideBuilder": {
+    "calls": 0,
+    "totalMs": 0
+   },
+   "handleEvent": {
+    "calls": 1166,
+    "perTurn": 77.7,
+    "totalMs": 4237,
+    "shareOfMain": 19.35,
+    "byStream": {
+     "run_status": 45,
+     "codex_app_server.lifecycle": 45,
+     "lifecycle": 45,
+     "codex_app_server.item": 206,
+     "item": 273,
+     "codex_app_server.hook": 142,
+     "usage": 156,
+     "tool": 142,
+     "assistant": 112
+    }
+   },
+   "completionP50S": 23.8,
+   "stallMaxMs": 801
+  }
+ ],
+ "bench": [
+  {
+   "gapMs": 0,
+   "results": [
+    {
+     "key": "agent:makaron:main",
+     "hasEntry": true,
+     "storeKeys": 1,
+     "childSessions": 0,
+     "bytes": 2376,
+     "first": {
+      "entryMs": 10.51,
+      "loadMs": 11069.932,
+      "buildMs": 14.433,
+      "hasEntry": true,
+      "storeKeys": 1,
+      "childSessions": 0,
+      "bytes": 2376
+     },
+     "entryP50": 14.31,
+     "loadP50": 242.16,
+     "loadP95": 8739.01,
+     "loadMax": 11069.932
+    },
+    {
+     "key": "agent:makaron:explicit:lt-vds-small-00",
+     "hasEntry": true,
+     "storeKeys": 1,
+     "childSessions": 0,
+     "bytes": 2447,
+     "first": {
+      "entryMs": 7.358,
+      "loadMs": 21.427,
+      "buildMs": 0.111,
+      "hasEntry": true,
+      "storeKeys": 1,
+      "childSessions": 0,
+      "bytes": 2447
+     },
+     "entryP50": 7.5,
+     "loadP50": 23.18,
+     "loadP95": 39.41,
+     "loadMax": 39.414
+    }
+   ]
+  },
+  {
+   "gapMs": 700,
+   "results": [
+    {
+     "key": "agent:makaron:main",
+     "hasEntry": true,
+     "storeKeys": 1,
+     "childSessions": 0,
+     "bytes": 2376,
+     "first": {
+      "entryMs": 7.837,
+      "loadMs": 3359.048,
+      "buildMs": 0.084,
+      "hasEntry": true,
+      "storeKeys": 1,
+      "childSessions": 0,
+      "bytes": 2376
+     },
+     "entryP50": 8.8,
+     "loadP50": 3647.24,
+     "loadP95": 20659.65,
+     "loadMax": 20659.646
+    },
+    {
+     "key": "agent:makaron:explicit:lt-vds-small-00",
+     "hasEntry": true,
+     "storeKeys": 1,
+     "childSessions": 0,
+     "bytes": 2447,
+     "first": {
+      "entryMs": 1854.998,
+      "loadMs": 2296.386,
+      "buildMs": 0.105,
+      "hasEntry": true,
+      "storeKeys": 1,
+      "childSessions": 0,
+      "bytes": 2447
+     },
+     "entryP50": 857.96,
+     "loadP50": 64.07,
+     "loadP95": 16246.09,
+     "loadMax": 16246.092
+    }
+   ]
+  }
+ ],
+ "equivalence": {
+  "scenarioTurns": [
+   {
+    "side": "off",
+    "step": "tools",
+    "terminal": "final",
+    "correct": true,
+    "tools": [
+     "bash",
+     "bash",
+     "bash",
+     "bash",
+     "bash"
+    ]
+   },
+   {
+    "side": "off",
+    "step": "rename",
+    "terminal": "final",
+    "correct": true,
+    "tools": [
+     "bash"
+    ]
+   },
+   {
+    "side": "off",
+    "step": "model",
+    "terminal": "final",
+    "correct": true,
+    "tools": [
+     "exec"
+    ]
+   },
+   {
+    "side": "off",
+    "step": "subagent",
+    "terminal": "final",
+    "correct": null,
+    "tools": [
+     "sessions_spawn",
+     "sessions_yield"
+    ]
+   },
+   {
+    "side": "on",
+    "step": "tools",
+    "terminal": "final",
+    "correct": true,
+    "tools": [
+     "bash",
+     "bash",
+     "bash",
+     "bash",
+     "bash"
+    ]
+   },
+   {
+    "side": "on",
+    "step": "rename",
+    "terminal": "final",
+    "correct": true,
+    "tools": [
+     "bash"
+    ]
+   },
+   {
+    "side": "on",
+    "step": "model",
+    "terminal": "final",
+    "correct": true,
+    "tools": [
+     "exec",
+     "exec"
+    ]
+   },
+   {
+    "side": "on",
+    "step": "subagent",
+    "terminal": "final",
+    "correct": null,
+    "tools": [
+     "sessions_spawn",
+     "sessions_spawn",
+     "sessions_yield"
+    ]
+   }
+  ],
+  "shadowCounts": {
+   "off|tool.agent|identical": 19,
+   "off|tool.sessionTool|identical": 21,
+   "subagent-child|tool.sessionTool|session,runtimeMs,session.runtimeMs": 6,
+   "on|tool.agent|identical": 24,
+   "on|tool.sessionTool|identical": 24
+  },
+  "frameComparisonNote": "off/on frame comparison in this run also caught frames of other sessions (filter added afterwards, not rerun); see lab/session-event-snapshot.md"
+ }
+}

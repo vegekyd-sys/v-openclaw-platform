@@ -1,6 +1,6 @@
 {
   "tests": ["lab/session-event-snapshot.test.mjs"],
-  "support": ["lab/patch-session-event-snapshot.mjs"],
+  "support": ["lab/patch-session-event-snapshot.mjs", "lab/release-files/session-event-snapshot-coalesce/server-chat-Mh_L0_2e.js"],
   "files": [
     {
       "source": "lab/release-files/session-event-snapshot-coalesce/server-chat-Mh_L0_2e.js",
