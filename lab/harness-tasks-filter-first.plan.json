@@ -1,0 +1,11 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/harness-tasks-filter-first/plugin-sdk/agent-harness-task-runtime.js",
+      "target": "openclaw/dist/plugin-sdk/agent-harness-task-runtime.js",
+      "before": "50dc439b5cbb8a16860aab0bd8b4f4fd485f16a246f881820be5c0ea9c0754e3",
+      "after": "595673bccefde24a079d3ba68a107cb2cbfeb9b0fda07f02d3736c3537d56e51"
+    }
+  ]
+}
