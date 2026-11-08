@@ -108,8 +108,11 @@ for (const entry of files) {
 }
 rmSync(path.join(c5, "dist", "control-ui"), { recursive: true });
 cpSync(path.join(stock, "dist", "control-ui"), path.join(c5, "dist", "control-ui"), { recursive: true });
+// 9.1 forks carry V's RTC voice overlay; 2026.10.10 dropped it (Control UI RTC not kept).
 const overlay = path.join(a.fork, "versa", "overlay-control-ui-assets.mjs");
-execFileSync(process.execPath, [overlay, path.join(c5, "dist", "control-ui")], { stdio: "inherit" });
-execFileSync(process.execPath, [overlay, "--check", path.join(c5, "dist", "control-ui")], { stdio: "inherit" });
+if (existsSync(overlay)) {
+  execFileSync(process.execPath, [overlay, path.join(c5, "dist", "control-ui")], { stdio: "inherit" });
+  execFileSync(process.execPath, [overlay, "--check", path.join(c5, "dist", "control-ui")], { stdio: "inherit" });
+}
 
 writeFileSync(path.join(a.out, "targets.json"), JSON.stringify({ stock: a.stock, fork: a.fork, capture: a.capture }, null, 2) + "\n");

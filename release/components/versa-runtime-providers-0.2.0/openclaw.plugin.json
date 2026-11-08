@@ -1,0 +1,33 @@
+{
+  "id": "versa-runtime-providers",
+  "activation": {
+    "onStartup": true
+  },
+  "name": "Versa Runtime Providers",
+  "description": "Registers the versa-fast-quality-v1 compaction provider for Gateways that run agent turns in-process.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "fastCompactionModel": {
+        "type": "string",
+        "minLength": 1
+      },
+      "fastCompactionMaxInputChars": {
+        "type": "integer",
+        "minimum": 10000,
+        "maximum": 1500000
+      },
+      "fastCompactionMaxOutputTokens": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 30000
+      },
+      "fastCompactionMaxQualityRetries": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 1
+      }
+    }
+  }
+}
