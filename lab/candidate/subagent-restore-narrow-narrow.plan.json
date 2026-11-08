@@ -23,7 +23,7 @@
     {
       "source": "lab/release-files/subagent-restore-narrow/subagent-completion-admission.store-JmpNDYTF.js",
       "target": "openclaw/dist/subagent-completion-admission.store-JmpNDYTF.js",
-      "before": "c106a6cec9ba3c5def63297f43a23f9bcabe4543c373d61872f3cac7bad48c43"
+      "before": "733f6b75f404488e55292fa618c238b844bd6f42f1b882f3b807d390b50b3692"
     }
   ]
 }

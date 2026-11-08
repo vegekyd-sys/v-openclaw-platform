@@ -40,7 +40,7 @@ export const FILES = {
   },
   admission: {
     path: "subagent-completion-admission.store-JmpNDYTF.js",
-    before: "c106a6cec9ba3c5def63297f43a23f9bcabe4543c373d61872f3cac7bad48c43",
+    before: "733f6b75f404488e55292fa618c238b844bd6f42f1b882f3b807d390b50b3692",
   },
 };
 
@@ -156,7 +156,7 @@ export function build(distDir) {
   const out = {};
   for (const [name, file] of Object.entries(FILES)) {
     const source = fs.readFileSync(path.join(distDir, file.path), "utf8");
-    assert.equal(sha256(source), file.before, `${file.path}: input is not V's bytes`);
+    assert.equal(sha256(source), file.before, `${file.path}: input is not the expected base bytes`);
     out[file.path] = name === "accessor" ? patchAccessor(source) : patchAdmission(source);
   }
   return out;

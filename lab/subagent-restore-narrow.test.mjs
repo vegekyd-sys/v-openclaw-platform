@@ -1,13 +1,18 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
 import { FILES, MARKER, build, patchAccessor, patchAdmission } from "./patch-subagent-restore-narrow.mjs";
 
 const repo = path.resolve(import.meta.dirname, "..");
-const V_DIST = path.join(repo, "release/captured/delete-cleanup-vcc-steer-20261106/dist");
+// Base = V after fallback-dsml-subagent-wake-20261108 plus #571: the accessor is unchanged since
+// delete-cleanup-vcc-steer-20261106, the admission chunk is #571's release file.
+const V_DIST = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "restore-narrow-base-"));
+fs.copyFileSync(path.join(repo, "release/captured/delete-cleanup-vcc-steer-20261106/dist", FILES.accessor.path), path.join(V_DIST, FILES.accessor.path));
+fs.copyFileSync(path.join(repo, "lab/release-files/subagent-settle-wake-missing-task", FILES.admission.path), path.join(V_DIST, FILES.admission.path));
 const RELEASE = path.join(repo, "lab/release-files/subagent-restore-narrow");
 const sha256 = (text) => crypto.createHash("sha256").update(text).digest("hex");
 

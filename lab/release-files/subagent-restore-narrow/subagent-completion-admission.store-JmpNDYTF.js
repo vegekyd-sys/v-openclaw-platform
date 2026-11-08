@@ -1140,12 +1140,15 @@ function invokeSynchronousHook(hook) {
 	if (result && typeof result.then === "function") throw new Error("subagent completion admission transaction hooks must be synchronous");
 }
 function publishCommittedRecords(subagent, task) {
+	publishCommittedSubagent(subagent);
+	publishTaskRecordAfterAtomicStore(task);
+}
+function publishCommittedSubagent(subagent) {
 	const live = subagentRuns.get(subagent.runId);
 	if (live) {
 		for (const key of Object.keys(live)) Reflect.deleteProperty(live, key);
 		Object.assign(live, subagent);
 	} else subagentRuns.set(subagent.runId, subagent);
-	publishTaskRecordAfterAtomicStore(task);
 }
 function assertCorrelatedEntry(params) {
 	const owner = params.queueEntry.kind === "agentTurn" ? params.queueEntry.owner : void 0;
@@ -1197,7 +1200,11 @@ function blockSubagentCompletionDelivery(params) {
 	return runOpenClawStateWriteTransaction((database) => {
 		const subagent = readSubagentRun(database, params.subagent.runId);
 		const task = readTaskRecord(database.db, params.taskId);
-		if (!subagent || !task || task.runtime !== "subagent" || task.status !== "succeeded" || subagent.execution.status !== "terminal" || subagent.execution.outcome?.status !== "ok" || subagent.expectsCompletionMessage !== true || (subagent.taskRunId ?? subagent.runId) !== task.runId || (subagent.delivery?.generation ?? 1) !== generation) return false;
+		if (!subagent || subagent.execution.status !== "terminal" || subagent.execution.outcome?.status !== "ok" || subagent.expectsCompletionMessage !== true || task && (subagent.taskRunId ?? subagent.runId) !== task.runId || (subagent.delivery?.generation ?? 1) !== generation) return false;
+		// subagent-settle-wake-shared-gateway-v1 + subagent-settle-wake-missing-task-v2: no subagent task row (missing, or the
+		// Gateway CLI row for this same run) is not this completion's ledger.
+		const foreignTask = !task || task.runtime !== "subagent" && task.childSessionKey === subagent.childSessionKey;
+		if (task && !foreignTask && (task.runtime !== "subagent" || task.status !== "succeeded")) return false;
 		const delivery = ensureDeliveryState(subagent);
 		delivery.payload ??= loadPendingFinalDeliveryPayload(subagent);
 		Object.assign(delivery, {
@@ -1217,6 +1224,11 @@ function blockSubagentCompletionDelivery(params) {
 		});
 		if (params.suspendedReason) markRequesterSettleWakePending(subagent);
 		else subagent.suppressCompletionDelivery = true;
+		if (foreignTask || !task) {
+			upsertSubagentRunRowInDatabase(database, bindSubagentRunRecord(subagent));
+			deferSqlitePostCommitPublication(database.db, () => publishCommittedSubagent(subagent));
+			return true;
+		}
 		const terminal = resolveRequiredCompletionDeliveryFailureTerminalResult(params.reason);
 		Object.assign(task, {
 			deliveryStatus: "failed",
