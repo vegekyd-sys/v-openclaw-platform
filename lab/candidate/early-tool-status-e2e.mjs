@@ -21,6 +21,7 @@ import http from "node:http";
 import https from "node:https";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { loadProfiles, summarizeWindow } from "./cpuprofile-window.mjs";
 
 const ARM = process.env.ETS_ARM ?? "base";
 assert(["base", "on", "off"].includes(ARM));
@@ -28,6 +29,8 @@ const N_TOOL = Number(process.env.ETS_TOOL_TURNS ?? 8);
 const N_TEXT = Number(process.env.ETS_TEXT_TURNS ?? 4);
 const ARG_MS = Number(process.env.ETS_ARG_MS ?? 1500);
 const MODEL_DELAY_MS = Number(process.env.ETS_MODEL_DELAY_MS ?? 1200);
+// ETS_PROFILE=1: CPU profile of the Gateway, summarized per turn for dispatcher -> Worker submit
+const PROFILE = process.env.ETS_PROFILE === "1";
 const runtime = process.env.VLAB_CANDIDATE_RUNTIME;
 const configPath = process.env.OPENCLAW_CONFIG_PATH;
 const stateDir = process.env.OPENCLAW_STATE_DIR;
@@ -376,8 +379,16 @@ const env = {
 };
 const lines = [];
 let gateway;
+const profDir = path.join(process.env.VLAB_CANDIDATE_DATA ?? stateDir, "cpu-prof");
+function profArgs() {
+  if (!PROFILE) return [];
+  fs.mkdirSync(profDir, { recursive: true });
+  const preload = path.join(profDir, "clock-preload.mjs");
+  fs.writeFileSync(preload, `import fs from "node:fs";\nif (process.argv.includes("gateway")) fs.writeFileSync(${JSON.stringify(profDir)} + "/clock-" + process.pid + ".json", JSON.stringify({ pid: process.pid, timeOrigin: performance.timeOrigin, wallMs: Date.now(), worker: false }));\n`);
+  return [`--import=${preload}`, "--cpu-prof", `--cpu-prof-dir=${profDir}`, "--cpu-prof-interval=1000"];
+}
 function startGateway() {
-  gateway = spawn(process.execPath, ["--max-old-space-size=4096", `${runtime}/openclaw/dist/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
+  gateway = spawn(process.execPath, ["--max-old-space-size=4096", ...profArgs(), `${runtime}/openclaw/dist/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
   for (const s of [gateway.stdout, gateway.stderr]) {
     s.setEncoding("utf8");
     s.on("data", (chunk) => { lines.push(...chunk.split(/\r?\n/u).filter(Boolean).map((l) => `${Date.now()} ${l}`)); if (lines.length > 40000) lines.splice(0, lines.length - 40000); });
@@ -430,6 +441,14 @@ const e2e = (id) => {
   }
   return null;
 };
+const phaseAt = (runId, stage) => {
+  if (!runId) return null;
+  for (const l of lines) {
+    if (!l.includes("[firsttext-worker-phases]") || !l.includes(`"runId":"${runId}"`) || !l.includes(`"stage":"${stage}"`)) continue;
+    try { return JSON.parse(l.slice(l.indexOf("{", l.indexOf("[firsttext-worker-phases]")))).atMs; } catch {}
+  }
+  return null;
+};
 const DM = "oc_vets_dm_alice";
 let seq = 0;
 async function turn(kind) {
@@ -455,6 +474,9 @@ async function turn(kind) {
     textToFirstPushMs: !toolCall && mine.find((c) => c.textAt) && rec.firstPushAtMs ? rec.firstPushAtMs - mine.find((c) => c.textAt).textAt : null,
     firstPushBeforeArgsEnd: toolCall && rec.firstPushAtMs ? rec.firstPushAtMs < toolCall.argsEndAt : null,
     firstContent: firstContent ? { atFromSend: firstContent.at - msg.at, text: firstContent.text.slice(0, 80) } : null,
+    dispatcherAt: rec.dispatcherAtMs ?? null,
+    harnessEnterAt: phaseAt(rec.runId, "gateway-harness-enter"),
+    dispatcherToHarnessMs: rec.dispatcherAtMs && phaseAt(rec.runId, "gateway-harness-enter") ? phaseAt(rec.runId, "gateway-harness-enter") - rec.dispatcherAtMs : null,
     modelCalls: mine.length, tool: toolCall?.tool ?? null,
   };
   step("turn", r);
@@ -482,6 +504,7 @@ try {
     textSentToFirstPushMs: stat(text.map((t) => t.sentToFirstPushMs)),
     textModelToFirstPushMs: stat(text.map((t) => t.textToFirstPushMs)),
     toolFirstPushBeforeArgsEnd: tool.filter((t) => t.firstPushBeforeArgsEnd).length,
+    dispatcherToHarnessMs: stat(turns.map((t) => t.dispatcherToHarnessMs)),
   };
   check("every turn replied", turns.every((t) => t.ok) && warm.every((t) => t.ok), { failed: turns.filter((t) => !t.ok).map((t) => t.tag) });
   check("every tool turn called the tool", tool.every((t) => t.tool && t.modelCalls >= 2), { tools: tool.map((t) => t.tool) });
@@ -493,6 +516,22 @@ try {
   await stopGateway().catch(() => {});
   server.close();
   modelServer.close();
+}
+if (PROFILE && evidence.turns) {
+  await sleep(3000);
+  const profiles = loadProfiles(profDir).filter((p) => p.clock);
+  evidence.profiles = { files: profiles.map((p) => p.file), windows: [] };
+  for (const t of evidence.turns) {
+    if (!t.dispatcherAt || !t.harnessEnterAt) continue;
+    for (const p of profiles) {
+      const w = summarizeWindow(p, t.dispatcherAt, t.harnessEnterAt, 30);
+      if (w) evidence.profiles.windows.push({ tag: t.tag, span: "dispatcher->harness-enter", ...w });
+    }
+  }
+  // all dispatch windows together: where the Gateway main thread goes between dispatcher and Worker submit
+  const merged = new Map();
+  for (const w of evidence.profiles.windows) for (const line of w.self) { const m = /^(\d+)ms (.*)$/u.exec(line); if (m) merged.set(m[2], (merged.get(m[2]) ?? 0) + Number(m[1])); }
+  evidence.profiles.mergedSelf = [...merged.entries()].sort((a, b) => b[1] - a[1]).slice(0, 40).map(([k, v]) => `${v}ms ${k}`);
 }
 evidence.unknownFeishuCalls = Object.fromEntries(fake.unknown);
 evidence.errorsLog = logMatches(/feishu.*(error|failed)/iu).slice(-15).map((l) => redact(l.slice(14)));
