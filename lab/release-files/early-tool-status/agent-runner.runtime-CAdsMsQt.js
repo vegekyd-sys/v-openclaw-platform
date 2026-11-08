@@ -1,3 +1,6 @@
+// v-task-followup-presentation-v1
+import "./v-feishu-task-presentation-core-bridge.mjs";
+import {openFollowupPresentation,followupPresentationOptions,deliverFollowupPresentation,settleFollowupPresentation} from "./v-feishu-task-presentation-followup.mjs";
 import { o as resolveVlabCardRuntime } from "./thinking-runtime-CMnVn0Uq.js";
 import { S as parseStrictInteger, f as asSafeIntegerInRange, l as asNonNegativeFiniteNumber, s as asFiniteNumber } from "./number-coercion-CLj0HTDM.js";
 import { t as sanitizeForLog } from "./ansi-DrXAcdMD.js";
@@ -896,6 +899,11 @@ function buildContextOverflowRecoveryText(params) {
 //#endregion
 //#region src/auto-reply/reply/agent-runner-error-handler.ts
 const MAX_LIVE_SWITCH_RETRIES = 2;
+// deepseek-budget-notice-v1: V's DeepSeek v4 budget guard, raw or as the notice overflow recovery rendered
+function vDeepSeekBudgetNoticeText(text) {
+	if (typeof text !== "string") return;
+	if (text.includes("[V_DEEPSEEK_CONTEXT_BUDGET_EXHAUSTED]") || text.trim().startsWith("上下文剩余空间不足，已停止本次生成。")) return "上下文剩余空间不足，已停止本次生成。请先压缩上下文后再继续；历史和任务状态未清空，恢复前请核对已执行操作，避免重复执行。";
+}
 async function handleAgentExecutionError(params) {
 	const turn = params.turn;
 	const err = params.error;
@@ -992,7 +1000,7 @@ async function handleAgentExecutionError(params) {
 	const failoverReason = failoverFacts.reason;
 	const isOverloaded = hasFallbackAttempts ? isPureOverloadSummary : failoverReason === "overloaded";
 	const isBilling = hasFallbackAttempts ? fallbackAttempts?.some((attempt) => attempt.reason === "billing") : failoverReason === "billing";
-	const isContextOverflow = !isBilling && (failoverReason === "context_overflow" || isLikelyContextOverflowError(message));
+	const isContextOverflow = !isBilling && (failoverReason === "context_overflow" || isLikelyContextOverflowError(message) || vDeepSeekBudgetNoticeText(message) !== void 0);
 	const isCompactionFailure = !isBilling && isCompactionFailureError(message);
 	const oauthRefreshFailure = classifyOAuthRefreshFailureError(err) ?? classifyOAuthRefreshFailure(message);
 	const hasAuthProfileFailoverFailure = buildAuthProfileFailoverFailureText(err) !== null;
@@ -1012,7 +1020,7 @@ async function handleAgentExecutionError(params) {
 		turn.replyOperation?.fail("run_failed", err);
 		return {
 			kind: "final",
-			payload: markAgentRunFailureReplyPayload({ text: buildContextOverflowRecoveryText({
+			payload: markAgentRunFailureReplyPayload({ text: vDeepSeekBudgetNoticeText(message) ?? buildContextOverflowRecoveryText({
 				duringCompaction: true,
 				preserveSessionMapping: true,
 				cfg: params.runtimeConfig,
@@ -1060,7 +1068,7 @@ async function handleAgentExecutionError(params) {
 		provider: isFailoverError(err) ? err.provider : void 0,
 		cooldownExpiry: isFailoverError(err) ? err.soonestCooldownExpiry : void 0,
 		sanitizeText: (text) => sanitizeUserFacingText(text, { errorContext: true })
-	}) : rateLimitOrOverloadedCopy ? rateLimitOrOverloadedCopy : isContextOverflow ? "⚠️ Context overflow — prompt too large for this model. Try a shorter message or a larger-context model." : externalRunFailureReply?.text ?? (params.shouldSurfaceToControlUi ? renderControlUiAgentFailureCopy(userFacingMessage) : turn.isHeartbeat ? "⚠️ Heartbeat check failed before it could produce an update. The main chat session remains available." : "⚠️ Something went wrong while processing your request. Please try again, or use /new to start a fresh session.");
+	}) : rateLimitOrOverloadedCopy ? rateLimitOrOverloadedCopy : isContextOverflow ? vDeepSeekBudgetNoticeText(message) ?? "⚠️ Context overflow — prompt too large for this model. Try a shorter message or a larger-context model." : externalRunFailureReply?.text ?? (params.shouldSurfaceToControlUi ? renderControlUiAgentFailureCopy(userFacingMessage) : turn.isHeartbeat ? "⚠️ Heartbeat check failed before it could produce an update. The main chat session remains available." : "⚠️ Something went wrong while processing your request. Please try again, or use /new to start a fresh session.");
 	return await settleFailure({
 		text: resolveExternalRunFailureTextForConversation({
 			text: fallbackText,
@@ -2820,7 +2828,7 @@ async function settleAgentFallbackCycle(params) {
 		turn.replyOperation?.fail("run_failed", embeddedError);
 		return {
 			kind: "final",
-			payload: markAgentRunFailureReplyPayload({ text: buildContextOverflowRecoveryText({
+			payload: markAgentRunFailureReplyPayload({ text: vDeepSeekBudgetNoticeText(embeddedError.message) ?? buildContextOverflowRecoveryText({
 				preserveSessionMapping: true,
 				cfg: cycle.runtimeConfig,
 				agentId: turn.followupRun.run.agentId,
@@ -3343,7 +3351,7 @@ async function executeAgentTurnInternalLoop(params, commitTerminalOutcome, commi
 	const hasPayloadText = runResult?.payloads?.some((p) => normalizeOptionalString(p.text));
 	if (finalEmbeddedError && !hasPayloadText) {
 		const errorMsg = finalEmbeddedError.message ?? "";
-		if (isContextOverflowError(errorMsg)) {
+		if (isContextOverflowError(errorMsg) || vDeepSeekBudgetNoticeText(errorMsg) !== void 0) {
 			params.replyOperation?.fail("run_failed", finalEmbeddedError);
 			return {
 				kind: "final",
@@ -3351,7 +3359,7 @@ async function executeAgentTurnInternalLoop(params, commitTerminalOutcome, commi
 					provider: fallbackProvider,
 					model: fallbackModel
 				},
-				payload: markAgentRunFailureReplyPayload({ text: "⚠️ Context overflow — this conversation is too large for the model. Use /new to start a fresh session." }),
+				payload: markAgentRunFailureReplyPayload({ text: vDeepSeekBudgetNoticeText(errorMsg) ?? "⚠️ Context overflow — this conversation is too large for the model. Use /new to start a fresh session." }),
 				postCompactionModelFailure: fallbackCycleState.postCompactionModelAttempted || void 0
 			};
 		}
@@ -6167,6 +6175,7 @@ async function sendFollowupPayloads(params) {
 		logVerbose(`followup queue: source delivery dropped (${sourceDisposition.reason})`);
 		return;
 	}
+  if (await deliverFollowupPresentation(params, payloads)) return;
 	const deliverQueuedBatch = sourceDisposition?.deliver;
 	const fallbackDispatcher = sourceDisposition ? void 0 : defaults.opts?.onBlockReply;
 	const dispatcherAvailable = Boolean(deliverQueuedBatch || fallbackDispatcher);
@@ -6728,7 +6737,7 @@ function buildFollowupTemplateContext(turn) {
 /** Adapts an admitted queued turn to the canonical agent execution owner. */
 async function executeFollowupTurn(params) {
 	const { turn, defaults } = params;
-	const sourceOpts = defaults.opts;
+	const sourceOpts = followupPresentationOptions(turn, defaults.opts);
 	const roomEvent = turn.queued.currentInboundEventKind === "room_event";
 	const progressAllowed = () => turn.sendPolicy === "allow" && !roomEvent;
 	const currentVerboseLevel = () => {
@@ -7011,6 +7020,7 @@ function createFollowupRunner(defaults) {
 			admittedRunId = turn.runId;
 			operation = turn.operation;
 			queuedFollowupAdmitted = true;
+            await openFollowupPresentation(turn, defaults).catch(error => defaultRuntime.error?.(`followup presentation: ${String(error)}`));
 			const execution = await executeFollowupTurn({
 				turn,
 				defaults,
@@ -7084,6 +7094,7 @@ function createFollowupRunner(defaults) {
 				error
 			};
 		} finally {
+			if (queuedFollowupAdmitted) await settleFollowupPresentation(admittedRunId, disposition, operation);
 			if (queuedFollowupAdmitted) await settleQueuedFollowupPresentation(defaults);
 			for (const end of endDeliveryCorrelations.toReversed()) try {
 				end();
@@ -7437,6 +7448,17 @@ function resolveReplyActiveAfterDeferredFlushYield(params) {
 	});
 	return false;
 }
+// v-inter-session-exclusive-v1: the rule above for get-reply's inter-session admission guard, without the log
+// line. false = only a deferred memory flush keeps the session active, and it yields to a new turn.
+globalThis[Symbol.for("openclaw.v.deferredMemoryFlush")] = {
+	v: 1,
+	activeAfterYield: ({ sessionKey, providedReplyOperation }) => {
+		const job = deferredMemoryFlushJobs.get(sessionKey);
+		if (!job || !(job.inFlight > 0)) return true;
+		const operation = replyRunRegistry.get(sessionKey);
+		return operation !== void 0 && operation !== providedReplyOperation;
+	}
+};
 /**
 * A steer-mode message for a session whose real reply is queued behind an unwinding
 * deferred flush. That reply's embedded run waits on the session lane until the flush has
@@ -7952,8 +7974,10 @@ async function runReplyAgent(params) {
 		config: followupRun.run.config,
 		attributes: traceAttributes
 	});
-	const effectiveShouldSteer = !isHeartbeat && !effectiveResetTriggered && shouldSteer;
-	const effectiveShouldFollowup = !effectiveResetTriggered && shouldFollowup;
+	const vExclusive = (opts?.vInterSession ?? sessionCtx?.VInterSession)?.exclusive === true;
+	const effectiveShouldSteer = !vExclusive && !isHeartbeat && !effectiveResetTriggered && shouldSteer;
+	const effectiveShouldFollowup = !vExclusive && !effectiveResetTriggered && shouldFollowup;
+	if (vExclusive && isActive) logVerbose("inter-session exclusive turn found the session active after admission; running after it");
 	const messageInjectionDisposition = opts?.messageInjectionDisposition ?? "none";
 	const incomingToolAuthorityFingerprint = resolveFollowupRunToolAuthorityFingerprint(followupRun);
 	const activeReplyOperation = sessionKey ? replyRunRegistry.get(sessionKey) ?? providedReplyOperation : providedReplyOperation;

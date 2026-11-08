@@ -10,6 +10,71 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## restore-narrow-settle-parallel-20261108
+
+上线：2026-11-08 10:04 CST（09:56 文件装到 V；v-self-restart 等到空闲，10:00:04 重启，10:04:42 就绪。10:08:35 Gateway 因钉钉 WebSocket 握手 400 未捕获异常崩溃一次，10:08:41 自动拉起，见下）  ·  tag `restore-narrow-settle-parallel-20261108`
+
+**摘要**：三件事一次重启上线。① 新 worker 第一轮不再逐个整读 1.5 万个夜班子会话（#567）：V 上新 worker 第一轮「回合开始 → 第一次调模型」从 p50 20.2 s（11/07 起 46 次，最长 24.8 s）降到上线后 2.9–5.7 s（7 次，p50 约 3.3 s），后续回合不变（0.4–0.5 s）。② 11/07 群 oc_a59571a2 卡住的子 agent 不再每分钟报 owner changed（#571，补 #569 漏掉的「找不到任务行」）：上线前约 400 次/小时，上线后 0；四个 11/07 子任务标为失败不交付，f33f3d59 停在 suspended。③ /vds 允许 DeepSeek 一次发多个互不依赖的工具调用（#570）。
+
+V 上验收（测试群 oc_260a…，lark-cli 以 Tianyi 身份）：
+- 上线前基线：新 worker 第一轮 p50 20.2 s；owner changed before settlement 400 次/小时、before suspension 31 次/小时。
+- #570：10:05 /vds 三个 echo 的工具调用 call_00/01/02 在 344 ms 内由同一次模型回复发出，输出正确；V 上目录为 70e6e032，读它的 Codex app-server 10:05:16 启动（重启后）。注意 DeepSeek 在上线前也偶尔会一次发多个调用（06:11 两个 sessions_spawn），单次观察不足以单独证明开关效果，VLab candidate 的请求数对照见 #570。
+- #569/#571：10:26 /vds 父会话派两个可见子 agent 后 yield，10:28 最终卡片带两个结果，日志有 `announce:requester-settle`；崩溃恢复后无 owner changed、无绑定报错、无 settle wake failed。
+- #567：见摘要。11:00 前后经 Tianyi 同意在 V 上做了压测（显式测试会话 `agent:makaron:explicit:loadtest-*`，经 Gateway `agent` 接口并发派 3 步 exec 任务，不进任何群）：12 并发 12/12 完成（37–44 s），24 并发 24/24 完成（36–56 s），池子 5→9 个 worker；**按需新开的 worker（编号 5–7，开出后 2–3 s 就接回合）第一轮 4.6–4.7 s**，上线前同类按需 worker 为 19.7–24.8 s；原有预热 worker 首次接回合 4.6–5.0 s。全程 Gateway RSS ≤2.5 GB、无卡顿、主机可用内存 ≥42 GB。
+- 测完测试群切回 `/vcodex`。
+
+**上线后事故：Gateway 崩溃一次（与本次改动无关）**
+- 10:00 重启正赶上周日 10:00 的定时任务，加上冷启动，10:06–10:08 RSS 涨到 10.5 GiB（03:12 那次重启后最高 7.3 GiB），主线程卡 17–26 s。
+- 卡顿期间钉钉 stream 连接器用一次性 ticket 重连，握手被拖慢后钉钉返回 400，ws 抛出的 `Unexpected server response: 400` 没被接住，Gateway 10:08:35 退出（stability bundle `openclaw-stability-2026-11-08T02-08-35-114Z-3475749-uncaught_exception.json`），10:08:41 由 systemd 拉起。V 上第一次出现这种崩溃。
+- 影响：10:08 约 15 个回合（主要是 10:00 的定时任务）报 Worker stream ack 超时；崩溃时残留的 Codex 进程随后消失，没有 Cannot reap。10:14–10:21 第二次冷启动卡 18–37 s，10:22 起平稳。
+- 待修：钉钉连接器握手失败要被捕获而不是让进程退出。
+
+相对上一版 `fallback-dsml-subagent-wake-20261108`：3 个文件变化。
+
+**经 VLab 发版 `restore-narrow-settle-parallel-20261108`**（restore-narrow-settle-parallel-20261108，dev `5663f367`）
+> 验收：共享 VLab 验收 2026-11-08 09:31–09:36 CST（#567 #570 #571，dev 5663f367）。部署后 Gateway 就绪，测试会话回复「收到-RNSP」。#570：/vds 三个互不依赖的 echo 在同一次模型回复里发出（call_00/01/02，185 ms 内），全程 2 次模型往返，输出正确；VLab Gateway 的 Codex 副本已手动同步 70e6e032（备份 .bak-before-570）。#569/#571：/vds 父会话派 2 个 visible 子 agent（sleep 30/45）后 sessions_yield，最终回复带两个结果；部署后 journal 无绑定错误、无 owner changed、无 settle wake failed。#567：重启后新 worker 第一轮 3.5 s、1.8 s 正常…
+- `core` session-accessor.sqlite-entry-BlklNPKQ.js  789fca01 → 258aa1be
+- `core` subagent-completion-admission.store-JmpNDYTF.js  8f8adebe → 55aa7576
+- `codex` dist/v-deepseek-model-catalog.json  6df9d13d → 70e6e032
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #570 codex: let /vds batch independent tool calls
+- #567 首字：新 worker 第一轮不再逐个整读子 agent 会话（每个新 worker 省约 15 s）
+- #571 fix(subagents): #569 补漏——找不到子 agent 任务记录时也只在登记表里标失败
+
+## fallback-dsml-subagent-wake-20261108
+
+上线：2026-11-08 03:12 CST（文件 03:03 前推上 V；03:03 第一次重启在 Gateway 停机前取消，补完共享 VLab 功能验证后 v-self-restart 等空闲，03:12:24 就绪）  ·  tag `fallback-dsml-subagent-wake-20261108`
+
+**摘要**：三个用户能感知的修复一次重启上线。① 工具跑完后 DeepSeek 持续 5xx 时，Worker 把这一轮交给回退链，由 luna 按转录续写，不再干等后报错（#566）。② DeepSeek 把工具调用写成带空格的 DSML 文本时，改为真的执行，不再把这段文本显示给用户（#568）。③ 父会话 yield 后，可见子 agent（`sessions_spawn visible=true`）的结果能交回父会话：11/07 群 oc_a59571a2 的 /vcc 父会话派出 4 个子 agent 后一直没收到结果（结算唤醒按函数对象判断是不是同一个 Gateway，混合批次被拒；Gateway 的 `cli` 任务行又让放弃时每分钟抛一次 owner changed）（#569）。
+
+V 上验收（测试群 oc_260a…，lark-cli 以 Tianyi 身份发送）：
+- 冒烟：03:14 发「只回复 收到-0313」，03:16 回复（冷启动约 2 分钟）。
+- #569 /vds：06:12:01 父会话 `sessions_yield`，两个可见子 agent（sleep 60/90）完成后 06:13:45 跑 `announce:requester-settle:…:yield-1`，最终卡片带两个结果，无绑定报错。
+- #569 /vcc（claude-cli，与 11/07 同一 runtime）：08:55:14 `sessions_yield` 返回 yielded，两个可见子 agent 完成后 08:57:04 收到子 agent 回报，08:57 最终卡片带两个结果。测完测试群切回 `/vcodex`。
+- #566、#568 线上没有可主动制造的触发条件（需要 DeepSeek 真的 5xx / 输出 DSML 文本），重启后至撰写时没有出现，待真实流量确认；VLab 证据见下。
+- 未修好：11/07 卡住的那批（284f7211 等 4 个）以及 11/08 00:18 的 f33f3d59 仍每分钟重试（找不到 subagent 任务行，taskId 为空），由 #571 修。
+- 重启后 Gateway 停顿：03:15 冷启动一次 35 s，03:16 chat.history 103 s；之后每小时 8–11 次、最长约 5 s，与发布前相同。
+
+相对上一版 `cron-default-owner-tools-20261107`：8 个文件变化。
+
+**经 VLab 发版 `fallback-dsml-subagent-wake-20261108`**（fallback-dsml-subagent-wake-20261108，dev `1b6c2956`）
+> 验收：共享 VLab 验收 2026-11-08 02:58 CST（#566 #568 #569，dev 1b6c2956）。部署后 Gateway 正常，测试会话回复「收到」(agent.wait ok)；9 个文件为补丁后字节。功能证据：#566 candidate-313c90ad（工具后 DeepSeek 5xx 由 luna 接续，8/8）；#568 candidate-836310c8（带空格 DSML 文本工具调用改为执行，8/8）；#569 candidate-12675a66 对照 candidate-6aeb06bf（两个可见子 agent 在 yield 父会话下交回结果 vs 绑定被拒）。
+- `core` embedded-agent-DaSvA-Yk.js  21df02d9 → 182c175c
+- `core` gateway-request-scope-CmMd3nUp.js  7a0b33d9 → 154750fe
+- `core` model-fallback-runner-DOsPfj4O.js  3fd62e08 → eb417c8a
+- `core` subagent-completion-admission.store-JmpNDYTF.js  c106a6ce → 8f8adebe
+- `core` node_modules/@openclaw/ai/dist/openai-completions-stream-DZjwK8vp.mjs  9808e03c → a66edfc5（#568；捕获排除 core 的 node_modules，这一行按 VLab 发版记录手写，V 与 VLab 上的字节已核对）
+- `worker` harness-failure.mjs  89419679 → 4de8c46e
+- `worker` index.mjs  1bf070dc → 9619b65f
+- `worker` worker-pool.mjs  f6ca5d76 → dcfc36ff
+- `worker` worker.mjs  198bd1f5 → f90826ec
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #568 fix(deepseek): 带空格的 DSML 文本工具调用改为执行，不再显示给用户（+ PI 缺口报告）
+- #569 fix(subagents): 子 agent 结果交不回父会话（结算唤醒绑定 + owner change 循环）
+- #566 fix(fallback): 工具跑完后 DeepSeek 一直 5xx 时交给 luna 从转录续写
+
 ## cron-default-owner-tools-20261107
 
 上线：2026-11-07 14:19 CST（文件 14:15 推上 V，14:19:50 空闲重启生效）  ·  tag `cron-default-owner-tools-20261107`
