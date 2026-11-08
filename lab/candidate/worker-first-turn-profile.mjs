@@ -22,6 +22,7 @@ import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import { loadProfiles, summarizeWindow } from "./cpuprofile-window.mjs";
 
 const runtime = process.env.VLAB_CANDIDATE_RUNTIME;
 const configPath = process.env.OPENCLAW_CONFIG_PATH;
@@ -321,7 +322,7 @@ function profPreload() {
   const file = path.join(stateDir, "cpu-prof-preload.mjs");
   // also record one (monotonic microseconds, wall ms) pair per Worker so profile samples map onto the
   // [firsttext-worker-phases] wall-clock marks
-  fs.writeFileSync(file, `import fs from "node:fs";\nif (process.argv.some((a) => a.endsWith("production-worker/worker.mjs"))) { fs.mkdirSync(${JSON.stringify(profDir)}, { recursive: true }); fs.writeFileSync(${JSON.stringify(profDir)} + "/clock-" + process.pid + ".json", JSON.stringify({ pid: process.pid, hrUs: Number(process.hrtime.bigint() / 1000n), wallMs: Date.now() })); process.on("SIGTERM", () => process.exit(0)); }\n`);
+  fs.writeFileSync(file, `import fs from "node:fs";\nfs.mkdirSync(${JSON.stringify(profDir)}, { recursive: true }); fs.writeFileSync(${JSON.stringify(profDir)} + "/clock-" + process.pid + ".json", JSON.stringify({ pid: process.pid, timeOrigin: performance.timeOrigin, wallMs: Date.now(), worker: process.argv.some((a) => a.endsWith("production-worker/worker.mjs")) }));\nif (process.argv.some((a) => a.endsWith("production-worker/worker.mjs"))) process.on("SIGTERM", () => process.exit(0));\n`);
   return file;
 }
 const env = {
@@ -547,6 +548,18 @@ try {
 } finally {
   await stopGateway();
   server.close();
+}
+if (PROFILE && summary) {
+  await sleep(3_000);
+  const profiles = loadProfiles(profDir);
+  summary.profiles = { files: profiles.map((p) => ({ file: p.file, pid: p.pid, worker: p.clock?.worker ?? null, clock: Boolean(p.clock) })), windows: [] };
+  for (const r of summary.rounds) for (const t of r.turns) {
+    if (!t.modelAt) continue;
+    for (const p of profiles) {
+      const w = summarizeWindow(p, t.sent, t.modelAt);
+      if (w && w.busyMs > 150) summary.profiles.windows.push({ tag: t.tag, kind: t.kind, worker: p.clock?.worker ?? null, ...w });
+    }
+  }
 }
 console.log(JSON.stringify(summary, null, 1));
 console.log(`RESULT arm=${ARM} firstTurn enter->model p50 ${summary.firstTurnEnterToModelMs.p50} ms (n=${summary.firstTurnEnterToModelMs.n}) warm p50 ${summary.warmEnterToModelMs.p50} ms; gateway seeded hello ${summary.gatewayStart.seeded?.helloMs ?? "-"} ms; ok ${summary.ok}/${summary.n} visible ${summary.replyVisible}/${summary.n}; prune lines ${summary.prunedTotalLines}`);
