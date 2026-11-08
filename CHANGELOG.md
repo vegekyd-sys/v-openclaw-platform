@@ -10,6 +10,39 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## fallback-dsml-subagent-wake-20261108
+
+上线：2026-11-08 03:12 CST（文件 03:03 前推上 V；03:03 第一次重启在 Gateway 停机前取消，补完共享 VLab 功能验证后 v-self-restart 等空闲，03:12:24 就绪）  ·  tag `fallback-dsml-subagent-wake-20261108`
+
+**摘要**：三个用户能感知的修复一次重启上线。① 工具跑完后 DeepSeek 持续 5xx 时，Worker 把这一轮交给回退链，由 luna 按转录续写，不再干等后报错（#566）。② DeepSeek 把工具调用写成带空格的 DSML 文本时，改为真的执行，不再把这段文本显示给用户（#568）。③ 父会话 yield 后，可见子 agent（`sessions_spawn visible=true`）的结果能交回父会话：11/07 群 oc_a59571a2 的 /vcc 父会话派出 4 个子 agent 后一直没收到结果（结算唤醒按函数对象判断是不是同一个 Gateway，混合批次被拒；Gateway 的 `cli` 任务行又让放弃时每分钟抛一次 owner changed）（#569）。
+
+V 上验收（测试群 oc_260a…，lark-cli 以 Tianyi 身份发送）：
+- 冒烟：03:14 发「只回复 收到-0313」，03:16 回复（冷启动约 2 分钟）。
+- #569 /vds：06:12:01 父会话 `sessions_yield`，两个可见子 agent（sleep 60/90）完成后 06:13:45 跑 `announce:requester-settle:…:yield-1`，最终卡片带两个结果，无绑定报错。
+- #569 /vcc（claude-cli，与 11/07 同一 runtime）：08:55:14 `sessions_yield` 返回 yielded，两个可见子 agent 完成后 08:57:04 收到子 agent 回报，08:57 最终卡片带两个结果。测完测试群切回 `/vcodex`。
+- #566、#568 线上没有可主动制造的触发条件（需要 DeepSeek 真的 5xx / 输出 DSML 文本），重启后至撰写时没有出现，待真实流量确认；VLab 证据见下。
+- 未修好：11/07 卡住的那批（284f7211 等 4 个）以及 11/08 00:18 的 f33f3d59 仍每分钟重试（找不到 subagent 任务行，taskId 为空），由 #571 修。
+- 重启后 Gateway 停顿：03:15 冷启动一次 35 s，03:16 chat.history 103 s；之后每小时 8–11 次、最长约 5 s，与发布前相同。
+
+相对上一版 `cron-default-owner-tools-20261107`：8 个文件变化。
+
+**经 VLab 发版 `fallback-dsml-subagent-wake-20261108`**（fallback-dsml-subagent-wake-20261108，dev `1b6c2956`）
+> 验收：共享 VLab 验收 2026-11-08 02:58 CST（#566 #568 #569，dev 1b6c2956）。部署后 Gateway 正常，测试会话回复「收到」(agent.wait ok)；9 个文件为补丁后字节。功能证据：#566 candidate-313c90ad（工具后 DeepSeek 5xx 由 luna 接续，8/8）；#568 candidate-836310c8（带空格 DSML 文本工具调用改为执行，8/8）；#569 candidate-12675a66 对照 candidate-6aeb06bf（两个可见子 agent 在 yield 父会话下交回结果 vs 绑定被拒）。
+- `core` embedded-agent-DaSvA-Yk.js  21df02d9 → 182c175c
+- `core` gateway-request-scope-CmMd3nUp.js  7a0b33d9 → 154750fe
+- `core` model-fallback-runner-DOsPfj4O.js  3fd62e08 → eb417c8a
+- `core` subagent-completion-admission.store-JmpNDYTF.js  c106a6ce → 8f8adebe
+- `core` node_modules/@openclaw/ai/dist/openai-completions-stream-DZjwK8vp.mjs  9808e03c → a66edfc5（#568；捕获排除 core 的 node_modules，这一行按 VLab 发版记录手写，V 与 VLab 上的字节已核对）
+- `worker` harness-failure.mjs  89419679 → 4de8c46e
+- `worker` index.mjs  1bf070dc → 9619b65f
+- `worker` worker-pool.mjs  f6ca5d76 → dcfc36ff
+- `worker` worker.mjs  198bd1f5 → f90826ec
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #568 fix(deepseek): 带空格的 DSML 文本工具调用改为执行，不再显示给用户（+ PI 缺口报告）
+- #569 fix(subagents): 子 agent 结果交不回父会话（结算唤醒绑定 + owner change 循环）
+- #566 fix(fallback): 工具跑完后 DeepSeek 一直 5xx 时交给 luna 从转录续写
+
 ## cron-default-owner-tools-20261107
 
 上线：2026-11-07 14:19 CST（文件 14:15 推上 V，14:19:50 空闲重启生效）  ·  tag `cron-default-owner-tools-20261107`
