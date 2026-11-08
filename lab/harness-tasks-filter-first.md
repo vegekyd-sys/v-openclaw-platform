@@ -17,8 +17,8 @@ Codex harness 每个回合都会调 `createAgentHarnessTaskRuntime().listTaskRec
 把同一个判断条件作为参数传给 `listTaskRecords(filter)`。注册表本来就支持先过滤、再克隆排序，只是这里没用上。
 
 - **结果相同。** 返回的记录相同，顺序也相同。过滤保持原来的相对顺序；新到旧排序的同毫秒并列，按插入序号决定，在过滤后的子集上次序不变。
-- **源码。** openclaw-versa `versa/harness-tasks-filter-first-20261108` @2523e563e9d，带 vitest 单测，去掉改动后单测失败。
-  这个分支还没有合入 versa/main。
+- **源码。** openclaw-versa `versa/harness-tasks-filter-first-20261108-pb` @44fec25ee34，带 vitest 单测，去掉改动后单测失败。基于 V 补丁源码所在的 `versa/port-backlog-20261029`（最早一版基于 versa/main 的 @2523e563e9d 作废）。
+  这个分支还没有合入。
 - **开关。** dist 版本多一个开关：`OPENCLAW_V_HARNESS_TASKS_FILTER_FIRST=0` 恢复原来的整表调用，每次调用时读取，
   用于同一个 Gateway 上的 A/B 和紧急关闭。
 - **不需要改 Codex 插件。**
@@ -40,6 +40,6 @@ Codex harness 每个回合都会调 `createAgentHarnessTaskRuntime().listTaskRec
 - 在共享测量台（`claude/vds-concurrency-deep`，订阅会话事件、V 规模注册表、bash5）上做 A/B：
   在同一个 Gateway 上切换 `AB_ENVS=OPENCLAW_V_HARNESS_TASKS_FILTER_FIRST`，跑 /vds c10/c15。
 - 上线前要做三件事：
-  - versa 分支合入 versa/main；
-  - 捕获 PR 在 `release/source-map.json` 里映射到 `versa:2523e563e9d`；
+  - versa 分支合入 port-backlog 线；
+  - 捕获 PR 在 `release/source-map.json` 里映射到 `versa:44fec25ee34`；
   - 按线上字节重新构建，V 的原字节 `50dc439b…` 不变才能直接用。

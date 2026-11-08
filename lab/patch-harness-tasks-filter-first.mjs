@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 // 18,867) on each turn and then kept the few its session owns. It now passes the same predicate to
 // listTaskRecords(filter), which filters before it clones and sorts: same records, same order.
 // VLab c10 profile with a V-sized registry: about 220 ms of Gateway main thread per Codex turn.
-// See lab/harness-tasks-filter-first.md. Source: openclaw-versa 2523e563e9d.
+// See lab/harness-tasks-filter-first.md. Source: openclaw-versa 44fec25ee34 (branch versa/harness-tasks-filter-first-20261108-pb on versa/port-backlog-20261029).
 // OPENCLAW_V_HARNESS_TASKS_FILTER_FIRST=0 restores the original call, read on each call.
 
 export const MARKER = 'harness-tasks-filter-first';
