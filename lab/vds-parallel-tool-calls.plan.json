@@ -1,0 +1,11 @@
+{
+  "baseRelease": "fallback-dsml-subagent-wake-20261108",
+  "files": [
+    {
+      "source": "lab/release-files/vds-parallel-tool-calls/v-deepseek-model-catalog.json",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/v-deepseek-model-catalog.json",
+      "before": "6df9d13df5b31c095c15c499b2f4ebde4c2230fc550aada8f01c7752b5afbd81",
+      "after": "70e6e032318e0b74b5aca5ecfbcbbebd75398c5bb51baecb61d466870879862a"
+    }
+  ]
+}
