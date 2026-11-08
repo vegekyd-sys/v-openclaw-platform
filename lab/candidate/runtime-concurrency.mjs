@@ -29,6 +29,12 @@
 //     Gateway CPU/RSS/heap, app-server and claude process counts, host memory
 //   - gate: a level with a stall > GATE_STALL_MS or failures > GATE_FAIL_RATE ends that arm
 //
+// AB_ROUNDS=N: instead of LEVELS, the same concurrency (AB_C) on one Gateway, N rounds of AB_TASKS with
+// the switches in AB_ENVS off and on alternately (off-on, on-off, ...), first warmed with one discarded
+// level per task. AB_PROFILE=1 adds one profiled pair at the end, outside the numbers. SEED_REGISTRY=1
+// brings the private state database to V's registry shape first, from SEED_TOPOLOGY (free text removed,
+// padded to V's sizes; kept outside the repository).
+//
 // Output: JSON lines on stdout and in $OUT_DIR/progress.jsonl as they happen, then a summary (also
 // $OUT_DIR/summary.json with every run), the Gateway's lag/signal lines and the 1 s samples.
 
@@ -57,10 +63,26 @@ const PAIRED = process.env.PAIRED === "1";
 // default with the Worker default as its fallback, inheritance by subagent and cron, and the
 // fallback path under DeepSeek faults injected by a local proxy in front of Codex only.
 const SCENARIOS = process.env.SCENARIOS === "1";
+const AB_ROUNDS = num("AB_ROUNDS", 0);
+const AB_C = num("AB_C", 15);
+const AB_TASKS = (process.env.AB_TASKS ?? "multi").split(",");
 // CHANNEL_GRAY=1 (with SCENARIOS): the default stays on the Worker; only one Feishu group gets /vds
 // through channels.modelByChannel, the way a gradual rollout would.
 const CHANNEL_GRAY = process.env.CHANNEL_GRAY === "1";
 const GRAY_GROUP = "oc_candidategraygroup";
+// CHAIN_COMPARE=1 (with SCENARIOS): the rollout shape (default flash, /vds through modelByChannel) under
+// DeepSeek faults, with the fallback chain in CHAIN (flash,luna or luna). "luna" is a stand-in provider
+// on the Worker runtime whose requests the fault proxy always passes (real DeepSeek flash), because a
+// candidate must not use the ChatGPT login. 503once-all fails only the first request (a blip that must
+// not fall back). CHAIN_FAULTS: 503-all and hang-all fail every DeepSeek
+// request (an outage); 503-codex and hang-codex fail only Codex's /responses (a Codex-path failure).
+const CHAIN_COMPARE = process.env.CHAIN_COMPARE === "1";
+const LUNA_REF = "lunastub/deepseek-flash";
+// MODEL_PROXY=1 (load levels): both runtimes reach DeepSeek through the local pass-through proxy, which
+// times every request (headers, first byte, end, bytes), so a level splits into time spent waiting on
+// DeepSeek and everything else. The proxy adds one loopback hop to both arms alike.
+const MODEL_PROXY = process.env.MODEL_PROXY === "1";
+const VIA_PROXY = SCENARIOS || MODEL_PROXY;
 const LEVELS = (process.env.LEVELS ?? "1,3,5,10,15").split(",").map(Number);
 const MAXC = Math.max(...LEVELS);
 const STEADY_MIN = num("STEADY_MIN", 20);
@@ -288,9 +310,20 @@ const PROVIDER_TIMEOUT = process.env.PROVIDER_TIMEOUT_S ? Number(process.env.PRO
 if (PROVIDER_TIMEOUT) config.models.providers.deepseek.timeoutSeconds = PROVIDER_TIMEOUT;
 const HANG_RT = process.env.HANG_PRIMARY ?? "flash";
 // a session on the default model keeps its fallback; a sessions.patch override would not
-const defaultModel = HANG_COMPARE ? (HANG_RT === "vds" ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : { primary: FLASH_REF, fallbacks: [VDS_REF] }) : CHANNEL_GRAY ? { primary: FLASH_REF, fallbacks: ["openai/gpt-6-luna"] } : SCENARIOS ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : { primary: FLASH_REF, fallbacks: [] };
+const CHAIN = (process.env.CHAIN ?? "flash,luna").split(",").filter(Boolean).map((c) => ({ flash: FLASH_REF, luna: LUNA_REF })[c] ?? c);
+const defaultModel = CHAIN_COMPARE ? { primary: FLASH_REF, fallbacks: CHAIN } : HANG_COMPARE ? (HANG_RT === "vds" && process.env.HANG_MANUAL !== "1" ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : process.env.HANG_MANUAL === "1" ? { primary: FLASH_REF, fallbacks: [] } : { primary: FLASH_REF, fallbacks: [VDS_REF] }) : CHANNEL_GRAY ? { primary: FLASH_REF, fallbacks: ["openai/gpt-6-luna"] } : SCENARIOS ? { primary: VDS_REF, fallbacks: [FLASH_REF] } : { primary: FLASH_REF, fallbacks: [] };
 // chat.send arrives as channel "webchat" with no group, so the wildcard entry is what a candidate can reach
-if (CHANNEL_GRAY) config.channels.modelByChannel = { webchat: { "*": VDS_REF } };
+if (MODEL_PROXY) config.models.providers.deepseek.baseUrl = `http://127.0.0.1:${FAULT_PORT}/v1`;
+if (CHANNEL_GRAY || CHAIN_COMPARE) config.channels.modelByChannel = { webchat: { "*": VDS_REF } };
+const lunaProvider = (deepseek) => ({ ...deepseek, apiKey: deepseek.apiKey ?? "${DEEPSEEK_API_KEY}", baseUrl: `http://127.0.0.1:${FAULT_PORT}/luna/v1`, models: [{ id: "deepseek-flash", name: "Luna stand-in (DeepSeek flash)", ...shape }] });
+if (CHAIN_COMPARE) {
+  config.models.providers.deepseek.baseUrl = `http://127.0.0.1:${FAULT_PORT}/v1`;
+  config.models.providers.lunastub = lunaProvider(config.models.providers.deepseek);
+  const lunaEntry = { alias: "lunastub", agentRuntime: { id: "vlab-worker" }, params: { thinking: "high" } };
+  config.agents.defaults.models[LUNA_REF] = lunaEntry;
+  config.agents.entries.makaron.models[LUNA_REF] = lunaEntry;
+  entries[LUNA_REF] = lunaEntry;
+}
 config.agents.defaults.model = defaultModel;
 config.agents.entries.makaron.model = defaultModel;
 // every allow list that can apply to makaron (an agent-level one takes precedence over defaults)
@@ -312,19 +345,23 @@ Object.assign(workerPlugin, WORKER_POOL, { warmSpareWorkers: 0 });
   assert(!rel.startsWith(".."), "candidate Worker config escaped state");
   const workerConfig = JSON.parse(fs.readFileSync(path.join(sharedState, rel), "utf8").replaceAll(sharedState, stateDir).replaceAll("/srv/vlab-production-mirror/labs/instances/db91-parity/runtime", runtime));
   workerConfig.channels = {};
-  if (HANG_COMPARE) workerConfig.models.providers.deepseek.baseUrl = `http://127.0.0.1:${FAULT_PORT}/v1`;
+  if (HANG_COMPARE || CHAIN_COMPARE || MODEL_PROXY) workerConfig.models.providers.deepseek.baseUrl = `http://127.0.0.1:${FAULT_PORT}/v1`;
   if (PROVIDER_TIMEOUT) workerConfig.models.providers.deepseek.timeoutSeconds = PROVIDER_TIMEOUT;
   workerConfig.models.providers.deepseek.models = (workerConfig.models.providers.deepseek.models ?? []).filter((m) => m.id !== "deepseek-flash").concat([{ id: "deepseek-flash", name: "DeepSeek V4.1 Flash", ...shape }]);
   const workerEntry = { alias: "deepseek", agentRuntime: { id: "openclaw" }, params: { thinking: "high" } };
   workerConfig.models.providers.deepseek.models = workerConfig.models.providers.deepseek.models.filter((m) => m.id !== "vds-deepseek-flash").concat([{ id: "vds-deepseek-flash", name: "DeepSeek V4.1 Flash (Codex vds alias)", ...shape }]);
   workerConfig.agents.defaults.models = { ...(workerConfig.agents.defaults.models ?? {}), [FLASH_REF]: workerEntry, [VDS_REF]: entries[VDS_REF] };
+  if (CHAIN_COMPARE) {
+    workerConfig.models.providers.lunastub = lunaProvider(workerConfig.models.providers.deepseek);
+    workerConfig.agents.defaults.models[LUNA_REF] = { alias: "lunastub", agentRuntime: { id: "openclaw" }, params: { thinking: "high" } };
+  }
   workerConfig.agents.defaults.model = defaultModel;
   if (workerConfig.agents.entries?.makaron) {
     workerConfig.agents.entries.makaron.models = { ...(workerConfig.agents.entries.makaron.models ?? {}), [FLASH_REF]: workerEntry, [VDS_REF]: entries[VDS_REF] };
     workerConfig.agents.entries.makaron.model = defaultModel;
   }
   const wallow = workerConfig.agents.defaults.modelPolicy?.allow;
-  if (Array.isArray(wallow)) for (const ref of [FLASH_REF, VDS_REF]) if (!wallow.includes(ref)) wallow.push(ref);
+  if (Array.isArray(wallow)) for (const ref of [FLASH_REF, VDS_REF, ...(CHAIN_COMPARE ? [LUNA_REF] : [])]) if (!wallow.includes(ref)) wallow.push(ref);
   fs.mkdirSync(path.dirname(workerPlugin.workerConfigPath), { recursive: true });
   fs.writeFileSync(workerPlugin.workerConfigPath, `${JSON.stringify(workerConfig, null, 2)}\n`, { mode: 0o600 });
   workerPlugin.gatewayConfigPath = configPath;
@@ -345,7 +382,7 @@ trust_level = "trusted"
 
 [model_providers.deepseek]
 name = "DeepSeek"
-base_url = "${SCENARIOS ? `http://127.0.0.1:${FAULT_PORT}/v1` : "https://api.deepseek.com/v1"}"
+base_url = "${VIA_PROXY ? `http://127.0.0.1:${FAULT_PORT}/v1` : "https://api.deepseek.com/v1"}"
 wire_api = "responses"
 env_key = "DEEPSEEK_API_KEY"
 ${(process.env.CODEX_PROVIDER_TOML ?? "").replaceAll(";", "\n")}
@@ -589,20 +626,65 @@ const lagProbe = path.join(here, "runtime-concurrency-lag.mjs");
 let faultMode = "ok";
 const faultLog = [];
 let faultPath = null;
-if (SCENARIOS) {
+if (VIA_PROXY) {
   const http = await import("node:http");
   const https = await import("node:https");
   http.createServer((req, res) => {
-    const mode = !faultPath || req.url.includes(faultPath) ? faultMode : "ok";
+    let mode = !faultPath || req.url.includes(faultPath) ? faultMode : "ok";
+    // the luna stand-in: always healthy, real DeepSeek behind it
+    if (req.url.startsWith("/luna/")) { req.url = req.url.slice("/luna".length); mode = "ok"; }
+    // hang-after-tool: the first request of the scenario answers, the one carrying the tool result hangs
+    if (mode === "hang-after-tool") mode = faultLog.filter((f) => f.url.includes(faultPath)).length === 0 ? "ok" : "hang";
+    // 503once: a transient blip, the first request of the scenario fails and the rest answer
+    if (mode === "503once") mode = faultLog.some((f) => f.mode === "503") ? "ok" : "503";
     faultLog.push({ at: Date.now(), mode, url: req.url });
     const fail = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
     if (mode === "503") return fail(503, { error: { message: "Service is too busy", type: "service_unavailable_error", code: "service_unavailable" } });
     if (mode === "429") return fail(429, { error: { message: "Rate limit reached", type: "rate_limit_error", code: "rate_limit_exceeded" } });
     if (mode === "402") return fail(402, { error: { message: "Insufficient Balance", type: "insufficient_balance", code: "invalid_request_error" } });
     if (mode === "hang") { req.resume(); return undefined; }
+    // slow-headers: the first request of a scenario answers late but within the limit
+    if (mode === "slow-headers" && faultLog.filter((f) => f.mode === "slow-headers").length === 1) {
+      const chunks = [];
+      req.on("data", (c) => chunks.push(c));
+      req.on("end", () => setTimeout(() => {
+        const up = https.request(`https://api.deepseek.com${req.url}`, { method: req.method, headers: { ...req.headers, host: "api.deepseek.com" } }, (r) => { res.writeHead(r.statusCode, r.headers); r.pipe(res); });
+        up.on("error", () => res.destroy());
+        up.end(Buffer.concat(chunks));
+      }, num("SLOW_HEADERS_S", 75) * 1000));
+      return undefined;
+    }
+    const timing = faultLog.at(-1);
+    timing.reqBytes = 0;
+    req.on("data", (c) => { timing.reqBytes += c.length; });
     const up = https.request(`https://api.deepseek.com${req.url}`, { method: req.method, headers: { ...req.headers, host: "api.deepseek.com" } }, (r) => {
+      timing.headersAt = Date.now();
+      timing.status = r.statusCode;
+      timing.resBytes = 0;
+      r.on("data", (c) => { timing.firstByteAt ??= Date.now(); timing.resBytes += c.length; });
+      r.on("end", () => { timing.endAt = Date.now(); });
       res.writeHead(r.statusCode, r.headers);
       if (mode === "stall") { r.once("data", (chunk) => { res.write(chunk); r.destroy(); }); return; }
+      // stall-mid: real model output reached Codex, then silence with the connection open
+      const sseTypes = (chunk) => [...String(chunk).matchAll(/"type":"(response\.[a-z_.]+)"/gu)].map((m) => m[1]);
+      const logEntry = faultLog.at(-1);
+      if (mode === "stall-mid") { let deltas = 0; logEntry.forwarded = []; r.on("data", (chunk) => { res.write(chunk); logEntry.forwarded.push(...sseTypes(chunk)); deltas += (String(chunk).match(/reasoning[a-z_]*\.delta"|output_text\.delta"/gu) ?? []).length; if (deltas >= 8) r.destroy(); }); return; }
+      // quiet-args: nothing reaches Codex for QUIET_ARGS_S once a tool call starts streaming, the
+      // silence a long tool argument makes (Codex has no app-server event for argument deltas)
+      if (mode === "quiet-args") {
+        const held = [];
+        let holding = false;
+        let ended = false;
+        const flush = () => { holding = false; for (const c of held.splice(0)) res.write(c); if (ended) res.end(); };
+        r.on("data", (chunk) => {
+          if (holding) { held.push(chunk); return; }
+          (logEntry.forwarded ??= []).push(...sseTypes(chunk));
+          if (!held.length && /function_call_arguments\.delta/u.test(String(chunk)) && !res.quietDone && (process.env.QUIET_AFTER_REASONING !== "1" || logEntry.forwarded.some((t) => /reasoning/u.test(t)))) { res.quietDone = true; holding = true; held.push(chunk); setTimeout(flush, num("QUIET_ARGS_S", 120) * 1000); return; }
+          res.write(chunk);
+        });
+        r.on("end", () => { ended = true; if (!holding) res.end(); });
+        return;
+      }
       if (mode === "cut") { r.once("data", (chunk) => { res.write(chunk); setTimeout(() => { res.destroy(); r.destroy(); }, 500); }); return; }
       r.pipe(res);
     });
@@ -612,6 +694,7 @@ if (SCENARIOS) {
   }).listen(FAULT_PORT, "127.0.0.1").unref();
 }
 const lines = [];
+const abSwitchFile = path.join(OUT_DIR, "ab-switch");
 let gateway;
 let gatewayStartedAt;
 let gatewayStarts = 0;
@@ -631,7 +714,7 @@ function startGateway() {
   gatewayStartedAt = Date.now();
   // GATEWAY_CPU_PROF=1: a V8 CPU profile of the whole run (5 ms sampling), written to OUT_DIR on exit
   const prof = process.env.GATEWAY_CPU_PROF === "1" ? ["--cpu-prof", `--cpu-prof-dir=${OUT_DIR}`, "--cpu-prof-interval=5000"] : [];
-  gateway = spawn(process.execPath, [`--import=${lagProbe}`, ...prof, "--experimental-async-context-frame", "--max-old-space-size=12288", `${dist}/index.js`, "gateway", "--port", String(port)], { env, stdio: ["ignore", "pipe", "pipe"] });
+  gateway = spawn(process.execPath, [`--import=${lagProbe}`, ...prof, "--experimental-async-context-frame", "--max-old-space-size=12288", `${dist}/index.js`, "gateway", "--port", String(port)], { env: { ...env, ...(AB_ROUNDS ? { LT_AB_FILE: abSwitchFile, LT_AB_ENVS: process.env.AB_ENVS ?? "" } : {}), ...(process.env.AB_PROFILE === "1" ? { LT_PROFILE_DIR: path.join(OUT_DIR, "profiles"), LT_PROFILE_RAW: process.env.PROFILE_RAW ?? "" } : {}) }, stdio: ["ignore", "pipe", "pipe"] });
   for (const s of [gateway.stdout, gateway.stderr]) {
     s.setEncoding("utf8");
     let rest = "";
@@ -658,7 +741,8 @@ function onEvent(e) {
   const now = Date.now();
   if (e.event === "agent" && p.stream === "assistant" && typeof p.data?.text === "string" && p.data.text.trim() && !r.firstTextAt) r.firstTextAt = now;
   if (e.event === "agent" && p.stream === "tool" && !r.firstToolAt) r.firstToolAt = now;
-  if (e.event === "agent" && p.stream === "tool" && p.data?.phase === "start") (r.tools ??= []).push(String(p.data?.name ?? "?"));
+  if (e.event === "agent" && p.stream === "tool" && p.data?.phase === "start") { (r.tools ??= []).push(String(p.data?.name ?? "?")); (r.spans ??= []).push({ name: String(p.data?.name ?? "?"), startAt: now }); }
+  if (e.event === "agent" && p.stream === "tool" && p.data?.phase === "result") { const span = (r.spans ?? []).find((x) => !x.endAt && x.name === String(p.data?.name ?? "?")); if (span) span.endAt = now; }
   if (e.event === "chat" && p.state === "delta" && !r.firstTextAt) r.firstTextAt = now;
   if (e.event === "chat" && ["final", "error", "aborted"].includes(p.state) && !r.terminal) {
     r.terminal = p.state;
@@ -687,6 +771,10 @@ async function connectGateway() {
         });
         client.start();
       });
+      // SUBSCRIBE_SESSIONS=1: subscribe to session events like V's always-connected voice H5 server
+      // (subscribeSessions:true). With no subscriber, the Gateway skips the per-transcript-update
+      // session snapshot (server-session-events.ts), so a candidate without one never pays it.
+      if (process.env.SUBSCRIBE_SESSIONS === "1") emit({ phase: "sessions-subscribe", result: await client.request("sessions.subscribe", {}).then(() => "ok", (e) => String(e?.message ?? e)) });
       return;
     } catch (error) { lastError = error; client?.stop(); await sleep(2_000); }
   }
@@ -790,8 +878,15 @@ async function send(key, runtimeId, label, task = "sha") {
   runs.set(id, r);
   // the answer is only known by running the command (the model cannot compute a sha256), so a
   // correct reply proves the tool ran
-  const message = task === "multi"
+  const longShell = `（自动化验证，不要改写命令）用 shell 执行一次 \`sleep ${num("LONG_TOOL_S", 200)}; printf %s ${label} | sha256sum | cut -c1-12\`，等它结束，然后只回复它输出的那 12 个字符，不要别的文字。`;
+  const longDynamic = `（自动化验证）先调用一次 session_status 工具，然后用 shell 执行一次 \`printf %s ${label} | sha256sum | cut -c1-12\`，然后只回复它输出的那 12 个字符，不要别的文字。`;
+  const think = `（自动化验证）先认真推理：一个 8 位二进制数翻转所有位后加 1，结果和原数相等的有哪些？想清楚但不用写出来。然后用 shell 执行一次 \`printf %s ${label} | sha256sum | cut -c1-12\`，然后只回复它输出的那 12 个字符，不要别的文字。`;
+  const bigArgs = `（自动化验证）用 shell 的 heredoc 把一篇你现写的、不少于 ${num("BIG_ARGS_CHARS", 12000)} 字的中文长文写进 /tmp/bigargs-${label}.txt（内容必须直接写在这一条命令里，一次写完，不要分成多条命令或多次追加），然后再用 shell 执行一次 \`rm -f /tmp/bigargs-${label}.txt; printf %s ${label} | sha256sum | cut -c1-12\`，最后只回复它输出的那 12 个字符，不要别的文字。`;
+  const bash5 = `（自动化并发压测）按顺序做，一步也不要省：1) 用 shell 执行 \`uname -r\`；2) 用 shell 执行 \`ls /tmp | wc -l\`；3) 用读文件工具读工作区 AGENTS.md（只需前 5 行）；4) 用 shell 执行 \`date +%s\`；5) 用 shell 执行 \`printf %s ${label} | sha256sum | cut -c1-12\`。全部做完后只回复第 5 步输出的那 12 个字符，不要别的文字。`;
+  const message = task === "bash5" ? bash5 : task === "think" ? think : task === "long-shell" ? longShell : task === "long-dynamic" ? longDynamic : task === "big-args" ? bigArgs : task === "multi"
     ? `（自动化并发压测）按顺序做，一步也不要省：1) 用 shell 执行 \`uname -r\`；2) 用 shell 执行 \`ls /tmp | wc -l\`；3) 用读文件工具读工作区 AGENTS.md（只需前 5 行）；4) 调用 session_status 工具；5) 用 shell 执行 \`printf %s ${label} | sha256sum | cut -c1-12\`。全部做完后只回复第 5 步输出的那 12 个字符，不要别的文字。`
+    : task === "bash5"
+    ? `（自动化并发压测）按顺序做，一步也不要省：1) 用 shell 执行 \`uname -r\`；2) 用 shell 执行 \`ls /tmp | wc -l\`；3) 用读文件工具读工作区 AGENTS.md（只需前 5 行）；4) 用 shell 执行 \`date +%s\`；5) 用 shell 执行 \`printf %s ${label} | sha256sum | cut -c1-12\`。全部做完后只回复第 5 步输出的那 12 个字符，不要别的文字。`
     : `（自动化并发压测）用 shell 执行一次 \`printf %s ${label} | sha256sum | cut -c1-12\`，然后只回复它输出的那 12 个字符，不要别的文字。`;
   r.expected = createHash("sha256").update(label).digest("hex").slice(0, 12);
   try {
@@ -815,7 +910,7 @@ async function send(key, runtimeId, label, task = "sha") {
     } catch {}
   }
   r.correct = r.terminal === "final" && (r.text ?? "").includes(r.expected);
-  return { label, runtime: runtimeId, key: key.split(":").pop(), terminal: r.terminal, correct: r.correct, tool: Boolean(r.firstToolAt), tools: r.tools,
+  return { label, runtime: runtimeId, key: key.split(":").pop(), terminal: r.terminal, correct: r.correct, tool: Boolean(r.firstToolAt), tools: r.tools, firstToolMs: r.firstToolAt ? r.firstToolAt - r.sentAt : null, toolMs: (r.spans ?? []).filter((x) => x.endAt).reduce((t, x) => t + x.endAt - x.startAt, 0), spans: (r.spans ?? []).filter((x) => x.endAt).map((x) => ({ name: x.name, ms: x.endAt - x.startAt })),
     firstMs: r.firstTextAt ? r.firstTextAt - r.sentAt : null, doneMs: r.endAt - r.sentAt, error: r.error, text: r.correct ? undefined : redact(r.text ?? "").slice(0, 160) };
 }
 const REF = { vds: VDS_REF, vcc: VCC_REF, flash: FLASH_REF };
@@ -887,9 +982,38 @@ function lastEvents(key, n = 8) {
     return db.prepare("SELECT json_extract(event_json,'$.type') AS t, json_extract(event_json,'$.message.role') AS role, substr(json_extract(event_json,'$.customType'),1,40) AS ct, substr(json_extract(event_json,'$.message.content'),1,220) AS c FROM transcript_events WHERE session_id = ? ORDER BY seq DESC LIMIT ?").all(w.sid, n);
   } catch (error) { return String(error?.message ?? error).slice(0, 200); } finally { db.close(); }
 }
+// where the Gateway's own CPU goes, per thread, plus reaped children; the lag probe adds a main-thread
+// profile when the runner drops start.<name> / stop.<name> in PROFILE_DIR around a level
+const PROFILE_DIR = process.env.AB_PROFILE === "1" ? path.join(OUT_DIR, "profiles") : null;
+if (PROFILE_DIR) fs.mkdirSync(PROFILE_DIR, { recursive: true });
+let profileNow = null;
+function gatewayThreads() {
+  const out = { threads: {}, childrenSec: 0 };
+  const pid = String(gateway.pid);
+  try {
+    const main = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+    const mf = main.slice(main.lastIndexOf(")") + 2).split(" ");
+    out.childrenSec = (Number(mf[13]) + Number(mf[14])) / TICK;
+    for (const tid of fs.readdirSync(`/proc/${pid}/task`)) {
+      const st = fs.readFileSync(`/proc/${pid}/task/${tid}/stat`, "utf8");
+      const f = st.slice(st.lastIndexOf(")") + 2).split(" ");
+      const comm = tid === pid ? "main" : st.slice(st.indexOf("(") + 1, st.lastIndexOf(")"));
+      out.threads[`${comm}#${tid}`] = (Number(f[11]) + Number(f[12])) / TICK;
+    }
+  } catch {}
+  return out;
+}
+function threadsDiff(a, b) {
+  const byComm = {};
+  for (const [k, v] of Object.entries(b.threads)) { const comm = k.split("#")[0]; byComm[comm] = (byComm[comm] ?? 0) + Math.max(0, v - (a.threads[k] ?? 0)); }
+  return { byComm: Object.fromEntries(Object.entries(byComm).sort((x, y) => y[1] - x[1]).slice(0, 10).map(([k, v]) => [k, Math.round(v * 10) / 10])), childrenSec: Math.round((b.childrenSec - a.childrenSec) * 10) / 10 };
+}
 async function level(arm, size, c, task = "sha") {
   const plan = await sessionsFor(arm, size, c);
   const cpuFrom = cpuTable();
+  const threadsFrom = gatewayThreads();
+  const profName = profileNow;
+  if (profName) { fs.writeFileSync(path.join(PROFILE_DIR, `start.${profName}`), ""); await sleep(1_000); }
   const from = Date.now();
   const jobs = plan.map((p, i) => send(p.key, p.rt, `${arm}-${size}-${task}-c${c}-${i}-${randomBytes(3).toString("hex")}`, task));
   const canary = CANARY ? send(await canaryKey(), "flash", `canary-${arm}-${size}-c${c}-${canaryN++}`) : null;
@@ -897,15 +1021,27 @@ async function level(arm, size, c, task = "sha") {
   const canaryResult = canary ? await canary : null;
   const to = Date.now();
   const cpuByCmd = cpuDiff(cpuFrom, cpuTable());
+  const threadCpu = threadsDiff(threadsFrom, gatewayThreads());
   for (const r of results.filter((x) => !x.correct).slice(0, 2)) emit({ phase: "failed-turn", label: r.label, events: lastEvents(`agent:makaron:explicit:${r.key}`), logs: lines.filter((l) => l.at >= from && /memory.?flush|read.*write|tool.*(?:deny|filter)|toolsAllow/iu.test(l.line)).slice(-8).map((l) => redact(l.line).slice(0, 260)) });
   await sleep(SETTLE_MS);
+  const threadCpuSettled = threadsDiff(threadsFrom, gatewayThreads());
+  if (profName) fs.writeFileSync(path.join(PROFILE_DIR, `stop.${profName}`), "");
   const m = windowMetrics(from, Date.now());
+  const model = MODEL_PROXY ? modelTiming(from, to, results.length) : undefined;
+  // the level's timeline, in ms from the common send: each DeepSeek request [api, start, first byte, end],
+  // each tool span and each turn's [first text, end]. All turns start together, so at cN the first N
+  // requests' starts are the turns' setup before their first model call.
+  const timeline = MODEL_PROXY && c <= 10 ? { requests: faultLog.filter((x) => x.at >= from && x.at <= to).map((x) => [x.url.includes("/responses") ? "R" : "C", x.at - from, x.firstByteAt ? x.firstByteAt - from : null, x.endAt ? x.endAt - from : null]), tools: [...runs.values()].filter((r) => r.sentAt >= from && r.sentAt <= to).flatMap((r) => (r.spans ?? []).map((sp) => [sp.name, sp.startAt - from, sp.endAt ? sp.endAt - from : null])), firstText: [...runs.values()].filter((r) => r.sentAt >= from && r.sentAt <= to).map((r) => [r.firstTextAt ? r.firstTextAt - from : null, r.endAt ? r.endAt - from : null]) } : undefined;
+  const toolMs = {};
+  for (const r of results) for (const span of r.spans ?? []) (toolMs[span.name] ??= []).push(span.ms);
+  const toolSummary = Object.fromEntries(Object.entries(toolMs).map(([k, v]) => [k, { n: v.length, p50: pct(v, 0.5), p95: pct(v, 0.95) }]));
   const failed = results.filter((r) => !r.correct);
   const byRt = {};
   for (const rt of [...new Set(results.map((r) => r.runtime))]) {
     const rs = results.filter((r) => r.runtime === rt);
     byRt[rt] = { n: rs.length, ok: rs.filter((r) => r.correct).length,
       firstP50: pct(rs.map((r) => r.firstMs).filter((x) => x != null), 0.5), firstP95: pct(rs.map((r) => r.firstMs).filter((x) => x != null), 0.95),
+      firstToolP50: pct(rs.map((r) => r.firstToolMs).filter((x) => x != null), 0.5), toolMsP50: pct(rs.map((r) => r.toolMs).filter((x) => x != null), 0.5),
       doneP50: pct(rs.filter((r) => r.terminal === "final").map((r) => r.doneMs), 0.5), doneP95: pct(rs.filter((r) => r.terminal === "final").map((r) => r.doneMs), 0.95) };
   }
   const errors = {};
@@ -913,9 +1049,24 @@ async function level(arm, size, c, task = "sha") {
   const h = hostContext();
   const host = { gcSwap: h.gcSwapExperiment.length > 0, sharedGatewayInspect: h.sharedGatewayInspect.some((g) => g.inspect), otherCandidates: h.otherCandidates.length, load: h.load };
   const ran = actualRuntime([...plan.map((p) => p.key), ...(CANARY ? [await canaryKey()] : [])]);
-  return { arm, size, task, c, cpuByCmd, host, ran, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
+  return { arm, size, task, c, model, timeline, cpuByCmd, threadCpu, threadCpuSettled, toolSummary, host, ran, wallS: Math.round((to - from) / 1000), failed: failed.length, failRate: Math.round(100 * failed.length / results.length) / 100, byRuntime: byRt, errors, canary: canaryResult, ...m, runs: results };
 }
 
+// DeepSeek time per turn in a level: requests that started inside it, by API (Codex /responses, Worker
+// /chat/completions)
+function modelTiming(from, to, turns) {
+  const out = {};
+  for (const f of faultLog.filter((x) => x.at >= from && x.at <= to && !x.url.startsWith("/luna/"))) {
+    const api = f.url.includes("/responses") ? "responses" : f.url.includes("/chat/completions") ? "completions" : f.url.split("?")[0];
+    const o = (out[api] ??= { n: 0, busyMs: 0, ttfb: [], dur: [], reqKB: [], status: {} });
+    o.n += 1;
+    o.status[f.status ?? "none"] = (o.status[f.status ?? "none"] ?? 0) + 1;
+    if (f.endAt) { o.busyMs += f.endAt - f.at; o.dur.push(f.endAt - f.at); }
+    if (f.firstByteAt) o.ttfb.push(f.firstByteAt - f.at);
+    o.reqKB.push(Math.round((f.reqBytes ?? 0) / 1024));
+  }
+  return Object.fromEntries(Object.entries(out).map(([k, o]) => [k, { n: o.n, perTurn: Math.round(10 * o.n / turns) / 10, modelMsPerTurn: Math.round(o.busyMs / turns), ttfbP50: pct(o.ttfb, 0.5), ttfbP95: pct(o.ttfb, 0.95), durP50: pct(o.dur, 0.5), durP95: pct(o.dur, 0.95), reqKBP50: pct(o.reqKB, 0.5), status: o.status }]));
+}
 async function waitSteady(label, minUptimeMin) {
   let ok = 0;
   let last;
@@ -943,12 +1094,13 @@ function sessionsLike(pattern) {
     return db.prepare("SELECT n.session_key AS key, w.agent_harness_id AS harness, w.model AS model, w.model_provider AS provider FROM session_nodes n LEFT JOIN session_windows w ON w.session_id = n.current_session_id WHERE n.session_key LIKE ? ORDER BY n.updated_at DESC LIMIT 8").all(pattern);
   } catch (error) { return { error: String(error?.message ?? error).slice(0, 200) }; } finally { db.close(); }
 }
-const fallbackLines = (from) => lines.filter(inWin(from, Date.now())).filter((l) => /model-fallback|model fallback decision|harness failed|codexAppServerFailure|app-server.*fail/iu.test(l.line)).map((l) => redact(l.line).slice(0, 320)).slice(-12);
+const fallbackLines = (from) => lines.filter(inWin(from, Date.now())).filter((l) => /model-fallback|model fallback decision|harness failed|codexAppServerFailure|app-server.*fail|model request timed out|transient same-model retry|same-model retry already|retry window elapsed|another runner/iu.test(l.line)).map((l) => redact(l.line).slice(0, 320)).slice(-12);
 async function scenario(name, key, opts = {}) {
   const from = Date.now();
   faultLog.length = 0;
-  const r = await send(key, opts.rt ?? "vds", `${name}-${randomBytes(3).toString("hex")}`, "sha");
-  const out = { phase: "scenario", name, key: key.split(":").pop(), fault: faultMode, ...r, proxyRequests: faultLog.length, ran: actualRuntime([key]), fallback: fallbackLines(from) };
+  const r = await send(key, opts.rt ?? "vds", `${name}-${randomBytes(3).toString("hex")}`, opts.task ?? "sha");
+  const trace = lines.filter(inWin(from, Date.now())).filter((l) => l.line.includes("[model-wait-trace]")).map((l) => l.line.slice(l.line.indexOf("{")).slice(0, 300));
+  const out = { phase: "scenario", name, key: key.split(":").pop(), fault: faultMode, ...r, proxyRequests: faultLog.length, proxyModes: faultLog.map((f) => `${f.mode}:${f.url.split("/").pop()}`), proxyForwarded: faultLog.flatMap((f) => (f.forwarded ? [[...new Set(f.forwarded)].concat(`n=${f.forwarded.length}`)] : [])), ran: actualRuntime([key]), fallback: fallbackLines(from), trace };
   emit(out);
   return out;
 }
@@ -980,15 +1132,53 @@ async function runScenarios() {
     if (gateway.exitCode === null) await scenario("gray-after-removal", key("after"), { rt: "flash" });
     return;
   }
+  if (CHAIN_COMPARE) {
+    // each fault on a fresh group session: warm (healthy), the faulted turn, then the next message healthy
+    for (const fault of (process.env.CHAIN_FAULTS ?? "503-all,hang-all,503-codex,hang-codex").split(",").filter(Boolean)) {
+      // override: a group whose session picked /vds by hand (as 20 V groups have) gets no fallback; does
+      // picking the configured default (or clearing the model) hand it back to modelByChannel and its chain?
+      if (fault === "override") {
+        const k = key(`chain-override-${randomBytes(2).toString("hex")}`);
+        const step = async (name, patch, mode) => {
+          const patchErr = patch === undefined ? null : await client.request("sessions.patch", { key: k, model: patch }).then(() => null, (e) => redact(e?.message ?? e).slice(0, 200));
+          faultPath = null; faultMode = mode ?? "ok";
+          const r = await scenario(`override-${name}`, k);
+          faultMode = "ok";
+          emit({ phase: "override-step", step: name, patch: patch === undefined ? "none" : patch, patchErr, fault: mode ?? "ok", doneMs: r.doneMs, correct: r.correct, ran: r.ran, fallback: r.fallback.filter((l) => /fallback/u.test(l)).map((l) => l.slice(0, 200)) });
+        };
+        await step("manual-vds", VDS_REF);
+        await step("manual-vds-503", undefined, "503");
+        await step("pick-default", FLASH_REF);
+        await step("pick-default-503", undefined, "503");
+        await step("clear-null", null);
+        continue;
+      }
+      const [mode, scope] = fault.split("-");
+      const k = key(`chain-${fault}-${randomBytes(2).toString("hex")}`);
+      await scenario(`warm-${fault}`, k);
+      faultPath = scope === "codex" ? "/responses" : null;
+      faultMode = mode;
+      const r = await scenario(`fault-${fault}`, k);
+      faultMode = "ok";
+      faultPath = null;
+      const next = await scenario(`after-${fault}`, k);
+      emit({ phase: "chain-result", chain: CHAIN, fault, doneMs: r.doneMs, correct: r.correct, ran: r.ran, proxyModes: r.proxyModes, nextDoneMs: next.doneMs, nextCorrect: next.correct, nextRan: next.ran });
+    }
+    return;
+  }
   if (HANG_COMPARE) {
     // the primary hangs on its own API; the other still answers, so a fallback is visible
     const api = HANG_RT === "vds" ? "/responses" : "/chat/completions";
     for (const fault of (process.env.FAULTS ?? "hang,stall").split(",")) {
       const k = key(`hang-${HANG_RT}-${fault}`);
+      // HANG_MANUAL=1: the session picked this model itself, so no fallback applies
+      if (process.env.HANG_MANUAL === "1") { const err = await prepareSession(k, REF[HANG_RT]); if (err) emit({ phase: "prepare-error", key: k, err }); }
       await scenario(`warm-${HANG_RT}-${fault}`, k, { rt: HANG_RT });
-      faultPath = api;
-      faultMode = fault;
-      await scenario(`fault-${HANG_RT}-${fault}`, k, { rt: HANG_RT });
+      // long-shell, long-dynamic, big-args: a healthy upstream and long real work; must not be killed
+      const work = ["long-shell", "long-dynamic", "big-args"].includes(fault);
+      faultPath = work ? null : api;
+      faultMode = work ? "ok" : fault;
+      await scenario(`fault-${HANG_RT}-${fault}`, k, { rt: HANG_RT, ...(work ? { task: fault } : process.env.HANG_TASK ? { task: process.env.HANG_TASK } : {}) });
       faultMode = "ok";
       faultPath = null;
       await scenario(`after-${HANG_RT}-${fault}`, k, { rt: HANG_RT });
@@ -1086,12 +1276,87 @@ async function runScenarios() {
   }
 }
 
+// ---- V's registry shape in the private state database ----
+// The Gateway holds the registry in memory and a full persist deletes rows it does not know, so seed with
+// it stopped and let it restore the rows, as V's Gateway does at startup.
+async function seedRegistry() {
+  await new Promise((res) => { gateway.once("exit", res); gateway.kill("SIGTERM"); });
+  try { client?.stop?.(); } catch {}
+  const started = Date.now();
+  const { subagent, tasks } = JSON.parse((await import("node:zlib")).gunzipSync(fs.readFileSync(process.env.SEED_TOPOLOGY)));
+  const db = new DatabaseSync(path.join(stateDir, "state", "openclaw.sqlite"));
+  db.exec("PRAGMA busy_timeout = 30000");
+  const cols = ["run_id", "child_session_key", "controller_session_key", "requester_session_key", "created_at", "payload_json"];
+  const insS = db.prepare(`INSERT OR REPLACE INTO subagent_runs (${cols.join(",")}) VALUES (${cols.map(() => "?").join(",")})`);
+  db.exec("BEGIN IMMEDIATE");
+  for (const r of subagent) insS.run(...cols.map((k) => (k === "payload_json" ? JSON.stringify({ ...JSON.parse(r.payload_json), task: "x".repeat(r.pad) }) : r[k])));
+  db.exec("COMMIT");
+  const taskCols = Object.keys(tasks[0]).filter((k) => k !== "pad");
+  const insT = db.prepare(`INSERT OR REPLACE INTO task_runs (${taskCols.join(",")},task) VALUES (${taskCols.map(() => "?").join(",")},?)`);
+  db.exec("BEGIN IMMEDIATE");
+  for (const t of tasks) insT.run(...taskCols.map((k) => t[k]), "y".repeat(t.pad));
+  db.exec("COMMIT");
+  const counts = { subagent: db.prepare("SELECT count(*) n, sum(length(payload_json)) b FROM subagent_runs").get(), task: db.prepare("SELECT count(*) n, sum(length(task)) b FROM task_runs").get() };
+  db.close();
+  // a run whose child session has no entry is pruned as an orphan at restore; V has these entries
+  const agentDb = new DatabaseSync(dbPath);
+  agentDb.exec("PRAGMA busy_timeout = 30000; PRAGMA foreign_keys = OFF");
+  const insNode = agentDb.prepare("INSERT OR IGNORE INTO session_nodes (session_key, current_session_id, entry_json, entry_valid, updated_at) VALUES (?, ?, ?, 1, ?)");
+  const seededAt = Date.now();
+  // SEED_CHILD_ENTRY_KB: V's child entries are ~77 KB each (skillsSnapshot + systemPromptReport, mostly
+  // CJK text, so twice that as V8 strings); 0 keeps the old two-field entry
+  const childKB = num("SEED_CHILD_ENTRY_KB", 0);
+  const filler = childKB > 0 ? "技能说明 skill prompt 段落 ".repeat(Math.ceil(childKB * 1024 / 30)).slice(0, childKB * 1024 / 2) : "";
+  agentDb.exec("BEGIN IMMEDIATE");
+  for (const child of new Set(subagent.map((r) => r.child_session_key))) {
+    const sid = randomUUID();
+    insNode.run(child, sid, JSON.stringify(childKB > 0 ? { sessionId: sid, updatedAt: seededAt, skillsSnapshot: { prompt: filler.slice(0, filler.length * 0.64) }, systemPromptReport: { text: filler.slice(0, filler.length * 0.36) } } : { sessionId: sid, updatedAt: seededAt }), seededAt);
+  }
+  agentDb.exec("COMMIT");
+  // V's databases have planner statistics; a fresh candidate copy may not, and without them the
+  // transcript projection reads were seen to grow ~5x across rounds (#535)
+  if (process.env.SEED_ANALYZE === "1") agentDb.exec("ANALYZE");
+  agentDb.close();
+  if (process.env.SEED_ANALYZE === "1") { const st = new DatabaseSync(path.join(stateDir, "state", "openclaw.sqlite")); st.exec("PRAGMA busy_timeout = 30000; ANALYZE"); st.close(); }
+  emit({ phase: "seed-registry", ms: Date.now() - started, counts });
+  startGateway();
+  await connectGateway();
+  emit({ phase: "gateway-ready-after-seed", pid: gateway.pid, readyS: Math.round((Date.now() - gatewayStartedAt) / 1000) });
+}
+function registryRows() {
+  const check = new DatabaseSync(path.join(stateDir, "state", "openclaw.sqlite"), { readOnly: true });
+  try { return { subagent: check.prepare("SELECT count(*) n FROM subagent_runs").get().n, task: check.prepare("SELECT count(*) n FROM task_runs").get().n }; } finally { check.close(); }
+}
+
+// ---- A/B on one Gateway: the lag probe polls AB_SWITCH_FILE and sets the switches for its process ----
+async function runAb() {
+  const setSide = async (side) => { fs.writeFileSync(abSwitchFile, side); await sleep(1_500); };
+  const one = async (task, side, round, profiled) => {
+    await setSide(side);
+    profileNow = profiled ? `${task}-${side}` : null;
+    const res = await level("vds", "small", AB_C, task);
+    profileNow = null;
+    const { runs: levelRuns, ...head } = res;
+    emit({ phase: "ab-level", side, round, profiled, rows: registryRows(), ...head });
+    emit({ phase: "level-runs", side, round, task, runs: levelRuns });
+    summary.levels.push({ side, round, profiled, ...res });
+    await sleep(COOLDOWN_MS);
+  };
+  for (const task of AB_TASKS) await one(task, "on", "warm", false);
+  for (let round = 0; round < AB_ROUNDS; round += 1) {
+    for (const task of AB_TASKS) for (const side of round % 2 === 0 ? ["off", "on"] : ["on", "off"]) await one(task, side, round, false);
+    emit({ phase: "ab-round", round, host: hostContext() });
+  }
+  if (PROFILE_DIR) for (const task of AB_TASKS) for (const side of ["off", "on"]) await one(task, side, "profile", true);
+}
+
 // ---- run ----
 startGateway();
 const summary = { built, probes, models: { vds: VDS_REF, vcc: VCC_REF, canary: FLASH_REF }, levels: [], stoppedAt: {} };
 try {
   await connectGateway();
   emit({ phase: "gateway-ready", pid: gateway.pid, readyS: Math.round((Date.now() - gatewayStartedAt) / 1000) });
+  if (process.env.SEED_REGISTRY === "1") await seedRegistry();
   // warm each runtime once (app-server, claude, worker spawn), then every big session once so its
   // Codex thread / Claude session exists, as on V where big sessions are in use
   if (SCENARIOS) {
@@ -1120,6 +1385,13 @@ try {
   summary.steady = await waitSteady("initial", STEADY_MIN);
   summary.hostAtStart = hostContext();
   emit({ phase: "steady", ...summary.steady, host: summary.hostAtStart });
+  if (AB_ROUNDS > 0) {
+    await runAb();
+    const abOut = { phase: "summary", ...summary, levels: summary.levels.map(({ runs: _r, ...l }) => l) };
+    console.log(JSON.stringify(abOut).slice(0, 2000));
+    fs.writeFileSync(path.join(OUT_DIR, "summary.json"), JSON.stringify({ ...abOut, levels: summary.levels }, null, 1));
+    throw Object.assign(new Error("ab done"), { done: true });
+  }
   const runLevel = async ({ arm, size, task }, c) => {
     const res = await level(arm, size, c, task);
     const { runs: levelRuns, ...head } = res;
@@ -1142,6 +1414,17 @@ try {
       }
     }
     if (summary.abort) emit({ phase: "abort", reason: summary.abort });
+    // PROFILE_C=c: one more level per arm at c with the main thread profiling itself (lag probe),
+    // after and outside the measured levels
+    if (PROFILE_DIR && num("PROFILE_C", 0) > 0 && !summary.abort) for (const a of ARMS) {
+      profileNow = `${a.arm}-${a.task}-c${num("PROFILE_C", 0)}`;
+      const res = await level(a.arm, a.size, num("PROFILE_C", 0), a.task);
+      profileNow = null;
+      const { runs: _r, ...head } = res;
+      emit({ phase: "profile-level", ...head });
+      await sleep(COOLDOWN_MS);
+      await waitSteady(`after-profile-${a.arm}`, 0);
+    }
   } else for (const a of ARMS) {
     for (const c of levelsFor(a)) {
       if (await runLevel(a, c) || summary.abort) break;
@@ -1155,7 +1438,7 @@ try {
   console.log(JSON.stringify(out, null, 1));
   fs.writeFileSync(path.join(OUT_DIR, "summary.json"), JSON.stringify({ ...out, levels: summary.levels }, null, 1));
 } catch (error) {
-  if (error?.done) { console.log("scenarios done"); } else {
+  if (error?.done) { console.log("done without levels"); } else {
   console.error(redact(error?.stack ?? error));
   console.error(redact(lines.slice(-120).map((l) => l.line).join("\n")));
   process.exitCode = 1;
