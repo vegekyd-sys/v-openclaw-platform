@@ -20,7 +20,7 @@ V 上验收（测试群 oc_260a…，lark-cli 以 Tianyi 身份）：
 - 上线前基线：新 worker 第一轮 p50 20.2 s；owner changed before settlement 400 次/小时、before suspension 31 次/小时。
 - #570：10:05 /vds 三个 echo 的工具调用 call_00/01/02 在 344 ms 内由同一次模型回复发出，输出正确；V 上目录为 70e6e032，读它的 Codex app-server 10:05:16 启动（重启后）。注意 DeepSeek 在上线前也偶尔会一次发多个调用（06:11 两个 sessions_spawn），单次观察不足以单独证明开关效果，VLab candidate 的请求数对照见 #570。
 - #569/#571：10:26 /vds 父会话派两个可见子 agent 后 yield，10:28 最终卡片带两个结果，日志有 `announce:requester-settle`；崩溃恢复后无 owner changed、无绑定报错、无 settle wake failed。
-- #567：见摘要。样本仍小，部分在冷启动期间，继续观察自然流量。
+- #567：见摘要。11:00 前后经 Tianyi 同意在 V 上做了压测（显式测试会话 `agent:makaron:explicit:loadtest-*`，经 Gateway `agent` 接口并发派 3 步 exec 任务，不进任何群）：12 并发 12/12 完成（37–44 s），24 并发 24/24 完成（36–56 s），池子 5→9 个 worker；**按需新开的 worker（编号 5–7，开出后 2–3 s 就接回合）第一轮 4.6–4.7 s**，上线前同类按需 worker 为 19.7–24.8 s；原有预热 worker 首次接回合 4.6–5.0 s。全程 Gateway RSS ≤2.5 GB、无卡顿、主机可用内存 ≥42 GB。
 - 测完测试群切回 `/vcodex`。
 
 **上线后事故：Gateway 崩溃一次（与本次改动无关）**
