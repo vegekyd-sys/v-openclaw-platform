@@ -10,6 +10,23 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## cron-default-owner-tools-20261107
+
+上线：2026-11-07 14:19 CST（文件 14:15 推上 V，14:19:50 空闲重启生效）  ·  tag `cron-default-owner-tools-20261107`
+
+**摘要**：V 在群里建的普通定时任务（没指定工具）走 Claude 时用不了 Bash 和读写文件：建任务时自动存下的工具清单不含 Claude 自带的工具，运行时整组被关掉（19:30「X 每日两帖草稿」因此一直改不了项目页）。移植上游 #162432：这类任务运行时按 `*` 处理，跟所属会话聊天时拿到的工具一样；显式指定工具的任务、脚本和条件触发不变，已存数据不改。
+
+相对上一版 `delete-cleanup-vcc-steer-20261106`：2 个文件变化。
+
+**经 VLab 发版 `cron-default-owner-tools-20261107`**（cron-default-owner-tools-20261107，dev `3dba893b`）
+> 验收：共享 VLab 验收 2026-11-07 14:07 CST（#563，dev 3dba893b）。部署后 Gateway 正常，测试会话回复「收到」(agent.wait ok)；两个文件含 cron-default-snapshot-runs-as-owner-v1。功能证据：candidate-45c99b20（自动工具清单 + account 策略的 claude-cli 定时任务，原生 Bash 放行并写出文件）对照 candidate-db19205a（同样任务被拒 unavailable to this run）。
+- `core` isolated-agent-BxeXdw5A.js  2613b147 → 26104bd3
+- `core` scheduled-tool-policy-WcH3cpLk.js  b788e48c → fab1fdca
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #563 fix(cron): 普通定时任务在 Claude 下也能改文件（运行时用所属会话的工具）
+- #562 release: 捕获 delete-cleanup-vcc-steer-20261106 并补 CHANGELOG
+
 ## delete-cleanup-vcc-steer-20261106
 
 上线：2026-11-06 02:03 CST（文件 01:36 装到 V；01:36 第一次 v-self-restart 等空闲 15 分钟未果放弃，01:53 重试，02:01 等到空闲停机，02:03:13 就绪）  ·  tag `delete-cleanup-vcc-steer-20261106`
