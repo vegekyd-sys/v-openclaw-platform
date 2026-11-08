@@ -1,0 +1,11 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/plugin-enabled-memo/installed-plugin-index-DzUab7zi.js",
+      "target": "openclaw/dist/installed-plugin-index-DzUab7zi.js",
+      "before": "3d177fdc4cff00363fa39864bfb0dd188fccc6cb1cfa8d0528cfb3a38839192c",
+      "after": "78af121d8e66a18418e57693667a1b52093a2cc148a8b2886907222495625904"
+    }
+  ]
+}
