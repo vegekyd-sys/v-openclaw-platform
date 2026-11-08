@@ -1739,6 +1739,27 @@
       "sha256": "8f8adebe18223078ed3fed1776c37bea01359d74a8e367cba0f055660551db4f",
       "source": "versa:e02a568d77a",
       "note": "fallback-dsml-subagent-wake-20261108 (#569): a Gateway cli task row of the same run is blocked in the registry alone (versa/fix-subagent-owner-changed-20261108)"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-entry-BlklNPKQ.js",
+      "sha256": "258aa1be787081f9333db2ef576caee987b537acde9d99dcdb7f48542022a230",
+      "source": "versa:88467afeb0b",
+      "note": "restore-narrow-settle-parallel-20261108 (#567): listLiveSessionKeysReadOnly for the narrowed subagent restore (versa/port-subagent-restore-narrow-20261107)"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-completion-admission.store-JmpNDYTF.js",
+      "sha256": "55aa757642176be37c0b032fd161192128a25865e665c542e3e54af970b56849",
+      "source": "versa:88467afeb0b",
+      "note": "restore-narrow-settle-parallel-20261108: #567 restore narrowing (versa 88467afeb0b) stacked on #571 missing-task block (versa 5985c7debf6) and #569 (versa e02a568d77a); built by lab/patch-subagent-restore-narrow.mjs on #571 bytes 733f6b75"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/v-deepseek-model-catalog.json",
+      "sha256": "70e6e032318e0b74b5aca5ecfbcbbebd75398c5bb51baecb61d466870879862a",
+      "source": "versa:9a64665f56b",
+      "note": "restore-narrow-settle-parallel-20261108 (#570): supports_parallel_tool_calls for the /vds DeepSeek catalog (versa/vds-parallel-tool-calls-20261108)"
     }
   ]
 }
