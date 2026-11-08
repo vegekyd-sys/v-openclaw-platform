@@ -83,3 +83,14 @@ Receipts: baseline `candidate-6aeb06bf-10ad-4cb9-a93f-d9a471bc32dc` (PASS), fixe
 - The /vcc (claude-cli) parent itself: VLab candidates have no Claude login; /vds exercises the same
   Gateway-side spawn and settle path.
 - Why a spawn with an explicit model gets a Gateway `cli` row instead of a `subagent` row.
+
+## Follow-up v2 (`subagent-settle-wake-missing-task-v2`, V acceptance 2026-11-08 03:16 CST)
+
+After `fallback-dsml-subagent-wake-20261108` shipped, the stuck batch in oc_a59571a2 no longer hit the
+binding error, but giving up still threw `owner changed before settlement: 284f7211` every minute. The
+settle path looks the task up with runtime `subagent`; vision_probe's only row is the Gateway `cli`
+row, so the lookup returns nothing and an empty task id is passed. v1 handled the `cli` row being
+passed, not a missing one. v2 (`lab/patch-subagent-settle-wake-missing-task.mjs`, on V's v1 bytes
+`8f8adebe…`) blocks a completion with no subagent task row in the registry alone too. Source: versa
+`5985c7debf6`. Test: `lab/subagent-settle-wake-missing-task.test.mjs` (5; V's current bytes return
+false for the empty case).
