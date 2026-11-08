@@ -53,7 +53,7 @@ const redact = (s) => String(s).replace(/(token|api.?key|authorization|secret|be
 const log = (...args) => console.error(new Date().toISOString(), ...args);
 // a GatewayClient reconnecting to a Gateway that is still starting can surface ECONNREFUSED as an
 // uncaught error (base run 11/07); keep waiting instead of dying
-process.on("uncaughtException", (error) => { if (error?.code === "ECONNREFUSED") { log("ignored", error.code); return; } throw error; });
+process.on("uncaughtException", (error) => { if (error?.code === "ECONNREFUSED" || /hello timeout/u.test(String(error?.message))) { log("ignored", error?.code ?? error?.message); return; } throw error; });
 const dist = path.join(runtime, "openclaw", "dist");
 const workerSource = fs.readFileSync(path.join(runtime, "production-worker", "worker.mjs"), "utf8");
 const narrowBytes = fs.readFileSync(path.join(dist, "subagent-completion-admission.store-JmpNDYTF.js"), "utf8").includes("subagent-restore-narrow-v1");
@@ -364,7 +364,11 @@ async function connectGateway() {
         client.start();
       });
       return;
-    } catch (error) { lastError = error; client?.stop(); await sleep(1_000); }
+    } catch (error) {
+      lastError = error; try { client?.stop(); } catch {}
+      if (Date.now() - (connectGateway.lastDump ?? 0) > 120_000) { connectGateway.lastDump = Date.now(); log("waiting for hello; Gateway tail:\n" + redact(lines.slice(-12).map((l) => l.line.slice(0, 300)).join("\n"))); }
+      await sleep(1_000);
+    }
   }
   throw lastError ?? new Error("candidate Gateway did not become ready");
 }
