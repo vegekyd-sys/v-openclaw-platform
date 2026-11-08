@@ -28,7 +28,6 @@
     "SEED_REGISTRY": "1",
     "SEED_TOPOLOGY": "/var/tmp/vdsdeep-20261108/topo.json.gz",
     "SEED_CHILD_ENTRY_KB": "0",
-    "SEED_ANALYZE": "1",
     "OUT_DIR": "/var/tmp/vdsdeep-20261108/run6",
     "SUBSCRIBE_SESSIONS": "1",
     "GATE_STALL_MS": "600000",
@@ -39,7 +38,8 @@
     "AB_PROFILE": "1",
     "PROFILE_RAW": "1",
     "LEVELS": "10",
-    "AB_ARMS": "vds,flash"
+    "AB_ARMS": "vds,flash",
+    "SEED_STAT1": "/var/tmp/vdsdeep-20261108/v-agent-stat1.json"
   },
   "files": [
     {

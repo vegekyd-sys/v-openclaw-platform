@@ -1326,6 +1326,17 @@ async function seedRegistry() {
   // V's databases have planner statistics; a fresh candidate copy may not, and without them the
   // transcript projection reads were seen to grow ~5x across rounds (#535)
   if (process.env.SEED_ANALYZE === "1") agentDb.exec("ANALYZE");
+  // SEED_STAT1=<json [tbl, idx, stat][]>: V's own planner statistics for the agent database (V's state
+  // database has none). An ANALYZE of the candidate's copy steered several session lookups into full
+  // scans that V never does (11/08), so copying V's rows is the faithful choice.
+  if (process.env.SEED_STAT1) {
+    const rows = JSON.parse(fs.readFileSync(process.env.SEED_STAT1, "utf8"));
+    agentDb.exec("ANALYZE sqlite_schema"); // creates sqlite_stat1 if missing
+    agentDb.exec("DELETE FROM sqlite_stat1");
+    const ins = agentDb.prepare("INSERT INTO sqlite_stat1 (tbl, idx, stat) VALUES (?, ?, ?)");
+    for (const [tbl, idx, stat] of rows) ins.run(tbl, idx, stat);
+    emit({ phase: "seed-stat1", rows: rows.length });
+  }
   agentDb.close();
   if (process.env.SEED_ANALYZE === "1") { const st = new DatabaseSync(path.join(stateDir, "state", "openclaw.sqlite")); st.exec("PRAGMA busy_timeout = 30000; ANALYZE"); st.close(); }
   emit({ phase: "seed-registry", ms: Date.now() - started, counts });
