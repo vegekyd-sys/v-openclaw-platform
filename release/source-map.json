@@ -1711,6 +1711,34 @@
       "sha256": "fab1fdcad8e0e7dc666afa3e69db44e57b0d9a85a6d0625e38586789ea228642",
       "source": "versa:595ee2bf4aa",
       "note": "cron-default-owner-tools-20261107 (#563): a `*` tool list keeps the exec pin as is (versa/port-cron-native-creator-20261107)"
+    },
+    {
+      "layer": "core",
+      "path": "embedded-agent-DaSvA-Yk.js",
+      "sha256": "182c175cc3fb8a2d73014def89413e0b8f709b5494af8b81a5d2ab5d0484340a",
+      "source": "versa:ae4f55a1e7e",
+      "note": "fallback-dsml-subagent-wake-20261108 (#566): settled-tool handoff goes to the fallback chain (versa/port-settled-tool-handoff-20261107 on port-backlog b61c13eb1a3)"
+    },
+    {
+      "layer": "core",
+      "path": "model-fallback-runner-DOsPfj4O.js",
+      "sha256": "eb417c8ab365e85d0db8b6b30dca9f040ccee3d9f868ada19a689a900ddc3b52",
+      "source": "versa:ae4f55a1e7e",
+      "note": "fallback-dsml-subagent-wake-20261108 (#566): the handoff marks the next candidate (versa/port-settled-tool-handoff-20261107)"
+    },
+    {
+      "layer": "core",
+      "path": "gateway-request-scope-CmMd3nUp.js",
+      "sha256": "154750feb9667466991294c36d67bd4dfbd6f314c0d761046f079c8efb3d87f5",
+      "source": "versa:e02a568d77a",
+      "note": "fallback-dsml-subagent-wake-20261108 (#569): separately fenced settle-wake owners share one live Gateway (versa/fix-subagent-owner-changed-20261108)"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-completion-admission.store-JmpNDYTF.js",
+      "sha256": "8f8adebe18223078ed3fed1776c37bea01359d74a8e367cba0f055660551db4f",
+      "source": "versa:e02a568d77a",
+      "note": "fallback-dsml-subagent-wake-20261108 (#569): a Gateway cli task row of the same run is blocked in the registry alone (versa/fix-subagent-owner-changed-20261108)"
     }
   ]
 }
