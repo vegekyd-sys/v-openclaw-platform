@@ -1,0 +1,38 @@
+{
+  "support": [
+    "lab/candidate/runtime-concurrency.mjs",
+    "lab/candidate/runtime-concurrency-lag.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/runtime-concurrency.mjs"
+  ],
+  "timeoutSeconds": 10800,
+  "user": "lab-db91-parity",
+  "env": {
+    "ARMS": "flash:small:bash5,vds:small:bash5",
+    "PAIRED": "1",
+    "LEVELS": "5,10,15,5,10,15",
+    "CANARY": "0",
+    "BIG_COUNT": "0",
+    "WORKER_MIN": "5",
+    "WORKER_MAX": "24",
+    "WORKER_SESSIONS": "3",
+    "STEADY_MIN": "10",
+    "STEADY_SAMPLE_MS": "30000",
+    "COOLDOWN_MS": "30000",
+    "TURN_TIMEOUT_MS": "300000",
+    "GATE_FAIL_RATE": "1.1",
+    "V_CODEX_DIST_SHA": "302964b4de674927f06e2468ad4946e9bf177d831ff2b9a17982687ceb48b0bb",
+    "MODEL_PROXY": "1",
+    "FAULT_PORT": "29899",
+    "PROVIDER_TIMEOUT_S": "90",
+    "SEED_REGISTRY": "1",
+    "SEED_TOPOLOGY": "/var/tmp/vdsdeep-20261108/topo.json.gz",
+    "SEED_CHILD_ENTRY_KB": "0",
+    "SEED_ANALYZE": "1",
+    "OUT_DIR": "/var/tmp/vdsdeep-20261108/run3",
+    "SUBSCRIBE_SESSIONS": "1",
+    "GATE_STALL_MS": "600000"
+  }
+}
