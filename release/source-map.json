@@ -1788,6 +1788,27 @@
       "sha256": "ec866319e0125f124acd499d42a76bc49672b92618a8f358a1b7afc343e4a2d3",
       "source": "versa:ad7497575da",
       "note": "loopback-early-status-20261108 (#575): reply runner treats input_start as tool start (versa/port-early-tool-status-20261108)"
+    },
+    {
+      "layer": "core",
+      "path": "plugin-sdk/agent-harness-task-runtime.js",
+      "sha256": "595673bccefde24a079d3ba68a107cb2cbfeb9b0fda07f02d3736c3537d56e51",
+      "source": "versa:44fec25ee34",
+      "note": "vds-tasks-rowindex-20261108 (#574): Codex harness filters task records before cloning (versa/harness-tasks-filter-first-20261108-pb)"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-registry.store.sqlite-hzGu4QSk.js",
+      "sha256": "23154eac039ed5f2c73388ac92db900e120262d65522d00b131af802d1d62542",
+      "source": "versa:1422a7978de",
+      "note": "vds-tasks-rowindex-20261108 (#578): child/requester/owner indexes on the subagent registry map (versa/subagent-row-index-lookup-20261108)"
+    },
+    {
+      "layer": "core",
+      "path": "session-utils-list-BUP03AzS.js",
+      "sha256": "5392dd6581423d3a86d49f08db79c20941dcc24d663343605ad473a584c3054c",
+      "source": "versa:1422a7978de",
+      "note": "vds-tasks-rowindex-20261108 (#578): session rows pick subagent runs through the registry indexes (versa/subagent-row-index-lookup-20261108)"
     }
   ]
 }
