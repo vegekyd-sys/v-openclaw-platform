@@ -215,6 +215,45 @@ try {
     return {reply: markdown(fin.card).slice(0, 120), media: echo.payload.media};
   });
 
+  await scenario('resend', async () => {
+    const mark = events.length;
+    const first = await call('vapp.send', {text: '只回复：收到 RESEND', clientMessageId: 'cand-resend'});
+    const again = await call('vapp.send', {text: '只回复：收到 RESEND', clientMessageId: 'cand-resend'});
+    assert.equal(again.duplicate, true, JSON.stringify(again));
+    assert.equal(again.messageId, first.messageId);
+    await finalOf(mark);
+    await sleep(3_000);
+    const echoes = events.slice(mark).filter(e => e.event === 'plugin.vapp.user' && e.payload.id === 'cand-resend').length;
+    const turns = new Set(turnSince(mark).all.map(p => p.turnId)).size;
+    assert.equal(echoes, 1, 'the message shows once');
+    assert.equal(turns, 1, 'one turn');
+    return {echoes, turns};
+  });
+
+  await scenario('upload-video', async () => {
+    const mark = events.length;
+    // Made here, not kept in Git: 8 s of red, 960x540 H.264 with sound, about the size the app sends.
+    const clip = path.join(process.env.VLAB_CANDIDATE_DATA ?? '/tmp', 'clip.mp4');
+    (await import('node:child_process')).execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=960x540:d=8', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=8', '-c:v', 'libx264', '-b:v', '2500k', '-c:a', 'aac', '-shortest', clip]);
+    const file = fs.readFileSync(clip);
+    const piece = 512 * 1024;
+    let uploadId;
+    const started = Date.now();
+    for (let offset = 0; offset < file.length; offset += piece) {
+      const params = {offset, chunkBase64: file.subarray(offset, offset + piece).toString('base64')};
+      Object.assign(params, uploadId ? {uploadId} : {mimeType: 'video/mp4', fileName: 'clip.mp4', size: file.length});
+      const result = await call('vapp.upload', params, 60_000);
+      uploadId = result.uploadId;
+      if (offset + piece >= file.length) assert.equal(result.done, true);
+    }
+    const uploadMs = Date.now() - started;
+    await call('vapp.send', {text: '这段视频里是什么颜色？一个词回答。', clientMessageId: 'cand-video', media: [{uploadId}]}, 60_000);
+    const fin = await finalOf(mark);
+    const echo = events.slice(mark).find(e => e.event === 'plugin.vapp.user' && e.payload.id === 'cand-video');
+    assert.match(echo?.payload.media?.[0]?.mimeType ?? '', /video/, 'the video is echoed with its V path');
+    return {bytes: file.length, uploadMs, reply: markdown(fin.card).slice(0, 160)};
+  });
+
   await scenario('secret', async () => {
     const mark = events.length;
     await call('vapp.send', {text: '请用 ask_user 工具向我索取一个凭据：questions 里放一题，isSecret=true，secretStore.name=VAPP_CAND_TOKEN，header 写「测试凭据」。拿到后回复「已保存」，不要复述内容。如果工具不支持就直接说明原因。', clientMessageId: 'cand-secret'});

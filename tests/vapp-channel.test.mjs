@@ -295,6 +295,42 @@ test("a run started by vapp.send is not observed twice", async () => {
   release();
 });
 
+test("a resent message (same clientMessageId) starts one turn, not two", async () => {
+  let turns = 0;
+  const h = harness(async ({ deliver }) => { turns += 1; await deliver({ text: "好" }, { kind: "final" }); });
+  const first = await h.vapp.send({ params: { text: "订个会议室", clientMessageId: "dup-1" }, client: phone, context: h.context });
+  const again = await h.vapp.send({ params: { text: "订个会议室", clientMessageId: "dup-1" }, client: phone, context: h.context });
+  await sleep(20);
+  assert.equal(turns, 1);
+  assert.equal(again.duplicate, true);
+  assert.equal(again.messageId, first.messageId);
+  assert.equal(h.events.filter((e) => e.event === "plugin.vapp.user").length, 1, "the message shows once");
+});
+
+test("uploads come in ordered pieces, survive a resent piece, and are sent by id", async () => {
+  let media;
+  const h = harness(async ({ ctxPayload }) => { media = ctxPayload.media; });
+  const bytes = Buffer.alloc(5000, 7);
+  const piece = (from, to) => bytes.subarray(from, to).toString("base64");
+  const opened = await h.vapp.upload({ params: { mimeType: "video/mp4", fileName: "clip.mp4", size: 5000, offset: 0, chunkBase64: piece(0, 2000) }, client: phone, context: h.context });
+  assert.equal(opened.received, 2000);
+  assert.equal(opened.done, false);
+  const resent = await h.vapp.upload({ params: { uploadId: opened.uploadId, offset: 0, chunkBase64: piece(0, 2000) }, client: phone, context: h.context });
+  assert.equal(resent.received, 2000, "a piece already received is acknowledged again");
+  await assert.rejects(h.vapp.upload({ params: { uploadId: opened.uploadId, offset: 4000, chunkBase64: piece(4000, 5000) }, client: phone, context: h.context }), /顺序/);
+  await h.vapp.upload({ params: { uploadId: opened.uploadId, offset: 2000, chunkBase64: piece(2000, 4000) }, client: phone, context: h.context });
+  const last = await h.vapp.upload({ params: { uploadId: opened.uploadId, offset: 4000, chunkBase64: piece(4000, 5000) }, client: phone, context: h.context });
+  assert.equal(last.done, true);
+  await h.vapp.send({ params: { text: "看下这个视频", clientMessageId: "up-1", media: [{ uploadId: opened.uploadId }] }, client: phone, context: h.context });
+  await sleep(20);
+  assert.equal(media.length, 1);
+  const shown = h.events.find((e) => e.event === "plugin.vapp.user").payload;
+  assert.ok(shown.media[0].source, "the sent file is echoed with its V path");
+  const other = { connId: "c2", connect: { device: { id: "dev-xinyi" } } };
+  await assert.rejects(h.vapp.send({ params: { text: "偷看", media: [{ uploadId: opened.uploadId }] }, client: other, context: h.context }), /过期/);
+  await assert.rejects(h.vapp.upload({ params: { mimeType: "video/mp4", size: 65 * 1024 * 1024, offset: 0, chunkBase64: piece(0, 10) }, client: phone, context: h.context }), /太大/);
+});
+
 test("APNs: signed with the key, dead tokens dropped, nothing sent without config", async () => {
   const { createApns } = await import("../apps/v-experience/app/core/apns.js");
   const crypto = await import("node:crypto");

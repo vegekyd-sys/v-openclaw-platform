@@ -15,6 +15,13 @@ export const ACCOUNT_ID = "default";
 const UPDATE_MS = 300; // Feishu-like streaming cadence
 const MAX_CONNS_PER_USER = 8;
 const MAX_MEDIA_BYTES = 18 * 1024 * 1024; // base64 of this still fits one 25 MiB Gateway frame
+// Videos and big pictures come in pieces (vapp.upload), so a phone shows progress
+// and one file never holds up the socket that carries the chat.
+const MAX_UPLOAD_BYTES = 64 * 1024 * 1024;
+const MAX_CHUNK_BYTES = 2 * 1024 * 1024;
+const UPLOAD_TTL_MS = 15 * 60_000;
+const MAX_OPEN_UPLOADS = 4; // per user
+const SEND_DEDUPE_MS = 15 * 60_000;
 const LOG_CAP = 600; // entries kept per user
 const REPLY_FOOTER_PARTS = [["Agent", "identityName"], ["Model", "model"], ["Provider", "provider"], ["Runtime", "agentRuntime"]];
 
@@ -385,9 +392,65 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
 
   const mediaRefs = (payload) => [...new Set([payload?.mediaUrl, ...(payload?.mediaUrls ?? [])].filter((m) => typeof m === "string" && m.trim()))].map((source) => ({ source }));
 
-  async function inboundMedia(list) {
+  // ------------------------------------------------------------- uploads
+
+  /** uploadId → {userId, mimeType, fileName, size, parts, received, at, saved} */
+  const uploads = new Map();
+  function sweepUploads() {
+    const now = Date.now();
+    for (const [id, entry] of uploads) if (now - entry.at > UPLOAD_TTL_MS) uploads.delete(id);
+  }
+
+  /**
+   * One piece of a file, in order: {uploadId, mimeType, fileName, size, offset,
+   * chunkBase64}. The first piece (offset 0, no uploadId) opens the upload. A
+   * piece already received is acknowledged again, so a phone that lost the reply
+   * can resend it. The last piece saves the file; vapp.send then names it by uploadId.
+   */
+  async function upload({ params, client, context }) {
+    const user = requireUser(client);
+    attach(user, client, context);
+    sweepUploads();
+    const offset = Number(params?.offset ?? 0);
+    const chunk = Buffer.from(text(params?.chunkBase64), "base64");
+    if (!Number.isInteger(offset) || offset < 0 || chunk.length > MAX_CHUNK_BYTES) throw Object.assign(new Error("上传分片无效"), { code: "INVALID_REQUEST" });
+    let id = text(params?.uploadId).trim();
+    let entry = id ? uploads.get(id) : undefined;
+    if (id && !entry) throw Object.assign(new Error("上传已过期，请重新发送"), { code: "NOT_FOUND" });
+    if (entry && entry.userId !== user.id) throw Object.assign(new Error("上传已过期，请重新发送"), { code: "NOT_FOUND" });
+    if (!entry) {
+      const size = Number(params?.size);
+      const mimeType = text(params?.mimeType).trim();
+      if (!Number.isInteger(size) || size <= 0 || !mimeType || offset !== 0) throw Object.assign(new Error("上传参数无效"), { code: "INVALID_REQUEST" });
+      if (size > MAX_UPLOAD_BYTES) throw Object.assign(new Error(`文件太大：最大 ${MAX_UPLOAD_BYTES / 1024 / 1024} MB`), { code: "INVALID_REQUEST" });
+      if ([...uploads.values()].filter((u) => u.userId === user.id && !u.saved).length >= MAX_OPEN_UPLOADS) throw Object.assign(new Error("同时上传的文件太多"), { code: "UNAVAILABLE" });
+      id = randomId("up");
+      entry = { userId: user.id, mimeType, fileName: text(params?.fileName).trim().slice(0, 200) || undefined, size, parts: [], received: 0, at: Date.now() };
+      uploads.set(id, entry);
+    }
+    entry.at = Date.now();
+    if (entry.saved || offset + chunk.length <= entry.received) return { uploadId: id, received: entry.received, done: Boolean(entry.saved) };
+    if (offset !== entry.received || !chunk.length) throw Object.assign(new Error(`上传分片顺序不对：需要 ${entry.received}`), { code: "INVALID_REQUEST", details: { received: entry.received } });
+    if (entry.received + chunk.length > entry.size) throw Object.assign(new Error("上传超出声明的大小"), { code: "INVALID_REQUEST" });
+    entry.parts.push(chunk);
+    entry.received += chunk.length;
+    if (entry.received < entry.size) return { uploadId: id, received: entry.received, done: false };
+    const file = await inbound.saveMedia(Buffer.concat(entry.parts), entry.mimeType, "inbound", MAX_UPLOAD_BYTES, entry.fileName);
+    entry.parts = [];
+    entry.saved = { path: file.path, contentType: file.contentType };
+    return { uploadId: id, received: entry.received, done: true };
+  }
+
+  async function inboundMedia(list, userId) {
     const saved = [];
     for (const item of Array.isArray(list) ? list.slice(0, 9) : []) {
+      const uploadId = text(item?.uploadId).trim();
+      if (uploadId) {
+        const entry = uploads.get(uploadId);
+        if (!entry?.saved || entry.userId !== userId) throw Object.assign(new Error("附件还没传完或已过期，请重新发送"), { code: "INVALID_REQUEST" });
+        saved.push(entry.saved);
+        continue;
+      }
       const bytes = Buffer.from(text(item?.contentBase64), "base64");
       if (!bytes.length || bytes.length > MAX_MEDIA_BYTES || !text(item?.mimeType)) throw Object.assign(new Error("附件无效或太大"), { code: "INVALID_REQUEST" });
       const file = await inbound.saveMedia(bytes, item.mimeType, "inbound", MAX_MEDIA_BYTES, text(item.fileName) || undefined);
@@ -555,15 +618,35 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     return { userId: user.id, name: user.name, owner: user.owner, agentId: resolved.agentId, sessionKey: resolved.sessionKey, cardVersion: vx.V_CARD_VERSION };
   }
 
-  async function send({ params, client, context }) {
-    const user = requireUser(client);
+  /** `${userId}:${clientMessageId}` → {at, result}: a phone that never saw the reply resends with the same id. */
+  const sent = new Map();
+
+  async function send(request) {
+    const user = requireUser(request.client);
+    const clientId = text(request.params?.clientMessageId).trim();
+    if (!clientId) return sendOnce(request, user);
+    const now = Date.now();
+    for (const [key, entry] of sent) if (now - entry.at > SEND_DEDUPE_MS) sent.delete(key);
+    const key = `${user.id}:${clientId}`;
+    const earlier = sent.get(key);
+    if (earlier) {
+      attach(user, request.client, request.context);
+      return { ...(await earlier.result), duplicate: true };
+    }
+    const result = sendOnce(request, user);
+    sent.set(key, { at: now, result });
+    result.catch(() => sent.delete(key));
+    return result;
+  }
+
+  async function sendOnce({ params, client, context }, user) {
     attach(user, client, context);
     const cfg = getConfig();
     const body = text(params?.text).trim();
     const messageId = text(params?.clientMessageId).trim() || randomId("vm");
     const quote = text(params?.quote).trim().slice(0, 500);
     const { route: resolved } = route(cfg, user);
-    const media = await inboundMedia(params?.media);
+    const media = await inboundMedia(params?.media, user.id);
     if (!body && !media.facts.length) throw Object.assign(new Error("消息是空的"), { code: "INVALID_REQUEST" });
     // Every device of this user shows it, and it is there when the chat reopens.
     const shown = { id: messageId, sessionKey: resolved.sessionKey, at: Date.now(), ...(body ? { text: body } : {}), ...(quote ? { quote } : {}), ...(media.refs.length ? { media: media.refs } : {}) };
@@ -735,5 +818,5 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     return sendMessage(user, { sessionKey: resolved.sessionKey, text: body, media, card });
   }
 
-  return { showCard, sessions, hello, send, action, deliver, stop, history, userReact, observeAgentEvent, runTurn, push, connections, questions };
+  return { showCard, sessions, hello, send, upload, action, deliver, stop, history, userReact, observeAgentEvent, runTurn, push, connections, questions };
 }

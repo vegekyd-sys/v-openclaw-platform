@@ -231,6 +231,7 @@ export default defineChannelPluginEntry({
     const write = { scope: "operator.write" };
     api.registerGatewayMethod("vapp.hello", method(vapp.hello), write);
     api.registerGatewayMethod("vapp.send", method(vapp.send), write);
+    api.registerGatewayMethod("vapp.upload", method(vapp.upload), write);
     api.registerGatewayMethod("vapp.action", method(vapp.action), write);
     api.registerGatewayMethod("vapp.stop", method(vapp.stop), write);
     api.registerGatewayMethod("vapp.sessions", method(vapp.sessions), write);
