@@ -1,0 +1,19 @@
+{
+  "support": [
+    "lab/candidate/compaction-image-skip-ab.mjs",
+    "lab/candidate/el-gap-probe.mjs",
+    "lab/compaction-image-skip.plan.json",
+    "lab/release-files/compaction-image-skip/history-image-prune-Dg0CDQ4a.js",
+    "lab/release-files/compaction-image-skip/compact-gStBcHDe.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/compaction-image-skip-ab.mjs"
+  ],
+  "env": {
+    "AB_BUILD_TURNS": "120",
+    "AB_ROUNDS": "ABC,CBA"
+  },
+  "timeoutSeconds": 7200,
+  "user": "lab-db91-parity"
+}

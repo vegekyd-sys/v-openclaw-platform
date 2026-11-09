@@ -1,0 +1,15 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/compaction-image-skip/history-image-prune-Dg0CDQ4a.js",
+      "target": "openclaw/dist/history-image-prune-Dg0CDQ4a.js",
+      "before": "3e5c9c8b90e78d85c0360cf64bba4f9add36dbdabb7eceaf96a5eefe084bdd36"
+    },
+    {
+      "source": "lab/release-files/compaction-image-skip/compact-gStBcHDe.js",
+      "target": "openclaw/dist/compact-gStBcHDe.js",
+      "before": "54be690135a3b02b256da3761f5c96d20ee1390da5e2e2cd03ce0c53cadc0e4f"
+    }
+  ]
+}
