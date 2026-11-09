@@ -28,20 +28,22 @@ test('release file carries the marker, parses, and refuses a second patch', () =
   assert.notEqual(sha(out), FILES[0].before);
 });
 
-test('normal endings stop the terminals; aborted, timed-out and keep do not', async () => {
+test('normal endings of a turn that ran a command stop the terminals; others do not', async () => {
   const src = read(RUN_ATTEMPT);
   const line = src.split('\n').find((l) => l.includes('codex-turn-end-background-terminals'));
-  assert(line.trimStart().startsWith('if (!runAbortController.signal.aborted && state.timeout === void 0'));
+  assert(line.trimStart().startsWith('if (state.ranNativeCommand && !runAbortController.signal.aborted && state.timeout === void 0'));
+  assert(src.includes('if (nativeItem?.type === "commandExecution") state.ranNativeCommand = true;'));
+  assert(src.includes('ranNativeCommand: false'));
   // The statement runs inside cleanupCodexAttempt after the trajectory flush and before the thread
   // is unsubscribed, so the client can still reach the thread.
   const fn = src.slice(src.indexOf('async function cleanupCodexAttempt('));
   assert(fn.indexOf('codex-trajectory-flush') < fn.indexOf('codex-turn-end-background-terminals'));
   assert(fn.indexOf('codex-turn-end-background-terminals') < fn.indexOf('unsubscribeCodexThreadBestEffort(resourceState.client'));
-  const run = async ({ aborted = false, timeout, env = {} }) => {
+  const run = async ({ aborted = false, timeout, env = {}, ranNativeCommand = true }) => {
     const calls = [];
     await new Function('runAbortController', 'state', 'process', 'runCleanupStep', 'terminateCodexBackgroundTerminals', 'resourceState',
       `return (async () => { ${line.trim()} })();`)(
-      { signal: { aborted } }, { timeout }, { env },
+      { signal: { aborted } }, { timeout, ranNativeCommand }, { env },
       async (step, op) => { calls.push(step); await op(); },
       async (client, threadId) => { calls.push(`terminate:${threadId}`); },
       { client: {}, thread: { threadId: 't1' } });
@@ -51,4 +53,5 @@ test('normal endings stop the terminals; aborted, timed-out and keep do not', as
   assert.deepEqual(await run({ aborted: true }), []);
   assert.deepEqual(await run({ timeout: 'turn' }), []);
   assert.deepEqual(await run({ env: { OPENCLAW_CODEX_TURN_END_TERMINALS: 'keep' } }), []);
+  assert.deepEqual(await run({ ranNativeCommand: false }), []);
 });

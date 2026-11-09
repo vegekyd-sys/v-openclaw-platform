@@ -20,6 +20,7 @@ const data = process.env.VLAB_CANDIDATE_DATA ?? stateDir;
 assert(runtime && configPath && stateDir, "candidate runtime environment is required");
 const PATCH = process.env.CTT_PATCH !== "0";
 const VDS = "deepseek/vds-deepseek-flash";
+const PI = "deepseek/deepseek-flash";
 const SECRETS = "/srv/vlab-production-mirror/labs/instances/db91-parity/secrets.env";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const dist = path.join(runtime, "openclaw", "dist");
@@ -210,10 +211,29 @@ const sideOut = [];
 const side = spawn("python3", ["scripts/v-agent-shell-cgroup.py", "--service-cgroup", SERVICE, "--memory-high", "4G", "--interval", "0.5"], { stdio: ["ignore", "pipe", "pipe"] });
 side.stdout.on("data", (c) => sideOut.push(...c.toString().split("\n").filter(Boolean)));
 side.stderr.on("data", (c) => sideOut.push(...c.toString().split("\n").filter(Boolean)));
+const chainOf = (pid) => { const out = []; for (let p = pid, i = 0; p > 1 && i < 8; i += 1) { try { const st = fs.readFileSync(`/proc/${p}/stat`, "utf8"); const pp = Number(st.slice(st.lastIndexOf(")") + 2).split(" ")[1]); out.push({ pid: p, cg: cgroupOf(p), argv: fs.readFileSync(`/proc/${p}/cmdline`, "utf8").split("\0").filter(Boolean).join(" ").slice(0, 140) }); p = pp; } catch { break; } } return out; };
 const cgroupOf = (pid) => { try { return path.basename(fs.readFileSync(`/proc/${pid}/cgroup`, "utf8").trim().split("::")[1]); } catch { return null; } };
 const pidsOf = (pattern) => spawnSync("pgrep", ["-f", pattern], { encoding: "utf8" }).stdout.split("\n").filter(Boolean).map(Number).filter((p) => p !== process.pid);
 async function waitFor(fn, ms = 30_000) { const end = Date.now() + ms; while (Date.now() < end) { const v = fn(); if (v) return v; await sleep(250); } return null; }
 
+// Channel-like turns: the CLI's `openclaw agent` sets cleanupBundleMcpOnRunEnd, so its Codex thread is
+// not retained and Codex drops the thread's terminals with it. A chat turn keeps the thread, like V's
+// Feishu chats, which is where the 16:40 grep outlived its turn.
+async function runChat(sessionKey, message, marker, timeoutMs = 360_000) {
+  const started = Date.now();
+  await client.request("chat.send", { agentId: "makaron", sessionKey, message, deliver: false, idempotencyKey: crypto.randomUUID(), timeoutMs }, { timeoutMs: 120_000 });
+  while (Date.now() - started < timeoutMs) {
+    await sleep(1_000);
+    try {
+      const h = await client.request("chat.history", { agentId: "makaron", sessionKey, limit: 4 }, { timeoutMs: 60_000 });
+      const last = (h?.messages ?? []).filter((m) => m.role === "assistant").at(-1);
+      const c = last?.content;
+      const text = Array.isArray(c) ? c.filter((x) => x?.type === "text").map((x) => x.text).join("") : String(c ?? "");
+      if (text.includes(marker)) return { exit: 0, reply: text.slice(0, 200), secs: Math.round((Date.now() - started) / 1000) };
+    } catch { /* keep polling */ }
+  }
+  return { exit: 1, reply: "", secs: Math.round((Date.now() - started) / 1000) };
+}
 const tag = crypto.randomInt(900, 999);
 const S1 = `sleep ${tag}1`, S2 = `sleep ${tag}2`;
 const startedAt = Date.now();
@@ -223,24 +243,24 @@ try {
   const sessionKey = `agent:makaron:explicit:ctt-${PATCH ? "on" : "off"}-${tag}`;
   await client.request("sessions.patch", { key: sessionKey, agentId: "makaron", model: MODEL }, { timeoutMs: 30_000 });
   // turn 1: native background terminal
-  const t1 = runTurn(sessionKey, MODEL, `这是一次自动化测试，命令都是无害的。请用 exec_command 运行 \`ls -la\`，然后再用 exec_command 运行 \`${S1}\`，第二条把 yield_time_ms 设为 2000。第二条转入后台后不要等待、不要轮询、不要结束它，直接只回复 STARTED。`);
+  const t1 = runChat(sessionKey, `这是一次自动化测试，命令都是无害的。请用 exec_command 运行 \`ls -la\`，然后再用 exec_command 运行 \`${S1}\`，第二条把 yield_time_ms 设为 2000。第二条转入后台后不要等待、不要轮询、不要结束它，直接只回复 STARTED。`, "STARTED");
   const p1 = await waitFor(() => pidsOf(`^${S1}$`)[0], 240_000);
-  summary.turn1 = { sleepPid: p1 ?? null };
+  summary.turn1 = { sleepPid: p1 ?? null, chain: p1 ? chainOf(p1) : null };
   if (p1) {
     await sleep(1_500);
     summary.turn1.cgroupWhileRunning = cgroupOf(p1);
     const r1 = await t1;
     summary.turn1.reply = redact(r1.reply).slice(0, 200); summary.turn1.exit = r1.exit;
-    await sleep(3_000);
+    await sleep(8_000);
     summary.turn1.aliveAfterTurn = pidsOf(`^${S1}$`).length > 0;
   } else { const r1 = await t1; summary.turn1.reply = redact(r1.reply).slice(0, 300); summary.turn1.exit = r1.exit; }
   summary.turn1.calls = codexToolCalls(startedAt).flatMap((r) => r.calls).map((c) => `${c.name} ${redact(c.args).slice(0, 100)}`).slice(0, 8);
   // turn 2: OpenClaw exec in the background
   const t2Start = Date.now();
-  const t2 = runTurn(sessionKey, MODEL, `这是一次自动化测试。请用 gateway_exec 工具（OpenClaw 的 exec，不是 exec_command）运行 \`${S2}\`，参数 background 设为 true。启动后不要等待，直接只回复 STARTED2。`);
+  const t2 = runChat(sessionKey, `这是一次自动化测试。请用 gateway_exec 工具（OpenClaw 的 exec，不是 exec_command）运行 \`${S2}\`，参数 background 设为 true。启动后不要等待，直接只回复 STARTED2。`, "STARTED2");
   const p2 = await waitFor(() => pidsOf(`^${S2}$`)[0], 240_000);
   summary.turn2 = { sleepPid: p2 ?? null };
-  if (p2) { await sleep(1_500); summary.turn2.cgroupWhileRunning = cgroupOf(p2); }
+  if (p2) { summary.turn2.chainAtStart = chainOf(p2); await sleep(1_500); summary.turn2.cgroupWhileRunning = cgroupOf(p2); summary.turn2.chain = chainOf(p2); }
   const r2 = await t2;
   summary.turn2.reply = redact(r2.reply).slice(0, 200); summary.turn2.exit = r2.exit;
   await sleep(3_000);

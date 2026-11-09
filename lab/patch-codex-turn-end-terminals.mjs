@@ -10,9 +10,11 @@ import assert from 'node:assert/strict';
 // its turn had replied (docs/incidents/2026-11-09-recursive-scan.md).
 //
 // cleanupCodexAttempt now stops the thread's background terminals on every ending the abort path
-// does not already handle. OPENCLAW_CODEX_TURN_END_TERMINALS=keep keeps them.
+// does not already handle, after a turn that ran a native command (exec_command, write_stdin: a
+// commandExecution item). Other turns pay no extra request. OPENCLAW_CODEX_TURN_END_TERMINALS=keep
+// keeps them.
 //
-// Source: openclaw-versa versa/port-codex-turn-end-terminals-20261110 @ b507ffe16b3.
+// Source: openclaw-versa versa/port-codex-turn-end-terminals-20261110 @ 9da16d57d2d.
 
 export const MARKER = 'v-codex-turn-end-terminals-v1';
 
@@ -21,15 +23,32 @@ function replaceExactlyOnce(source, before, after, label) {
   return source.replace(before, after);
 }
 
-// @openclaw/codex/dist/run-attempt-D1hJO4fX.js (extensions/codex/src/app-server/run-attempt-cleanup.ts)
+// @openclaw/codex/dist/run-attempt-D1hJO4fX.js (extensions/codex/src/app-server/run-attempt-cleanup.ts,
+// run-attempt-notification-controller.ts, run-attempt-turn-state.ts)
 export function patchRunAttempt(source) {
   assert(!source.includes(MARKER), 'already patched');
-  return replaceExactlyOnce(source,
+  let out = replaceExactlyOnce(source,
+    `		currentTurnHadNonTerminalDynamicToolResult: false,
+		modelWaitTimeout: void 0
+	};`,
+    `		currentTurnHadNonTerminalDynamicToolResult: false,
+		modelWaitTimeout: void 0,
+		ranNativeCommand: false
+	};`,
+    'turn state');
+  out = replaceExactlyOnce(out,
+    `			const nativeItem = readCodexNotificationItem(notification.params);
+			if (nativeItem?.type === "webSearch") projector.recordNativeToolOutcome(nativeItem);`,
+    `			const nativeItem = readCodexNotificationItem(notification.params);
+			if (nativeItem?.type === "commandExecution") state.ranNativeCommand = true; // ${MARKER}
+			if (nativeItem?.type === "webSearch") projector.recordNativeToolOutcome(nativeItem);`,
+    'native item notification');
+  return replaceExactlyOnce(out,
     `		await runCleanupStep("codex-trajectory-flush", () => trajectoryRecorder?.flush());
 		const retainLiveIncognitoThread =`,
     `		await runCleanupStep("codex-trajectory-flush", () => trajectoryRecorder?.flush());
-		// ${MARKER}: stop the native background terminals a normally ended turn left running.
-		if (!runAbortController.signal.aborted && state.timeout === void 0 && process.env.OPENCLAW_CODEX_TURN_END_TERMINALS !== "keep") await runCleanupStep("codex-turn-end-background-terminals", () => terminateCodexBackgroundTerminals(resourceState.client, resourceState.thread.threadId));
+		// ${MARKER}: stop the native background terminals a normally ended turn that ran a native command left running.
+		if (state.ranNativeCommand && !runAbortController.signal.aborted && state.timeout === void 0 && process.env.OPENCLAW_CODEX_TURN_END_TERMINALS !== "keep") await runCleanupStep("codex-turn-end-background-terminals", () => terminateCodexBackgroundTerminals(resourceState.client, resourceState.thread.threadId));
 		const retainLiveIncognitoThread =`,
     'cleanupCodexAttempt trajectory flush');
 }

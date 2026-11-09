@@ -11,8 +11,10 @@ DelegateSubgroup=foreground), and the Gateway already moves its database verifie
 cgroup the same way. This sidecar runs as the service user and, about once a second, moves into a
 sibling `agent-shell` cgroup:
 
-  * every OpenClaw exec relay (core/dist/process/supervisor/service-child-relay.js) with all of its
-    descendants: Gateway-hosted exec, Worker exec and agent-started services all run under one;
+  * every shell OpenClaw exec starts (the Gateway or a Worker runs `/bin/bash --noprofile --norc -c`
+    for each exec call), with its descendants;
+  * every OpenClaw service relay (core/dist/process/supervisor/service-child-relay.js) with its
+    descendants: long-running services agents start (watchers, bridges) run under one;
   * every process the Codex app-server starts, with its descendants, except Codex's own hook relay
     (`openclaw hooks relay`), which must answer within Codex's 10 s hook budget.
 
@@ -101,6 +103,16 @@ def is_codex_app_server(argv: list[str]) -> bool:
     return bool(argv) and os.path.basename(argv[0]) == "codex" and "app-server" in argv
 
 
+SHELLS = {"bash", "sh", "zsh", "dash"}
+
+
+def is_openclaw_exec_shell(argv: list[str], parent_argv: list[str]) -> bool:
+    # OpenClaw exec (Gateway-hosted or in a Worker) runs each command as
+    # `/bin/bash --noprofile --norc -c <script>`, a direct child of a node process.
+    return (bool(argv) and os.path.basename(argv[0]) in SHELLS and "--noprofile" in argv and "--norc" in argv
+            and "-c" in argv and bool(parent_argv) and os.path.basename(parent_argv[0]).startswith("node"))
+
+
 def is_codex_hook_relay(argv: list[str]) -> bool:
     # Codex runs `<node> <openclaw entry> hooks relay ...` for every hooked tool call.
     return "hooks" in argv and "relay" in argv
@@ -117,9 +129,12 @@ def plan_moves(pids: list[int], proc: Proc) -> list[tuple[int, str, list[str]]]:
         if not a:
             continue
         if is_relay(a):
-            roots[pid] = "openclaw-exec"
+            roots[pid] = "openclaw-service"
             continue
         pp = parent[pid]
+        if pp in members and is_openclaw_exec_shell(a, argv.get(pp, [])):
+            roots[pid] = "openclaw-exec"
+            continue
         if pp in members and is_codex_app_server(argv.get(pp, [])) and not is_codex_app_server(a) and not is_codex_hook_relay(a):
             roots[pid] = "codex-command"
     moves = []

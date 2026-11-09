@@ -2817,8 +2817,8 @@ async function cleanupCodexAttempt(resources, turnRuntime, lifecycle, requestRun
 			aborted: runAbortController.signal.aborted && !state.clientClosedAbort
 		});
 		await runCleanupStep("codex-trajectory-flush", () => trajectoryRecorder?.flush());
-		// v-codex-turn-end-terminals-v1: stop the native background terminals a normally ended turn left running.
-		if (!runAbortController.signal.aborted && state.timeout === void 0 && process.env.OPENCLAW_CODEX_TURN_END_TERMINALS !== "keep") await runCleanupStep("codex-turn-end-background-terminals", () => terminateCodexBackgroundTerminals(resourceState.client, resourceState.thread.threadId));
+		// v-codex-turn-end-terminals-v1: stop the native background terminals a normally ended turn that ran a native command left running.
+		if (state.ranNativeCommand && !runAbortController.signal.aborted && state.timeout === void 0 && process.env.OPENCLAW_CODEX_TURN_END_TERMINALS !== "keep") await runCleanupStep("codex-turn-end-background-terminals", () => terminateCodexBackgroundTerminals(resourceState.client, resourceState.thread.threadId));
 		const retainLiveIncognitoThread = (terminalState.turnSucceeded || state.permissionChangeRestart === "confirmed" && !params.abortSignal?.aborted) && isIncognitoSessionKey(params.sessionKey);
 		const retainLiveThread = ((retainLiveIncognitoThread && resourceState.thread.liveThreadEphemeralPolicy !== void 0 || (terminalState.turnSucceeded || terminalState.turnFailedSettled) && !isIncognitoSessionKey(params.sessionKey) && params.cleanupBundleMcpOnRunEnd !== true && resourceState.thread.liveThreadConfigFingerprint !== void 0 && resourceState.thread.preserveNativeModel !== true && resourceState.thread.connectionScope !== "supervision" && !resourceState.thread.ringZeroConfigFingerprint) && resourceState.thread.clientId === resolveCodexAppServerClientInstanceId(resourceState.client) ? (await bindingStore.read(bindingIdentity))?.threadId === resourceState.thread.threadId && await bindingStore.withLease(bindingIdentity, async () => {
 			if ((await bindingStore.read(bindingIdentity))?.threadId !== resourceState.thread.threadId) return false;
@@ -4664,6 +4664,7 @@ function createCodexAttemptNotificationController(resources, turnRuntime, lifecy
 			const modelToolCallId = readRawResponseToolCallId(notification);
 			if (modelToolCallId) allocateCodexToolOutcomeOrdinal?.(modelToolCallId);
 			const nativeItem = readCodexNotificationItem(notification.params);
+			if (nativeItem?.type === "commandExecution") state.ranNativeCommand = true; // v-codex-turn-end-terminals-v1
 			if (nativeItem?.type === "webSearch") projector.recordNativeToolOutcome(nativeItem);
 		}
 	};
@@ -7650,7 +7651,8 @@ function createCodexAttemptTurnState(resources) {
 		pendingTerminalDynamicToolRelease: void 0,
 		terminalDynamicToolReleaseCheckScheduled: false,
 		currentTurnHadNonTerminalDynamicToolResult: false,
-		modelWaitTimeout: void 0
+		modelWaitTimeout: void 0,
+		ranNativeCommand: false
 	};
 	const { promise: completion, resolve: resolveCompletion } = createDeferred();
 	const pendingOpenClawDynamicToolCompletionIds = /* @__PURE__ */ new Set();

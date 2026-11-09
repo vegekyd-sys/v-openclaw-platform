@@ -13,7 +13,7 @@
 - **AGENTS.md 的规则没起作用，原因分两种：**
   - 飞书聊天会话：规则在模型上下文里，agent 看到了，照样执行；
   - 夜班卡会话（/vds）：模型上下文里**根本没有 AGENTS.md**。
-- 这不只是三次偶发。重放当天全部 605 个 rollout 里的 17,214 次 shell 调用，有 **225 次、来自 145 个会话**对整棵树做了遍历，其中 50 次是 `grep -r`/`rg` 读文件内容。
+- 这不只是三次偶发。重放当天全部 605 个 rollout 里的 17,214 次 shell 调用，有 **225 次、来自 145 个会话**对整棵树做了遍历，其中 50 次是 `grep -r`/`rg` 读文件内容（重放工具在已撤回的提交 a69c0ca3 里）。
 
 ## 三次各自的触发需求
 
@@ -91,49 +91,65 @@
 - 这条规则埋在约 21 万字符的指令里（developer 6.1 万 + workspace context 7.4 万 + skills 6.4 万 + AGENTS 1.5 万）；
 - 规则只靠模型自觉，执行时没有任何东西拦它。
 
-所以靠提示词约束不够，必须在工具调用前拦截。
+靠提示词约束不够。初稿的做法是在工具调用前拒绝这类命令（v-scan-guard 插件）。Tianyi 11/10 的决定是：**不限制 agent 能做什么，只限制它能抢走多少资源**。拦截插件不上线，改成下面两件事。
 
-## 拦截
+## 1. 资源隔离：agent 的命令进自己的 cgroup
 
-新插件 `apps/v-scan-guard`，在 `before_tool_call` 上声明 `matcher: ["exec","process"]`，只拒绝、不改写参数。规则和覆盖范围见 [apps/v-scan-guard/README.md](../../apps/v-scan-guard/README.md)。
+**现成机制。**
+- Gateway 单元早已委托给服务用户（`94-verifier-resource-group`：`Delegate=memory`、`DelegateSubgroup=foreground`），Gateway 也用同样的方式把数据库校验进程挪进同级的 `database-verifier` cgroup（memory.high 512M）。
+- systemd 自己没有「把某个子进程归入另一组」的机制，只能由委托子树的属主来挪。
+- V 上 `system.slice` 本来就把 io 控制器开给了这个单元，`cgroup.subtree_control` 归 openclaw 所有，服务目录本身也没有进程。所以服务用户可以自己写 `+io`：**不用改 Delegate，也不用重启 Gateway**。
 
-- **官方有没有现成机制**：
-  - `tools.exec` 只有 `security`（deny / allowlist / full）和 `ask`，没有按命令内容拒绝的配置；V 上 `tools.exec` 和 `loopDetection` 都没配。
-  - `loopDetection` 管的是重复调用，不看命令内容。
-  - 插件钩子的 `matcher` 是官方能力（`src/plugins/tool-hook-matcher.ts`），只能用规范名，所以写 `exec` 而不是 `exec_command`。
-  - 用插件钩子是现有机制里唯一能按命令内容拦截的做法。
-- **覆盖**：
-  - OpenClaw `exec`（Worker、PI、Codex 动态工具 `gateway_exec`/`exec`）；
-  - Codex 原生 `exec_command`：Native hook relay 会把它改名成 `exec`，并把 `cmd` 复制到 `command`；
-  - `process` 的 write / paste / send-keys。
-- **缺口**：Codex 原生 `write_stdin` 进不了 PreToolUse（2026-10-31 实测）。先起一个交互式 `bash` 再往里输入命令可以绕过。当天没有任何一次这样走。
+**做法：`scripts/v-agent-shell-cgroup.py`。** 这是一个以 openclaw 身份运行的独立单元 `systemd/v-agent-shell-cgroup.service`，每秒执行一次：
 
-### 证据
+- **挪进 `agent-shell` 的**：
+  - OpenClaw exec 的每个 shell 连同子树。Gateway 和 Worker 执行每次 exec 时，都会直接起一个 `/bin/bash --noprofile --norc -c`（这是在 VLab 的真实回合里观察到的进程树）；
+  - 每个 OpenClaw 服务 relay（`core/dist/process/supervisor/service-child-relay.js`）连同子树。agent 起的常驻服务（watch、bridge）挂在 relay 下面；
+  - Codex app-server 起的每个进程连同子树，包括 `exec_command` 和 `write_stdin` 用的 shell。
+- **不动的**：Gateway、Worker、app-server 本身、Codex 的 hook relay（它必须在 10 秒的 hook 期限内答复），以及 Chrome。
+- **`agent-shell` 的限制**：
+  - `memory.high`（V 上 12G）：agent 命令读进来的页缓存记在 agent-shell 头上，先在这里回收，挤不掉 Gateway 的库页。超过上限时内核降速，不杀进程。V 上现有的 agent 进程共 460 MB；每次 exec 的 relay 和 anchor 两个 node 进程约 96 MB，所以按夜班几十张卡并发留足了余量。
+  - `io.max`（V 上两块盘各 80 MB/s 读写）：扫盘不能占满 Gateway 要写的盘。
+- Gateway 重启后会自动重建 `agent-shell`；sidecar 停掉也不影响任何进程。
 
-1. **单元测试**（`apps/v-scan-guard/plugin/tests/`，15 项）：
-   - 用 9/17、9/23、10/06、11/09 的真实命令做「必须拦」清单，共 40 条；
-   - 用同一批会话里缩小范围后的命令和无关命令做「必须放行」清单，共 27 条。
-2. **V 上只读重放**（`lab/scan-guard-replay.mjs`，读取 2026/11/09 目录下的 605 个 rollout，`ionice -c3`）：
-   - 17,214 次 shell 调用中，会被拦 225 次（1.3%），来自 145 个会话；
-   - 分类：`find` 180 次（instances 105、`/home/openclaw` 43、`/` 15、nightshift 14 等），`grep -r` 36 次，`rg` 8 次，`**` 1 次；
-   - 其余 16,989 次照常执行。
-3. **VLab candidate**（`lab/candidate/scan-guard-{on,off}.plan.json`）：
-   - 真 Gateway 加载插件，三条路径各跑一次真实模型回合；
-   - 每轮都包含两条正常命令（`ls`、在工作区里 `grep -rn`）和两条当天的事故命令；
-   - 对照组不加载插件，确认拦截确实来自本插件；
-   - 结果见 [docs/evidence/v-scan-guard-candidate-20261109.md](../evidence/v-scan-guard-candidate-20261109.md)。
+**对正常命令的影响**（实测见下）：
+- 短命令通常在被挪之前就结束了（最多慢 1 秒被挪）。
+- 被挪之后，只有在 agent-shell 合计超过上限时才会变慢：大文件读写被限在 80 MB/s，内存总量超过 12G 时降速。
+- ffmpeg 这类以 CPU 为主的任务基本不受影响。大文件拷贝会被限速，这是有意的：它们本来就会和 Gateway 抢盘。
+
+## 2. 回合结束时回收被放弃的后台进程
+
+- **Codex `exec_command` 和 `write_stdin`**：超过 `yield_time_ms` 的命令留在 Codex 的「后台终端」里。插件原来只在回合被取消或超时的时候调 `thread/backgroundTerminals/list` 加 `terminate`；正常结束的回合不清理，16:40 那个 grep 就这样跑了 14 分钟。
+  - **修复**：`v-codex-turn-end-terminals-v1`，回合正常结束时也清理。只在本回合跑过原生命令（出现过 `commandExecution` item）时才做，不碰 shell 的回合不多发请求。改动在 `run-attempt-D1hJO4fX.js`，源码在 openclaw-versa `versa/port-codex-turn-end-terminals-20261110` @ 9da16d57d2d。
+  - Codex 没有「后台命令跑完唤醒 agent」的机制，回合结束后留着的终端没人会再看，所以这样做不会丢掉有用的工作。
+  - `OPENCLAW_CODEX_TURN_END_TERMINALS=keep` 可以保留它们。
+- **OpenClaw `exec`**：后台会话**按设计跨回合存活**：命令跑完时会唤醒 agent（`tools.exec.notifyOnExit`），夜班等出片就是靠这个。所以回合结束时不杀，沿用官方已有的上限 `tools.exec.timeoutSeconds`，默认 1800 秒。19:22 和 20:19 那两次的 grep 本来最多跑 30 分钟；有了资源隔离，这 30 分钟也只会拖慢它自己。
+
+## 证据
+
+1. **单元测试**：
+   - `tests/v-agent-shell-cgroup.test.py`：5 项，用 V 上真实的进程树做夹具；
+   - `lab/codex-turn-end-terminals.test.mjs`：3 项；
+   - fork 的 vitest：`run-attempt-thread-cleanup.test.ts` 新增 4 项。在 VLab 上用 Node 24.17 跑 Codex app-server 的 5 个套件，全部通过（attempt 179、attempt-extra 269、light 66、support 70、runtime 1181），基线版本同样全部通过；把清理改成恒不执行后，新增用例里应当回收的 2 项失败。
+2. **VLab candidate：资源隔离**（`lab/candidate/agent-shell-cgroup.*`）。结果见 [docs/evidence/agent-shell-cgroup-20261110.md](../evidence/agent-shell-cgroup-20261110.md)。
+3. **VLab candidate：真实 /vds 回合**（`lab/candidate/codex-turn-end-terminals-{on,off}.*`，结果在 [docs/evidence/codex-turn-end-terminals-20261110.json](../evidence/codex-turn-end-terminals-20261110.json)）。用 `chat.send` 发消息，和渠道聊天一样会保留 Codex 线程。CLI 的 `openclaw agent` 会设 `cleanupBundleMcpOnRunEnd`，回合结束后线程不保留，终端会随线程一起被收掉，复现不出问题。
+
+   | | 回合 1：`exec_command` 起 `sleep`，yield 2 秒后直接回复 | 回合 2：`gateway_exec` 后台起 `sleep` |
+   |---|---|---|
+   | V 现在的字节（`candidate-5ea27814`） | 运行中在 agent-shell；**回合结束后仍在跑**（复现了 16:40） | 运行中在 agent-shell；回合结束后仍在跑（按设计） |
+   | 打补丁（`candidate-5abb6a9b`） | 运行中在 agent-shell；**回合结束即被回收** | 运行中在 agent-shell；回合结束后仍在跑（按设计） |
+
+   两组里 Gateway 和 Codex app-server 都留在 `foreground`。
 
 ## 直接把信息给 agent
 
-- **拦截提示本身**：给出定时任务的查法（`openclaw automations list --all --json | jq -r '(.jobs // .)[]|[.id,.name]|@tsv' | grep -i <词>`，再 `automations get <id>`）、`nightshiftctl` 和 `NIGHTSHIFT_URL=http://127.0.0.1:24879`、`fetch failed` 时加 `NO_PROXY=127.0.0.1,localhost`、request-hash 自己算、卡自己的实例目录、sessions 工具、skill 所在的两个目录。
-- **v-nightshift PR**（`claude/nightshiftctl-loopback-no-proxy`）：
-  - 本机 NIGHTSHIFT_URL 时，nightshiftctl 自己绕过 env 代理（先写了失败测试，复现了同样的 `fetch failed`）；
-  - 派卡提示词写明：hash 由 agent 用自己写下的请求 JSON 计算，不需要和别的卡一致，不要去翻别的实例、日志或源码找惯例。
+- **v-nightshift PR #43**：本机 NIGHTSHIFT_URL 时，nightshiftctl 自己绕过 env 代理（先写了失败测试，复现了同样的 `fetch failed`）；派卡提示词写明 hash 由 agent 用自己写下的请求 JSON 计算，不要去翻别的实例、日志或源码找惯例。
+- **PR #591（已合入）**：夜班卡带上完整的工作区上下文，AGENTS.md 的规则终于能送到夜班 agent。
 
 ## 没做、建议另行处理
 
-1. **后台进程不回收**：三次事故里 agent 都已经放弃了，进程还在跑。Codex `exec_command` 超过 `yield_time_ms` 后转入后台，OpenClaw `exec` 超过 `yieldMs` 后也一样。可以考虑：回合结束时回收本回合起的后台只读命令，或者给 agent 的 shell 加 cgroup IO 上限（`io.max`）。后者也能堵住 `write_stdin` 的缺口。
-2. **automations 不能按名字查**，长列表会被截断。工具加一个 `query`/`name` 参数，或者让 `list` 默认只返回 id 和名字。
-3. **夜班卡线程不加载 AGENTS.md**：已在 PR #591 修复，让卡和聊天一样带上完整的工作区上下文。卡的工具面是否也和聊天对齐，还需要另外决定。
-4. **别的信息缺口**：重放里还有大量跨实例的 `find instances -path '*/handoffs/produce.json'`（找别的卡的产出当样例），以及 `find / -name SKILL.md -path '*scene-cli*'`（找不到 skill）。前者可以在派卡提示词里给出本阶段 handoff 的示例或 schema。
-5. **上线**：发布管线需要补 runtime-components 条目和 configure 脚本，然后走 `v-self-restart --while-stopped`。建议直接用 `block` 模式，因为重放显示被拦的全部是整棵树遍历。
+1. **automations 不能按名字查**，长列表会被截断。工具加一个 `query`/`name` 参数，或者让 `list` 默认只返回 id 和名字。
+2. **别的信息缺口**：
+   - 夜班卡大量跨实例 `find instances -path '*/handoffs/produce.json'`，是在找别的卡的产出当样例。可以在派卡提示词里给出本阶段 handoff 的示例或 schema。
+   - `find / -name SKILL.md -path '*scene-cli*'`，是找不到 skill。
+3. **监控**：上线后，在 V 的哨兵里加一项「agent-shell 存在、relay 进程不在 foreground」，防止 sidecar 静默失效。

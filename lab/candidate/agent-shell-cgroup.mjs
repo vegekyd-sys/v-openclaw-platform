@@ -9,8 +9,8 @@
 //   <unit>/box/gw          the Gateway (and its Workers)
 //   <unit>/box/agent-shell what scripts/v-agent-shell-cgroup.py creates and fills
 //
-// and runs a real Gateway on copies of V-sized databases (shared VLab's makaron agent database,
-// 7 GB) while a client reads chat history in a loop. Each arm runs the same `grep -r` over a 6 GB
+// and runs a real Gateway on copies of shared VLab's databases (the dealclaw agent database, 0.4 GB:
+// the run directory's disk has no room for makaron's 7 GB) while a client reads chat history in a loop. Each arm runs the same `grep -r` over a 6 GB
 // directory of fresh random files:
 //
 //   baseline       no grep
@@ -66,7 +66,11 @@ const memStat = (dir) => Object.fromEntries(rd(path.join(dir, "memory.stat")).sp
 const attach = (dir, pid) => wr(path.join(dir, "cgroup.procs"), pid);
 
 // ---------------------------------------------------------------- scan data (written in its own small cgroup so it is not cached afterwards)
-const scanDir = path.join(data, "scan-data");
+// On the root disk: the candidate run directory sits on VLab's small shared data disk.
+const scanDir = process.env.AS_SCAN_DIR ?? `/var/tmp/asc-scan-${process.pid}`;
+const AGENT_ID = process.env.AS_AGENT ?? "dealclaw";
+const HOT_GB = Number(process.env.AS_HOT_GB ?? 2);
+const hotFile = path.join(scanDir, "hot.bin");
 async function makeScanData() {
   wr(path.join(GEN, "memory.high"), 256 * 1024 ** 2);
   const files = DATA_GB * 100; // 10 MB each
@@ -82,7 +86,10 @@ async function makeScanData() {
       crypto.randomFillSync(buf);
       const fd = fs.openSync(path.join(d, "blob-" + i + ".bin"), "w");
       fs.writeSync(fd, buf); fs.fsyncSync(fd); fs.closeSync(fd);
-    }`, scanDir, String(files)], { stdio: "inherit" });
+    }
+    const hot = fs.openSync(path.join(dir, "hot.bin"), "w");
+    for (let i = 0; i < Number(process.argv[3]) * 100; i += 1) { crypto.randomFillSync(buf); fs.writeSync(hot, buf); }
+    fs.fsyncSync(hot); fs.closeSync(hot);`, scanDir, String(files), String(HOT_GB)], { stdio: "inherit" });
   attach(GEN, gen.pid);
   await new Promise((resolve) => gen.on("exit", resolve));
   try { wr(path.join(GEN, "memory.reclaim"), "8G"); } catch { /* best effort */ }
@@ -154,6 +161,34 @@ async function connectGateway() {
   }
   throw new Error("candidate Gateway did not become ready");
 }
+
+// ---------------------------------------------------------------- stand-in for the Gateway's hot database pages
+// V's Gateway keeps ~18 GB of database pages in its page cache and reads them on its main thread;
+// the copied database here is far smaller. This reader, in the Gateway's cgroup, keeps a HOT_GB file
+// hot and times random 64 KB reads of it every 5 ms, like a database page lookup.
+const readerFile = path.join(data, "reader.jsonl");
+let reader;
+function startReader() {
+  reader = spawn(process.execPath, ["-e", `
+    const fs = require("fs");
+    const [file, out] = process.argv.slice(1);
+    const fd = fs.openSync(file, "r"); const size = fs.fstatSync(fd).size; const buf = Buffer.alloc(65536);
+    for (let off = 0; off < size; off += 1 << 20) fs.readSync(fd, Buffer.alloc(1 << 20), 0, 1 << 20, off); // warm
+    let window = [], last = Date.now();
+    setInterval(() => {
+      const t0 = process.hrtime.bigint();
+      fs.readSync(fd, buf, 0, 65536, Math.floor(Math.random() * (size / 65536 - 1)) * 65536);
+      window.push(Number(process.hrtime.bigint() - t0) / 1e6);
+      if (Date.now() - last >= 1000) {
+        window.sort((a, b) => a - b);
+        fs.appendFileSync(out, JSON.stringify({ t: Date.now(), n: window.length, max: +window.at(-1).toFixed(1), p99: +window[Math.floor(window.length * 0.99)].toFixed(1), slow: window.filter((x) => x > 50).length }) + "\\n");
+        window = []; last = Date.now();
+      }
+    }, 5);`, hotFile, readerFile], { stdio: ["ignore", "ignore", "pipe"] });
+  reader.stderr.on("data", (c) => summary.notes.push(`reader: ${c.toString().slice(0, 300)}`));
+  attach(GW, reader.pid);
+}
+const readerSince = (t0, t1) => (fs.existsSync(readerFile) ? fs.readFileSync(readerFile, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l)).filter((e) => e.t >= t0 && e.t <= t1) : []);
 
 // ---------------------------------------------------------------- load: chat history reads
 let sessionKeys = [];
@@ -241,6 +276,7 @@ async function arm(name) {
     grep,
     eventLoopStallPerSecondMs: stats(el.map((e) => e.max)),
     secondsWithStallOver500ms: el.filter((e) => e.max > 500).length,
+    hotReadMs: (() => { const r = readerSince(t0, t1); return { worstPerSecond: stats(r.map((e) => e.max)), p99PerSecond: stats(r.map((e) => e.p99)), readsOver50ms: r.reduce((a, e) => a + e.slow, 0), reads: r.reduce((a, e) => a + e.n, 0) }; })(),
     chatHistoryMs: stats(load.filter((s) => !s.error).map((s) => s.ms)),
     chatHistoryErrors: load.filter((s) => s.error).length,
     livenessWarnings: gwLog(t0, t1, /liveness|event loop|timing gap|frozen/iu),
@@ -259,25 +295,31 @@ function timeIn(dir, argv) {
   return { ms: Date.now() - t0, code: p.status, err: p.status ? p.stderr.slice(0, 200) : undefined };
 }
 function normalCommands() {
-  const big = path.join(data, "copy-src.bin");
+  const big = path.join(scanDir, "copy-src.bin");
   spawnSync("bash", ["-c", `head -c ${1024 ** 3} /dev/urandom > ${big}`]);
   const probe = path.join(SERVICE, "probe");
   if (!fs.existsSync(probe)) fs.mkdirSync(probe);
+  // agent-shell as V gets it: memory.high 12G, io.max 80 MB/s on both disks.
+  const vlike = path.join(SERVICE, "agent-shell-v");
+  if (!fs.existsSync(vlike)) fs.mkdirSync(vlike);
+  wr(path.join(vlike, "memory.high"), 12 * 1024 ** 3);
+  for (const dev of ["253:0", "253:16"]) { try { wr(path.join(vlike, "io.max"), `${dev} rbps=${80 * 1024 ** 2} wbps=${80 * 1024 ** 2}`); } catch (e) { summary.notes.push(`io.max ${dev}: ${e.message}`); } }
   const out = {};
   const cmds = {
     ls: ["ls", "-la", stateDir],
     smallGrep: ["grep", "-rn", "gateway", path.join(stateDir, "openclaw.json")],
-    copy1G: ["cp", big, path.join(data, "copy-dst.bin")],
+    copy1G: ["cp", big, path.join(scanDir, "copy-dst.bin")],
     ffmpeg: spawnSync("bash", ["-c", "command -v ffmpeg"]).status === 0 ? ["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=duration=20:size=1280x720:rate=30", "-c:v", "libx264", "-preset", "veryfast", path.join(data, "probe.mp4")] : null,
   };
   for (const [name, argv] of Object.entries(cmds)) {
     if (!argv) { out[name] = "ffmpeg not installed"; continue; }
     try { wr(path.join(AGENT, "memory.reclaim"), "8G"); } catch {}
     const plain = timeIn(probe, argv);
-    const agent = timeIn(AGENT, argv);
-    out[name] = { plainMs: plain.ms, agentShellMs: agent.ms, ok: plain.code === 0 && agent.code === 0 || name === "smallGrep" };
+    try { wr(path.join(vlike, "memory.reclaim"), "8G"); } catch {}
+    const v = timeIn(vlike, argv);
+    out[name] = { plainMs: plain.ms, agentShellAsOnVMs: v.ms, ok: (plain.code === 0 && v.code === 0) || name === "smallGrep" };
   }
-  fs.rmSync(big, { force: true }); fs.rmSync(path.join(data, "copy-dst.bin"), { force: true });
+  fs.rmSync(big, { force: true }); fs.rmSync(path.join(scanDir, "copy-dst.bin"), { force: true });
   summary.normalCommands = out;
 }
 
@@ -285,12 +327,13 @@ try {
   await makeScanData();
   startGateway();
   await connectGateway();
-  const listed = await client.request("sessions.list", { agentId: "makaron", limit: 60, includeLastMessage: false }, { timeoutMs: 120_000 });
+  const listed = await client.request("sessions.list", { agentId: AGENT_ID, limit: 60, includeLastMessage: false }, { timeoutMs: 120_000 });
   sessionKeys = (listed.sessions ?? []).map((s) => s.key).filter(Boolean);
   summary.sessions = sessionKeys.length;
-  assert(sessionKeys.length > 0, "no makaron sessions in the copied database");
+  assert(sessionKeys.length > 0, `no ${AGENT_ID} sessions in the copied database`);
   loadOn = true;
   const loadDone = loadLoop();
+  startReader();
   await sleep(45_000);
   const warm = Number(rd(path.join(BOX, "memory.current")));
   wr(path.join(BOX, "memory.max"), warm + BOX_MARGIN);
@@ -306,6 +349,7 @@ try {
   process.exitCode = 1;
 } finally {
   loadOn = false;
+  try { reader?.kill("SIGTERM"); } catch {}
   summary.finishedAt = new Date().toISOString();
   console.log(JSON.stringify(summary, null, 1));
   client?.stop();

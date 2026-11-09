@@ -2,7 +2,8 @@
 """Offline tests for scripts/v-agent-shell-cgroup.py against a fake /proc and a fake cgroup tree.
 
 The process tree is V's own (2026-11-10, Gateway pid 1992119): Workers and Chrome under the
-Gateway, OpenClaw exec relays (relay -> group anchor -> command), the shared Codex app-server
+Gateway, OpenClaw exec shells (`/bin/bash --noprofile --norc -c`, seen in the VLab candidate of
+2026-11-10), OpenClaw service relays (relay -> group anchor -> command), the shared Codex app-server
 with a shell it started and its hook relay.
 """
 import importlib.util
@@ -36,6 +37,11 @@ TREE = {
     131: (130, ["/bin/bash", "-lc", "grep -rl chengpian-daily /home/openclaw/.openclaw"]),
     132: (131, ["grep", "-rl", "chengpian-daily", "/home/openclaw/.openclaw"]),
     133: (130, [NODE, f"{CORE}/index.js", "hooks", "relay", "--provider", "codex"]),
+    150: (100, ["/bin/bash", "--noprofile", "--norc", "-c", "if [ -r '/tmp/snap' ]; then . '/tmp/snap'; fi; grep -rl media-manifest /home/openclaw/.openclaw/nightshift"]),
+    151: (150, ["grep", "-rl", "media-manifest", "/home/openclaw/.openclaw/nightshift"]),
+    155: (101, ["/bin/bash", "--noprofile", "--norc", "-c", "makaron-cli responses get r1 --wait"]),  # exec in a Worker
+    156: (155, [NODE, "/usr/local/bin/makaron-cli", "responses", "get", "r1", "--wait"]),
+    160: (100, ["/bin/bash", "-c", "some gateway helper"]),  # not OpenClaw exec's shell form: stays
     140: (100, ["/usr/bin/google-chrome", "--remote-debugging-port=22804"]),
     141: (140, ["/opt/google/chrome/chrome", "--type=renderer"]),
 }
@@ -110,11 +116,12 @@ class AgentShellTest(unittest.TestCase):
         moves = agentshell.plan_moves(sorted(TREE), self.proc)
         moved = {pid: why for pid, why, _ in moves}
         self.assertEqual(moved, {
-            110: "openclaw-exec", 111: "openclaw-exec", 112: "openclaw-exec",
-            120: "openclaw-exec", 121: "openclaw-exec", 122: "openclaw-exec",
+            110: "openclaw-service", 111: "openclaw-service", 112: "openclaw-service",
+            120: "openclaw-service", 121: "openclaw-service", 122: "openclaw-service",
             131: "codex-command", 132: "codex-command",
+            150: "openclaw-exec", 151: "openclaw-exec", 155: "openclaw-exec", 156: "openclaw-exec",
         })
-        for pid in (100, 101, 130, 133, 140, 141):  # Gateway, Worker, app-server, hook relay, Chrome
+        for pid in (100, 101, 130, 133, 140, 141, 160):  # Gateway, Worker, app-server, hook relay, Chrome, helper
             self.assertNotIn(pid, moved)
 
     def test_tick_creates_group_enables_io_sets_limits_and_moves(self):
@@ -122,14 +129,14 @@ class AgentShellTest(unittest.TestCase):
         group = FakeCgroupFs(service, memory_high=4 * 1024**3, io_read_bps=80 * 1024**2,
                              io_write_bps=80 * 1024**2, io_paths=[self.tmp.name], proc=self.proc)
         moved = group.tick()
-        self.assertEqual(sorted(moved), [110, 111, 112, 120, 121, 122, 131, 132])
+        self.assertEqual(sorted(moved), [110, 111, 112, 120, 121, 122, 131, 132, 150, 151, 155, 156])
         with open(os.path.join(service, "cgroup.subtree_control")) as f:
             self.assertIn("io", f.read().split())
         with open(os.path.join(service, "agent-shell", "memory.high")) as f:
             self.assertEqual(f.read(), str(4 * 1024**3))
         with open(os.path.join(service, "foreground", "cgroup.procs")) as f:
-            self.assertEqual(sorted(int(p) for p in f.read().split()), [100, 101, 130, 133, 140, 141])
-        self.assertEqual(len(self.events("moved")), 8)
+            self.assertEqual(sorted(int(p) for p in f.read().split()), [100, 101, 130, 133, 140, 141, 160])
+        self.assertEqual(len(self.events("moved")), 12)
         # A second pass finds nothing left to move and does not re-apply the limits.
         writes = len(group.writes)
         self.assertEqual(group.tick(), [])
@@ -147,7 +154,7 @@ class AgentShellTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(service, "agent-shell")))
         with open(os.path.join(service, "foreground", "cgroup.procs")) as f:
             self.assertEqual(len(f.read().split()), len(TREE))
-        self.assertEqual(len(self.events("moved")), 8)
+        self.assertEqual(len(self.events("moved")), 12)
 
     def test_parse_size(self):
         self.assertEqual(agentshell.parse_size("4G"), 4 * 1024**3)

@@ -1,0 +1,529 @@
+{
+ "hot-set-run": {
+  "id": "candidate-8ecac732-b265-4fb9-b42f-e80ffd93fc0e",
+  "ok": true,
+  "sourceCommit": "bbd9198c68217a32c38001069ce856aa49caf0b0",
+  "dirty": true,
+  "inputSha256": "19d2827884fd86638a16be1e6d6773c7e1e1d6681c0cdcc5a2855a9b3c45d2a5",
+  "baseRelease": "workboard-full-context-20261110",
+  "runtimeSha": "8fa70fd3a8d3dfff213ee1958d617cdffa5784d9ce94ee3314ceeb0e4343b3ce",
+  "executionUser": "lab-db91-parity",
+  "timings": {
+   "inspectMs": 12,
+   "baselineMs": 2,
+   "snapshotMs": 44689,
+   "overlayMs": 1,
+   "testMs": 543219
+  },
+  "result": {
+   "startedAt": "2026-11-09T18:02:26.853Z",
+   "dataGb": 6,
+   "agentHigh": "256M",
+   "ioBps": "60M",
+   "arms": {
+    "baseline": {
+     "secs": 40,
+     "grep": null,
+     "eventLoopStallPerSecondMs": {
+      "n": 40,
+      "p50": 43,
+      "p95": 58,
+      "max": 60
+     },
+     "secondsWithStallOver500ms": 0,
+     "hotReadMs": {
+      "worstPerSecond": {
+       "n": 40,
+       "p50": 0,
+       "p95": 0.1,
+       "max": 0.1
+      },
+      "p99PerSecond": {
+       "n": 40,
+       "p50": 0,
+       "p95": 0.1,
+       "max": 0.1
+      },
+      "readsOver50ms": 0,
+      "reads": 7671
+     },
+     "chatHistoryMs": {
+      "n": 124,
+      "p50": 17,
+      "p95": 50,
+      "max": 58
+     },
+     "chatHistoryErrors": 0,
+     "livenessWarnings": 0,
+     "gatewayCacheMb": {
+      "before": 2104,
+      "after": 2107
+     },
+     "agentShellMb": null,
+     "gwIoPressure": "some avg10=0.00 avg60=0.58 avg300=0.44 total=2131449",
+     "sidecar": []
+    },
+    "agent-mem": {
+     "secs": 35,
+     "grep": {
+      "finished": true,
+      "exit": {
+       "code": 1,
+       "signal": null
+      },
+      "secs": 33.7,
+      "readMb": 6000,
+      "cgroups": [
+       "agent-shell"
+      ]
+     },
+     "eventLoopStallPerSecondMs": {
+      "n": 35,
+      "p50": 38,
+      "p95": 72,
+      "max": 85
+     },
+     "secondsWithStallOver500ms": 0,
+     "hotReadMs": {
+      "worstPerSecond": {
+       "n": 35,
+       "p50": 0,
+       "p95": 0.1,
+       "max": 0.1
+      },
+      "p99PerSecond": {
+       "n": 35,
+       "p50": 0,
+       "p95": 0.1,
+       "max": 0.1
+      },
+      "readsOver50ms": 0,
+      "reads": 6756
+     },
+     "chatHistoryMs": {
+      "n": 108,
+      "p50": 17,
+      "p95": 54,
+      "max": 69
+     },
+     "chatHistoryErrors": 0,
+     "livenessWarnings": 0,
+     "gatewayCacheMb": {
+      "before": 2142,
+      "after": 2149
+     },
+     "agentShellMb": {
+      "anon": 0,
+      "file": 249,
+      "inactive_file": 249,
+      "active_file": 0
+     },
+     "gwIoPressure": "some avg10=0.00 avg60=0.22 avg300=0.36 total=2147505",
+     "sidecar": [
+      "{\"event\": \"agent-shell-cgroup.prepared\", \"group\": \"/sys/fs/cgroup/vlab.slice/vlab-candidates.slice/vlab-candidate-8ecac732-b265-4fb9-b42f-e80ffd93fc0e.service/box/agent-shell\", \"limits\": {\"memory.high\": \"268435456\", \"memory.max\": \"max\"}, \"io\": [], \"dryRun\": false}",
+      "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1862412, \"why\": \"openclaw-exec\", \"cmd\": \"/opt/vlab/node-v22.23.1-linux-x64/bin/node /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-8ecac732-b265-4fb9-b42f-e80ffd93fc0e/data/fake/proces\", \"dryRun\": false}",
+      "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1862419, \"why\": \"openclaw-exec\", \"cmd\": \"grep -r -l zzzz-not-present-zzzz /var/tmp/asc-scan-1860329\", \"dryRun\": false}"
+     ]
+    },
+    "agent-mem-io": {
+     "secs": 102,
+     "grep": {
+      "finished": true,
+      "exit": {
+       "code": 1,
+       "signal": null
+      },
+      "secs": 100.6,
+      "readMb": 5994,
+      "cgroups": [
+       "agent-shell"
+      ]
+     },
+     "eventLoopStallPerSecondMs": {
+      "n": 101,
+      "p50": 38,
+      "p95": 55,
+      "max": 60
+     },
+     "secondsWithStallOver500ms": 0,
+     "hotReadMs": {
+      "worstPerSecond": {
+       "n": 101,
+       "p50": 0,
+       "p95": 0.1,
+       "max": 2.1
+      },
+      "p99PerSecond": {
+       "n": 101,
+       "p50": 0,
+       "p95": 0.1,
+       "max": 0.5
+      },
+      "readsOver50ms": 0,
+      "reads": 19749
+     },
+     "chatHistoryMs": {
+      "n": 316,
+      "p50": 16,
+      "p95": 49,
+      "max": 61
+     },
+     "chatHistoryErrors": 0,
+     "livenessWarnings": 0,
+     "gatewayCacheMb": {
+      "before": 2149,
+      "after": 2151
+     },
+     "agentShellMb": {
+      "anon": 0,
+      "file": 249,
+      "inactive_file": 249,
+      "active_file": 0
+     },
+     "gwIoPressure": "some avg10=0.00 avg60=0.02 avg300=0.22 total=2152353",
+     "sidecar": [
+      "{\"event\": \"agent-shell-cgroup.prepared\", \"group\": \"/sys/fs/cgroup/vlab.slice/vlab-candidates.slice/vlab-candidate-8ecac732-b265-4fb9-b42f-e80ffd93fc0e.service/box/agent-shell\", \"limits\": {\"memory.high\": \"268435456\", \"memory.max\": \"max\"}, \"io\": [\"253:0 rbps=62914560 wbps=62914560\", \"253:16 rbps=62914560 wbps=62914560\"], \"dryRun\": false}",
+      "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1862901, \"why\": \"openclaw-exec\", \"cmd\": \"/opt/vlab/node-v22.23.1-linux-x64/bin/node /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-8ecac732-b265-4fb9-b42f-e80ffd93fc0e/data/fake/proces\", \"dryRun\": false}",
+      "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1862908, \"why\": \"openclaw-exec\", \"cmd\": \"grep -r -l zzzz-not-present-zzzz /var/tmp/asc-scan-1860329\", \"dryRun\": false}"
+     ]
+    },
+    "inside": {
+     "secs": 43,
+     "grep": {
+      "finished": true,
+      "exit": {
+       "code": 1,
+       "signal": null
+      },
+      "secs": 42.8,
+      "readMb": 6684,
+      "cgroups": [
+       "gw"
+      ]
+     },
+     "eventLoopStallPerSecondMs": {
+      "n": 42,
+      "p50": 50,
+      "p95": 116,
+      "max": 153
+     },
+     "secondsWithStallOver500ms": 0,
+     "hotReadMs": {
+      "worstPerSecond": {
+       "n": 42,
+       "p50": 5.4,
+       "p95": 26,
+       "max": 36.9
+      },
+      "p99PerSecond": {
+       "n": 42,
+       "p50": 2.9,
+       "p95": 20.6,
+       "max": 26
+      },
+      "readsOver50ms": 0,
+      "reads": 7515
+     },
+     "chatHistoryMs": {
+      "n": 127,
+      "p50": 28,
+      "p95": 96,
+      "max": 153
+     },
+     "chatHistoryErrors": 0,
+     "livenessWarnings": 0,
+     "gatewayCacheMb": {
+      "before": 2151,
+      "after": 3331
+     },
+     "agentShellMb": {
+      "anon": 0,
+      "file": 0,
+      "inactive_file": 0,
+      "active_file": 0
+     },
+     "gwIoPressure": "some avg10=21.25 avg60=11.11 avg300=3.14 total=11843920",
+     "sidecar": []
+    }
+   },
+   "notes": [],
+   "cgroup": {
+    "service": "/sys/fs/cgroup/vlab.slice/vlab-candidates.slice/vlab-candidate-8ecac732-b265-4fb9-b42f-e80ffd93fc0e.service",
+    "serviceControllers": "cpuset cpu io memory pids",
+    "serviceSubtree": ""
+   },
+   "scanData": {
+    "files": 600,
+    "gb": 6,
+    "secs": 30,
+    "genCacheAfterMb": 0
+   },
+   "sessions": 30,
+   "box": {
+    "warmMb": 5411,
+    "maxMb": 6179,
+    "gw": {
+     "anon": 3183,
+     "file": 2104,
+     "inactive_file": 2050,
+     "active_file": 54
+    }
+   },
+   "normalCommands": {
+    "ls": {
+     "plainMs": 14,
+     "agentShellAsOnVMs": 6,
+     "ok": true
+    },
+    "smallGrep": {
+     "plainMs": 17,
+     "agentShellAsOnVMs": 8,
+     "ok": true
+    },
+    "copy1G": {
+     "plainMs": 2870,
+     "agentShellAsOnVMs": 8638,
+     "ok": true
+    },
+    "ffmpeg": {
+     "plainMs": 9021,
+     "agentShellAsOnVMs": 8497,
+     "ok": true
+    }
+   },
+   "verdict": "done",
+   "finishedAt": "2026-11-09T18:10:17.225Z"
+  }
+ },
+ "first-run-no-hot-set": {
+  "id": "candidate-062c0e15-4809-410a-887f-beb366c59ba0",
+  "ok": true,
+  "sourceCommit": "bbd9198c68217a32c38001069ce856aa49caf0b0",
+  "dirty": true,
+  "inputSha256": "6084bea4087c73b0971953c11825d5dd5069265f4f460d97982f087921654490",
+  "baseRelease": "workboard-full-context-20261110",
+  "runtimeSha": "8fa70fd3a8d3dfff213ee1958d617cdffa5784d9ce94ee3314ceeb0e4343b3ce",
+  "executionUser": "lab-db91-parity",
+  "timings": {
+   "inspectMs": 12,
+   "baselineMs": 2,
+   "snapshotMs": 62206,
+   "overlayMs": 1,
+   "testMs": 540582
+  },
+  "result": {
+   "startedAt": "2026-11-09T17:40:09.181Z",
+   "dataGb": 6,
+   "agentHigh": "256M",
+   "ioBps": "60M",
+   "arms": {
+    "baseline": {
+     "secs": 40,
+     "grep": null,
+     "eventLoopStallPerSecondMs": {
+      "n": 40,
+      "p50": 40,
+      "p95": 125,
+      "max": 728
+     },
+     "secondsWithStallOver500ms": 1,
+     "chatHistoryMs": {
+      "n": 122,
+      "p50": 18,
+      "p95": 55,
+      "max": 509
+     },
+     "chatHistoryErrors": 0,
+     "livenessWarnings": 0,
+     "gatewayCacheMb": {
+      "before": 283,
+      "after": 291
+     },
+     "agentShellMb": null,
+     "gwIoPressure": "some avg10=0.00 avg60=0.16 avg300=0.15 total=1043351",
+     "sidecar": []
+    },
+    "agent-mem": {
+     "secs": 34,
+     "grep": {
+      "finished": true,
+      "exit": {
+       "code": 1,
+       "signal": null
+      },
+      "secs": 32.2,
+      "readMb": 5953,
+      "cgroups": [
+       "agent-shell"
+      ]
+     },
+     "eventLoopStallPerSecondMs": {
+      "n": 34,
+      "p50": 38,
+      "p95": 54,
+      "max": 56
+     },
+     "secondsWithStallOver500ms": 0,
+     "chatHistoryMs": {
+      "n": 104,
+      "p50": 16,
+      "p95": 46,
+      "max": 60
+     },
+     "chatHistoryErrors": 0,
+     "livenessWarnings": 0,
+     "gatewayCacheMb": {
+      "before": 291,
+      "after": 1446
+     },
+     "agentShellMb": {
+      "anon": 0,
+      "file": 0,
+      "inactive_file": 0,
+      "active_file": 0
+     },
+     "gwIoPressure": "some avg10=20.24 avg60=8.97 avg300=2.37 total=8213129",
+     "sidecar": [
+      "{\"event\": \"agent-shell-cgroup.prepared\", \"group\": \"/sys/fs/cgroup/vlab.slice/vlab-candidates.slice/vlab-candidate-062c0e15-4809-410a-887f-beb366c59ba0.service/box/agent-shell\", \"limits\": {\"memory.high\": \"268435456\", \"memory.max\": \"max\"}, \"io\": [], \"dryRun\": false}",
+      "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1849678, \"why\": \"openclaw-exec\", \"cmd\": \"/opt/vlab/node-v22.23.1-linux-x64/bin/node /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-062c0e15-4809-410a-887f-beb366c59ba0/data/fake/proces\", \"dryRun\": false}"
+     ]
+    },
+    "agent-mem-io": {
+     "secs": 85,
+     "grep": {
+      "finished": true,
+      "exit": {
+       "code": 1,
+       "signal": null
+      },
+      "secs": 83.3,
+      "readMb": 4980,
+      "cgroups": [
+       "agent-shell"
+      ]
+     },
+     "eventLoopStallPerSecondMs": {
+      "n": 85,
+      "p50": 40,
+      "p95": 61,
+      "max": 65
+     },
+     "secondsWithStallOver500ms": 0,
+     "chatHistoryMs": {
+      "n": 263,
+      "p50": 15,
+      "p95": 50,
+      "max": 68
+     },
+     "chatHistoryErrors": 0,
+     "livenessWarnings": 0,
+     "gatewayCacheMb": {
+      "before": 1446,
+      "after": 1164
+     },
+     "agentShellMb": {
+      "anon": 0,
+      "file": 255,
+      "inactive_file": 255,
+      "active_file": 0
+     },
+     "gwIoPressure": "some avg10=0.00 avg60=1.60 avg300=1.66 total=8221106",
+     "sidecar": [
+      "{\"event\": \"agent-shell-cgroup.prepared\", \"group\": \"/sys/fs/cgroup/vlab.slice/vlab-candidates.slice/vlab-candidate-062c0e15-4809-410a-887f-beb366c59ba0.service/box/agent-shell\", \"limits\": {\"memory.high\": \"268435456\", \"memory.max\": \"max\"}, \"io\": [\"253:0 rbps=62914560 wbps=62914560\", \"253:16 rbps=62914560 wbps=62914560\"], \"dryRun\": false}",
+      "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1850144, \"why\": \"openclaw-exec\", \"cmd\": \"/opt/vlab/node-v22.23.1-linux-x64/bin/node /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-062c0e15-4809-410a-887f-beb366c59ba0/data/fake/proces\", \"dryRun\": false}",
+      "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1850151, \"why\": \"openclaw-exec\", \"cmd\": \"grep -r -l zzzz-not-present-zzzz /var/tmp/asc-scan-1847042\", \"dryRun\": false}"
+     ]
+    },
+    "inside": {
+     "secs": 35,
+     "grep": {
+      "finished": true,
+      "exit": {
+       "code": 1,
+       "signal": null
+      },
+      "secs": 35.2,
+      "readMb": 5970,
+      "cgroups": [
+       "gw"
+      ]
+     },
+     "eventLoopStallPerSecondMs": {
+      "n": 35,
+      "p50": 43,
+      "p95": 85,
+      "max": 159
+     },
+     "secondsWithStallOver500ms": 0,
+     "chatHistoryMs": {
+      "n": 107,
+      "p50": 27,
+      "p95": 67,
+      "max": 165
+     },
+     "chatHistoryErrors": 0,
+     "livenessWarnings": 0,
+     "gatewayCacheMb": {
+      "before": 1164,
+      "after": 1427
+     },
+     "agentShellMb": {
+      "anon": 0,
+      "file": 0,
+      "inactive_file": 0,
+      "active_file": 0
+     },
+     "gwIoPressure": "some avg10=21.98 avg60=10.46 avg300=3.88 total=16356717",
+     "sidecar": []
+    }
+   },
+   "notes": [],
+   "cgroup": {
+    "service": "/sys/fs/cgroup/vlab.slice/vlab-candidates.slice/vlab-candidate-062c0e15-4809-410a-887f-beb366c59ba0.service",
+    "serviceControllers": "cpuset cpu io memory pids",
+    "serviceSubtree": ""
+   },
+   "scanData": {
+    "files": 600,
+    "gb": 6,
+    "secs": 23,
+    "genCacheAfterMb": 0
+   },
+   "sessions": 30,
+   "box": {
+    "warmMb": 3523,
+    "maxMb": 4291,
+    "gw": {
+     "anon": 3117,
+     "file": 283,
+     "inactive_file": 230,
+     "active_file": 53
+    }
+   },
+   "normalCommands": {
+    "ls": {
+     "plainMs": 13,
+     "agentShellMs": 5,
+     "ok": true
+    },
+    "smallGrep": {
+     "plainMs": 6,
+     "agentShellMs": 4,
+     "ok": true
+    },
+    "copy1G": {
+     "plainMs": 3599,
+     "agentShellMs": 72557,
+     "ok": true
+    },
+    "ffmpeg": {
+     "plainMs": 5386,
+     "agentShellMs": 5120,
+     "ok": true
+    }
+   },
+   "verdict": "done",
+   "finishedAt": "2026-11-09T17:48:45.801Z"
+  }
+ }
+}
