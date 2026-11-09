@@ -92,13 +92,18 @@ export function createFeishuAvatars({ getConfig, fetchImpl = globalThis.fetch, l
       const headers = { authorization: `Bearer ${await tenantToken(cred)}` };
       const { data } = await api(cred, `/contact/v3/users/${encodeURIComponent(openId)}?user_id_type=open_id`, { headers });
       const url = sharpAvatar(data?.user?.avatar?.avatar_240 ?? data?.user?.avatar?.avatar_72 ?? "");
-      people.set(openId, { at: now(), url });
+      people.set(openId, { at: now(), url, name: String(data?.user?.name ?? "").trim() || undefined });
     } catch {
       // No contact permission, or someone outside the tenant: the initial stays.
     }
   };
 
   return {
+    /** A person's name in Feishu (needs the contact permission); undefined when unreadable. */
+    async name(openId) {
+      if (!people.get(openId)?.name) await loadPerson(openId);
+      return people.get(openId)?.name;
+    },
     /** The picture for a session key, if known. Fills itself in the background. */
     lookup(key) {
       const group = /:feishu:group:(oc_[\w-]+)/iu.exec(key);

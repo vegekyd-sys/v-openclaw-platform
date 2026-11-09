@@ -36,6 +36,14 @@
       "target": "extensions/vapp/core/feishu-avatars.js"
     },
     {
+      "source": "apps/v-experience/app/core/members.js",
+      "target": "extensions/vapp/core/members.js"
+    },
+    {
+      "source": "apps/v-experience/app/core/member-http.js",
+      "target": "extensions/vapp/core/member-http.js"
+    },
+    {
       "source": "apps/v-experience/app/core/apns.js",
       "target": "extensions/vapp/core/apns.js"
     },

@@ -28,10 +28,10 @@ const REPLY_FOOTER_PARTS = [["Agent", "identityName"], ["Model", "model"], ["Pro
 const text = (value) => (typeof value === "string" ? value : "");
 const randomId = (prefix) => `${prefix}_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
-/** `channels.vapp` as {enabled, defaultUser, users: {id: {name, owner, devices}}}. */
+/** `channels.vapp` as {enabled, defaultUser, publicUrl, users: {id: {name, owner, devices}}}. */
 export function vappConfig(cfg) {
   const raw = cfg?.channels?.[CHANNEL_ID] ?? {};
-  return { enabled: raw.enabled !== false, defaultUser: text(raw.defaultUser).trim(), users: raw.users && typeof raw.users === "object" ? raw.users : {} };
+  return { enabled: raw.enabled !== false, defaultUser: text(raw.defaultUser).trim(), publicUrl: text(raw.publicUrl).trim(), users: raw.users && typeof raw.users === "object" ? raw.users : {} };
 }
 
 /**
@@ -108,6 +108,25 @@ function createChatLog(store, log) {
       }).catch((error) => log(`vapp: chat log of ${userId} not written: ${String(error?.message ?? error)}`));
       return tail;
     },
+    /**
+     * Whether this file was sent in the user's own chat: an attachment V sent or they
+     * uploaded, or a card's picture. A path that only appears in text does not count,
+     * or anyone could type a path and fetch it.
+     */
+    async sentMedia(userId, source) {
+      await tail;
+      const wanted = String(source);
+      if (!wanted) return false;
+      const inCard = (node) => {
+        if (Array.isArray(node)) return node.some(inCard);
+        if (!node || typeof node !== "object") return false;
+        return ["img_key", "ref"].some((key) => node[key] === wanted) || Object.values(node).some(inCard);
+      };
+      for (const entry of (await open(userId).ready).values()) {
+        if ((entry.media ?? []).some((ref) => ref?.source === wanted) || inCard(entry.card)) return true;
+      }
+      return false;
+    },
     async page(userId, { before, limit = 60 } = {}) {
       await tail;
       const list = [...(await open(userId).ready).values()].sort((a, b) => a.at - b.at);
@@ -126,7 +145,7 @@ function createChatLog(store, log) {
  * @param {object} deps.inbound     {resolveRoute, buildContext, dispatch, saveMedia, toMediaFacts}
  * @param {(msg: string) => void} [deps.log]
  */
-export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updateMs = UPDATE_MS, startTurn = (job) => job(), store = memoryStore(), notify = () => {}, avatars }) {
+export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updateMs = UPDATE_MS, startTurn = (job) => job(), store = memoryStore(), notify = () => {}, avatars, memberSink }) {
   const chatLog = createChatLog(store, log);
   const liveCards = new Map(); // userId -> Map(cardId -> payload) of cards still changing
   const running = new Map(); // userId -> Set of turns
@@ -154,18 +173,31 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     connections.set(user.id, conns);
   };
 
-  /** Sends `plugin.vapp.<event>` to every connection of the user; false when none is known. */
+  /**
+   * Sends `plugin.vapp.<event>` to every connection of the user: Gateway connections
+   * (the owner's phones) and member streams ("m:" ids, member-http.js). False when none is known.
+   */
   const push = (userId, event, payload) => {
     const conns = connections.get(userId);
-    if (!broadcastToConnIds || !conns?.size) return false;
+    if (!conns?.size) return false;
+    const gateway = [...conns.keys()].filter((id) => !id.startsWith("m:"));
+    const members = [...conns.keys()].filter((id) => id.startsWith("m:"));
+    let sent = false;
     try {
-      broadcastToConnIds(`plugin.vapp.${event}`, payload, new Set(conns.keys()));
-      return true;
+      if (gateway.length && broadcastToConnIds) {
+        broadcastToConnIds(`plugin.vapp.${event}`, payload, new Set(gateway));
+        sent = true;
+      }
+      for (const id of members) sent = memberSink?.(id, `plugin.vapp.${event}`, payload) === true || sent;
     } catch (error) {
       log(`vapp: push ${event} to ${userId} failed: ${String(error?.message ?? error)}`);
-      return false;
     }
+    return sent;
   };
+
+  /** A member's event stream opened or closed (member-http.js). */
+  const attachStream = (user, connId) => attach(user, { connId }, undefined);
+  const detachStream = (userId, connId) => { connections.get(userId)?.delete(connId); };
 
   /** One card change: pushed now, kept for a reconnect while live, logged once it settles. */
   const publishCard = (userId, payload) => {
@@ -186,6 +218,8 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
   };
 
   const requireUser = (client) => {
+    // A member connection was authenticated by the member endpoint and names its own user.
+    if (client?.vappUser) return client.vappUser;
     const user = resolveUser(getConfig(), client);
     if (!user) throw Object.assign(new Error("这台设备还没有绑定 V 用户"), { code: "UNAVAILABLE" });
     return user;
@@ -818,5 +852,8 @@ export function createVapp({ vx, getConfig, call, inbound, log = () => {}, updat
     return sendMessage(user, { sessionKey: resolved.sessionKey, text: body, media, card });
   }
 
-  return { showCard, sessions, hello, send, upload, action, deliver, stop, history, userReact, observeAgentEvent, runTurn, push, connections, questions };
+  /** Whether the user may fetch this media: only what was sent in their own chat. */
+  const ownsMedia = (userId, source) => chatLog.sentMedia(userId, source);
+
+  return { attachStream, detachStream, ownsMedia, showCard, sessions, hello, send, upload, action, deliver, stop, history, userReact, observeAgentEvent, runTurn, push, connections, questions };
 }

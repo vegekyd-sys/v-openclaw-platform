@@ -123,6 +123,37 @@ App 上线后 `vapp.history` 补齐（以后加推送）。
 已知差异：回复中发的第二条消息现在是紧接着的第二条回复，内容不丢，但没有并入当前回合（核心走了 followup 而不是 steer）。
 钉钉的 candidate 要求并入。原因待查。
 
+## 3.2 链接登录与团队成员（2026-11-10）
+
+Tianyi 11/09 定：不靠 Tailscale，用链接登录；团队成员也能领。
+
+**为什么成员不能走 Gateway 连接。** 9.1 里设备收 `plugin.vapp.*` 事件要 `operator.write`
+（`hasEventScope`），而 `operator.write` 包含读：能 `sessions.list` / `chat.history` / `chat.send`
+任意会话。Gateway 没有按设备隔离会话。所以给同事的手机配 operator，就等于把 V 的全部对话给他。
+
+**做法：两条路。**
+
+| | 主人 | 团队成员 |
+|---|---|---|
+| 领链接 | 飞书私聊 V 发 `/app` | 同左 |
+| 链接里 | Gateway 设置码（`device.pair.setupCode`，公网 wss） | 一次性邀请（10 分钟、只能用一次） |
+| 连接 | Gateway WebSocket，operator | 插件的成员端点：POST 请求 + SSE 事件 |
+| 能做什么 | 全部（飞书会话列表、审批、命令） | 只有自己和 V 的 App 私聊 |
+
+- `/app` 只在私聊回链接，群里拒绝（链接是凭据）。发送者靠命令上下文的 `senderId` / `senderIsOwner` 认，
+  成员的 V 用户 id 是 `feishu:<open_id>`，名字从飞书通讯录取。
+- 链接是 `<publicUrl>/vapp/login#<code>`：码在 fragment 里，浏览器不会发给服务器；页面把它交给 `oc-pair://`。
+- 成员端点（`core/member-http.js`，插件 HTTP 路由，`auth: "plugin"`）：
+  `POST /vapp/member/claim` 用邀请换设备凭据 `<deviceId>.<secret>`（只存哈希，`<state>/vapp/members.json`，0600）；
+  `POST /vapp/member/rpc` 只放行 `vapp.*` 那几个方法，以这个人的身份调用；
+  `GET /vapp/member/events` 推这个人的 `plugin.vapp.*`；
+  `GET /vapp/member/media` 只给这个人聊天里**作为附件或卡片图片发过**的文件——文字里出现的路径不算，
+  否则发一句「/home/openclaw/.openclaw/openclaw.json」就能取走配置。规则和飞书一致：V 发给谁，谁能看。
+- 成员的回合：会话 `agent:makaron:vapp:direct:feishu:<open_id>`；命令权限、审批、会话列表在 vapp 处理里已按非主人拒绝。
+- 配置：`channels.vapp.publicUrl`（https）。V 上 11/07 起已有公网入口（openclaw.tianyi.live → nginx 22794 → Gateway），
+  成员端点走同一个入口，不新开端口。
+- App：`MemberConnection` 和 `GatewayConnection` 实现同一个 `VConnection`，聊天、发件箱、卡片不用分两套。
+
 ## 4. 待确认
 
 - 9.1 的渠道插件最小必需面（`registerChannel` 的哪些适配器可以省）——照钉钉连接器的结构先跑通再删。

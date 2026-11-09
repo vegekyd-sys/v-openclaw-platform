@@ -258,6 +258,7 @@
         "tests/v-experience.test.mjs",
         "tests/v-card.test.mjs",
         "tests/vapp-channel.test.mjs",
+        "tests/vapp-members.test.mjs",
         "lab/agent-db-process-coordinator.test.mjs",
         "lab/candidate/candidate.test.mjs",
         "lab/candidate/deepseek-budget-image.test.mjs",

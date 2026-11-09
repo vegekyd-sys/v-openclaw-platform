@@ -7,14 +7,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {AGENT} from './bound-task-support.mjs';
 
-export function installVapp(c, {userId = 'tianyi', name = '天懿'} = {}) {
+export function installVapp(c, {userId = 'tianyi', name = '天懿', publicUrl} = {}) {
   const pluginDir = path.join(process.env.VLAB_CANDIDATE_RUNTIME, 'extensions', 'vapp');
   assert(fs.existsSync(path.join(pluginDir, 'v-experience.mjs')), 'vapp plugin installed with v-experience.mjs');
   const add = config => {
     config.plugins.load.paths.push(pluginDir);
     config.plugins.entries.vapp = {enabled: true};
     if (Array.isArray(config.plugins.allow)) config.plugins.allow.push('vapp');
-    config.channels = {...(config.channels ?? {}), vapp: {enabled: true, defaultUser: userId, users: {[userId]: {name, owner: true}}}};
+    config.channels = {...(config.channels ?? {}), vapp: {enabled: true, defaultUser: userId, users: {[userId]: {name, owner: true}}, ...(publicUrl ? {publicUrl} : {})}};
     config.bindings = [...(config.bindings ?? []), {agentId: AGENT, match: {channel: 'vapp'}}];
     config.messages = {...config.messages, queue: {...config.messages?.queue, mode: 'steer'}}; // as on V
     config.commands = {...(config.commands ?? {}), ownerAllowFrom: [...(config.commands?.ownerAllowFrom ?? []), `vapp:${userId}`]};

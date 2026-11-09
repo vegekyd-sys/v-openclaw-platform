@@ -12,6 +12,8 @@ import { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pi
 import { createApns } from "./core/apns.js";
 import { createVappApprovals } from "./approvals.js";
 import { createFeishuAvatars } from "./core/feishu-avatars.js";
+import { createMembers } from "./core/members.js";
+import { createMemberHttp, ROUTE_PREFIX } from "./core/member-http.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -90,11 +92,13 @@ const apns = createApns({
   log: (message) => console.log(`[vapp] ${message}`),
 });
 
+const avatars = createFeishuAvatars({ getConfig, log: (message) => console.log(`[vapp] ${message}`) });
 const vapp = createVapp({
   vx,
   store: fileStore,
   notify: (userId, note) => { apns.notify(userId, note); },
-  avatars: createFeishuAvatars({ getConfig, log: (message) => console.log(`[vapp] ${message}`) }),
+  avatars,
+  memberSink: (connId, event, payload) => memberHttp.sink(connId, event, payload),
   startTurn,
   getConfig,
   call: (method, params) => callGateway(method, params),
@@ -110,6 +114,65 @@ const vapp = createVapp({
   },
   log: (message) => console.log(`[vapp] ${message}`),
 });
+
+// Teammates' phones (see core/members.js): device credentials kept as hashes, mode 0600.
+const membersFile = () => path.join(runtime.state.resolveStateDir(), "vapp", "members.json");
+const members = createMembers({
+  load: () => fs.readFile(membersFile(), "utf8").then(JSON.parse),
+  save: async (state) => {
+    await fs.mkdir(path.dirname(membersFile()), { recursive: true, mode: 0o700 });
+    const temp = `${membersFile()}.tmp`;
+    await fs.writeFile(temp, JSON.stringify(state), { mode: 0o600 });
+    await fs.rename(temp, membersFile());
+  },
+});
+const memberHttp = createMemberHttp({
+  vapp,
+  members,
+  registerPush: (userId, token, opts) => apns.register(userId, token, opts),
+  log: (message) => console.log(`[vapp] ${message}`),
+});
+
+const toBase64Url = (value) => Buffer.from(value, "utf8").toString("base64url");
+
+/** Who sent /app, by their Feishu name when the app may read contacts. */
+async function senderName(ctx) {
+  if (ctx.channel !== "feishu" || !ctx.senderId) return "";
+  return String((await avatars.name(ctx.senderId).catch(() => undefined)) ?? "").slice(0, 40);
+}
+
+/** The owner, by the same rule owner-only commands use: commands.ownerAllowFrom. */
+function isOwnerSender(cfg, channel, senderId) {
+  if (!senderId) return false;
+  const owners = (cfg?.commands?.ownerAllowFrom ?? []).map((entry) => String(entry).trim().toLowerCase());
+  return owners.includes(`${channel}:${senderId}`.toLowerCase()) || owners.includes(String(senderId).toLowerCase());
+}
+
+/**
+ * /app in a private chat: a one-time link that logs this person into the V app.
+ * The owner's phone pairs with the Gateway (every chat); anyone else gets a
+ * member login that reaches only their own chat with V.
+ */
+async function appLoginLink(ctx) {
+  const key = String(ctx.sessionKey ?? "");
+  if (ctx.isGroup || /:(group|channel|thread|topic):/u.test(key)) return { text: "登录链接只在私聊里发，别发在群里。请私聊 V 发送 /app。" };
+  const base = String(vappConfig(getConfig()).publicUrl ?? "").trim().replace(/\/+$/u, "");
+  // https, or plain http only to this machine (a test Gateway reached through a tunnel).
+  if (!/^https:\/\/|^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/u.test(base)) return { text: "V App 的公网地址还没有配置（channels.vapp.publicUrl）。" };
+  if (!ctx.senderId) return { text: "认不出是谁发的，没法生成登录链接。" };
+  let code;
+  if (ctx.senderIsOwner) {
+    const basePath = String(getConfig()?.gateway?.controlUi?.basePath ?? "").replace(/^\/+|\/+$/gu, "");
+    const result = await callGateway("device.pair.setupCode", { publicUrl: `${base.replace(/^http/u, "ws")}${basePath ? `/${basePath}` : ""}` }, ["operator.admin", "operator.pairing"]);
+    code = String(result?.setupCode ?? "");
+    if (!code) return { text: "没能生成登录链接，稍后再试。" };
+  } else {
+    const name = (await senderName(ctx)) || "飞书用户";
+    const { token, expiresAt } = await members.issueInvite({ userId: `${ctx.channel}:${ctx.senderId}`, name });
+    code = toBase64Url(JSON.stringify({ url: base, invite: token, expiresAtMs: expiresAt, name }));
+  }
+  return { text: `V App 登录链接，10 分钟内有效、只能用一次，别转发给别人：\n${base}${ROUTE_PREFIX}/login#${code}\n\n在装了 V App 的手机上点开。` };
+}
 
 const approvals = createVappApprovals({ vx, showCard: (...args) => vapp.showCard(...args), log: (message) => console.log(`[vapp] ${message}`) });
 
@@ -128,6 +191,8 @@ const channelSchema = {
   properties: {
     enabled: { type: "boolean" },
     defaultUser: { type: "string" },
+    /** https://… where phones reach this Gateway; /app links point here. */
+    publicUrl: { type: "string" },
     users: { type: "object", additionalProperties: userSchema },
     apns: {
       type: "object",
@@ -244,5 +309,25 @@ export default defineChannelPluginEntry({
     api.registerGatewayMethod("vapp.history", method(vapp.history), write);
     api.registerGatewayMethod("vapp.react", method(vapp.userReact), write);
     api.registerGatewayMethod("vapp.deliver", method(({ params }) => vapp.deliver(params ?? {})), write);
+    // Teammates' phones: the plugin authenticates them itself (core/member-http.js).
+    api.registerHttpRoute({ path: ROUTE_PREFIX, match: "prefix", auth: "plugin", handler: (req, res) => memberHttp.handle(req, res) });
+    // "/app" is answered here, before the message becomes a turn. A plugin command
+    // would not do: on V turns run in the Worker, which matches commands in its own
+    // registry and hands /app to the model.
+    api.on("before_dispatch", async (event, ctx) => {
+      const words = String(event.content ?? event.body ?? "").replace(/^(?:@\S+\s+)+/u, "").trim();
+      if (!/^\/app$/iu.test(words)) return undefined;
+      const channel = event.channel ?? ctx.channelId ?? "";
+      // Logins are asked for from a chat app (Feishu), not from inside the V app itself.
+      if (channel === CHANNEL_ID) return undefined;
+      const senderId = event.senderId ?? ctx.senderId ?? "";
+      const sessionKey = event.sessionKey ?? ctx.sessionKey ?? "";
+      const asked = { sessionKey, senderId, channel, isGroup: event.isGroup === true, senderIsOwner: isOwnerSender(getConfig(), channel, senderId) };
+      try {
+        return { handled: true, ...(await appLoginLink(asked)) };
+      } catch (error) {
+        return { handled: true, text: `没能生成登录链接：${String(error?.message ?? error)}` };
+      }
+    });
   },
 });

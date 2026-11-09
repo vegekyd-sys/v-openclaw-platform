@@ -15,6 +15,17 @@
         "properties": {
           "enabled": { "type": "boolean" },
           "defaultUser": { "type": "string" },
+          "publicUrl": { "type": "string", "description": "https://… where phones reach this Gateway; /app login links point here." },
+          "apns": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "keyFile": { "type": "string" },
+              "keyId": { "type": "string" },
+              "teamId": { "type": "string" },
+              "bundleId": { "type": "string" }
+            }
+          },
           "users": {
             "type": "object",
             "additionalProperties": {
