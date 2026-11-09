@@ -1,0 +1,16 @@
+{
+  "support": [
+    "lab/candidate/codex-turn-end-terminals.mjs",
+    "lab/patch-codex-turn-end-terminals.mjs",
+    "scripts/v-agent-shell-cgroup.py"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/codex-turn-end-terminals.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity",
+  "env": {
+    "CTT_PATCH": "1"
+  }
+}

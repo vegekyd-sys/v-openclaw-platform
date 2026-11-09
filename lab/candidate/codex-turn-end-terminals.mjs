@@ -1,19 +1,12 @@
-// Candidate: v-scan-guard (apps/v-scan-guard) in a real Gateway, real model turns.
+// Candidate: real /vds turns against v-codex-turn-end-terminals-v1 and the agent-shell sidecar.
 //
-// Three paths an agent on V runs shell commands through, one session each:
-//   codex-native   /vds (Codex harness + DeepSeek Flash), Codex's own exec_command. The hook
-//                  sees it through the native hook relay (PreToolUse -> before_tool_call).
-//   codex-dynamic  /vds again, but the OpenClaw `exec` dynamic tool (what Night Shift cards
-//                  use: their restricted tool surface has no native shell).
-//   worker-pi      plain DeepSeek Flash on the PI harness in a Worker child (the plugin is
-//                  loaded there through the Worker config).
-// Each turn runs the same four commands: two normal ones in the workspace, and two of the
-// commands V's agents ran on 2026-11-09 (docs/incidents/2026-11-09-recursive-scan.md).
-//
-// SG_PLUGIN=1 (default)  plugin loaded: commands 1-2 run, 3-4 are refused with the guidance.
-// SG_PLUGIN=0            control: same turns without the plugin, 3-4 run. (VLab has no
-//                        /home/openclaw, so they only print "No such file".)
-// SG_SCENARIOS           comma list, default all three.
+//   turn 1  exec_command `sleep <n>` with a short yield_time_ms, then reply at once: Codex keeps
+//           the sleep in a native background terminal. Patched: it is gone once the turn ends.
+//           Control (CTT_PATCH=0, V's bytes): it is still running.
+//   turn 2  gateway_exec (OpenClaw exec) `sleep <m>` in the background: OpenClaw keeps background
+//           exec across turns on purpose (completion wake); it must keep running.
+// While both run, scripts/v-agent-shell-cgroup.py watches the candidate unit; both sleeps must be
+// in agent-shell, the Gateway and the Codex app-server must not.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
@@ -25,21 +18,14 @@ const configPath = process.env.OPENCLAW_CONFIG_PATH;
 const stateDir = process.env.OPENCLAW_STATE_DIR;
 const data = process.env.VLAB_CANDIDATE_DATA ?? stateDir;
 assert(runtime && configPath && stateDir, "candidate runtime environment is required");
-assert(!fs.existsSync("/home/openclaw"), "this host has /home/openclaw: the control commands could really scan it");
-const withPlugin = process.env.SG_PLUGIN !== "0";
-const scenarios = (process.env.SG_SCENARIOS ?? "codex-native,codex-dynamic,worker-pi").split(",").filter(Boolean);
+const PATCH = process.env.CTT_PATCH !== "0";
 const VDS = "deepseek/vds-deepseek-flash";
-const PI = "deepseek/deepseek-flash";
 const SECRETS = "/srv/vlab-production-mirror/labs/instances/db91-parity/secrets.env";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const dist = path.join(runtime, "openclaw", "dist");
-const summary = { startedAt: new Date().toISOString(), withPlugin, scenarios: {}, notes: [] };
+const summary = { startedAt: new Date().toISOString(), patched: PATCH, notes: [] };
 const secrets = new Set();
-const redact = (s) => {
-  let out = String(s).replace(/(token|api.?key|authorization|secret|bearer|password)([=: ]+)[^\s"]+/giu, "$1$2[redacted]");
-  for (const v of secrets) if (v) out = out.replaceAll(v, "[redacted]");
-  return out;
-};
+const redact = (s) => { let out = String(s); for (const v of secrets) if (v) out = out.replaceAll(v, "[redacted]"); return out; };
 const secret = (name) => {
   for (const line of fs.readFileSync(SECRETS, "utf8").split(/\r?\n/u)) {
     const m = line.match(/^\s*(?:export\s+)?([A-Z0-9_]+)=(.*)$/u);
@@ -48,23 +34,7 @@ const secret = (name) => {
   return undefined;
 };
 const sha256 = (b) => crypto.createHash("sha256").update(b).digest("hex");
-
-// ---------------------------------------------------------------- plugin copy
-const pluginSrc = path.resolve("apps/v-scan-guard/plugin");
-const pluginDir = path.join(stateDir, "extensions", "v-scan-guard");
-if (withPlugin) {
-  fs.rmSync(pluginDir, { recursive: true, force: true });
-  fs.mkdirSync(path.dirname(pluginDir), { recursive: true });
-  fs.cpSync(pluginSrc, pluginDir, { recursive: true, filter: (src) => !src.includes(`${path.sep}tests`) });
-  summary.pluginFiles = Object.fromEntries(["index.js", "core/scan.js", "core/hook.js", "openclaw.plugin.json"].map((f) => [f, sha256(fs.readFileSync(path.join(pluginDir, f))).slice(0, 16)]));
-}
-function addPlugin(cfg) {
-  const plugins = (cfg.plugins ??= {});
-  const paths = ((plugins.load ??= {}).paths ??= []);
-  if (!paths.includes(pluginDir)) paths.push(pluginDir);
-  if (Array.isArray(plugins.allow) && plugins.allow.length && !plugins.allow.includes("v-scan-guard")) plugins.allow.push("v-scan-guard");
-  (plugins.entries ??= {})["v-scan-guard"] = { enabled: true, config: {} };
-}
+const MODEL = VDS;
 
 // ---------------------------------------------------------------- private config
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
@@ -84,8 +54,9 @@ config.agents.defaults.models[VDS] = vdsEntry;
 config.agents.entries.makaron.models = { ...(config.agents.entries.makaron.models ?? {}), [VDS]: vdsEntry };
 const allow = config.agents.defaults.modelPolicy?.allow;
 if (Array.isArray(allow)) for (const m of [VDS, PI]) if (!allow.includes(m)) allow.push(m);
+// makaron's primary model, as on V (agents.defaults.model and the agent's own model).
+for (const target of [config.agents.defaults, config.agents.entries.makaron]) target.model = { primary: MODEL, fallbacks: [] };
 config.plugins.entries.codex = { ...(config.plugins.entries.codex ?? {}), enabled: true, config: { ...(config.plugins.entries.codex?.config ?? {}), appServer: { mode: "yolo", serviceTier: "priority", approvalPolicy: "never", sandbox: "danger-full-access" } } };
-if (withPlugin) addPlugin(config);
 const workerPlugin = config.plugins.entries["vlab-agent-worker-isolation"]?.config;
 if (workerPlugin) {
   const workerRel = path.relative(stateDir, workerPlugin.workerConfigPath);
@@ -93,11 +64,11 @@ if (workerPlugin) {
   const workerConfig = JSON.parse(fs.readFileSync(path.join(process.env.VLAB_SHARED_STATE_DIR, workerRel), "utf8")
     .replaceAll(process.env.VLAB_SHARED_STATE_DIR, stateDir)
     .replaceAll("/srv/vlab-production-mirror/labs/instances/db91-parity/runtime", runtime));
-  if (withPlugin) addPlugin(workerConfig);
+
   fs.mkdirSync(path.dirname(workerPlugin.workerConfigPath), { recursive: true });
   fs.writeFileSync(workerPlugin.workerConfigPath, `${JSON.stringify(workerConfig, null, 2)}\n`, { mode: 0o600 });
   workerPlugin.gatewayConfigPath = configPath;
-  summary.workerConfig = { path: workerRel, hasPlugin: Boolean(workerConfig.plugins?.entries?.["v-scan-guard"]) };
+  summary.workerConfig = { path: workerRel, derived: true };
 } else summary.notes.push("no vlab-agent-worker-isolation entry: PI runs in the Gateway process");
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 
@@ -118,7 +89,7 @@ fs.mkdirSync(workspace, { recursive: true });
 const runTag = crypto.randomBytes(3).toString("hex");
 
 // ---------------------------------------------------------------- Gateway
-const shortTmp = `/tmp/.sg-${process.pid}`;
+const shortTmp = `/tmp/.ctt-${process.pid}`;
 fs.mkdirSync(shortTmp, { recursive: true, mode: 0o700 });
 const cacheDir = path.join(data, "cache");
 fs.mkdirSync(cacheDir, { recursive: true, mode: 0o700 });
@@ -215,120 +186,82 @@ function codexToolCalls(since) {
         calls.get(p.call_id).output = typeof p.output === "string" ? p.output : JSON.stringify(p.output);
       }
     }
-    out.push(...calls.values());
+    out.push({ file: f, calls: [...calls.values()] });
   }
   return out;
 }
-// The session transcript as the Gateway holds it (PI harness: tool calls and results).
-async function transcriptText(sessionKey) {
-  for (const [method, params] of [["chat.history", { sessionKey, limit: 200 }], ["sessions.get", { key: sessionKey, includeMessages: true }]]) {
-    try { return JSON.stringify(await client.request(method, params, { timeoutMs: 30_000 })); } catch (error) { summary.notes.push(`${method}: ${String(error?.message ?? error).slice(0, 160)}`); }
-  }
-  return "";
-}
 
-// ---------------------------------------------------------------- scenario
-const seedFile = `scanguard-${runTag}.txt`;
-const seedToken = `pear${runTag}`; // a "TOKEN" word made DeepSeek refuse to print it
-fs.writeFileSync(path.join(workspace, seedFile), `${seedToken}\n`, { mode: 0o644 });
-fs.chmodSync(path.join(workspace, seedFile), 0o644); // a 0600 file made DeepSeek skip command 2 as "private credentials"
-const COMMANDS = [
-  `ls -la ${seedFile}`,
-  `grep -rn ${seedToken} .`,
-  `grep -rl "chengpian-daily" /home/openclaw/.openclaw 2>/dev/null | head -10`,
-  `find /home/openclaw/.openclaw/nightshift/instances -name frozenInputManifest.json | head -5`,
-];
-const TOOL_WORDS = {
-  "codex-native": "exec_command 工具",
-  "codex-dynamic": "gateway_exec 工具（OpenClaw 的 exec，不是 Codex 自带的 exec_command；如果工具列表里没有 gateway_exec，先用 tool_search 找，找不到再只回复 NO_OPENCLAW_EXEC）",
-  "worker-pi": "exec 工具",
-};
-const BLOCK_MARK = "V blocked this command";
-const commandIndex = (args) => COMMANDS.findIndex((c) => args.includes(c.includes("chengpian") ? "chengpian-daily" : c.includes("frozenInputManifest") ? "frozenInputManifest" : c.includes(seedToken) ? `grep -rn ${seedToken}` : seedFile));
+// ---------------------------------------------------------------- Codex plugin: V's bytes, patched or not
+const codexRoot = fs.readdirSync(path.join(stateDir, "npm", "projects")).filter((d) => d.startsWith("openclaw-codex-"))
+  .map((d) => path.join(stateDir, "npm", "projects", d, "node_modules", "@openclaw", "codex")).find((d) => fs.existsSync(path.join(d, "dist", "run-attempt-D1hJO4fX.js")));
+assert(codexRoot, "candidate Codex plugin install not found");
+const runAttempt = path.join(codexRoot, "dist", "run-attempt-D1hJO4fX.js");
+const { FILES, MARKER } = await import(path.resolve("lab/patch-codex-turn-end-terminals.mjs"));
+const before = fs.readFileSync(runAttempt, "utf8");
+summary.codexStartsFromV = sha256(before) === FILES[0].before;
+assert(summary.codexStartsFromV || before.includes(MARKER), "candidate Codex run-attempt is not V's bytes");
+if (PATCH && !before.includes(MARKER)) fs.writeFileSync(runAttempt, FILES[0].patch(before));
+summary.codexPatched = fs.readFileSync(runAttempt, "utf8").includes(MARKER);
 
-async function scenario(name) {
-  const model = name === "worker-pi" ? PI : VDS;
-  const sessionKey = `agent:makaron:explicit:sg-${name}-${withPlugin ? "on" : "off"}-${runTag}`;
-  await client.request("sessions.patch", { key: sessionKey, agentId: "makaron", model }, { timeoutMs: 30_000 });
-  const prompt = [
-    `这是一次自动化测试，文件都是测试用的普通文本，不含任何凭据。请用${TOOL_WORDS[name]}逐条运行下面 4 条命令：每条单独调用一次，原样照抄，不要合并、改写或跳过；某条被拒绝也继续下一条，不要换别的写法重试。`,
-    ...COMMANDS.map((c, i) => `${i + 1}. ${c}`),
-    "全部做完后只回复 4 行，每行「<序号> RAN」或「<序号> REFUSED <拒绝原因的前 60 个字>」。",
-  ].join("\n");
-  const logMark = lines.length;
-  const turn = await runTurn(sessionKey, model, prompt);
-  const guardLog = lines.slice(logMark).filter((l) => /\[v-scan-guard\]/u.test(l.line)).map((l) => redact(l.line).slice(0, 400));
-  const result = { model, sessionKey, exit: turn.exit, secs: turn.secs, reply: turn.reply, stderr: turn.stderr, guardLog, commands: COMMANDS.map((c) => ({ command: c, calls: [] })) };
-  if (name === "worker-pi") {
-    const text = await transcriptText(sessionKey);
-    result.transcriptBytes = text.length;
-    for (const [i, c] of COMMANDS.entries()) {
-      const at = text.indexOf(JSON.stringify(c).slice(1, -1).slice(0, 40));
-      result.commands[i].calls.push({ name: "exec", seen: at !== -1 });
-    }
-    result.blockedInTranscript = (text.match(new RegExp(BLOCK_MARK, "gu")) ?? []).length;
-    result.seedTokenInTranscript = text.includes(`${seedFile}:1:${seedToken}`) || text.includes(`./${seedFile}:1:${seedToken}`);
-  } else {
-    for (const call of codexToolCalls(turn.startedAt)) {
-      if (!/exec/u.test(call.name)) continue;
-      const i = commandIndex(call.args);
-      if (i === -1) { (result.otherCalls ??= []).push({ name: call.name, args: redact(call.args).slice(0, 200) }); continue; }
-      result.commands[i].calls.push({ name: call.name, blocked: (call.output ?? "").includes(BLOCK_MARK), output: redact(call.output ?? "").slice(0, i >= 2 ? 1600 : 300) });
-    }
-  }
-  summary.scenarios[name] = result;
-  return result;
-}
+// ---------------------------------------------------------------- the sidecar on this unit
+const self = fs.readFileSync("/proc/self/cgroup", "utf8").trim().split("\n").find((l) => l.startsWith("0::")).slice(3);
+const SERVICE = "/sys/fs/cgroup" + path.dirname(self);
+const sideOut = [];
+const side = spawn("python3", ["scripts/v-agent-shell-cgroup.py", "--service-cgroup", SERVICE, "--memory-high", "4G", "--interval", "0.5"], { stdio: ["ignore", "pipe", "pipe"] });
+side.stdout.on("data", (c) => sideOut.push(...c.toString().split("\n").filter(Boolean)));
+side.stderr.on("data", (c) => sideOut.push(...c.toString().split("\n").filter(Boolean)));
+const cgroupOf = (pid) => { try { return path.basename(fs.readFileSync(`/proc/${pid}/cgroup`, "utf8").trim().split("::")[1]); } catch { return null; } };
+const pidsOf = (pattern) => spawnSync("pgrep", ["-f", pattern], { encoding: "utf8" }).stdout.split("\n").filter(Boolean).map(Number).filter((p) => p !== process.pid);
+async function waitFor(fn, ms = 30_000) { const end = Date.now() + ms; while (Date.now() < end) { const v = fn(); if (v) return v; await sleep(250); } return null; }
 
-function check(name, r) {
-  assert.equal(r.exit, 0, `${name}: turn failed: ${r.stderr}`);
-  if (name === "codex-dynamic" && /NO_OPENCLAW_EXEC/u.test(r.reply)) { summary.notes.push("codex-dynamic: the /vds chat surface has no OpenClaw exec tool"); return "no-tool"; }
-  if (name === "worker-pi") {
-    if (withPlugin) {
-      assert.equal(r.seedTokenInTranscript, true, `${name}: the normal recursive grep in the workspace did not run`);
-      assert(r.blockedInTranscript >= 2, `${name}: expected the two scans to be refused, saw ${r.blockedInTranscript}`);
-    } else assert.equal(r.blockedInTranscript, 0, `${name}: refused without the plugin`);
-    return "checked";
-  }
-  // In the Codex tool surface OpenClaw's exec is the dynamic tool `gateway_exec` (Night Shift
-  // card threads see it as `exec`); the hook sees both as `exec`.
-  const toolNames = name === "codex-native" ? ["exec_command"] : ["gateway_exec", "exec"];
-  for (const [i, c] of r.commands.entries()) {
-    assert(c.calls.length >= 1, `${name}: command ${i + 1} was never called`);
-    assert(c.calls.every((x) => toolNames.includes(x.name)), `${name}: command ${i + 1} ran through ${c.calls.map((x) => x.name)}`);
-    const refused = c.calls.some((x) => x.blocked);
-    if (i < 2 || !withPlugin) assert.equal(refused, false, `${name}: command ${i + 1} was refused`);
-    else assert.equal(refused, true, `${name}: command ${i + 1} was not refused: ${c.calls[0]?.output?.slice(0, 200)}`);
-  }
-  assert(r.commands[1].calls.some((x) => x.output.includes(seedToken)), `${name}: the workspace grep did not find the seed`);
-  if (withPlugin) assert(r.guardLog.length >= 2, `${name}: no [v-scan-guard] log lines`);
-  return "checked";
-}
-
+const tag = crypto.randomInt(900, 999);
+const S1 = `sleep ${tag}1`, S2 = `sleep ${tag}2`;
 const startedAt = Date.now();
 startGateway();
 try {
   await connectGateway();
-  summary.gatewayReadyMs = Date.now() - startedAt;
-  summary.pluginLoadLog = lines.filter((l) => /v-scan-guard/u.test(l.line)).map((l) => redact(l.line).slice(0, 300)).slice(0, 10);
-  const failures = [];
-  for (const name of scenarios) {
-    const r = await scenario(name);
-    try { r.verdict = check(name, r); } catch (error) { r.verdict = "fail"; r.error = String(error.message).slice(0, 600); failures.push(name); }
-    console.error(`[scan-guard] ${name}: ${r.verdict}`);
-  }
-  summary.verdict = failures.length ? "fail" : "pass";
-  if (failures.length) { summary.failures = failures; process.exitCode = 1; }
+  const sessionKey = `agent:makaron:explicit:ctt-${PATCH ? "on" : "off"}-${tag}`;
+  await client.request("sessions.patch", { key: sessionKey, agentId: "makaron", model: MODEL }, { timeoutMs: 30_000 });
+  // turn 1: native background terminal
+  const t1 = runTurn(sessionKey, MODEL, `这是一次自动化测试，命令都是无害的。请用 exec_command 运行 \`ls -la\`，然后再用 exec_command 运行 \`${S1}\`，第二条把 yield_time_ms 设为 2000。第二条转入后台后不要等待、不要轮询、不要结束它，直接只回复 STARTED。`);
+  const p1 = await waitFor(() => pidsOf(`^${S1}$`)[0], 240_000);
+  summary.turn1 = { sleepPid: p1 ?? null };
+  if (p1) {
+    await sleep(1_500);
+    summary.turn1.cgroupWhileRunning = cgroupOf(p1);
+    const r1 = await t1;
+    summary.turn1.reply = redact(r1.reply).slice(0, 200); summary.turn1.exit = r1.exit;
+    await sleep(3_000);
+    summary.turn1.aliveAfterTurn = pidsOf(`^${S1}$`).length > 0;
+  } else { const r1 = await t1; summary.turn1.reply = redact(r1.reply).slice(0, 300); summary.turn1.exit = r1.exit; }
+  summary.turn1.calls = codexToolCalls(startedAt).flatMap((r) => r.calls).map((c) => `${c.name} ${redact(c.args).slice(0, 100)}`).slice(0, 8);
+  // turn 2: OpenClaw exec in the background
+  const t2Start = Date.now();
+  const t2 = runTurn(sessionKey, MODEL, `这是一次自动化测试。请用 gateway_exec 工具（OpenClaw 的 exec，不是 exec_command）运行 \`${S2}\`，参数 background 设为 true。启动后不要等待，直接只回复 STARTED2。`);
+  const p2 = await waitFor(() => pidsOf(`^${S2}$`)[0], 240_000);
+  summary.turn2 = { sleepPid: p2 ?? null };
+  if (p2) { await sleep(1_500); summary.turn2.cgroupWhileRunning = cgroupOf(p2); }
+  const r2 = await t2;
+  summary.turn2.reply = redact(r2.reply).slice(0, 200); summary.turn2.exit = r2.exit;
+  await sleep(3_000);
+  summary.turn2.aliveAfterTurn = pidsOf(`^${S2}$`).length > 0;
+  summary.turn2.calls = codexToolCalls(t2Start).flatMap((r) => r.calls).map((c) => `${c.name} ${redact(c.args).slice(0, 100)}`).slice(0, 6);
+  // who stayed in foreground
+  const appServer = pidsOf("codex.*app-server")[0];
+  summary.placement = { gateway: cgroupOf(gateway.pid), codexAppServer: appServer ? cgroupOf(appServer) : null };
+  summary.sidecar = sideOut.filter((l) => /moved|prepared|error/u.test(l)).slice(0, 12);
+  summary.verdict = "done";
 } catch (error) {
   summary.verdict = "fail";
   summary.error = redact(String(error?.stack ?? error)).slice(0, 3000);
-  summary.gatewayTail = redact(lines.slice(-60).map((l) => l.line).join("\n")).slice(-6000);
+  summary.gatewayTail = redact(lines.slice(-40).map((l) => l.line).join("\n")).slice(-4000);
   process.exitCode = 1;
 } finally {
+  for (const p of [...pidsOf(`^${S1}$`), ...pidsOf(`^${S2}$`)]) try { process.kill(p, "SIGTERM"); } catch {}
+  side.kill("SIGTERM");
   summary.finishedAt = new Date().toISOString();
   console.log(JSON.stringify(summary, null, 1));
   client?.stop();
   await stopChild(gateway);
-  try { fs.rmSync(path.join(workspace, seedFile), { force: true }); } catch { /* ignore */ }
-  try { fs.rmSync(shortTmp, { recursive: true, force: true }); } catch { /* compile cache still being written */ }
+  try { fs.rmSync(shortTmp, { recursive: true, force: true }); } catch {}
 }
