@@ -507,7 +507,8 @@
         "lab/dsml-spaced-calls.test.mjs",
         "lab/subagent-settle-wake.test.mjs",
         "lab/subagent-settle-wake-missing-task.test.mjs",
-        "lab/loopback-exec-run-instance.test.mjs"
+        "lab/loopback-exec-run-instance.test.mjs",
+        "lab/cli-readonly-live.test.mjs"
       ]
     }
   ],
