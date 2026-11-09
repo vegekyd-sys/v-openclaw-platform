@@ -10,6 +10,30 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## noop-mutation-nonterminal-20261109
+
+上线：2026-11-09 16:24 CST（15:57 文件装到 V；v-self-restart 延后到 16:12 后等空闲，16:16 停机、296 s 就绪，workers 5、postChecks 全 0；告警仍只有 GrokBot 群内双向桥，11/07 起的老问题）  ·  tag `noop-mutation-nonterminal-20261109`
+
+**摘要**：回移上游 `f8db9be1a94`（#137036）。`write`、`edit`、`apply_patch` 在无改动时不再返回 `terminate: true`。原来这样一次多余的编辑会让这一轮直接结束，拿不到最终回答：/vds 的 Codex 插件会放掉回合，Worker 的循环会停。切换 /vds 后的第一张异常夜班卡 BH-ES-22（14:37）就是这样：交接文件没写就被 block。
+
+**主机变更（不在文件存档和 parity 范围内，Tianyi 11/09 同意）**：
+- `/usr/local/bin/openclaw` 15:52 从旧安装 `/opt/openclaw-2026.9.1-v/openclaw/openclaw.mjs` 改指到 Gateway 跑的 core `/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/openclaw.mjs`。这样 agent exec、`v-self-restart`、企微接管卡调用的 CLI 和 Gateway 是同一份代码，也用上了 #530 的快路径。
+  - 改前用 `v-self-restart --check` 在 core CLI 上校验过；改后 openclaw 和 root 两个用户的 `gateway call health`、`cron list` 都正常。
+  - 回滚：`ln -sfn /opt/openclaw-2026.9.1-v/openclaw/openclaw.mjs /usr/local/bin/openclaw`。
+- 删掉 `~/.cache/openclaw/` 下 6 份进程已退出的 `openclaw-sqlite-readonly-*` 状态库副本（各 576 MB，共约 3.4 GB）。这些是 `status` / `nodes list` 被杀后留下的，根因另开 session 修。
+
+相对上一版 `codex-watchdog-relay-20261109`：2 个文件变化。
+
+**经 VLab 发版 `noop-mutation-nonterminal-20261109`**（claude-monitor，dev `702f3301`）
+> 验收：Shared VLab 2026-11-09 15:54-15:57 CST after deploy (sessions 47372f1d, core-coding-tools 981e50c5): Worker dedicated session wrote a file, made a deliberate no-op edit (tool returned 'No changes made ... identical'), then continued to exec and replied NOOP_CONT_W1 (vlab-dev-1794210878374) — before the fix a lone no-op edit ended the turn. /vds explicit sessions on VLab expose exec_command/apply_p…
+- `core` core-coding-tools-DYAE1EWB.js  e5d69236 → 981e50c5
+- `core` sessions-CHgQo4vL.js  163893d1 → 47372f1d
+
+V 上验收：
+- 测试群 oc_260a…（临时切到 Worker，`/model deepseek/deepseek-flash --runtime default -s`）：先 write，再做一次无改动 edit，工具返回 `No changes made … identical`；这一轮继续执行 exec，回复 NOOP_ONLINE_W（16:25）。测完切回 `/vcodex`。
+- 共享 VLab（15:54–15:57）：Worker 专用会话同样通过（NOOP_CONT_W1），journal 里 0 次 `terminal dynamic tool result`。VLab 的 /vds 显式会话没有 OpenClaw 的 edit/write 动态工具，测不到 Codex 那条路；但 Codex 只在工具结果带 `terminate` 时才放掉回合，补丁去掉的正是这个标记，所以 Codex 也覆盖到了。
+- /vds 监控加了 `turn released after terminal dynamic tool result` 告警，用来盯真实夜班流量。
+
 ## codex-watchdog-relay-20261109
 
 上线：2026-11-09 12:23 CST（12:18 文件装到 V；v-self-restart 12:21 停机写配置、101 s 就绪，workers 5、postChecks 全 0；唯一告警是 GrokBot 群内双向桥 stream，11/07 23:32 起就在报错，与本次无关）  ·  tag `codex-watchdog-relay-20261109`
