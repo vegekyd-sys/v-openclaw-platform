@@ -1,0 +1,9 @@
+# GPT current-call device metadata bridge
+
+Companion to V Voice draft PR 134. This platform overlay exposes an optional SDK factory and passes the admission-owned voiceSessionId into the existing provider request. The SDK owns the operator.write RPC and checks the authenticated transport connection, live reservation, exact call, monotonic revision, fixed descriptor and negotiated operations. It only augments the existing consult runner's prompt; the runner retains its account, tools, callbacks, signal and delivery lifecycle. No new tool grant, device executor, audio transport or automatic location retrieval is added here.
+
+Voice separately verifies the actual backend helper/Skill hashes and reachable authenticated HTTP lease before binding a descriptor. The model receives public terminal status through quiet developer context; the private execution lease remains server/backend-only. Closing the owner retires the metadata. Existing installations without this SDK export preserve their old provider path.
+
+Build with `node lab/build-voice-device-context.mjs`; the plan freezes the two current VLab SDK/Talk source hashes and fails on drift. Generated runtime sources follow the repository's existing overlay convention. No shared runtime is hot-patched by this worktree.
+
+Validation on 2026-10-25: four local tests pass, covering owner mismatch, stale revision, identity override, guest rejection, descriptor constraints, existing runner preservation, updated denial, expiry, close, idempotent patches and anchor drift. A private VLab Candidate using the real copied runtime passed its SDK import/binding test (one test). The Candidate did not start a Gateway or call a provider. Full GPT audio, a human device position, live DiDi quote, and shared integration remain separate acceptance items. The current shared VLab lease was not acquired or modified by this lane.
