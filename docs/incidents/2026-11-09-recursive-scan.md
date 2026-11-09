@@ -121,7 +121,7 @@
 
 ## 直接把信息给 agent
 
-- **拦截提示本身**：给出定时任务的查法（`openclaw automations list --all --json | jq … | grep -i <词>`，再 `automations get <id>`）、`nightshiftctl` 和 `NIGHTSHIFT_URL=http://127.0.0.1:24879`、`fetch failed` 时加 `NO_PROXY=127.0.0.1,localhost`、request-hash 自己算、卡自己的实例目录、sessions 工具、skill 所在的两个目录。
+- **拦截提示本身**：给出定时任务的查法（`openclaw automations list --all --json | jq -r '(.jobs // .)[]|[.id,.name]|@tsv' | grep -i <词>`，再 `automations get <id>`）、`nightshiftctl` 和 `NIGHTSHIFT_URL=http://127.0.0.1:24879`、`fetch failed` 时加 `NO_PROXY=127.0.0.1,localhost`、request-hash 自己算、卡自己的实例目录、sessions 工具、skill 所在的两个目录。
 - **v-nightshift PR**（`claude/nightshiftctl-loopback-no-proxy`）：
   - 本机 NIGHTSHIFT_URL 时，nightshiftctl 自己绕过 env 代理（先写了失败测试，复现了同样的 `fetch failed`）；
   - 派卡提示词写明：hash 由 agent 用自己写下的请求 JSON 计算，不需要和别的卡一致，不要去翻别的实例、日志或源码找惯例。
