@@ -10,6 +10,26 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## workboard-full-context-20261110
+
+上线：2026-11-10 02:07 CST（01:55 文件装到 V；v-self-restart 延后到 02:04 后等空闲，86 s 就绪，workers 5、postChecks 全 0、无告警）  ·  tag `workboard-full-context-20261110`
+
+**摘要**：夜班卡（workboard 派出的会话）开始和普通聊天一样带上 V 的工作区上下文：AGENTS.md、SOUL、IDENTITY、USER、MEMORY。原来 workboard 派卡写死 `lightContext: true`，bootstrap 过滤后什么都不留，所以夜班卡从 Worker 时代起就没有 AGENTS.md（11/09 的卡 developer 指令约 6.6 万字符，只有记忆召回和技能列表两节）。改成所有 harness 同一份 system prompt，不按 harness 分别处理。回滚开关 `OPENCLAW_WORKBOARD_LIGHT_CONTEXT=1`（要重启）。
+
+相对上一版 `compaction-image-skip-20261109`：2 个文件变化。
+
+**经 VLab 发版 `workboard-full-context-20261110`**（claude-monitor，dev `58be3753`）
+> 验收：VLab: workboard card v591a (Worker, 8b1b9b25) and v591b (/vds codex vds-deepseek-flash, f627fbb3) both answered R3=Speak up and SOUL=SOUL.md heading from bootstrap context, only tool workboard_complete; before #591 cards had no AGENTS.md. Evidence collected under config d53e088b; config then aligned to V default model (vds) and restored after accept.
+- `core` runtime-api-1CCazqtv.js  62ecf47e → b1bdba86
+- `core` workspace-BFk42BX6.js  5c74cd7c → e49f5b51
+
+**这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #591 夜班卡和聊天一样带上 V 的工作区上下文（AGENTS/SOUL/IDENTITY/USER/MEMORY）
+
+VLab 配置对齐：验收后把共享 VLab 的默认模型改成和 V 一样的 `deepseek/vds-deepseek-flash`（makaron 与 defaults），Codex 的 deepseek provider 重试次数改成 1。因为 accept 要求配置哈希等于暂存时的值，accept 时临时换回暂存时的配置（d53e088b，验收证据就是在它下面取得的），accept 后立即恢复对齐配置并重启 VLab。
+
+V 上验收：重启后第一张真实夜班卡出现后补记（V 上不发测试卡）。判据：卡的 Codex rollout 里出现 AGENTS.md 首行「AGENTS.md — Makaron Workspace Entry Point」，workspace context 含 SOUL/IDENTITY/USER/MEMORY。02:07 重启后第一个 rollout 是 cron 任务（不经过 workboard），不算。
+
 ## compaction-image-skip-20261109
 
 上线：2026-11-09 23:05 CST（22:52 文件装到 V；v-self-restart 延后到 23:02 后等空闲，23:04 停机，86 s 就绪，workers 5、postChecks 全 0、无告警）  ·  tag `compaction-image-skip-20261109`
