@@ -1823,6 +1823,34 @@
       "sha256": "1a9524b65477e3c2197002d944c3f5f199b42dd7544ff5c687d935f463db11ea",
       "source": "versa:df437a4b1f8",
       "note": "codex-watchdog-relay-20261109 (#582): native hook relay deadline counts from process start (versa/port-relay-deadline-20261107, on the #530 fast path 15c5a88b59d)"
+    },
+    {
+      "layer": "core",
+      "path": "sessions-CHgQo4vL.js",
+      "sha256": "47372f1d37c4f7d1e93a36b7dbe2d114444ec9bbf3cdb20f9c3638735bcf4be1",
+      "source": "versa:a08e348642d",
+      "note": "noop-mutation-nonterminal-20261109 (#584): no-op edit/write results no longer carry terminate (backport of upstream f8db9be1a94 #137036, versa/port-noop-nonterminal-20261109)"
+    },
+    {
+      "layer": "core",
+      "path": "core-coding-tools-DYAE1EWB.js",
+      "sha256": "981e50c585febbe91890182256c6ce93d57c107420194fea89486406b0062ee0",
+      "source": "versa:a08e348642d",
+      "note": "noop-mutation-nonterminal-20261109 (#584): no-op apply_patch result no longer carries terminate (backport of upstream f8db9be1a94 #137036)"
+    },
+    {
+      "layer": "core",
+      "path": "openclaw-state-db-readonly-C7txILW9.js",
+      "sha256": "6cc65a04954c73a4eae3d4c6e946a095e7ab52cb1524d6705223594e46c68009",
+      "source": "versa:8e1a007ce88",
+      "note": "cli-readonly-live-20261109 (#586): CLI reads a live WAL state DB in place instead of copying it (versa/port-cli-readonly-live-20261109)"
+    },
+    {
+      "layer": "core",
+      "path": "sqlite-readonly-location-BvtpsFvn.js",
+      "sha256": "09ed27c7811c5561e1ece02a5ca0cc2705bf0166c24156fed66a1de79838c630",
+      "source": "versa:8e1a007ce88",
+      "note": "cli-readonly-live-20261109 (#586): snapshot dirs named by the reader pid; abandoned ones swept (versa/port-cli-readonly-live-20261109)"
     }
   ]
 }

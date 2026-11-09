@@ -508,7 +508,8 @@
         "lab/subagent-settle-wake.test.mjs",
         "lab/subagent-settle-wake-missing-task.test.mjs",
         "lab/loopback-exec-run-instance.test.mjs",
-        "lab/compaction-image-skip.test.mjs"
+        "lab/compaction-image-skip.test.mjs",
+        "lab/cli-readonly-live.test.mjs"
       ]
     }
   ],
