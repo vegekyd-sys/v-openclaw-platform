@@ -1,0 +1,19 @@
+{
+  "support": [
+    "lab/candidate/early-tool-status-e2e.mjs",
+    "lab/candidate/cpuprofile-window.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/early-tool-status-e2e.mjs"
+  ],
+  "timeoutSeconds": 1800,
+  "user": "lab-db91-parity",
+  "env": {
+    "ETS_ARM": "base",
+    "ETS_TOOL_TURNS": "6",
+    "ETS_TEXT_TURNS": "6",
+    "ETS_ARG_MS": "1500",
+    "ETS_PROFILE": "1"
+  }
+}

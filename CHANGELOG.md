@@ -10,6 +10,146 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## vds-tasks-rowindex-20261108
+
+上线：2026-11-08 18:43 CST（18:38 文件装到 V；v-self-restart 等到空闲重启，18:43:06 就绪，workers 5、postChecks 全 0）  ·  tag `vds-tasks-rowindex-20261108`
+
+**摘要**：两处 Gateway 主线程减负，/vds 高并发下明显变快。① /vds（Codex）每回合不再把全部任务（V 上约 1.9 万条）克隆排序后再过滤，改为先过滤再克隆（#574）。② 建会话行（会话事件快照、列表、状态）时子 agent run 走索引，不再两次扫整个注册表（1.3–1.6 万个 run），Worker 和 /vds 都受益（#578）。#576（插件启用判断记忆，成对 A/B 约 25 ms/回合）收益太小未上。
+
+V 上验收：
+- 上线前后同法对比（11/08，经 Tianyi 同意在 V 上压测：Gateway `agent` 接口给 10 个一次性显式会话各先 `/vds` 再并发派 3 步 exec 任务，不进任何群；上线后在重启 23 分钟后、避开 19:00 定时任务）：
+
+| /vds 10 并发 | 上线前 18:14 | 上线后 19:06 |
+|---|---|---|
+| 到第一次调用工具 | 12.8–15.0 s，p50 14.1 | 7.6–9.0 s，p50 8.1 |
+| 完成 | 47.8–51.9 s，p50 49.8 | 41.9–44.0 s，p50 43.3 |
+| Gateway RSS 峰值 / 停顿 | 2.4 GB / 0 | 2.6 GB / 0 |
+
+  两次是不同时段的单独运行（DeepSeek 时延会有波动），幅度与 VLab 成对 A/B（#574：c10 到首个工具快 2.6–6.6 s）一致。
+- 测试群 oc_260a… `/vds`：三个并行 echo 正确回复；派两个可见子 agent 后 yield，18:46 最终卡片带两个结果；重启后 owner changed / 绑定报错 / settle wake failed 均为 0。测完切回 `/vcodex`。
+- 共享 VLab（18:27–18:40）：/vds 并行工具、子 agent 交回、sessions.list、Worker 冒烟均正常，journal 无报错。
+
+相对上一版 `loopback-early-status-20261108`：3 个文件变化。
+
+**经 VLab 发版 `vds-tasks-rowindex-20261108`**（vds-tasks-rowindex-20261108，dev `84ce10f4`）
+> 验收：共享 VLab 验收 2026-11-08 18:27–18:40 CST（#574 #578，dev 84ce10f4）。部署后 Gateway 就绪、journal 无 TypeError/uncaught。/vds（codex）三个并行 echo 正确回复；/vds 父会话派 2 个可见子 agent 后 sessions_yield，最终回复 VTR_FINAL VTR_SA VTR_SB；sessions.list 正常（20 行，8 行带子 agent 信息）；Worker exec 冒烟 VTR_W 正常。性能证据见 #574/#578 的 VLab 成对 A/B（c10 到首个工具快 2.6–6.6 s；每回合约 95 ms），上线后在 V 上用同法 /vds c10 前后对比（上线前基线 V 18:14：首个工具 p50≈14.1 s、完成 p50≈49.8 s）。
+- `core` plugin-sdk/agent-harness-task-runtime.js  50dc439b → 595673bc
+- `core` session-utils-list-BUP03AzS.js  a6d40fb5 → 5392dd65
+- `core` subagent-registry.store.sqlite-hzGu4QSk.js  4bc27059 → 23154eac
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #578 perf(gateway): 会话行选子 agent run 走索引，不再两次扫整个注册表
+- #574 perf(gateway): Codex 回合先过滤再克隆任务，不再整表克隆
+- #580 release: 捕获 loopback-early-status-20261108 并补 CHANGELOG
+
+## loopback-early-status-20261108
+
+上线：2026-11-08 17:10 CST（17:05 文件装到 V，避开 17:00 定时任务；v-self-restart 等到空闲，17:05:51 重启，17:10:37 就绪，workers 5、postChecks 全 0）  ·  tag `loopback-early-status-20261108`
+
+**摘要**：两件事一次重启上线。① /vcc（claude-cli）的定时任务点名要 `exec` 时，经 MCP 回环调 OpenClaw exec 不再报「Secret egress proxy requires an admitted agent run instance」（#573）：十二家群「每日当天行程置顶」从 11/06 08:00 起每天连 `echo ok` 都失败、lark-cli 一次没跑起来。② Worker 回复的第一个可见事件是工具调用时，模型一开始流工具调用就推「正在 …」状态行，不再等参数流完（#575）。
+
+V 上验收（测试群 oc_260a…，lark-cli 以 Tianyi 身份）：
+- 上线前基线：#575 V 11/05–07 工具类回复「工具事件 → 卡片开始」P50 0.55 s / P90 1.86 s；#573 当天 claude-cli 转录里 egress 报错 13 处。
+- #575：测试群切到默认（`/model deepseek/deepseek-flash --runtime default -s`，Runtime vlab-worker），三条「exec sleep 2 && echo」消息，「工具事件 → 卡片开始」3 / 3 / 250 ms；卡片开始 → 创建完成 540–613 ms 是飞书接口耗时。
+- #573：测试群建一次性定时任务（isolated、`--model anthropic/claude-opus-5-5`、`--tools exec,message`，与置顶任务同形），17:15 运行：转录里是 `mcp__openclaw__exec`，`echo EXEC_OK_573` 与 `lark-cli im +chat-list` 都成功（rc=0），无 egress 报错，回复「EXEC=成功 LARK=成功」；任务运行后自动删除，测完测试群切回 `/vcodex`。十二家的真实任务明早 08:00/08:05 自然运行时再确认。
+- 未覆盖：共享 VLab 上没有复测飞书（入站被同 appId 的 versa-mirror95 分走）和 secret egress（VLab 未开）。
+
+相对上一版 `restore-narrow-settle-parallel-20261108`：4 个文件变化。
+
+**经 VLab 发版 `loopback-early-status-20261108`**（loopback-early-status-20261108，dev `0bd3a629`）
+> 验收：共享 VLab 验收 2026-11-08 16:47–16:58 CST（#573 #575，dev 0bd3a629）。部署后 Gateway 就绪；Worker 工具回合冒烟（exec echo LES_42 → 回复 LES_42）正常。#575 飞书端到端证据为 PR 内 candidate 三组 A/B（V 飞书插件 + vlab-worker + 假飞书，工具回合卡片首推 3469→1887 ms，正文路径不变，开关关闭=改前）；共享 VLab 的飞书入站此时被 versa-mirror95（同 appId cli_aae2c999，16:54 启动）分走，未在共享 VLab 复测飞书。#573 的 secret egress proxy 在共享 VLab 未开启、且无 claude 登录，证据为 PR 内 candidate 对照（candidate-214db0f2 改前…
+- `core` agent-runner.runtime-CAdsMsQt.js  09f1b500 → ec866319
+- `core` builtin-openclaw-zQV8Wwjr.js  a44b846a → 10af16f4
+- `core` mcp-http-BL3X6y4w.js  6a1e20fc → c10aece4
+- `core` tool-resolution-Con11qMn.js  aa63296c → 055335eb
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #575 首字：工具调用一开始就推状态行（early-tool-status 在 V 当前字节上重建 + 飞书端到端 A/B）
+- #573 fix(vcc): 定时任务里 OpenClaw exec 报 Secret egress proxy requires an admitted agent run instance
+- #572 release: 捕获 fallback-dsml-subagent-wake-20261108 与 restore-narrow-settle-parallel-20261108 并补 CHANGELOG
+
+## restore-narrow-settle-parallel-20261108
+
+上线：2026-11-08 10:04 CST（09:56 文件装到 V；v-self-restart 等到空闲，10:00:04 重启，10:04:42 就绪。10:08:35 Gateway 因钉钉 WebSocket 握手 400 未捕获异常崩溃一次，10:08:41 自动拉起，见下）  ·  tag `restore-narrow-settle-parallel-20261108`
+
+**摘要**：三件事一次重启上线。① 新 worker 第一轮不再逐个整读 1.5 万个夜班子会话（#567）：V 上新 worker 第一轮「回合开始 → 第一次调模型」从 p50 20.2 s（11/07 起 46 次，最长 24.8 s）降到上线后 2.9–5.7 s（7 次，p50 约 3.3 s），后续回合不变（0.4–0.5 s）。② 11/07 群 oc_a59571a2 卡住的子 agent 不再每分钟报 owner changed（#571，补 #569 漏掉的「找不到任务行」）：上线前约 400 次/小时，上线后 0；四个 11/07 子任务标为失败不交付，f33f3d59 停在 suspended。③ /vds 允许 DeepSeek 一次发多个互不依赖的工具调用（#570）。
+
+V 上验收（测试群 oc_260a…，lark-cli 以 Tianyi 身份）：
+- 上线前基线：新 worker 第一轮 p50 20.2 s；owner changed before settlement 400 次/小时、before suspension 31 次/小时。
+- #570：10:05 /vds 三个 echo 的工具调用 call_00/01/02 在 344 ms 内由同一次模型回复发出，输出正确；V 上目录为 70e6e032，读它的 Codex app-server 10:05:16 启动（重启后）。注意 DeepSeek 在上线前也偶尔会一次发多个调用（06:11 两个 sessions_spawn），单次观察不足以单独证明开关效果，VLab candidate 的请求数对照见 #570。
+- #569/#571：10:26 /vds 父会话派两个可见子 agent 后 yield，10:28 最终卡片带两个结果，日志有 `announce:requester-settle`；崩溃恢复后无 owner changed、无绑定报错、无 settle wake failed。
+- #567：见摘要。11:00 前后经 Tianyi 同意在 V 上做了压测（显式测试会话 `agent:makaron:explicit:loadtest-*`，经 Gateway `agent` 接口并发派 3 步 exec 任务，不进任何群）：12 并发 12/12 完成（37–44 s），24 并发 24/24 完成（36–56 s），池子 5→9 个 worker；**按需新开的 worker（编号 5–7，开出后 2–3 s 就接回合）第一轮 4.6–4.7 s**，上线前同类按需 worker 为 19.7–24.8 s；原有预热 worker 首次接回合 4.6–5.0 s。全程 Gateway RSS ≤2.5 GB、无卡顿、主机可用内存 ≥42 GB。
+- 测完测试群切回 `/vcodex`。
+
+**上线后事故：Gateway 崩溃一次（与本次改动无关）**
+- 10:00 重启正赶上周日 10:00 的定时任务，加上冷启动，10:06–10:08 RSS 涨到 10.5 GiB（03:12 那次重启后最高 7.3 GiB），主线程卡 17–26 s。
+- 卡顿期间钉钉 stream 连接器用一次性 ticket 重连，握手被拖慢后钉钉返回 400，ws 抛出的 `Unexpected server response: 400` 没被接住，Gateway 10:08:35 退出（stability bundle `openclaw-stability-2026-11-08T02-08-35-114Z-3475749-uncaught_exception.json`），10:08:41 由 systemd 拉起。V 上第一次出现这种崩溃。
+- 影响：10:08 约 15 个回合（主要是 10:00 的定时任务）报 Worker stream ack 超时；崩溃时残留的 Codex 进程随后消失，没有 Cannot reap。10:14–10:21 第二次冷启动卡 18–37 s，10:22 起平稳。
+- 待修：钉钉连接器握手失败要被捕获而不是让进程退出。
+
+相对上一版 `fallback-dsml-subagent-wake-20261108`：3 个文件变化。
+
+**经 VLab 发版 `restore-narrow-settle-parallel-20261108`**（restore-narrow-settle-parallel-20261108，dev `5663f367`）
+> 验收：共享 VLab 验收 2026-11-08 09:31–09:36 CST（#567 #570 #571，dev 5663f367）。部署后 Gateway 就绪，测试会话回复「收到-RNSP」。#570：/vds 三个互不依赖的 echo 在同一次模型回复里发出（call_00/01/02，185 ms 内），全程 2 次模型往返，输出正确；VLab Gateway 的 Codex 副本已手动同步 70e6e032（备份 .bak-before-570）。#569/#571：/vds 父会话派 2 个 visible 子 agent（sleep 30/45）后 sessions_yield，最终回复带两个结果；部署后 journal 无绑定错误、无 owner changed、无 settle wake failed。#567：重启后新 worker 第一轮 3.5 s、1.8 s 正常…
+- `core` session-accessor.sqlite-entry-BlklNPKQ.js  789fca01 → 258aa1be
+- `core` subagent-completion-admission.store-JmpNDYTF.js  8f8adebe → 55aa7576
+- `codex` dist/v-deepseek-model-catalog.json  6df9d13d → 70e6e032
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #570 codex: let /vds batch independent tool calls
+- #567 首字：新 worker 第一轮不再逐个整读子 agent 会话（每个新 worker 省约 15 s）
+- #571 fix(subagents): #569 补漏——找不到子 agent 任务记录时也只在登记表里标失败
+
+## fallback-dsml-subagent-wake-20261108
+
+上线：2026-11-08 03:12 CST（文件 03:03 前推上 V；03:03 第一次重启在 Gateway 停机前取消，补完共享 VLab 功能验证后 v-self-restart 等空闲，03:12:24 就绪）  ·  tag `fallback-dsml-subagent-wake-20261108`
+
+**摘要**：三个用户能感知的修复一次重启上线。① 工具跑完后 DeepSeek 持续 5xx 时，Worker 把这一轮交给回退链，由 luna 按转录续写，不再干等后报错（#566）。② DeepSeek 把工具调用写成带空格的 DSML 文本时，改为真的执行，不再把这段文本显示给用户（#568）。③ 父会话 yield 后，可见子 agent（`sessions_spawn visible=true`）的结果能交回父会话：11/07 群 oc_a59571a2 的 /vcc 父会话派出 4 个子 agent 后一直没收到结果（结算唤醒按函数对象判断是不是同一个 Gateway，混合批次被拒；Gateway 的 `cli` 任务行又让放弃时每分钟抛一次 owner changed）（#569）。
+
+V 上验收（测试群 oc_260a…，lark-cli 以 Tianyi 身份发送）：
+- 冒烟：03:14 发「只回复 收到-0313」，03:16 回复（冷启动约 2 分钟）。
+- #569 /vds：06:12:01 父会话 `sessions_yield`，两个可见子 agent（sleep 60/90）完成后 06:13:45 跑 `announce:requester-settle:…:yield-1`，最终卡片带两个结果，无绑定报错。
+- #569 /vcc（claude-cli，与 11/07 同一 runtime）：08:55:14 `sessions_yield` 返回 yielded，两个可见子 agent 完成后 08:57:04 收到子 agent 回报，08:57 最终卡片带两个结果。测完测试群切回 `/vcodex`。
+- #566、#568 线上没有可主动制造的触发条件（需要 DeepSeek 真的 5xx / 输出 DSML 文本），重启后至撰写时没有出现，待真实流量确认；VLab 证据见下。
+- 未修好：11/07 卡住的那批（284f7211 等 4 个）以及 11/08 00:18 的 f33f3d59 仍每分钟重试（找不到 subagent 任务行，taskId 为空），由 #571 修。
+- 重启后 Gateway 停顿：03:15 冷启动一次 35 s，03:16 chat.history 103 s；之后每小时 8–11 次、最长约 5 s，与发布前相同。
+
+相对上一版 `cron-default-owner-tools-20261107`：8 个文件变化。
+
+**经 VLab 发版 `fallback-dsml-subagent-wake-20261108`**（fallback-dsml-subagent-wake-20261108，dev `1b6c2956`）
+> 验收：共享 VLab 验收 2026-11-08 02:58 CST（#566 #568 #569，dev 1b6c2956）。部署后 Gateway 正常，测试会话回复「收到」(agent.wait ok)；9 个文件为补丁后字节。功能证据：#566 candidate-313c90ad（工具后 DeepSeek 5xx 由 luna 接续，8/8）；#568 candidate-836310c8（带空格 DSML 文本工具调用改为执行，8/8）；#569 candidate-12675a66 对照 candidate-6aeb06bf（两个可见子 agent 在 yield 父会话下交回结果 vs 绑定被拒）。
+- `core` embedded-agent-DaSvA-Yk.js  21df02d9 → 182c175c
+- `core` gateway-request-scope-CmMd3nUp.js  7a0b33d9 → 154750fe
+- `core` model-fallback-runner-DOsPfj4O.js  3fd62e08 → eb417c8a
+- `core` subagent-completion-admission.store-JmpNDYTF.js  c106a6ce → 8f8adebe
+- `core` node_modules/@openclaw/ai/dist/openai-completions-stream-DZjwK8vp.mjs  9808e03c → a66edfc5（#568；捕获排除 core 的 node_modules，这一行按 VLab 发版记录手写，V 与 VLab 上的字节已核对）
+- `worker` harness-failure.mjs  89419679 → 4de8c46e
+- `worker` index.mjs  1bf070dc → 9619b65f
+- `worker` worker-pool.mjs  f6ca5d76 → dcfc36ff
+- `worker` worker.mjs  198bd1f5 → f90826ec
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #568 fix(deepseek): 带空格的 DSML 文本工具调用改为执行，不再显示给用户（+ PI 缺口报告）
+- #569 fix(subagents): 子 agent 结果交不回父会话（结算唤醒绑定 + owner change 循环）
+- #566 fix(fallback): 工具跑完后 DeepSeek 一直 5xx 时交给 luna 从转录续写
+
+## cron-default-owner-tools-20261107
+
+上线：2026-11-07 14:19 CST（文件 14:15 推上 V，14:19:50 空闲重启生效）  ·  tag `cron-default-owner-tools-20261107`
+
+**摘要**：V 在群里建的普通定时任务（没指定工具）走 Claude 时用不了 Bash 和读写文件：建任务时自动存下的工具清单不含 Claude 自带的工具，运行时整组被关掉（19:30「X 每日两帖草稿」因此一直改不了项目页）。移植上游 #162432：这类任务运行时按 `*` 处理，跟所属会话聊天时拿到的工具一样；显式指定工具的任务、脚本和条件触发不变，已存数据不改。
+
+相对上一版 `delete-cleanup-vcc-steer-20261106`：2 个文件变化。
+
+**经 VLab 发版 `cron-default-owner-tools-20261107`**（cron-default-owner-tools-20261107，dev `3dba893b`）
+> 验收：共享 VLab 验收 2026-11-07 14:07 CST（#563，dev 3dba893b）。部署后 Gateway 正常，测试会话回复「收到」(agent.wait ok)；两个文件含 cron-default-snapshot-runs-as-owner-v1。功能证据：candidate-45c99b20（自动工具清单 + account 策略的 claude-cli 定时任务，原生 Bash 放行并写出文件）对照 candidate-db19205a（同样任务被拒 unavailable to this run）。
+- `core` isolated-agent-BxeXdw5A.js  2613b147 → 26104bd3
+- `core` scheduled-tool-policy-WcH3cpLk.js  b788e48c → fab1fdca
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #563 fix(cron): 普通定时任务在 Claude 下也能改文件（运行时用所属会话的工具）
+- #562 release: 捕获 delete-cleanup-vcc-steer-20261106 并补 CHANGELOG
+
 ## delete-cleanup-vcc-steer-20261106
 
 上线：2026-11-06 02:03 CST（文件 01:36 装到 V；01:36 第一次 v-self-restart 等空闲 15 分钟未果放弃，01:53 重试，02:01 等到空闲停机，02:03:13 就绪）  ·  tag `delete-cleanup-vcc-steer-20261106`

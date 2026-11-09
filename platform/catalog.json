@@ -480,6 +480,9 @@
         "lab/sessions-resolve-exact-read.test.mjs",
         "lab/sessions-search-exact-read.test.mjs",
         "lab/subagent-active-precheck.test.mjs",
+        "lab/subagent-restore-narrow.test.mjs",
+        "lab/harness-tasks-filter-first.test.mjs",
+        "lab/subagent-row-index.test.mjs",
         "lab/cli-startup-fast.test.mjs",
         "lab/doctor-subprocess.test.mjs",
         "lab/sessions-search-candidate-rows.test.mjs",
@@ -497,7 +500,12 @@
         "lab/session-delete-admission.test.mjs",
         "lab/session-delete-plugin-cleanup.test.mjs",
         "lab/vcc-steer.test.mjs",
-        "lab/cron-default-owner-tools.test.mjs"
+        "lab/cron-default-owner-tools.test.mjs",
+        "lab/settled-tool-handoff.test.mjs",
+        "lab/dsml-spaced-calls.test.mjs",
+        "lab/subagent-settle-wake.test.mjs",
+        "lab/subagent-settle-wake-missing-task.test.mjs",
+        "lab/loopback-exec-run-instance.test.mjs"
       ]
     }
   ],

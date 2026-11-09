@@ -1,0 +1,22 @@
+{
+  "support": [
+    "lab/candidate/settled-tool-handoff.mjs",
+    "lab/patch-settled-tool-handoff.mjs",
+    "release/captured/v2026.9.1-db91.6-luna-fallback-takeover-20261104/dist/embedded-agent-DaSvA-Yk.js",
+    "release/captured/v2026.9.1-db91.6-luna-fallback-takeover-20261104.worker/dist/worker.mjs",
+    "release/captured/v2026.9.1-db91.6-luna-fallback-takeover-20261104.worker/dist/worker-pool.mjs",
+    "release/captured/v2026.9.1-db91.6-luna-fallback-takeover-20261104.worker/dist/index.mjs",
+    "release/captured/v2026.9.1-db91.6-luna-fallback-takeover-20261104.worker/dist/harness-failure.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/settled-tool-handoff.mjs"
+  ],
+  "env": {
+    "STH_ARMS": "A,B",
+    "STH_CASES": "chat:tool500,cli:tool500,chat:tool500once,chat:tool500pin",
+    "STH_SPEED_N": "6"
+  },
+  "timeoutSeconds": 7200,
+  "user": "lab-db91-parity"
+}

@@ -1,0 +1,17 @@
+{
+  "support": [
+    "lab/candidate/dsml-spaced-calls.mjs",
+    "lab/patch-dsml-spaced-calls.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/dsml-spaced-calls.mjs"
+  ],
+  "env": {
+    "STH_ARMS": "A,B",
+    "STH_CASES": "chat:dsml,chat:dsml1,chat:dsmlpre,cli:dsml",
+    "STH_SPEED_N": "6"
+  },
+  "timeoutSeconds": 7200,
+  "user": "lab-db91-parity"
+}

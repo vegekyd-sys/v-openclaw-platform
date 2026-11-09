@@ -91,6 +91,8 @@ const entry = {
   include_plugin_usage_instructions: false,
   include_apps_usage_instructions: false,
   supports_reasoning_summary_parameter: true,
+  // Without it Codex sends parallel_tool_calls=false and every tool call costs one DeepSeek round trip.
+  supports_parallel_tool_calls: true,
   default_reasoning_summary: "auto",
   support_verbosity: false,
   default_verbosity: null,

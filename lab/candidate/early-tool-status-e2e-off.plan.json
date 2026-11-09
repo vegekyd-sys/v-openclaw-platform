@@ -1,0 +1,30 @@
+{
+  "support": [
+    "lab/candidate/early-tool-status-e2e.mjs",
+    "lab/candidate/cpuprofile-window.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/early-tool-status-e2e.mjs"
+  ],
+  "timeoutSeconds": 1800,
+  "user": "lab-db91-parity",
+  "env": {
+    "ETS_ARM": "off",
+    "ETS_TOOL_TURNS": "8",
+    "ETS_TEXT_TURNS": "4",
+    "ETS_ARG_MS": "1500"
+  },
+  "files": [
+    {
+      "source": "lab/release-files/early-tool-status/builtin-openclaw-zQV8Wwjr.js",
+      "target": "openclaw/dist/builtin-openclaw-zQV8Wwjr.js",
+      "before": "a44b846a3a56be86a09e7aa0259a6ec64663d6c92a5861cd67fe4c88a83015f9"
+    },
+    {
+      "source": "lab/release-files/early-tool-status/agent-runner.runtime-CAdsMsQt.js",
+      "target": "openclaw/dist/agent-runner.runtime-CAdsMsQt.js",
+      "before": "09f1b500f122381a4af008d7bb78f478a0c703602974d50685a40b8238651e50"
+    }
+  ]
+}
