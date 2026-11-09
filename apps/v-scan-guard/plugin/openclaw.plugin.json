@@ -1,0 +1,19 @@
+{
+  "id": "v-scan-guard",
+  "name": "V Scan Guard",
+  "description": "Blocks recursive grep/rg/find/du and ** globs over V's data directories (state dir, Night Shift instances, agent databases) before they run, for OpenClaw exec, Codex exec_command and process stdin.",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "mode": { "type": "string", "enum": ["block", "warn"] },
+      "home": { "type": "string" },
+      "protectedRoots": { "type": "array", "items": { "type": "string" } },
+      "extraProtectedRoots": { "type": "array", "items": { "type": "string" } },
+      "findMaxDepth": { "type": "integer", "minimum": 0, "maximum": 10 }
+    }
+  }
+}
