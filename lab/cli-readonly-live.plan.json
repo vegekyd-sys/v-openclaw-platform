@@ -1,0 +1,17 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/cli-readonly-live/openclaw-state-db-readonly-C7txILW9.js",
+      "target": "openclaw/dist/openclaw-state-db-readonly-C7txILW9.js",
+      "before": "07b28e2250c72330dd7b6b66a6551467d6be7fb4af77afc98f6ce641400168c7",
+      "after": "6cc65a04954c73a4eae3d4c6e946a095e7ab52cb1524d6705223594e46c68009"
+    },
+    {
+      "source": "lab/release-files/cli-readonly-live/sqlite-readonly-location-BvtpsFvn.js",
+      "target": "openclaw/dist/sqlite-readonly-location-BvtpsFvn.js",
+      "before": "4a17b3a10208d892d859cc9497a753d3c766f9d35d38bd01a83d711a8f6c346f",
+      "after": "09ed27c7811c5561e1ece02a5ca0cc2705bf0166c24156fed66a1de79838c630"
+    }
+  ]
+}

@@ -1,0 +1,199 @@
+{
+ "id": "candidate-2d3c9d96-f06c-4356-92cb-b7e203676bac",
+ "ok": true,
+ "owner": "cli-readonly-snapshot",
+ "sourceCommit": "37babea34e6290a990fb9ac2c19e3f7a8021a7e3",
+ "branch": "claude/eager-jepsen-7f1069",
+ "dirty": true,
+ "inputSha256": "9b82ff0ac571a4cc39ae961248d994b2bb2fdda7c6226e438663aea4ed93cbe4",
+ "runnerSha256": "1ae3c86fd910a5b724bf9516183354e4656fa13f6cedac5a69278c66d270d12c",
+ "baseRelease": "noop-mutation-nonterminal-20261109",
+ "runtimeSha": "0a1d004ab1a02a789b0d9b84198236f47ce7bb219f4bce1afe7c4122d0d27b55",
+ "configSha256": "d53e088bd9746dd13b77f8f8fec43f53976d2e16edf21bcb83ce40cbc3341351",
+ "baselineCacheHit": true,
+ "databases": [
+  {
+   "source": "state/openclaw.sqlite",
+   "bytes": 166916096
+  }
+ ],
+ "databaseBytes": 166916096,
+ "patchCount": 0,
+ "files": [],
+ "sharedBeforePid": 1485967,
+ "sharedAfterPid": 1485967,
+ "sharedUnchanged": true,
+ "integrationLeaseRequired": false,
+ "executionUser": "lab-db91-parity",
+ "network": "host",
+ "restrictions": "none imposed by candidate runner",
+ "timeoutSeconds": 1800,
+ "timings": {
+  "inspectMs": 11,
+  "baselineMs": 1,
+  "snapshotMs": 7986,
+  "overlayMs": 1,
+  "testMs": 63202
+ },
+ "totalServerMs": 71224,
+ "acceptance": "Evidence covers the scenarios selected and actually exercised by the agent",
+ "totalClientMs": 73192
+}
+---- stdout
+== idle: db=166916096 bytes, gateway port -> shared 24993
+trace-inject: 9 functions
+-- idle nodes-list #1 rc=0 wall=7.73 out_blocks=1324280 maxrss_kb=170696 write_MB=646 wal_at_start=0 out_bytes=3232 leftover_dirs=0
+{
+ "events": 8,
+ "pids": 1,
+ "byFn": {
+  "prepareSqliteReadOnlyLocationSyncInProcess": 2,
+  "createStableReadOnlyCopyInTempDirectory": 2,
+  "createPrivateSqliteTempDirectorySync": 2,
+  "removeTempDirectory": 2
+ },
+ "callers": {
+  "prepareSqliteReadOnlyLocationSyncInProcess @ readStoredDeviceIdentityReadOnly device-identity-CLNSF1JX.js:265:9 <- loadDeviceIdentityIfPresent device-identity-CLNSF1JX.js:437:17 <- resolveDeviceIdentityForGatewayCall call-DcwkiOeW.js:309:44": 1,
+  "prepareSqliteReadOnlyLocationSyncInProcess @ loadDeviceAuthTokenReadOnly device-auth-store-Dv4-CrXq.js:72:9 <- loadStoredOperatorDeviceAuthToken call-DcwkiOeW.js:323:95 <- callGatewayWithScopes call-DcwkiOeW.js:693:16": 1
+ }
+}
+{
+  "pending": [],
+  "paired": [
+    {
+      "nodeId": "eb7df45882b5373aa5a920badb4c37aac689eeab6e55244d8dc14436e3730e39",
+      "clientId": "node-host",
+      "clientMode": "node",
+      "displayName": "Tianyi Mac · VLab Compute",
+      "platform": "macos",
+      "version": "2026.9.1",
+      "deviceFamily": "Mac",
+      "caps": [
+        "claude-sessions",
+        "file",
+        "local-inferenc
+-- idle nodes-status #1 rc=0 wall=5.22 out_blocks=1304184 maxrss_kb=171452 write_MB=636 wal_at_start=0 out_bytes=2882 leftover_dirs=0
+{
+ "events": 8,
+ "pids": 1,
+ "byFn": {
+  "prepareSqliteReadOnlyLocationSyncInProcess": 2,
+  "createStableReadOnlyCopyInTempDirectory": 2,
+  "createPrivateSqliteTempDirectorySync": 2,
+  "removeTempDirectory": 2
+ },
+ "callers": {
+  "prepareSqliteReadOnlyLocationSyncInProcess @ readStoredDeviceIdentityReadOnly device-identity-CLNSF1JX.js:265:9 <- loadDeviceIdentityIfPresent device-identity-CLNSF1JX.js:437:17 <- resolveDeviceIdentityForGatewayCall call-DcwkiOeW.js:309:44": 1,
+  "prepareSqliteReadOnlyLocationSyncInProcess @ loadDeviceAuthTokenReadOnly device-auth-store-Dv4-CrXq.js:72:9 <- loadStoredOperatorDeviceAuthToken call-DcwkiOeW.js:323:95 <- callGatewayWithScopes call-DcwkiOeW.js:693:16": 1
+ }
+}
+{
+  "ts": 1794211355022,
+  "nodes": [
+    {
+      "nodeId": "eb7df45882b5373aa5a920badb4c37aac689eeab6e55244d8dc14436e3730e39",
+      "displayName": "Tianyi Mac · VLab Compute",
+      "platform": "macos",
+      "version": "2026.9.1",
+      "clientId": "node-host",
+      "clientMode": "node",
+      "deviceFamily": "Mac",
+      "caps": [
+        "claude-sessions",
+        "file",
+        "local-inf
+-- idle status #1 rc=0 wall=7.79 out_blocks=990680 maxrss_kb=251320 write_MB=483 wal_at_start=0 out_bytes=9876 leftover_dirs=0
+{
+ "events": 12,
+ "pids": 1,
+ "byFn": {
+  "prepareSqliteReadOnlyLocationSyncInProcess": 3,
+  "createStableReadOnlyCopyInTempDirectory": 3,
+  "createPrivateSqliteTempDirectorySync": 3,
+  "removeTempDirectory": 3
+ },
+ "callers": {
+  "prepareSqliteReadOnlyLocationSyncInProcess @ readStoredDeviceIdentityReadOnly device-identity-CLNSF1JX.js:265:9 <- loadDeviceIdentityIfPresent device-identity-CLNSF1JX.js:437:17 <- probe-CTWsu5Bt.js:156:21": 1,
+  "prepareSqliteReadOnlyLocationSyncInProcess @ loadDeviceAuthTokenReadOnly device-auth-store-Dv4-CrXq.js:72:9 <- probe-CTWsu5Bt.js:163:9 <- async probeGateway probe-CTWsu5Bt.js:152:25": 1,
+  "prepareSqliteReadOnlyLocationSyncInProcess @ GatewayClient$1.selectConnectAuth client-D8eBb67K.js:1417:59 <- GatewayClient$1.assembleConnectParams client-D8eBb67K.js:1072:29 <- GatewayProtocolClient.sendConnect client-D8eBb67K.js:455:30": 1
+ }
+}
+{
+  "runtimeVersion": "2026.9.1",
+  "hostDesktop": {
+    "enabled": true,
+    "state": "attached",
+    "port": 5900,
+    "security": "VncAuth"
+  },
+  "heartbeat": {
+    "defaultAgentId": "makaron",
+    "agents": [
+      {
+        "agentId": "makaron",
+        "enabled": false,
+        "every": "disabled",
+        "everyMs": null,
+        "waitingForRoute": false
+      },
+      {
+        "agentId":
+== churn: db=166916096 bytes, gateway port -> shared 24993
+-- churn nodes-list #1 rc=0 wall=11.10 out_blocks=3328736 maxrss_kb=202292 write_MB=1625 wal_at_start=840512 out_bytes=3232 leftover_dirs=0
+{
+  "pending": [],
+  "paired": [
+    {
+      "nodeId": "eb7df45882b5373aa5a920badb4c37aac689eeab6e55244d8dc14436e3730e39",
+      "clientId": "node-host",
+      "clientMode": "node",
+      "displayName": "Tianyi Mac · VLab Compute",
+      "platform": "macos",
+      "version": "2026.9.1",
+      "deviceFamily": "Mac",
+      "caps": [
+        "claude-sessions",
+        "file",
+        "local-inferenc
+-- churn nodes-status #1 rc=0 wall=11.34 out_blocks=3328520 maxrss_kb=199456 write_MB=1625 wal_at_start=819912 out_bytes=2882 leftover_dirs=0
+{
+  "ts": 1794211389474,
+  "nodes": [
+    {
+      "nodeId": "eb7df45882b5373aa5a920badb4c37aac689eeab6e55244d8dc14436e3730e39",
+      "displayName": "Tianyi Mac · VLab Compute",
+      "platform": "macos",
+      "version": "2026.9.1",
+      "clientId": "node-host",
+      "clientMode": "node",
+      "deviceFamily": "Mac",
+      "caps": [
+        "claude-sessions",
+        "file",
+        "local-inf
+-- churn status #1 rc=0 wall=13.08 out_blocks=3347464 maxrss_kb=267808 write_MB=1634 wal_at_start=824032 out_bytes=9897 leftover_dirs=0
+{
+  "runtimeVersion": "2026.9.1",
+  "hostDesktop": {
+    "enabled": true,
+    "state": "attached",
+    "port": 5900,
+    "security": "VncAuth"
+  },
+  "heartbeat": {
+    "defaultAgentId": "makaron",
+    "agents": [
+      {
+        "agentId": "makaron",
+        "enabled": false,
+        "every": "disabled",
+        "everyMs": null,
+        "waitingForRoute": false
+      },
+      {
+        "agentId":
+(node:1492811) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+churn writes=152
+
+---- stderr (tail)

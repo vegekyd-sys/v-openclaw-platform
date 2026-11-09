@@ -1,0 +1,90 @@
+{
+ "id": "candidate-b99d560f-f65c-400e-972d-4721d1ee6de9",
+ "ok": true,
+ "owner": "cli-readonly-snapshot",
+ "sourceCommit": "37babea34e6290a990fb9ac2c19e3f7a8021a7e3",
+ "branch": "claude/eager-jepsen-7f1069",
+ "dirty": true,
+ "inputSha256": "2935a84b74888d6b91ec9b58195bcdc520e427729af4151ea79abaf85948eab6",
+ "runnerSha256": "1ae3c86fd910a5b724bf9516183354e4656fa13f6cedac5a69278c66d270d12c",
+ "baseRelease": "noop-mutation-nonterminal-20261109",
+ "runtimeSha": "0a1d004ab1a02a789b0d9b84198236f47ce7bb219f4bce1afe7c4122d0d27b55",
+ "configSha256": "d53e088bd9746dd13b77f8f8fec43f53976d2e16edf21bcb83ce40cbc3341351",
+ "baselineCacheHit": true,
+ "databases": [
+  {
+   "source": "state/openclaw.sqlite",
+   "bytes": 166916096
+  }
+ ],
+ "databaseBytes": 166916096,
+ "patchCount": 0,
+ "files": [],
+ "sharedBeforePid": 1485967,
+ "sharedAfterPid": 1485967,
+ "sharedUnchanged": true,
+ "integrationLeaseRequired": false,
+ "executionUser": "lab-db91-parity",
+ "network": "host",
+ "restrictions": "none imposed by candidate runner",
+ "timeoutSeconds": 3600,
+ "timings": {
+  "inspectMs": 11,
+  "baselineMs": 1,
+  "snapshotMs": 12603,
+  "overlayMs": 1,
+  "testMs": 500651
+ },
+ "totalServerMs": 513290,
+ "acceptance": "Evidence covers the scenarios selected and actually exercised by the agent",
+ "totalClientMs": 515535
+}
+---- stdout
+runtime openclaw-state-db-readonly-C7txILW9.js sha256=07b28e2250c72330 patched=0
+runtime sqlite-readonly-location-BvtpsFvn.js sha256=4a17b3a10208d892 patched=0
+== busy: db=590934016 bytes, gateway port -> shared 24993, churn=1
+trace-inject: 9 functions
+-- busy nodes-list #1 rc=0 wall=41.59 out_blocks=11662904 maxrss_kb=204244 write_MB=5694 copy_attempts=10 state_files=[openclaw.sqlite openclaw.sqlite-shm openclaw.sqlite-wal ] same_as_before=yes leftover_dirs=0
+   calls: {"prepareSqliteReadOnlyLocationSyncInProcess":1,"createStableReadOnlyCopyInTempDirectory":10,"createPrivateSqliteTempDirectorySync":10,"removeTempDirectory":10}
+    1 x prepareSqliteReadOnlyLocationSyncInProcess @ readStoredDeviceIdentityReadOnly device-identity-CLNSF1JX.js:265:9 <- loadDeviceIdentityIfPresent device-identity-CLNSF1JX.js:437:17 <- resolveDeviceIdentityForGatewayCall call-DcwkiOeW.js:309:44
+   output: {"paired":2,"pending":0,"keys":2}
+-- busy nodes-list #2 rc=0 wall=38.91 out_blocks=11679448 maxrss_kb=209604 write_MB=5702 copy_attempts=10 state_files=[openclaw.sqlite openclaw.sqlite-shm openclaw.sqlite-wal ] same_as_before=yes leftover_dirs=0
+-- busy nodes-list #3 rc=0 wall=45.69 out_blocks=11714248 maxrss_kb=211024 write_MB=5719 copy_attempts=10 state_files=[openclaw.sqlite openclaw.sqlite-shm openclaw.sqlite-wal ] same_as_before=yes leftover_dirs=0
+-- busy nodes-status #1 rc=0 wall=48.08 out_blocks=11751248 maxrss_kb=199760 write_MB=5737 copy_attempts=10 state_files=[openclaw.sqlite openclaw.sqlite-shm openclaw.sqlite-wal ] same_as_before=yes leftover_dirs=0
+   calls: {"prepareSqliteReadOnlyLocationSyncInProcess":1,"createStableReadOnlyCopyInTempDirectory":10,"createPrivateSqliteTempDirectorySync":10,"removeTempDirectory":10}
+    1 x prepareSqliteReadOnlyLocationSyncInProcess @ readStoredDeviceIdentityReadOnly device-identity-CLNSF1JX.js:265:9 <- loadDeviceIdentityIfPresent device-identity-CLNSF1JX.js:437:17 <- resolveDeviceIdentityForGatewayCall call-DcwkiOeW.js:309:44
+   output: {"nodes":2,"keys":2}
+-- busy nodes-status #2 rc=0 wall=48.15 out_blocks=11788440 maxrss_kb=199832 write_MB=5756 copy_attempts=10 state_files=[openclaw.sqlite openclaw.sqlite-shm openclaw.sqlite-wal ] same_as_before=yes leftover_dirs=0
+-- busy nodes-status #3 rc=0 wall=48.37 out_blocks=11826392 maxrss_kb=199500 write_MB=5774 copy_attempts=10 state_files=[openclaw.sqlite openclaw.sqlite-shm openclaw.sqlite-wal ] same_as_before=yes leftover_dirs=0
+-- busy status #1 rc=0 wall=50.02 out_blocks=11903408 maxrss_kb=260788 write_MB=5812 copy_attempts=10 state_files=[openclaw.sqlite openclaw.sqlite-shm openclaw.sqlite-wal ] same_as_before=yes leftover_dirs=0
+   calls: {"prepareSqliteReadOnlyLocationSyncInProcess":1,"createStableReadOnlyCopyInTempDirectory":10,"createPrivateSqliteTempDirectorySync":10,"removeTempDirectory":10}
+    1 x prepareSqliteReadOnlyLocationSyncInProcess @ readStoredDeviceIdentityReadOnly device-identity-CLNSF1JX.js:265:9 <- loadDeviceIdentityIfPresent device-identity-CLNSF1JX.js:437:17 <- probe-CTWsu5Bt.js:156:21
+   output: {"keys":22}
+-- busy status #2 rc=0 wall=48.53 out_blocks=11928056 maxrss_kb=270296 write_MB=5824 copy_attempts=10 state_files=[openclaw.sqlite openclaw.sqlite-shm openclaw.sqlite-wal ] same_as_before=yes leftover_dirs=0
+-- busy status #3 rc=0 wall=49.12 out_blocks=11974664 maxrss_kb=260632 write_MB=5847 copy_attempts=10 state_files=[openclaw.sqlite openclaw.sqlite-shm openclaw.sqlite-wal ] same_as_before=yes leftover_dirs=0
+churn writes=265
+churn writes=269
+runtime openclaw-state-db-readonly-C7txILW9.js sha256=07b28e2250c72330 patched=0
+runtime sqlite-readonly-location-BvtpsFvn.js sha256=c7b73d60aec64d16 patched=0
+== idle: db=609931264 bytes, gateway port -> shared 24993, churn=0
+trace-inject: already traced
+-- idle nodes-list #1 rc=0 wall=19.43 out_blocks=4765240 maxrss_kb=184876 write_MB=2326 copy_attempts=2 state_files=[openclaw.sqlite ] same_as_before=yes leftover_dirs=0
+   calls: {"prepareSqliteReadOnlyLocationSyncInProcess":2,"createStableReadOnlyCopyInTempDirectory":2,"createPrivateSqliteTempDirectorySync":2,"removeTempDirectory":2}
+    1 x prepareSqliteReadOnlyLocationSyncInProcess @ readStoredDeviceIdentityReadOnly device-identity-CLNSF1JX.js:265:9 <- loadDeviceIdentityIfPresent device-identity-CLNSF1JX.js:437:17 <- resolveDeviceIdentityForGatewayCall call-DcwkiOeW.js:309:44
+    1 x prepareSqliteReadOnlyLocationSyncInProcess @ loadDeviceAuthTokenReadOnly device-auth-store-Dv4-CrXq.js:72:9 <- loadStoredOperatorDeviceAuthToken call-DcwkiOeW.js:323:95 <- callGatewayWithScopes call-DcwkiOeW.js:693:16
+   output: {"paired":2,"pending":0,"keys":2}
+-- idle nodes-status #1 rc=0 wall=20.07 out_blocks=4765240 maxrss_kb=172604 write_MB=2326 copy_attempts=2 state_files=[openclaw.sqlite ] same_as_before=yes leftover_dirs=0
+   calls: {"prepareSqliteReadOnlyLocationSyncInProcess":2,"createStableReadOnlyCopyInTempDirectory":2,"createPrivateSqliteTempDirectorySync":2,"removeTempDirectory":2}
+    1 x prepareSqliteReadOnlyLocationSyncInProcess @ readStoredDeviceIdentityReadOnly device-identity-CLNSF1JX.js:265:9 <- loadDeviceIdentityIfPresent device-identity-CLNSF1JX.js:437:17 <- resolveDeviceIdentityForGatewayCall call-DcwkiOeW.js:309:44
+    1 x prepareSqliteReadOnlyLocationSyncInProcess @ loadDeviceAuthTokenReadOnly device-auth-store-Dv4-CrXq.js:72:9 <- loadStoredOperatorDeviceAuthToken call-DcwkiOeW.js:323:95 <- callGatewayWithScopes call-DcwkiOeW.js:693:16
+   output: {"nodes":2,"keys":2}
+-- idle status #1 rc=0 wall=16.08 out_blocks=3574288 maxrss_kb=255480 write_MB=1745 copy_attempts=3 state_files=[openclaw.sqlite openclaw.sqlite-shm openclaw.sqlite-wal ] same_as_before=no leftover_dirs=0
+   calls: {"prepareSqliteReadOnlyLocationSyncInProcess":3,"createStableReadOnlyCopyInTempDirectory":3,"createPrivateSqliteTempDirectorySync":3,"removeTempDirectory":3}
+    1 x prepareSqliteReadOnlyLocationSyncInProcess @ readStoredDeviceIdentityReadOnly device-identity-CLNSF1JX.js:265:9 <- loadDeviceIdentityIfPresent device-identity-CLNSF1JX.js:437:17 <- probe-CTWsu5Bt.js:156:21
+    1 x prepareSqliteReadOnlyLocationSyncInProcess @ loadDeviceAuthTokenReadOnly device-auth-store-Dv4-CrXq.js:72:9 <- probe-CTWsu5Bt.js:163:9 <- async probeGateway probe-CTWsu5Bt.js:152:25
+    1 x prepareSqliteReadOnlyLocationSyncInProcess @ GatewayClient$1.selectConnectAuth client-D8eBb67K.js:1417:59 <- GatewayClient$1.assembleConnectParams client-D8eBb67K.js:1072:29 <- GatewayProtocolClient.sendConnect client-D8eBb67K.js:455:30
+   output: {"keys":22}
+churn writes=265
+churn writes=269
+
+---- stderr (tail)
