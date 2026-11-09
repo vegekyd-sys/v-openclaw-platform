@@ -1,0 +1,11 @@
+{
+  "baseRelease": "vds-tasks-rowindex-20261108",
+  "files": [
+    {
+      "source": "lab/release-files/relay-deadline-process-start/native-hook-relay-cli-DTqrikhm.js",
+      "target": "openclaw/dist/native-hook-relay-cli-DTqrikhm.js",
+      "before": "dc73ce928f270b39717c59ee29b66cf47b3e5315bd0640b88b55f340a5d1fb0e",
+      "after": "1a9524b65477e3c2197002d944c3f5f199b42dd7544ff5c687d935f463db11ea"
+    }
+  ]
+}
