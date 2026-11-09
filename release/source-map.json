@@ -1809,6 +1809,20 @@
       "sha256": "5392dd6581423d3a86d49f08db79c20941dcc24d663343605ad473a584c3054c",
       "source": "versa:1422a7978de",
       "note": "vds-tasks-rowindex-20261108 (#578): session rows pick subagent runs through the registry indexes (versa/subagent-row-index-lookup-20261108)"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/run-attempt-D1hJO4fX.js",
+      "sha256": "f67df60a4e880c96a32a415d0e26c5863c24e0ab9126e8a7755cd009c29b0d4b",
+      "source": "versa:26bd024052c",
+      "note": "codex-watchdog-relay-20261109 (#534): bound a Codex turn whose model request never answers (versa/port-codex-model-wait-20261101)"
+    },
+    {
+      "layer": "core",
+      "path": "native-hook-relay-cli-DTqrikhm.js",
+      "sha256": "1a9524b65477e3c2197002d944c3f5f199b42dd7544ff5c687d935f463db11ea",
+      "source": "versa:df437a4b1f8",
+      "note": "codex-watchdog-relay-20261109 (#582): native hook relay deadline counts from process start (versa/port-relay-deadline-20261107, on the #530 fast path 15c5a88b59d)"
     }
   ]
 }

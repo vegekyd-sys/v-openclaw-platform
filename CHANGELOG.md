@@ -10,6 +10,29 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## codex-watchdog-relay-20261109
+
+上线：2026-11-09 12:23 CST（12:18 文件装到 V；v-self-restart 12:21 停机写配置、101 s 就绪，workers 5、postChecks 全 0；唯一告警是 GrokBot 群内双向桥 stream，11/07 23:32 起就在报错，与本次无关）  ·  tag `codex-watchdog-relay-20261109`
+
+**摘要**：makaron 的默认模型从 Worker flash 改成 /vds（Codex + DeepSeek flash），交互群、夜班 Workboard 卡、没写模型的 cron、子 agent 一起切过去（Tianyi 11/09 定，不灰度）。同时上两处 Codex 保护：① 模型请求一直不应答时回合有界结束、交给回退（#534，此前可超过 930 s 无回复）；② hook relay 期限从进程启动算，启动晚了也会先拒绝而不是让工具照常执行（#582）。
+
+**配置变更（不在文件存档和 parity 范围内）**：`agents.defaults.model.primary`、`agents.entries.makaron.model.primary` → `deepseek/vds-deepseek-flash`，回退保持 `[openai/gpt-6-luna]`；makaron `codex-home/config.toml` 的 `[model_providers.deepseek]` 加 `request_max_retries = 1`、`stream_max_retries = 1`（备份 `config.toml.bak-vds-default-20261109`）。worker 那份配置未改。写死 flash 的 cron 仍在 Worker。重启后用 `sessions.patch {model:null}` 复位了 38 个最近一次运行是 /vds 的手动覆盖会话（37+1，逐个核对 resolved=vds），让它们拿回回退；/vcodex、/vcc 的手动选择不动。
+
+相对上一版 `vds-tasks-rowindex-20261108`：2 个文件变化。
+
+**经 VLab 发版 `codex-watchdog-relay-20261109`**（claude-monitor，dev `ce84c818`）
+> 验收：Shared VLab 2026-11-09 10:53-10:56 CST after syncing the Gateway Codex copy (run-attempt f67df60a) and restart: /vds dedicated session ran a foreground 'sleep 120' through the hook relay (1a9524b6) past the 90 s provider timeout without interruption and replied WD534_LONG_OK + timestamp (vlab-dev-1794192868195); Worker session exec reply WORKER_OK (vlab-dev-1794192869769); journal since 10:53 has …
+- `core` native-hook-relay-cli-DTqrikhm.js  dc73ce92 → 1a9524b6
+- `codex` dist/run-attempt-D1hJO4fX.js  71a11b78 → f67df60a
+
+V 上验收：
+- 上线前（V，Tianyi 同意，Gateway `agent` 接口一次性会话，6 步夜班形态任务：生成并读回 300 行文本、两次 sleep 20、写读 JSON、写报告）：c24 Worker 完成 p50/p90/max 65.6/92.9/101.7 s，/vds 72.1/79.4/84.8 s，两边 24/24；第二轮 /vds（12:07，加心跳闸门和 3 分钟收尾观察）78.6/81.9/84.2 s，24/24，心跳延迟仅一次 4.2 s。第一轮之后 10:43:46 出现过一次 39 s 主线程停顿，第二轮没有复现，原因未定。
+- 上线前基线（11/08–11/09 飞书真实消息，发出→第一段回答）：Worker flash n=158 p50 20.0 s、p90 91 s；/vds n=41 p50 13.4 s、p90 44.5 s。
+- 测试群 oc_ede0…（复位覆盖后不带手动模型）：exec 回合 12:27 回复可见，卡片 Runtime codex、Model vds-deepseek-flash，日志无 `configured fallbacks disabled by user model override`。
+- cron：测试群一次性 `--model deepseek/vds-deepseek-flash` 任务跑在 codex harness，lark-cli 读日历、邮件都成功（10:50）。
+- 共享 VLab：120 s 前台工具未被看门狗打断、relay 超时 0（见上）。故障路径（挂起/断流 95–100 s 回退、晚启动 relay 被拒）是 candidate 证据，见 #534/#536。
+- 待观察：切换后第一张真实夜班卡的 harness 与完成情况；语音通话还没测。
+
 ## vds-tasks-rowindex-20261108
 
 上线：2026-11-08 18:43 CST（18:38 文件装到 V；v-self-restart 等到空闲重启，18:43:06 就绪，workers 5、postChecks 全 0）  ·  tag `vds-tasks-rowindex-20261108`
