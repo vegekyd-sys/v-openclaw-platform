@@ -1,0 +1,15 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/workboard-full-context/runtime-api-1CCazqtv.js",
+      "target": "openclaw/dist/runtime-api-1CCazqtv.js",
+      "before": "62ecf47e8b884b72e25bee5b993a4a90ad0cdaf95003c4ac3a5d8d019b8da7ed"
+    },
+    {
+      "source": "lab/release-files/workboard-full-context/workspace-BFk42BX6.js",
+      "target": "openclaw/dist/workspace-BFk42BX6.js",
+      "before": "5c74cd7c84c4745fb615bff621836be5a5473949c29db0b115ab81f72a4ce027"
+    }
+  ]
+}

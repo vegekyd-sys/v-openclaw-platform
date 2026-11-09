@@ -1851,6 +1851,20 @@
       "sha256": "09ed27c7811c5561e1ece02a5ca0cc2705bf0166c24156fed66a1de79838c630",
       "source": "versa:8e1a007ce88",
       "note": "cli-readonly-live-20261109 (#586): snapshot dirs named by the reader pid; abandoned ones swept (versa/port-cli-readonly-live-20261109)"
+    },
+    {
+      "layer": "core",
+      "path": "history-image-prune-Dg0CDQ4a.js",
+      "sha256": "350092743774c9f75ca767cdfad56808d79b1d5643c82276649d845dbe1e288a",
+      "source": "versa:9491dac5cd0",
+      "note": "compaction-image-skip-20261109 (#587): compaction sanitize keeps image bytes instead of resizing when server-side compaction will not run (versa/port-compaction-image-skip-20261109)"
+    },
+    {
+      "layer": "core",
+      "path": "compact-gStBcHDe.js",
+      "sha256": "517ec6df06cff5f903d0e691600283170c66a60963c4ed593f339430b9e924dd",
+      "source": "versa:9491dac5cd0",
+      "note": "compaction-image-skip-20261109 (#587): compaction sanitize skips resizing across the whole history (versa/port-compaction-image-skip-20261109)"
     }
   ]
 }
