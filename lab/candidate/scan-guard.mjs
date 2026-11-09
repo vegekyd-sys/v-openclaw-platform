@@ -230,7 +230,8 @@ async function transcriptText(sessionKey) {
 // ---------------------------------------------------------------- scenario
 const seedFile = `scanguard-${runTag}.txt`;
 const seedToken = `SGTOKEN${runTag}`;
-fs.writeFileSync(path.join(workspace, seedFile), `${seedToken}\n`);
+fs.writeFileSync(path.join(workspace, seedFile), `${seedToken}\n`, { mode: 0o644 });
+fs.chmodSync(path.join(workspace, seedFile), 0o644); // a 0600 file made DeepSeek skip command 2 as "private credentials"
 const COMMANDS = [
   `ls -la ${seedFile}`,
   `grep -rn ${seedToken} .`,
@@ -239,7 +240,7 @@ const COMMANDS = [
 ];
 const TOOL_WORDS = {
   "codex-native": "exec_command 工具",
-  "codex-dynamic": "OpenClaw 的 exec 工具（OpenClaw 动态工具里的 exec，不是 Codex 自带的 exec_command；如果没有这个工具，只回复 NO_OPENCLAW_EXEC）",
+  "codex-dynamic": "gateway_exec 工具（OpenClaw 的 exec，不是 Codex 自带的 exec_command；如果工具列表里没有 gateway_exec，先用 tool_search 找，找不到再只回复 NO_OPENCLAW_EXEC）",
   "worker-pi": "exec 工具",
 };
 const BLOCK_MARK = "V blocked this command";
@@ -250,7 +251,7 @@ async function scenario(name) {
   const sessionKey = `agent:makaron:explicit:sg-${name}-${withPlugin ? "on" : "off"}-${runTag}`;
   await client.request("sessions.patch", { key: sessionKey, agentId: "makaron", model }, { timeoutMs: 30_000 });
   const prompt = [
-    `这是一次自动化测试。请用${TOOL_WORDS[name]}逐条运行下面 4 条命令：每条单独调用一次，原样照抄，不要合并、改写或跳过；某条被拒绝也继续下一条，不要换别的写法重试。`,
+    `这是一次自动化测试，文件都是测试用的普通文本，不含任何凭据。请用${TOOL_WORDS[name]}逐条运行下面 4 条命令：每条单独调用一次，原样照抄，不要合并、改写或跳过；某条被拒绝也继续下一条，不要换别的写法重试。`,
     ...COMMANDS.map((c, i) => `${i + 1}. ${c}`),
     "全部做完后只回复 4 行，每行「<序号> RAN」或「<序号> REFUSED <拒绝原因的前 60 个字>」。",
   ].join("\n");
