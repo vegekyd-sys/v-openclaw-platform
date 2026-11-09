@@ -10,6 +10,30 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## cli-readonly-live-20261109
+
+上线：2026-11-09 21:31 CST（21:29 文件装到 V；**不重启 Gateway**：CLI 每次是新进程，装上即生效；Gateway 持有写句柄，原本就不走快照，下次自然重启时加载新字节）  ·  tag `cli-readonly-live-20261109`
+
+**摘要**：`openclaw status`、`nodes list`、`nodes status` 在 V 上每次 30–60 s、写 5–6 GB。原因是 CLI 读设备身份/令牌时把 593 MB 的状态库整库复制到 `~/.cache/openclaw`，Gateway 一直在写 WAL，复制前后 WAL 对不上就换目录重来，最多 10 次，最后失败、不带设备身份连 Gateway。现在属主相同、`-wal`/`-shm` 已存在时直接用只读连接读活库，不复制；快照目录按读者 pid 命名，属主已死且超过 10 分钟的由下一次快照分配回收。开关 `OPENCLAW_V_LIVE_WAL_READS=0` 退回旧路径。源码 `openclaw-versa` `versa/port-cli-readonly-live-20261109`（8e1a007ce88）。
+
+**主机变更（不在 core 文件存档范围内，Tianyi 11/09 同意）**：
+- 夜班 v-nightshift #42（main `3bddfed`，21:19 `ship.sh v`）：`NIGHTSHIFT_OPENCLAW_ENTRY` 改指 core，撤掉主机 drop-in `91-openclaw91.conf`（它把入口指向旧的 `/opt/openclaw-2026.9.1-v`，备份在 `backups/nightshift-workboard/20261109T131924Z-3bddfed…/legacy-entry-dropin.before`）。夜班发飞书通知走 `message send` CLI，20 s 超时撑不过整库复制，11/09 下午留下 7 份副本；现在和 Gateway、PATH 上的 CLI 是同一份 core。Gateway PID 1209984 未变。
+- 删掉 `/home/openclaw/.cache/openclaw/` 下 4 份属主进程已退出的 `openclaw-sqlite-readonly-*`（19:03–20:19 留下，共约 2.3 GB）。修复后 CLI 不再分配快照，也就不会顺手回收它们。
+
+相对上一版 `noop-mutation-nonterminal-20261109`：2 个文件变化。
+
+**经 VLab 发版 `cli-readonly-live-20261109`**（cli-readonly-live，dev `59b97e1c`）
+> 验收：共享 VLab 实测（lab-db91-parity，真实 167MB 状态库，连共享 Gateway 24993）：nodes list 2.05/0.95 s、nodes status 0.90 s、status 4.90/4.74 s，全部 rc=0，写盘 0–6 MB，无快照目录、状态目录文件不变；对照 OPENCLAW_V_LIVE_WAL_READS=0 的 nodes list 写 320 MB（两次整库复制）。真实回合 agent:makaron:explicit:vlab-dev-cli-readonly-live-1794230626324：exec date→回复同一时间，status ok。
+- `core` openclaw-state-db-readonly-C7txILW9.js  07b28e22 → 6cc65a04
+- `core` sqlite-readonly-location-BvtpsFvn.js  4a17b3a1 → 09ed27c7
+
+**这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #586 lab: CLI 读设备身份不再整库复制状态库（status / nodes list 50 s → 3 s）
+
+V 上验收（21:29，openclaw 用户，`/usr/local/bin/openclaw` = core）：
+- `nodes list` 0.89 / 0.70 s、`nodes status` 0.71 s，写盘 0 MB；`status` 7.09 / 7.12 s、写 58 MB。全部 rc=0，没有新的快照目录。修复前同样命令 9–60 s、5.3–5.9 GB。
+- `status` 剩下的 58 MB 不是状态库快照（目录没有新增），来源未查。
+
 ## noop-mutation-nonterminal-20261109
 
 上线：2026-11-09 16:24 CST（15:57 文件装到 V；v-self-restart 延后到 16:12 后等空闲，16:16 停机、296 s 就绪，workers 5、postChecks 全 0；告警仍只有 GrokBot 群内双向桥，11/07 起的老问题）  ·  tag `noop-mutation-nonterminal-20261109`

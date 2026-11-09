@@ -1,6 +1,6 @@
 # CLI 读设备身份不再整库复制状态库（cli-readonly-live）
 
-状态：候选验证完成，**未合入、未上线**，等 Tianyi 批准。
+状态：2026-11-09 21:29 CST 已上 V（发版 `cli-readonly-live-20261109`，Tianyi 批准；夜班入口改指 core 的 v-nightshift #42 同日 21:19 上线）。V 实测 `nodes list` 0.7 s、`status` 7.1 s，见 CHANGELOG。
 
 ## 现象
 
