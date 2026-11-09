@@ -76,11 +76,15 @@
 | 飞书聊天（/vds，Codex） | **有**。Codex 原生加载项目文档，rollout 第 9 行「# AGENTS.md instructions for …」共 14,561 字符，包含第 5 条 | 第一次事故的 rollout |
 | 夜班卡（/vds，Codex，Workboard） | **没有**。没有 AGENTS.md 那条消息；developer 指令只有 3,305 字符（聊天是 60,740）；`<openclaw_workspace_context>` 里只有 Memory Recall 和 OpenClaw Skills，没有 SOUL、AGENTS | 第二、三次事故的 rollout |
 
-夜班卡没有加载 AGENTS.md，原因如下：
-- 夜班卡是受限工具面的回合，原生 shell 被拿掉了，所以 agent 只能用 `exec`/`gateway_exec`。
-- OpenClaw 的 Codex 插件对这类回合，或对 `bootstrapContextMode: "lightweight"` 的回合，会给线程配置写 `project_doc_max_bytes: 0`。代码在 `extensions/codex/src/app-server/thread-requests.ts`，相关符号是 `restrictedTurnDisablesProjectDocs` 和 `CODEX_NO_PROJECT_DOCS_CONFIG`。具体是哪个条件命中的没有逐一核对，但效果从 rollout 上可以确认。
-- 这和记忆 codex-catalog-drops-collaboration-instructions 那个问题（gpt-6.x 目录覆盖）不是一回事：/vds 用的 DeepSeek 没有目录覆盖，workspace context 也确实送达了，只是里面不包含 AGENTS.md。
-- 夜班 11/09 12:23 改跑 /vds 以后，这条规则就到不了夜班 agent。Worker 时代的卡有没有加载 AGENTS.md，这次没有核实。
+夜班卡没有加载 AGENTS.md，原因如下（2026-11-10 查清，详见 `docs/experiments/workboard-full-context-20261110.md`，修复在 PR #591）：
+- **上游 Workboard 派卡时写死了 `lightContext: true`**（`extensions/workboard/src/dispatcher.ts:532`，V 的 dist 在 `runtime-api-1CCazqtv.js:3935`）。
+  - lightweight 模式下，core 会清空全部引导文件；
+  - 在 Codex 上还会写 `project_doc_max_bytes: 0`，原生 AGENTS.md 也不加载。
+- 卡的 sessionKey 是 `…:subagent:workboard-…`，会被认成子 agent，引导文件只剩 AGENTS 和 MEMORY。
+- Worker 会原样转发这个模式，所以 **Worker 时代的卡同样没有**，不是 /vds 带来的回退。candidate 对照组证实，Worker 和 /vds 上的卡都答不出 AGENTS 和 SOUL 的内容。
+- 初稿把原因归到「受限工具面」，这是错的。受限工具面只影响工具：卡按子 agent 策略运行，没有原生 shell，只能用 `exec`/`gateway_exec`。
+- 这和记忆 codex-catalog-drops-collaboration-instructions 那个问题（gpt-6.x 目录覆盖）不是一回事。
+- 11/09 普查全部 /vds 线程：用户聊天 102/102 完整（AGENTS、SOUL、IDENTITY、USER、MEMORY）；夜班卡 435/435 全部缺失。
 
 聊天会话看到了规则却照样执行，原因：
 - 规则要求的是「加 `--include`」和「不要指向你没创建的数据树」，agent 很容易认为 `~/.openclaw` 是配置目录，不算数据树；
@@ -130,6 +134,6 @@
 
 1. **后台进程不回收**：三次事故里 agent 都已经放弃了，进程还在跑。Codex `exec_command` 超过 `yield_time_ms` 后转入后台，OpenClaw `exec` 超过 `yieldMs` 后也一样。可以考虑：回合结束时回收本回合起的后台只读命令，或者给 agent 的 shell 加 cgroup IO 上限（`io.max`）。后者也能堵住 `write_stdin` 的缺口。
 2. **automations 不能按名字查**，长列表会被截断。工具加一个 `query`/`name` 参数，或者让 `list` 默认只返回 id 和名字。
-3. **夜班卡线程不加载 AGENTS.md**：需要决定是否让受限回合也带上工作区的安全规则，或者把规则放进派卡提示词。
+3. **夜班卡线程不加载 AGENTS.md**：已在 PR #591 修复，让卡和聊天一样带上完整的工作区上下文。卡的工具面是否也和聊天对齐，还需要另外决定。
 4. **别的信息缺口**：重放里还有大量跨实例的 `find instances -path '*/handoffs/produce.json'`（找别的卡的产出当样例），以及 `find / -name SKILL.md -path '*scene-cli*'`（找不到 skill）。前者可以在派卡提示词里给出本阶段 handoff 的示例或 schema。
 5. **上线**：发布管线需要补 runtime-components 条目和 configure 脚本，然后走 `v-self-restart --while-stopped`。建议直接用 `block` 模式，因为重放显示被拦的全部是整棵树遍历。
