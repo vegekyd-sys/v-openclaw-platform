@@ -56,6 +56,15 @@ VLab candidate，真实 9.1 dist 字节（runtime 中这两个文件与 V 的 sh
 - 回收：`OPENCLAW_V_LIVE_WAL_READS=0` 强制走快照，`kill -9` 正在复制的 CLI，留下 `openclaw-sqlite-readonly-<它的 pid>-*`；把目录时间改成 1 小时前，下一个走快照的 CLI 把它删掉，同时留下属主已死但只有几秒的 `-young` 目录（年龄门槛生效）。
 - fork 测试（Node 22.23.1）：`openclaw-state-db-readonly` 6/6、`sqlite-readonly-location` 51/51（1 skip 为原有）、设备身份/令牌/归属 62/62、`gateway-backed-exit.process`（上游 #123674 用来保证「只读 RPC 不改状态目录」的进程级测试）33/33，tsgo core 通过。platform：`node --test lab/cli-readonly-live.test.mjs` 4/4。
 
+## 夜班服务这条路径（2026-11-09 只读核对）
+
+- 夜班 `nightshift-workboard.service` 的基础单元写的是 7.1，但 drop-in `91-openclaw91.conf` 把 `NIGHTSHIFT_OPENCLAW_ENTRY` 覆盖成了 `/opt/openclaw-2026.9.1-v/openclaw/dist/index.js`（`systemctl show` 确认），所以实际跑的是旧 PATH 那份安装，**不是 7.1，也不是 core**。快照写进 `XDG_CACHE_HOME=/home/openclaw/.openclaw/nightshift/.cache`。
+- 走 CLI 的调用：`OpenClawFeishuNotificationSender` 用 `node <entry> message send … --json` 发飞书通知，`execFile` 超时 20 s。11/09 14:38–14:41、15:17–15:22 两批通知各重试了多次，每次都失败（journal: `Night Shift notification … failed`），时间和那 7 份残留副本对得上：复制一份 593 MB 撑不过 20 s，CLI 被 SIGTERM 杀掉，目录留下。`workboard-gateway-adapter` 的 `gateway call` 只在注入 runner 时才用 CLI；常驻 RPC 客户端在夜班进程内 import 同一份安装的 `plugin-sdk/gateway-runtime.js`，每次重连时 `GatewayClient.selectConnectAuth` 也会读一次设备令牌。
+- **本 PR 的发布计划只装 core 的 dist，覆盖不了夜班。** 旧安装里这两个文件的 sha256 与 core 完全相同（`07b28e22…`、`4a17b3a1…`），有两种做法，二选一：
+  1. 把夜班 drop-in 的 `NIGHTSHIFT_OPENCLAW_ENTRY` 改指 core（`/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/dist/index.js`），与 11/09 把 `/usr/local/bin/openclaw` 改指 core 的方向一致（推荐，改动属于夜班仓库 `v-nightshift` 的部署配置）；
+  2. 或者把同样两个 release 文件也装进 `/opt/openclaw-2026.9.1-v/openclaw/dist/`（`before` sha 相同，可直接复用；但 promote-to-v / parity 不覆盖这份安装，属于手工改主机）。
+- 已经留下的副本，修复后由下一次快照分配回收（属主已死且超过 10 分钟）；夜班走活库直读后基本不再分配快照，所以已有残留仍需一次性手工清理（11/09 已清）。
+
 ## 没覆盖的
 
 - V 本机未跑（按要求 V 上只读）。VLab 的 churn 写入者是模拟，V 的 Gateway 写入节奏不同；修复后路径不复制，与写入节奏无关。
