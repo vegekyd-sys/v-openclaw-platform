@@ -10,6 +10,24 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## compaction-image-skip-20261109
+
+上线：2026-11-09 23:05 CST（22:52 文件装到 V；v-self-restart 延后到 23:02 后等空闲，23:04 停机，86 s 就绪，workers 5、postChecks 全 0、无告警）  ·  tag `compaction-image-skip-20261109`
+
+**摘要**：会话溢出自动压缩时，不再在 Gateway 主线程上重新缩放全部历史图片。原来 skill-workshop 复盘回合在 Gateway 里压缩大会话前，会把上百张图同步重编码一遍，而这些结果压缩时根本用不到。11/09 出现过两次：14:01 缩放 208 张、所有对话停 41 s；22:24 缩放 209 张、停 28.5 s。服务端 compact 端点那条路不变。开关 `OPENCLAW_COMPACTION_IMAGE_RESIZE_SKIP=0` 可以恢复原行为。
+
+相对上一版 `cli-readonly-live-20261109`：2 个文件变化。
+
+**经 VLab 发版 `compaction-image-skip-20261109`**（claude-monitor，dev `abd35ed8`）
+> 验收：Shared VLab 2026-11-09 22:43-22:47 CST after deploy (history-image-prune 35009274, compact 517ec6df): dedicated session viewed three 2400x2400 PNGs with view_image (red/green/blue answered), then /compact: 'Compacted (58k -> 678)', journal shows 0 'Image resized' lines during compaction (the three >1200 px history images were not re-encoded); follow-up turn after compaction answered from the summa…
+- `core` compact-gStBcHDe.js  54be6901 → 517ec6df
+- `core` history-image-prune-Dg0CDQ4a.js  3e5c9c8b → 35009274
+
+V 上验收：
+- 专用会话 `agent:makaron:explicit:accept587-w`（固定 Worker flash，用 Gateway `agent` 接口，不进群）：先用 view_image 看三张 2400×2400 的 PNG，回答「红、绿、蓝」；再用 `sessions.compact` 压缩，返回 `compacted: true`，用时 25 s（主要是摘要模型调用）。压缩期间 journal 里 0 行 `Image resized`，Gateway 只有一次 5.8 s 的心跳延迟。测试图片已删。
+- 第一次验收用的会话实际跑在 /vds（Codex）上，Codex 走自己的压缩路径，覆盖不到补丁，所以改用固定 Worker 的会话重做。第一次触发压缩时 CLI 握手超时：当时是重启后的冷启动窗口，23:06 有 33.5 s 停顿、23:10 有 23.5 s 停顿，之后恢复正常。
+- 共享 VLab（22:43–22:47）同样通过：`/compact` 把 58k 压到 678，0 张缩放，压缩后的下一轮能正确回答。溢出场景的 A/B 对比（最长停顿 52.9 s → 1.2 s）见 PR #587 的 candidate 证据。
+
 ## cli-readonly-live-20261109
 
 上线：2026-11-09 21:31 CST（21:29 文件装到 V；**不重启 Gateway**：CLI 每次是新进程，装上即生效；Gateway 持有写句柄，原本就不走快照，下次自然重启时加载新字节）  ·  tag `cli-readonly-live-20261109`
