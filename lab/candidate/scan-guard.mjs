@@ -229,7 +229,7 @@ async function transcriptText(sessionKey) {
 
 // ---------------------------------------------------------------- scenario
 const seedFile = `scanguard-${runTag}.txt`;
-const seedToken = `SGTOKEN${runTag}`;
+const seedToken = `pear${runTag}`; // a "TOKEN" word made DeepSeek refuse to print it
 fs.writeFileSync(path.join(workspace, seedFile), `${seedToken}\n`, { mode: 0o644 });
 fs.chmodSync(path.join(workspace, seedFile), 0o644); // a 0600 file made DeepSeek skip command 2 as "private credentials"
 const COMMANDS = [
