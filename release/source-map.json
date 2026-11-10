@@ -1879,6 +1879,27 @@
       "sha256": "e49f5b519edee3c21f6ea939192acf8848302e8ab25145317357ca020a08870b",
       "source": "versa:87199af7dfd",
       "note": "workboard-full-context-20261110 (#591): workspace bootstrap filter keeps full context for workboard sessions (versa/port-workboard-full-context-20261109)"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/run-attempt-D1hJO4fX.js",
+      "sha256": "23705af0ceb5a879284ed04206cfba97be80bc872bfaf8cab21f601b3551d5cb",
+      "source": "versa:9da16d57d2d",
+      "note": "turnend-registry-20261110 (#589): stop the native background terminals a normally ended Codex turn that ran a native command left running (versa/port-codex-turn-end-terminals-20261110); OPENCLAW_CODEX_TURN_END_TERMINALS=keep disables"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-registry-C24yr_PF.js",
+      "sha256": "52b3b5717199f3d60bc600c2d5dbadbcd8af5dcfdb6943ac50f9412a23c86557",
+      "source": "versa:4ee0e038099",
+      "note": "turnend-registry-20261110 (#579): steering lease checks the requester's indexed rows before restoring the whole subagent registry (versa/port-registry-lazy-first-turn-20261108); OPENCLAW_V_REGISTRY_LAZY_FIRST_TURN=0 disables"
+    },
+    {
+      "layer": "core",
+      "path": "task-registry-B4-CJZk7.js",
+      "sha256": "7d1871ccd23f833d37e4f2e4ab3d1abfdfb72423c87246ff0f470348f3a40bf0",
+      "source": "versa:4ee0e038099",
+      "note": "turnend-registry-20261110 (#579): owner task lookup reads the store without restoring the task registry first; restore only on the fallback (versa/port-registry-lazy-first-turn-20261108)"
     }
   ]
 }
