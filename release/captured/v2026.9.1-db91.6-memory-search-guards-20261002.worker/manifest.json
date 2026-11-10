@@ -1,0 +1,778 @@
+{
+  "release": "v2026.9.1-db91.6-memory-search-guards-20261002.worker",
+  "capturedAt": "2026-10-02T11:59:22.200Z",
+  "capturedFrom": {
+    "host": "v",
+    "runtimeDir": "/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/worker",
+    "baseDir": "none"
+  },
+  "upstream": null,
+  "platformCommit": null,
+  "note": "Point-in-time capture of how the live runtime diverges from its upstream base. These bytes are the existing production state, not a reviewed source build. Entries with alsoInRepo=null had no copy anywhere except the server.",
+  "counts": {
+    "runtimeFiles": 94,
+    "baseFiles": 0,
+    "modified": 0,
+    "added": 94,
+    "removedFromBase": 0,
+    "alreadyInRepo": 5,
+    "capturedOnly": 89,
+    "residue": 0
+  },
+  "removedFromBase": [],
+  "files": [
+    {
+      "path": "./exec-env.mjs",
+      "sha256": "5c96d65e1bbbb06c7bfce555bd9587ffc1bc9c658b1d18edccadc09452ae97ff",
+      "kind": "added",
+      "bytes": 1658,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./exec-env.test.mjs",
+      "sha256": "ed14ccee04a14da2e6b92d27b0b06b8264001a3286efbaaefb6eeb75a8dc1a56",
+      "kind": "added",
+      "bytes": 2006,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./fake-agent-runtime.mjs",
+      "sha256": "32d30c8a54d7f23ed135222d1d6d1a39116cdbfe3013bc67bc9355331b25c821",
+      "kind": "added",
+      "bytes": 9784,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./fake-delayed-ready-worker.mjs",
+      "sha256": "2d8721863809d5584401d743dc0cd4de60d99526b3128d47b48607fb645fb4a1",
+      "kind": "added",
+      "bytes": 574,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./fake-detached-event-worker.mjs",
+      "sha256": "debe1d5b5a7e507f5f0f5d124c72e71d3a9a93abd8e43f4be832a27aca1fba1a",
+      "kind": "added",
+      "bytes": 2157,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./fake-diagnostic-runtime.mjs",
+      "sha256": "71d9ce48d414285360809b615afba25ca4bcbf37a41b19f4f80f1d5c6c38e48a",
+      "kind": "added",
+      "bytes": 389,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./fake-gateway-owned-tool-runner.mjs",
+      "sha256": "6b1da2e46a37127f5c8445b47bd550a9f3e223bc08e06ef87d7c516c7fe2a51f",
+      "kind": "added",
+      "bytes": 706,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./fast-compaction-provider.mjs",
+      "sha256": "f634157df656e0a042a3b43eeb432e6b6d4f25060c76034cb4a31b3d4f8d3e9f",
+      "kind": "added",
+      "bytes": 11897,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./fast-compaction-provider.test.mjs",
+      "sha256": "4f4fd4f64f0f73eff6963ae9fb542483ae7acec4b65cc3113a0f9a032a22e24b",
+      "kind": "added",
+      "bytes": 5502,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./gateway-completion-context.mjs",
+      "sha256": "e958ff1cd75cd28d0af3cd93d3e5d729c9a5d9108416c1a0652bdbbf3f38ff09",
+      "kind": "added",
+      "bytes": 524,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./gateway-completion-context.test.mjs",
+      "sha256": "695b90da401aab369ca7b8141d4eec2c31f3163da9bee311c92ae1087334762d",
+      "kind": "added",
+      "bytes": 1273,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./gateway-message-tool.mjs",
+      "sha256": "2ae673d4eae9dfd0f350e07d1106a78c95c9259d698e2a9b42fdbaeab2078472",
+      "kind": "added",
+      "bytes": 2936,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./gateway-native-compaction.mjs",
+      "sha256": "f884280cef63b2df5862c6c1139e6d7d0c95794a22e57f9446b3458790e84b39",
+      "kind": "added",
+      "bytes": 482,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./gateway-native-compaction.test.mjs",
+      "sha256": "d08d8131fd45e451634c64e724e5d06c732143baee3279f9cf915924e92b3186",
+      "kind": "added",
+      "bytes": 587,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./gateway-owned-terminal.mjs",
+      "sha256": "4d61d1b18a7141a1a3fb68d693ac454e0cbde018456202de6c11250f3b31c386",
+      "kind": "added",
+      "bytes": 816,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./gateway-owned-terminal.test.mjs",
+      "sha256": "a3d9bf6cec4ddcbb8b8e6b4cda120eb61b590d494c10e1c7dcbfdc5f3819bc56",
+      "kind": "added",
+      "bytes": 2006,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./gateway-owned-tool-proxy.mjs",
+      "sha256": "827d6052cd4dd48deeff39fec20c241bbf7a1c15f97a823a3680860e8bcc3427",
+      "kind": "added",
+      "bytes": 5593,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./gateway-owned-tool-proxy.test.mjs",
+      "sha256": "f029c9024ae81a49a980c9d9c2337d2c6e8192be9033bc01864508a4768171f5",
+      "kind": "added",
+      "bytes": 1908,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./gateway-public-stream.mjs",
+      "sha256": "5440eadbfe1e6bf40824bd389e9cd3fb87326cc3c75b1a158cfe107799300fdf",
+      "kind": "added",
+      "bytes": 866,
+      "hostMtime": "2026-09-07T16:34:19.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./gateway-sessions-spawn.mjs",
+      "sha256": "a2c8b1ac318a9ad267334c5175cfb1e1db4d6fea7910ebe026c1a4235d86094c",
+      "kind": "added",
+      "bytes": 3378,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./gateway-sessions-spawn.test.mjs",
+      "sha256": "6954ca3963d153b01310d776fd17056498260c50ff486365e46071c3d96d75ab",
+      "kind": "added",
+      "bytes": 1902,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./harness-channel.mjs",
+      "sha256": "d6b1655ea853bfcfab4d7f74eb08abf09283b4c092bc4f9f52399ede3699d317",
+      "kind": "added",
+      "bytes": 282,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./harness-channel.test.mjs",
+      "sha256": "9dd61d7174529d319aaaaa0430c2ee3a7f875f05f5831c2275803323e70def56",
+      "kind": "added",
+      "bytes": 1304,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./harness-event-contract.mjs",
+      "sha256": "a25315d7fc782c2e7ac2c85739e281a42e8f39ad51e2eb1ee84bd24ee8fd1e4c",
+      "kind": "added",
+      "bytes": 11566,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./harness-event-contract.test.mjs",
+      "sha256": "6ab8075515129783b034f08ae9b4c1807970fd6e0d3e940545060b2577ec188e",
+      "kind": "added",
+      "bytes": 6238,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./harness-failure.mjs",
+      "sha256": "3be999ce6625d65ba696bed77b84a21218956d75efc176a1d193a4f6f5aa6efe",
+      "kind": "added",
+      "bytes": 1678,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./harness-failure.test.mjs",
+      "sha256": "57b6dc2e6c2fcbc181d0dafa795758db25127c3e1f2cea2dd2d998d15f007bd4",
+      "kind": "added",
+      "bytes": 1936,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./harness-native-transcript.test.mjs",
+      "sha256": "63af4bb645e9e88ea7aa42010adc73126c4de0ec059130622843af35d87df61c",
+      "kind": "added",
+      "bytes": 2457,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./harness-result.mjs",
+      "sha256": "c1be75befbc89393b165fd9abf979a1096590284db176029bdb47c564ef40f9c",
+      "kind": "added",
+      "bytes": 15147,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./harness-result.test.mjs",
+      "sha256": "2e07cd54ef40f66aabae5f6be3fff3ce8444144b251d025019255c45b0a1f77a",
+      "kind": "added",
+      "bytes": 8040,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./hook-runtime.js",
+      "sha256": "6e4aacfcfc4200004c6e0a734b38c522f7d63e6798fa05a0d2f16e726756a436",
+      "kind": "added",
+      "bytes": 316,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./index.mjs",
+      "sha256": "c047f3df1f730b4eacb2db0ec64cd0e0281bc4f8388c8032768192a204222259",
+      "kind": "added",
+      "bytes": 70686,
+      "hostMtime": "2026-09-22T14:16:16.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./late-worker-reply.mjs",
+      "sha256": "7608a8dfcf262433a83bf111b8e4e29d6c1e45786a33efd99397d5eef05d1048",
+      "kind": "added",
+      "bytes": 1177,
+      "hostMtime": "2026-09-08T16:56:45.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./native-attempt-bridge.mjs",
+      "sha256": "6482f3d27a0f7e019a1f65faaa6e7bbdb28a999250ff5d1d6ab871d9ba65a813",
+      "kind": "added",
+      "bytes": 7631,
+      "hostMtime": "2026-09-09T12:10:33.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./native-attempt-bridge.test.mjs",
+      "sha256": "8f8b10c0c9ea264834bfef024a03340d90340f98706f0f2feeb3eb91f539b379",
+      "kind": "added",
+      "bytes": 7223,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./native-harness-data.mjs",
+      "sha256": "3e0b35195ed9652b5a2dac829ef3a67a4dcdddb915c0de50d27a5f08bff095ca",
+      "kind": "added",
+      "bytes": 4724,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./native-harness-data.test.mjs",
+      "sha256": "0b265da4a4c44c6e9b540cf2d4f7387da88f8b04363010800da6dc730996925c",
+      "kind": "added",
+      "bytes": 4526,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./native-hook-runtime.mjs",
+      "sha256": "bc5ba7c36772e78464d1ae8eda64e70fb9af29002221141a1fa4971deed21f32",
+      "kind": "added",
+      "bytes": 850,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./native-hook-runtime.test.mjs",
+      "sha256": "e729aa3b680209cd5dccfd8d489c1b2c73ab9f2bda859801b416ad7fd462ee34",
+      "kind": "added",
+      "bytes": 1123,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./native-lane-progress.mjs",
+      "sha256": "1b346c606f0ad5a2ff5235bee6da869c2e3e450c19ab43c1c74741b30ce5be41",
+      "kind": "added",
+      "bytes": 1089,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./native-lane-progress.test.mjs",
+      "sha256": "fa0858d52de45089d8fe153aff75aa918bca4b8bb55d44fa0f783833095b813f",
+      "kind": "added",
+      "bytes": 1412,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./native-request-timeout.mjs",
+      "sha256": "82d56dbd229f25b56f3869bbb6bb7dc188dcd43b67a9025579a4702cd25e5ac0",
+      "kind": "added",
+      "bytes": 625,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./native-request-timeout.test.mjs",
+      "sha256": "8fe77e6c4f4ab4a94d28ae90738fdab91e3d1659b5c11f3df75ba0c444d943c0",
+      "kind": "added",
+      "bytes": 839,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./native-setup-probe-owner.test.mjs",
+      "sha256": "d9a07a068ea995420c1632b328db9a5bfd0cc4cd188ef806d1daf1d4dd2dea15",
+      "kind": "added",
+      "bytes": 1959,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./noncooperative-worker.mjs",
+      "sha256": "7bd2a092b523611abe1fff6d8aabe749e50b016c84a03677c00637d150334815",
+      "kind": "added",
+      "bytes": 1016,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./openclaw.plugin.json",
+      "sha256": "1ec103e333e8f7562f14f81822ef853ccfd581e2c21f172da89243c3952644f6",
+      "kind": "added",
+      "bytes": 3038,
+      "hostMtime": "2026-09-16T04:41:34.000Z",
+      "alsoInRepo": "lab/release-files/worker-memory-recycle/production-worker-openclaw.plugin.json"
+    },
+    {
+      "path": "./package.json",
+      "sha256": "c4d6a9e11b06859ac173024f8bebf02d11e5fc00291a68aa6e9100de82598c90",
+      "kind": "added",
+      "bytes": 318,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./patch-openclaw-sessions-spawn-gateway-proxy.mjs",
+      "sha256": "58fd090986abd0564deded7ea74b7fad1dce3aab707808ea40bd88636e6e7a87",
+      "kind": "added",
+      "bytes": 8485,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./patch-openclaw-sessions-spawn-gateway-proxy.test.mjs",
+      "sha256": "6c4454246015b994f40bf488dfedb66cf5f4bd4c328afb45ee93d128b4695a8e",
+      "kind": "added",
+      "bytes": 4578,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./patch-openclaw-sessions-yield-external-task.mjs",
+      "sha256": "45486559a808fddeabdc35332ed342098441751212703a084c1c6502a4bea0cc",
+      "kind": "added",
+      "bytes": 5895,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./patch-openclaw-sessions-yield-external-task.test.mjs",
+      "sha256": "cf1483a7e7934ac86562d46a83a8da1638e6e2696e1a74de57d27456fdea050c",
+      "kind": "added",
+      "bytes": 1439,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./patch-openclaw-skill-workshop-worker-proxy.mjs",
+      "sha256": "a3d6044b7db096fa1778ad3c0c85c5233b5f0d0179f689fc8b19fe0bdbe61da6",
+      "kind": "added",
+      "bytes": 6122,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./patch-openclaw-skill-workshop-worker-proxy.test.mjs",
+      "sha256": "ae9ac48af020cc869e5f97c67fdb8bb7451e19d620e05a07d11539a18d0e44a4",
+      "kind": "added",
+      "bytes": 4414,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./patch-openclaw-worker-exec-config-domain.mjs",
+      "sha256": "f00adc2e3332abf2779fe46fa1e1d45f04e0a2e105638e7c2a8bfb4d5aef8e8b",
+      "kind": "added",
+      "bytes": 4992,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./patch-openclaw-worker-exec-config-domain.test.mjs",
+      "sha256": "e31d83ba5f330b18a68fdede3a03f5a0fd25d40158490f99cf0fd4bb814d4890",
+      "kind": "added",
+      "bytes": 1239,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./runtime-path.mjs",
+      "sha256": "a2bc1477b7e3c46ab870e1e982b85e51b1edc70172e93f1843e44b08a0175869",
+      "kind": "added",
+      "bytes": 7152,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./runtime-path.test.mjs",
+      "sha256": "4d5bdceefb3b1b3606b34c33908bac63d58a0736ac0346ff0cbcacf15fc795f4",
+      "kind": "added",
+      "bytes": 6164,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./self-test.mjs",
+      "sha256": "a04f435d29fa6383834f152dba31b5e713f939721005cd33dbb0d568ea0e9ff6",
+      "kind": "added",
+      "bytes": 7877,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./session-hotset.mjs",
+      "sha256": "77650e8a5e9d14194e04099862577ad4af28ee8ac47bb998951b6cb8203463a0",
+      "kind": "added",
+      "bytes": 3650,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./session-hotset.test.mjs",
+      "sha256": "a4b46b6f29dc102eefea1e3079128d32d28d0b3c28ccf0cb2842e459fc29ba12",
+      "kind": "added",
+      "bytes": 4354,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./session-rollover-retry.mjs",
+      "sha256": "7483494545800e3803d8499d86c9217eaa2c2a7adfbf24a9678572acc016ac8d",
+      "kind": "added",
+      "bytes": 2454,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./session-rollover-retry.test.mjs",
+      "sha256": "54f5482e8854d01f4806405a7887f564225db19db73d508da6291d44ba6babe4",
+      "kind": "added",
+      "bytes": 5022,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./silent-worker.mjs",
+      "sha256": "1bf861d3057b236c674dd1958254a163015fcfc5e15a675cd8ea68e40719f2e4",
+      "kind": "added",
+      "bytes": 271,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skill-usage-report.mjs",
+      "sha256": "d853cf1d6455fb12891689cff05ee9b460d26206b607fec2b04b0f8720dbf484",
+      "kind": "added",
+      "bytes": 3338,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skill-usage-report.test.mjs",
+      "sha256": "d73b2c89b11cffa3450b33c1264621423796b065cd776ebb57f06268bae3fc9c",
+      "kind": "added",
+      "bytes": 1190,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skill-usage-telemetry.mjs",
+      "sha256": "12cea6b89b3071adccdfd446f0bfc66b79bd22a9f919340b20b359d1e69be949",
+      "kind": "added",
+      "bytes": 3289,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skill-usage-telemetry.test.mjs",
+      "sha256": "d6bb07736097d5ef946ce2227388ea36815c4bbdd05f775fa308454b6bf75f92",
+      "kind": "added",
+      "bytes": 2793,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skill-workshop-subprocess-runner.mjs",
+      "sha256": "986a1ca6f3ac2c99d4e5cc435c0a6cb94ac3395363e6b8366791bb7aeb058aee",
+      "kind": "added",
+      "bytes": 3302,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./stubborn-worker.mjs",
+      "sha256": "76e5b304643b0e0086ab2898865d442468015f2b7f57843eb1d71f6cebdd1c30",
+      "kind": "added",
+      "bytes": 563,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./subagent-completion-relay.mjs",
+      "sha256": "6b4f4584bfbe44c8e4b715fd3668f075c5e22d48abccaa6fb906a6fe07672693",
+      "kind": "added",
+      "bytes": 4913,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./subagent-completion-relay.test.mjs",
+      "sha256": "2c8a7feeee99fa30d097ad34a4081a59a75b5ce5d1fe397b71ef87a154a77090",
+      "kind": "added",
+      "bytes": 6566,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./transcript-recovery.mjs",
+      "sha256": "a056705c534d754b4fab398073c9e2091e26e9e4e40c15c14be95f1f3a28c3a3",
+      "kind": "added",
+      "bytes": 3365,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./transcript-recovery.test.mjs",
+      "sha256": "f89bbfd370c26606c34e5505d427062de6ee7eef77fa3299d68a60ac405d4e4d",
+      "kind": "added",
+      "bytes": 2579,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./user-turn-ownership.mjs",
+      "sha256": "9945de5ba7fbb0619b1a53b3d4530198bcae298f25b73c2a80ca2cef1fb71c94",
+      "kind": "added",
+      "bytes": 3806,
+      "hostMtime": "2026-09-07T17:43:35.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./user-turn-ownership.test.mjs",
+      "sha256": "5a6973d4eeff985e7a323291a83beec829e296b3cba737f51dc299de04e61a92",
+      "kind": "added",
+      "bytes": 2289,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./volcengine-rtc-agent-provider.mjs",
+      "sha256": "39b6e3a8493e039191cd8c0fa3c0ed2995bc2dc1f3556b61f1a73e01f29c4bb7",
+      "kind": "added",
+      "bytes": 15414,
+      "hostMtime": "2026-09-22T14:16:16.000Z",
+      "alsoInRepo": "lab/release-files/volcengine-rtc-agent/volcengine-rtc-agent-provider.mjs"
+    },
+    {
+      "path": "./worker-active-run-proxy.mjs",
+      "sha256": "de624e7844997ee432838ecb4f2d1f06476c3ebe1790da672217f0676bc12a78",
+      "kind": "added",
+      "bytes": 2033,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./worker-active-run-proxy.test.mjs",
+      "sha256": "bd05cd333aaa07c954c8dd97bbe966a058abee356d9471962a6ce7ed9a4c6ddd",
+      "kind": "added",
+      "bytes": 1469,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./worker-agent.test.mjs",
+      "sha256": "3abf280d4e41bf3709680ca7d7cb7e09c15ccfb9c8ca5a586bb7095c3b95aade",
+      "kind": "added",
+      "bytes": 9960,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./worker-config-sync.mjs",
+      "sha256": "924829f0a592703eff06b328676577567018e12b4aa85d6587b6edcabd0e76ea",
+      "kind": "added",
+      "bytes": 2931,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./worker-config-sync.test.mjs",
+      "sha256": "0d73bc742b7c304b979b8513f811a4ffa332519e16a50d2e76d9254ddba73f07",
+      "kind": "added",
+      "bytes": 3822,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./worker-detached-event.test.mjs",
+      "sha256": "b11c215593a1a9228b97965902c8a72a962ad8d01756cf1061a8192b05e97a97",
+      "kind": "added",
+      "bytes": 2023,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./worker-exec-argv.test.mjs",
+      "sha256": "566ff8edc0c8c6ce91b69470150f2ebfbe34fa6d46aeb84f967de61808efec44",
+      "kind": "added",
+      "bytes": 461,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./worker-gateway-events.mjs",
+      "sha256": "acbb8ed1534294c723188f00275a16296ea872e71dfc24a3c24b652472de4052",
+      "kind": "added",
+      "bytes": 7914,
+      "hostMtime": "2026-09-25T14:42:00.000Z",
+      "alsoInRepo": "lab/release-files/media-completion-worker-relay/worker-gateway-events.mjs"
+    },
+    {
+      "path": "./worker-gateway-events.test.mjs",
+      "sha256": "65b4b718238de5a096a41dbd2728027287ff365eef9c5e4625981e5daa85d310",
+      "kind": "added",
+      "bytes": 4974,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./worker-pool-scaling.test.mjs",
+      "sha256": "a5fbb7fe178560c13eb23380742aad0d3776ca5aafd0b003b06da4c31c0ca410",
+      "kind": "added",
+      "bytes": 2564,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./worker-pool.mjs",
+      "sha256": "a9f718d0c9ca1f209aba9a9a55d86181b84f2ab1afa8b65cc86bde96bc3b5ea3",
+      "kind": "added",
+      "bytes": 57000,
+      "hostMtime": "2026-09-19T11:50:29.000Z",
+      "alsoInRepo": "lab/release-files/worker-memory-recycle/production-worker-worker-pool.mjs"
+    },
+    {
+      "path": "./worker-progress.mjs",
+      "sha256": "7f13520ddccddabcadbca312c9d49fbdb910c415a93c7ec24206451cac404b7a",
+      "kind": "added",
+      "bytes": 728,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./worker-progress.test.mjs",
+      "sha256": "47a270597fe4dcb5f6d0ab9629859a30f446ea9d96799e9876a8ff888fd9fac3",
+      "kind": "added",
+      "bytes": 877,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./worker-skill-telemetry.test.mjs",
+      "sha256": "fb5ad3465c59021709c06781e01bf6910c7b2f44b731ee59dcda80b1c6c4fb88",
+      "kind": "added",
+      "bytes": 2336,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./worker-steer91.test.mjs",
+      "sha256": "5ff34bd862d29373ed54e4113f668ce1e67fe5dc33ed32c2e72feeab0adfff48",
+      "kind": "added",
+      "bytes": 5446,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./worker-stream-parity.test.mjs",
+      "sha256": "9c492fa7f4c31d3b406296a7e6ebbb38fd1e22c733a8854691e10ad003243954",
+      "kind": "added",
+      "bytes": 7608,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./worker-timeout-isolation.test.mjs",
+      "sha256": "a5d2867f3f31488787eb40d31f60d023c9bdb0d863f7a19a00b969f990224a0b",
+      "kind": "added",
+      "bytes": 6941,
+      "hostMtime": "2026-09-05T19:22:10.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./worker.mjs",
+      "sha256": "4bf1472d5462bfd59ea4ec264c55cb46d35f8281f3479140005b94af5d276c51",
+      "kind": "added",
+      "bytes": 41397,
+      "hostMtime": "2026-09-16T04:40:44.000Z",
+      "alsoInRepo": "lab/release-files/worker-memory-recycle/production-worker-worker.mjs"
+    }
+  ],
+  "residue": []
+}

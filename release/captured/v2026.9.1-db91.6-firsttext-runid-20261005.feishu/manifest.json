@@ -1,0 +1,410 @@
+{
+  "release": "v2026.9.1-db91.6-firsttext-runid-20261005.feishu",
+  "capturedAt": "2026-10-05T08:55:38.441Z",
+  "capturedFrom": {
+    "host": "v",
+    "runtimeDir": "/opt/openclaw-experiments/worker-visible-progress-v2026.9.1-20260909/feishu",
+    "baseDir": "none"
+  },
+  "upstream": "@openclaw/feishu 2026.9.1",
+  "platformCommit": null,
+  "note": "Point-in-time capture of how the live runtime diverges from its upstream base. These bytes are the existing production state, not a reviewed source build. Entries with alsoInRepo=null had no copy anywhere except the server.",
+  "counts": {
+    "runtimeFiles": 48,
+    "baseFiles": 0,
+    "modified": 0,
+    "added": 48,
+    "removedFromBase": 0,
+    "alreadyInRepo": 3,
+    "capturedOnly": 45,
+    "residue": 0
+  },
+  "removedFromBase": [],
+  "files": [
+    {
+      "path": "./README.md",
+      "sha256": "9febdd12db433d3d4708062131a7a19422498822c918250ff241744f95e1a07a",
+      "kind": "added",
+      "bytes": 346,
+      "hostMtime": "2026-09-09T04:54:58.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/accounts-RwSyseKr.js",
+      "sha256": "fd160e1f61db85118c29a260d1690657827de0a8027b78d9d10e272ec81f7782",
+      "kind": "added",
+      "bytes": 7586,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/api.js",
+      "sha256": "fb60519f5fda05012dfa4f6234c7aeeab92df42868a7123583bddd4386369b70",
+      "kind": "added",
+      "bytes": 93942,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/app-registration-BI99e_JI.js",
+      "sha256": "3b090a11b0383df50a4fbd749d06dc7f905f025c8b45aa4a5138f7ae811cb52e",
+      "kind": "added",
+      "bytes": 7565,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/audio-preflight.runtime-BBfC9elv.js",
+      "sha256": "ad1180ad3e0beddde1dddc0503ba3a198708b31de6035d31f62b2599ef0ac80b",
+      "kind": "added",
+      "bytes": 301,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/channel-DSYCNah8.js",
+      "sha256": "bb71f2d463696728477e85856a591b3fd94617f38aaf17b52eaadfaeffe46b7f",
+      "kind": "added",
+      "bytes": 118708,
+      "hostMtime": "2026-10-03T15:40:08.000Z",
+      "alsoInRepo": "lab/release-files/feishu-dm-approvals/generated/channel-DSYCNah8.js"
+    },
+    {
+      "path": "./dist/channel-entry.js",
+      "sha256": "d6944f7c3ba5a235e4fc4323a7e2b95943eb4b0bf97a4e804da843469b2b0a05",
+      "kind": "added",
+      "bytes": 598,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/channel-plugin-api.js",
+      "sha256": "d7ccd1d863a162aefb48eb3f46eb641d079db9bad3a768cc5b4b4c3ef9a1b165",
+      "kind": "added",
+      "bytes": 84,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/channel.runtime-EfDl2Q8q.js",
+      "sha256": "6bac32d3ba3d404cdfec023bbca917c898987cc66dc029a2aef6ce5c76bff6d2",
+      "kind": "added",
+      "bytes": 9411,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/chat-CxXaPTuO.js",
+      "sha256": "299a2d5edc93dac8a409483c1cf920613e01f950f159815d0c0d6bfd05bda44c",
+      "kind": "added",
+      "bytes": 9577,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/client-DMbIL3UH.js",
+      "sha256": "9316572cd41b6f753abba975b5069b6f86bddb0812e8e4131836ad605e66e572",
+      "kind": "added",
+      "bytes": 10459,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/configured-state.js",
+      "sha256": "7012f87a9f29cd5fb4d016c58d1ac9e1df190fc9ea2d1e87f7b6b6642a91503b",
+      "kind": "added",
+      "bytes": 1299,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/contract-api.js",
+      "sha256": "55bf059f482258e9def064270b15ac2444a45c4cfb579482eb7268f7405ee6e5",
+      "kind": "added",
+      "bytes": 534,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/conversation-id-VYgGQ-GX.js",
+      "sha256": "8cbafbf1b4c42e76b571e0f1c6b744aa576559fdd48d8738911276b180afab0d",
+      "kind": "added",
+      "bytes": 5259,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/doctor-contract-CQAuBotF.js",
+      "sha256": "e4534de5e4a568f949ff08c43c7e067f28dee24851252c588f7fad8beb4ae5c5",
+      "kind": "added",
+      "bytes": 19091,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/doctor-contract-api.js",
+      "sha256": "878a49154b0cddf398a7ebf7dcb40028238d6b32861f82a3a3f525316ad1bb8c",
+      "kind": "added",
+      "bytes": 167,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/index.js",
+      "sha256": "17f2e4d25ca24f4f7694b2f109e20d1c7411a5ca8583e600373473673dc61706",
+      "kind": "added",
+      "bytes": 1064,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/json-response-DXajw_FU.js",
+      "sha256": "12da2dfb99f465a20dbe02d33ca55a78b8ed74e5c350c42d6c065e2fa4d3ba99",
+      "kind": "added",
+      "bytes": 465,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/monitor-DoMmOfaD.js",
+      "sha256": "e837db61c62493c371fd71efab432b7fc71fd7c0fad322dcfb08c7fdc8357a66",
+      "kind": "added",
+      "bytes": 8371,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/monitor.account-WFdlCDhR.js",
+      "sha256": "ec089142380fcefbf515d51549b81b4954c7c729be695b797ff9fe42cd2dd2cf",
+      "kind": "added",
+      "bytes": 370556,
+      "hostMtime": "2026-10-05T08:55:08.000Z",
+      "alsoInRepo": "lab/release-files/feishu-firsttext-e2e/monitor.account-WFdlCDhR.js"
+    },
+    {
+      "path": "./dist/probe-D_SatdZl.js",
+      "sha256": "55b18b4ba0b09c1e7a1c5339d093c6bb876f809b9ef902ba537291081dbfcc29",
+      "kind": "added",
+      "bytes": 7128,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/reply-delivery-result-CEFTDA3f.js",
+      "sha256": "0cc2f09c3f541e522bbb05344dc09abd1a200bd73f53405a8f75cf8652a65a82",
+      "kind": "added",
+      "bytes": 138098,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/rolldown-runtime-8H4AJuhK.js",
+      "sha256": "dfddc72a879e6389656773415cc7e6d1a7fef5c52ad800a61ac1156a3a66b2f6",
+      "kind": "added",
+      "bytes": 382,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/runtime-C5JxBWZp.js",
+      "sha256": "e15497a9738c244b2498c97b98e65b74e22ad68d9e552d32a87d8dcfc15e5b3e",
+      "kind": "added",
+      "bytes": 362,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/runtime-api.js",
+      "sha256": "44c93653ebd92fc9dfad5336a438c292f1f21e866cd710342f61dc4a715bd5e1",
+      "kind": "added",
+      "bytes": 1621,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/runtime-setter-api.js",
+      "sha256": "29e4fde611f26dd9eb7983499ccb0eb431495334dde5ffc51d956263b4e88ccc",
+      "kind": "added",
+      "bytes": 92,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/secret-contract-BCpDLdg9.js",
+      "sha256": "6d0ce96e57590294135c78aac09ad98040368423af7ce98c6a6032cfaddeab6a",
+      "kind": "added",
+      "bytes": 3605,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/secret-contract-api.js",
+      "sha256": "6982a643ee3cf5926a2930034863ab12759f5a2ac1ee164de18d4ecc05499ac8",
+      "kind": "added",
+      "bytes": 230,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/security-audit-DKfR4Cv3.js",
+      "sha256": "1bf33043fdf622c196ace3f34f12678a10d701a3bd926e34eaf5f3195182c992",
+      "kind": "added",
+      "bytes": 728,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/security-audit-shared-CK5rVR-1.js",
+      "sha256": "0d87c6bec1c3ef4b7d0010a403ddac928e36a347ee2f0d13949437fa1c27ebe8",
+      "kind": "added",
+      "bytes": 1866,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/security-contract-api.js",
+      "sha256": "e916f60dd154178a91932a21ace833e4fb51f914a4e14f5c2771b050fcdc6719",
+      "kind": "added",
+      "bytes": 142,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/session-binding-contract-api.js",
+      "sha256": "f5240378591a46b2fe3a76b6400cb20c0a581f65b41ab4fbe8ba59aa869bdd9d",
+      "kind": "added",
+      "bytes": 132,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/session-conversation-DFCIvQK-.js",
+      "sha256": "2bac3a72dc24616bf7f1785403d11ab4f6e84ff0f7a77a305c121b0a90a55f96",
+      "kind": "added",
+      "bytes": 1025,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/session-key-api.js",
+      "sha256": "3949aa91769a4f64adf469e294a3694f301248937e9bf7211acf05ea406ac86e",
+      "kind": "added",
+      "bytes": 167,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/setup-api.js",
+      "sha256": "e4367317450f7f08402bad49c66d371bf4c8ae80a2fe84f129649edf2a8b2cbe",
+      "kind": "added",
+      "bytes": 172,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/setup-entry.js",
+      "sha256": "2af10fcb46b8042d723bce0411d6c2bd5807d0d06f080cdc875995a2466b5cca",
+      "kind": "added",
+      "bytes": 539,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/subagent-hooks-Buadpie_.js",
+      "sha256": "c415177d05a8cccdcb5036c3ec6aea8f7a3d655bad3b346e0e8068a87d3bf1f9",
+      "kind": "added",
+      "bytes": 7113,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/subagent-hooks-api.js",
+      "sha256": "d7de2faadc6b072592c71567fb0433b02044f67d1506c6d6d10fdfa7da6f8429",
+      "kind": "added",
+      "bytes": 716,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/targets-BTQCYRZQ.js",
+      "sha256": "2e569e3d74d41074c1e517440af75d29851a5c44764cd9a0cc01d77c8a89b118",
+      "kind": "added",
+      "bytes": 2396,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/thread-bindings-BiL1wGqK.js",
+      "sha256": "7f85d10a2f822a9207a5f079066026100c30f8657ee9c40f8788320e95ca64ca",
+      "kind": "added",
+      "bytes": 9588,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./dist/v-feishu-approvals.js",
+      "sha256": "2905c12f9bc3cad97416f169ae7a08072878c7ff89a8f33076d710f7282cf71b",
+      "kind": "added",
+      "bytes": 24159,
+      "hostMtime": "2026-10-03T15:40:08.000Z",
+      "alsoInRepo": "lab/release-files/feishu-dm-approvals/generated/v-feishu-approvals.js"
+    },
+    {
+      "path": "./openclaw.plugin.json",
+      "sha256": "483c07a0e1a3e077400d56360f57d40468a400fc0628696d4f536f2cd9b7ddf6",
+      "kind": "added",
+      "bytes": 62118,
+      "hostMtime": "2026-09-17T04:34:32.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./package.json",
+      "sha256": "2cf0f6c6513e119deb213ad5a890209f7d9416c89b173c58bdc1ea3d97ade3a6",
+      "kind": "added",
+      "bytes": 2259,
+      "hostMtime": "2026-09-09T04:54:58.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/feishu-doc/SKILL.md",
+      "sha256": "cb9eaa23e166c917c8d764516f5253f773de5bee54422f6771f9f43c5b7b6619",
+      "kind": "added",
+      "bytes": 2064,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/feishu-doc/references/block-types.md",
+      "sha256": "f5ea1250b7938be8d48c4a645bd49ca99d51574fa011b39b57b5d17110f25b14",
+      "kind": "added",
+      "bytes": 5368,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/feishu-drive/SKILL.md",
+      "sha256": "8df105d7f607f457026da9e8a93e97aa0b356712f628e5f61934be7a8c4ec34c",
+      "kind": "added",
+      "bytes": 1498,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/feishu-perm/SKILL.md",
+      "sha256": "cac96b74d35fd7f08f2349572cd451c4a35e425d553151afca29b1148162b9bc",
+      "kind": "added",
+      "bytes": 1030,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./skills/feishu-wiki/SKILL.md",
+      "sha256": "da26f3d970e23f57d4d3363f5f01052cf03382bd875fd8c93eb4fd8d2a8c2682",
+      "kind": "added",
+      "bytes": 1326,
+      "hostMtime": "2026-09-09T04:54:56.000Z",
+      "alsoInRepo": null
+    }
+  ],
+  "residue": []
+}

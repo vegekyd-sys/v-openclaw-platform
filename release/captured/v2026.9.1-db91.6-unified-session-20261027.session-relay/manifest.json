@@ -1,0 +1,186 @@
+{
+  "release": "v2026.9.1-db91.6-unified-session-20261027.session-relay",
+  "capturedAt": "2026-10-26T18:47:11.563Z",
+  "capturedFrom": {
+    "host": "v",
+    "runtimeDir": "/home/openclaw/.openclaw/extensions/v-session-relay",
+    "baseDir": "none"
+  },
+  "upstream": null,
+  "platformCommit": null,
+  "note": "Point-in-time capture of how the live runtime diverges from its upstream base. These bytes are the existing production state, not a reviewed source build. Entries with alsoInRepo=null had no copy anywhere except the server.",
+  "counts": {
+    "runtimeFiles": 20,
+    "baseFiles": 0,
+    "modified": 0,
+    "added": 20,
+    "removedFromBase": 0,
+    "alreadyInRepo": 0,
+    "capturedOnly": 20,
+    "residue": 0
+  },
+  "removedFromBase": [],
+  "files": [
+    {
+      "path": "./core/continuations.js",
+      "sha256": "9399c749e8adced4e503c363e14fef9887709bd22b6fac48230f4e2c8ea1287d",
+      "kind": "added",
+      "bytes": 4724,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/contracts.js",
+      "sha256": "a1588789e1cfe44c3c6e7214f51940ab2d2dca4ba5889019fb4f05097b00156d",
+      "kind": "added",
+      "bytes": 35950,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/copy.js",
+      "sha256": "af1644a85c2e0610457b14a1cfc3734054d4412fa8d99f293f79e9888dfa6064",
+      "kind": "added",
+      "bytes": 17174,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/engine.js",
+      "sha256": "670bdcc702feb57274315f7e229b3c1051a8ef009bf598e724ee463dff27fc9f",
+      "kind": "added",
+      "bytes": 86436,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/guard.js",
+      "sha256": "4edf04d8147e7180de2a305744a64633b2b4795a590b6d0085847c6bbf7521d3",
+      "kind": "added",
+      "bytes": 5980,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/host.js",
+      "sha256": "a2c4a8d71011d78ceb7e1a7cc51d08b525aea4e8659dbe41baacaeacfda587d8",
+      "kind": "added",
+      "bytes": 9003,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/labels.js",
+      "sha256": "1a894af3c503a2026c292fa1e0345facb3ee8c4b3ca4ba9e4e0aac3e402d9866",
+      "kind": "added",
+      "bytes": 5319,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/ledger.js",
+      "sha256": "706c2505efca2e2383605eddf01d1f5dac9d18abe15ee3984fc7ea1de8664818",
+      "kind": "added",
+      "bytes": 16472,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/policy.js",
+      "sha256": "f39e1e193eb3fab2a860f3de5e61a4601770f80b9309abcfe1fb00c8af82b19d",
+      "kind": "added",
+      "bytes": 5836,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/queue.js",
+      "sha256": "49c08634cb8d3294a0286ab7433fb80db53cefc74106f53a30bdcd912b3e7e55",
+      "kind": "added",
+      "bytes": 2062,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/recovery.js",
+      "sha256": "6414fa7f8e6843769d8d54aeb927dc241bcf3ec793373718f9abe85efc351b51",
+      "kind": "added",
+      "bytes": 20584,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/requests.js",
+      "sha256": "46d8abe4570d9ac3140c038e07eb781a26ebfc5d47bad6f15400e3e685d2d237",
+      "kind": "added",
+      "bytes": 6371,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/routes.js",
+      "sha256": "eadfd0d10c5e281f66e340115aec37f66ecc4a2f9a082bf6b949b0303b8c0c12",
+      "kind": "added",
+      "bytes": 9700,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/tasks.js",
+      "sha256": "74504ce2922fc669fc2557148908d01550358808999d4df19bd4d9387e2ead77",
+      "kind": "added",
+      "bytes": 3628,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/transports/agent.js",
+      "sha256": "b4c2f48ebe63d8ebf48badbc013e31cf2181a7e0b984365f53cf2642ce53d2a9",
+      "kind": "added",
+      "bytes": 5718,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/transports/bridge.js",
+      "sha256": "23731930069afc18bec4d9ee99228821c70b8693731a1f70e40ee1ceed63175c",
+      "kind": "added",
+      "bytes": 2344,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/visible.js",
+      "sha256": "849771ebf38632303c9a4d482a59119f6c4a53e8be2f1062023a295535004bdd",
+      "kind": "added",
+      "bytes": 6130,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./index.js",
+      "sha256": "35799d31b67855a9c2a60b0bd99b170b36e7905c03ec3817871962959d11068c",
+      "kind": "added",
+      "bytes": 1382,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./openclaw.plugin.json",
+      "sha256": "722e4e46259fa4c0285981e378d40614a22df8de8ff3e28dbee56bb6ae818d96",
+      "kind": "added",
+      "bytes": 1811,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./package.json",
+      "sha256": "f1e1c0ff694fd8930832347faff4f2fb63beacc749c2381945e3cd2b42d016b3",
+      "kind": "added",
+      "bytes": 401,
+      "hostMtime": "2026-10-26T18:46:39.000Z",
+      "alsoInRepo": null
+    }
+  ],
+  "residue": []
+}
