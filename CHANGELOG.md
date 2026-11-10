@@ -28,7 +28,7 @@
 
 VLab 配置对齐：验收后把共享 VLab 的默认模型改成和 V 一样的 `deepseek/vds-deepseek-flash`（makaron 与 defaults），Codex 的 deepseek provider 重试次数改成 1。因为 accept 要求配置哈希等于暂存时的值，accept 时临时换回暂存时的配置（d53e088b，验收证据就是在它下面取得的），accept 后立即恢复对齐配置并重启 VLab。
 
-V 上验收：重启后第一张真实夜班卡出现后补记（V 上不发测试卡）。判据：卡的 Codex rollout 里出现 AGENTS.md 首行「AGENTS.md — Makaron Workspace Entry Point」，workspace context 含 SOUL/IDENTITY/USER/MEMORY。02:07 重启后第一个 rollout 是 cron 任务（不经过 workboard），不算。
+V 上验收（11/10 09:00，第一张真实夜班卡，未发测试卡）：Gateway 02:04 重启后夜班空闲到 09:00。第一张卡 `372eb1d0`（GeeLark 定时发布投递）的 Codex rollout（09:00:27 开始）里出现 AGENTS.md 首行「AGENTS.md — Makaron Workspace Entry Point」；developer 指令 94,250 字符（11/09 约 66,000），workspace context 75,035 字符（11/09 61,985），多出的约 2.8 万与 VLab 量到的一致。该卡正常 `workboard_complete`（39 次请求，输入 329 万 token）；随后 5 张 GeeLark 投递卡同样带上 AGENTS.md，没有发消息或问用户的调用。Gateway 02:04 以来无 ≥30 s 停顿。成本与行为对比等上线后完成满 60 张卡再出（按 11/09 口径）。
 
 ## compaction-image-skip-20261109
 
