@@ -32,6 +32,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { captured, captureSourceForTarget } from './lib/runtime-components.mjs';
+import { capturedBytes } from './lib/captured-store.mjs';
 import { defaultVlabTool } from './lib/vlab-tool.mjs';
 
 const args = parseArgs(process.argv.slice(2));
@@ -83,8 +84,9 @@ for (const f of parity.findings) {
     continue;
   }
   const source = sourceFor(f.target);
-  let bytes = null;
-  try { bytes = source && git('show', `${commit}:${source}`); } catch {}
+  // dist/ bytes are on the captured-store branch (docs/release-captured-store.md);
+  // captures from before 2026-11-10 are also still in dev's history.
+  const bytes = source && capturedBytes(DEV, source, { commit });
   if (!bytes) {
     refused.push(`not-in-capture ${f.target}`);
     continue;

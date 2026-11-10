@@ -21,7 +21,7 @@ while read -r _local_ref local_sha remote_ref _remote_sha; do
   case "$local_sha" in
     *[!0]*) ;;
     *)
-      if [ "$remote_ref" = refs/heads/main ] || [ "$remote_ref" = refs/heads/dev ]; then
+      if [ "$remote_ref" = refs/heads/main ] || [ "$remote_ref" = refs/heads/dev ] || [ "$remote_ref" = refs/heads/captured-store ]; then
         echo >&2
         echo "  refusing to delete $remote_ref." >&2
         echo >&2
@@ -32,6 +32,21 @@ while read -r _local_ref local_sha remote_ref _remote_sha; do
   esac
 
   case "$remote_ref" in
+    refs/heads/captured-store)
+      # The only copy of production's captured dist/ bytes since 2026-11-10
+      # (docs/release-captured-store.md). Append-only: never rewrite it.
+      case "$_remote_sha" in
+        *[!0]*)
+          if ! git merge-base --is-ancestor "$_remote_sha" "$local_sha" 2>/dev/null; then
+            echo >&2
+            echo "  refusing a non-fast-forward push to captured-store (fetch it and publish again:" >&2
+            echo "  node scripts/captured-store.mjs publish <name>)." >&2
+            echo >&2
+            exit 1
+          fi
+          ;;
+      esac
+      ;;
     refs/heads/main)
       cat >&2 <<'MSG'
 

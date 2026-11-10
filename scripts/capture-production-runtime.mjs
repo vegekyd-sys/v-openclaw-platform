@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Capture the exact bytes by which a live OpenClaw runtime differs from its
 // upstream base install, so the running release becomes reproducible from git.
+// The manifest goes to dev; the dist/ bytes to the captured-store branch
+// (scripts/captured-store.mjs publish, docs/release-captured-store.md).
 //
 // Read-only on the target host. Safe to run while another line is deploying:
 // it only reads, and the manifest records the capture instant so a later drift
@@ -27,7 +29,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 
@@ -147,6 +149,16 @@ const tar = execFileSync(
   { input: list, maxBuffer: 512 * 1024 * 1024 },
 );
 const distDir = join(outDir, 'dist');
+// A dist/ copied from the captured-store branch (it has a .dist-tree marker
+// next to it; docs/release-captured-store.md) is not this capture: a recapture
+// under the same name starts from an empty dist/.
+if (existsSync(join(outDir, '.dist-tree'))) {
+  rmSync(distDir, { recursive: true, force: true });
+  rmSync(join(outDir, '.dist-tree'), { force: true });
+}
+try {
+  if (lstatSync(distDir).isSymbolicLink()) unlinkSync(distDir);
+} catch {}
 mkdirSync(distDir, { recursive: true });
 execFileSync('tar', ['-xzf', '-', '-C', distDir], { input: tar });
 
@@ -217,6 +229,7 @@ writeFileSync(join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2
 console.error(`# wrote ${relative(repoRoot, join(outDir, 'manifest.json'))}`);
 console.error(`#   ${diff.length} files captured, ${reproducible} already in repo, ` +
   `${diff.length - reproducible} were server-only`);
+console.error(`# dist/ is not committed to your branch: node scripts/captured-store.mjs publish ${relative(join(repoRoot, 'release/captured'), outDir)}`);
 
 // Hash a published package exactly as the remote side hashes a directory:
 // "./"-relative paths, regular files only, the same --exclude prunes.
