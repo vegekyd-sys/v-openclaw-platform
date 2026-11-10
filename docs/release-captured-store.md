@@ -50,7 +50,8 @@ captured-store 分支 ──(git cat-file)──▶ .git/v-captured/        共�
 什么时候会自动跑：
 
 - `pnpm install`（`postinstall`，失败只警告不阻断安装）；
-- `git checkout` / `git worktree add` 之后（`.githooks/post-checkout`，前提是 `core.hooksPath` 指向含这个 hook 的 `.githooks`）。
+- `git checkout` / `git worktree add` 之后（`.githooks/post-checkout`，前提是 `core.hooksPath` 指向含这个 hook 的 `.githooks`，
+  而且必须是**相对路径**，见下面“新 worktree 上手”里 hook 那一条）。
 
 规则：
 
@@ -58,6 +59,59 @@ captured-store 分支 ──(git cat-file)──▶ .git/v-captured/        共�
 - **没有标记的 `dist/` 是"自己的"**（还没 publish 的新捕获，或者仍然跟踪 `dist/` 的旧分支），`link` 从不碰它。
 - `link --verify`：重新校验缓存里每个对象的 git 哈希（坏了原地修复），并逐个比对已克隆的 `dist/`，被改过就重新克隆。
 - 换缓存位置：`V_CAPTURED_CACHE=/path`。删掉缓存（`rm -rf .git/v-captured`）随时可以，再 link 一次就重建（约 30 秒）。
+
+## 新 worktree 上手
+
+一个新 worktree 只要跑一条命令：
+
+```
+pnpm install            # postinstall 会把 release/captured/*/dist 全部克隆好
+```
+
+之后可以这样确认：
+
+```
+node scripts/captured-store.mjs link    # 应输出 "0 copied now"
+node scripts/captured-store.mjs check   # 应输出 "... manifest entries match captured-store; no dist/ tracked"
+git status --porcelain                  # 应为空（dist/ 和 .dist-tree 都被忽略）
+```
+
+2026-11-10 在 Mac 上用 dev `2f709dd8` 新开的 worktree 实测（共享缓存已存在）：
+
+| 步骤 | 结果 |
+| --- | --- |
+| 刚签出 | 550 个捕获目录、0 个 `dist/`（548 份有 manifest，另有 `base/` 和一个只有 `capture-provenance.json` 的目录） |
+| `pnpm install` | 16 秒（主要花在 postinstall 克隆 549 份 `dist/`），`df` 显示多用约 22 MB（含 `node_modules`）；`du -sh release/captured` 仍显示 1.9G，原因见上 |
+| `link` 再跑一次 | `0 copied now`，0.3 秒 |
+| `check` | 通过，66336 条 manifest 记录，约 4 秒（含一次 fetch） |
+| `link --verify` | 约 11 秒；手动改过的 `dist/` 文件会被报出并重新克隆 |
+| `npm install` / `npm ci` | 分别报 `EBADENGINE` 和 `EUSAGE`（没有 package-lock.json）后退出，不会生成 `node_modules/` 或 `package-lock.json` |
+| CI 同样的步骤（`pnpm test`、workboard 补丁测试、`vlab-static.sh`、source-map） | 全部通过；本机 Node 24 下 `pnpm test` 有一条已知失败（`a child forked with the parent execArgv minus --inspect keeps the flag`），CI 用 Node 22，与本流程无关 |
+
+`publish` 用 `--no-push` 在本地演练过（复制一份小捕获改成假名、删掉 `.dist-tree`）：没 publish 时 `check` 报
+`not on captured-store; run ... publish <name>`；改了 `dist/` 里一个文件时 `publish` 报 sha256 不一致并拒绝；
+恢复后提交成功、写好 `.dist-tree`、`check` 通过；再 publish 一次报 `already published`。
+**注意 `--no-push` 会改写本地的 `refs/remotes/origin/captured-store`**，这个 ref 由同一个 clone 的所有 worktree 共用。
+演练完要恢复：
+
+```
+git fetch --no-tags origin +refs/heads/captured-store:refs/remotes/origin/captured-store
+```
+
+**hook 的坑：`core.hooksPath` 必须是相对路径 `.githooks`。** 相对路径按各自 worktree 的根目录解析，每个 worktree
+用的都是自己分支上的 hook。如果它是指向主签出的绝对路径（例如 `~/v-openclaw-platform/.githooks`），所有 worktree
+都只认主签出那个分支上的 hook。主签出停在不含 `.githooks/` 的旧分支（比如 `main`）时，**`post-checkout`
+（自动 link）和 `pre-push`（禁止删除 `captured-store`、禁止对它非快进 push）全都不会运行**，而且没有任何提示。
+可以这样检查：
+
+```
+git config --show-origin --show-scope --get-all core.hooksPath
+```
+
+local 级用 `scripts/install-git-hooks.sh` 设回 `.githooks`。worktree 级（`.git/worktrees/<name>/config.worktree`）
+的设置会盖过 local，需要在那个 worktree 里另外执行 `git config --worktree core.hooksPath .githooks`，或者用
+`--unset` 删掉。不确定时用 `git -c core.hooksPath=.githooks checkout <当前分支>` 试一下：一份被删掉的 `dist/` 应该会被补回来。
+`pnpm install` 不依赖 hook，所以 hook 失效时它仍然是可靠的入口。
 
 ## 发版流程的变化
 
