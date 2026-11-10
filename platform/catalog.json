@@ -168,6 +168,7 @@
         "tests/sessions-send-reply-once.test.mjs",
         "tests/sessions-send-relay.test.mjs",
         "tests/v-session-relay.test.mjs",
+        "tests/v-agent-shell-cgroup.test.mjs",
         "tests/inter-session-v-bytes.test.mjs",
         "tests/inter-session-admission.test.mjs",
         "tests/inter-session-literal-text.test.mjs",
@@ -511,6 +512,7 @@
         "lab/subagent-settle-wake-missing-task.test.mjs",
         "lab/loopback-exec-run-instance.test.mjs",
         "lab/compaction-image-skip.test.mjs",
+        "lab/codex-turn-end-terminals.test.mjs",
         "lab/workboard-full-context.test.mjs",
         "lab/cli-readonly-live.test.mjs"
       ]

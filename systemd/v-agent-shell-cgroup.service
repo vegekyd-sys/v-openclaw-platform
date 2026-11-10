@@ -1,0 +1,33 @@
+# V: keep the shell commands agents run (OpenClaw exec, Codex exec_command) in their own cgroup
+# next to the Gateway's, so a whole-disk scan slows only itself (scripts/v-agent-shell-cgroup.py,
+# docs/incidents/2026-11-09-recursive-scan.md).
+#
+# Runs as the service user: the Gateway unit is delegated to it (94-verifier-resource-group:
+# Delegate=memory, DelegateSubgroup=foreground), the same way the Gateway already moves its database
+# verifier. Independent of the Gateway's lifecycle: it waits while the Gateway is down and rebuilds
+# agent-shell after every restart. Stopping this unit leaves processes where they are; nothing is
+# moved back (`systemctl stop` + a Gateway restart returns to the old layout).
+[Unit]
+Description=V agent-shell cgroup for agent commands
+After=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=openclaw
+Group=openclaw
+ExecStart=/usr/bin/python3 /opt/v-ops/agent-shell-cgroup.py \
+  --service-cgroup /sys/fs/cgroup/system.slice/openclaw-gateway.service \
+  --memory-high 12G \
+  --io-read-bps 80M --io-write-bps 80M \
+  --io-path /home/openclaw/.openclaw --io-path /srv/openclaw-data/disk1
+Restart=always
+RestartSec=5
+Nice=5
+MemoryMax=128M
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
