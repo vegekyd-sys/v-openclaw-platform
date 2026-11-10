@@ -15,6 +15,8 @@ media/
 artifacts/
 backups/
 node_modules/
+# pnpm-lock.yaml is the lockfile (2026-11-10); npm's would only drift from it.
+/package-lock.json
 dist/
 tmp/
 release/*.local.json

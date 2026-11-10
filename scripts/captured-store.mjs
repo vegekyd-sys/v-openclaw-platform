@@ -5,7 +5,7 @@
 //   node scripts/captured-store.mjs link [--soft] [--quiet] [--verify]
 //       Fill release/captured/<name>/dist of this worktree from the shared cache,
 //       as copy-on-write clones (fetches the store branch if a capture is not in
-//       it yet). Run after a checkout; `npm ci` / `npm install` runs it too
+//       it yet). Run after a checkout; `pnpm install` runs it too
 //       (postinstall, --soft), and so does .githooks/post-checkout.
 //       --verify also re-checks the cache and every copied dist/.
 //
@@ -267,7 +267,7 @@ function main(argv) {
   try {
     root = repoRoot();
   } catch (e) {
-    if (flags.has('--soft')) return 0; // e.g. npm ci in a tarball without .git
+    if (flags.has('--soft')) return 0; // e.g. pnpm install in a tarball without .git
     throw e;
   }
   if (cmd === 'link') {

@@ -49,7 +49,7 @@ captured-store 分支 ──(git cat-file)──▶ .git/v-captured/        共�
 
 什么时候会自动跑：
 
-- `npm ci` / `npm install`（`postinstall`，失败只警告不阻断安装）；
+- `pnpm install`（`postinstall`，失败只警告不阻断安装）；
 - `git checkout` / `git worktree add` 之后（`.githooks/post-checkout`，前提是 `core.hooksPath` 指向含这个 hook 的 `.githooks`）。
 
 规则：
@@ -92,7 +92,7 @@ node scripts/captured-store.mjs check --no-fetch
 
 ## 在途分支 / 旧 worktree 怎么办
 
-- **合入新 dev 之后**：git 会删掉 dev 不再跟踪的 `dist/` 文件，跑一次 `node scripts/captured-store.mjs link`（或 `npm ci`）即可。
+- **合入新 dev 之后**：git 会删掉 dev 不再跟踪的 `dist/` 文件，跑一次 `node scripts/captured-store.mjs link`（或 `pnpm install`）即可。
 - **分支里新增了捕获（还在跟踪 `dist/`）**：合 dev 前后各一样，跑
   `node scripts/captured-store.mjs publish <name>...`，再 `git rm -r --cached release/captured/<name>/dist`，提交。
   CI 的 `check` 会提示。

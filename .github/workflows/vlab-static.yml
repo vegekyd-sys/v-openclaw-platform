@@ -19,16 +19,18 @@ jobs:
   static:
     runs-on: ubuntu-latest
     # 5 -> 8 on 2026-11-10: the first `captured-store link` of a fresh clone
-    # builds the shared cache (~66k hard links).
+    # builds the shared cache and copies every capture's dist/.
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
+      # Version from package.json "packageManager".
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: pnpm
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
       # release/captured/*/dist is not on dev since 2026-11-10: the bytes are on
       # the captured-store branch, linked in by path (docs/release-captured-store.md).
       # check fails a branch that commits dist/ again or forgets to publish it.
@@ -38,7 +40,7 @@ jobs:
           node scripts/captured-store.mjs link --no-fetch
           node scripts/captured-store.mjs check --no-fetch
       - name: Test platform catalog
-        run: npm test
+        run: pnpm test
       # Night Shift moved to vegekyd-sys/v-nightshift on 2026-10-02; the
       # Workboard dist patches it relies on stay here with their tests.
       - name: Test Workboard dist patches

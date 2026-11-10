@@ -6,7 +6,7 @@ records where they came from and when.
 
 Since 2026-11-10 only the manifests are committed here. The `dist/` bytes are on
 the `captured-store` branch under the same paths; `node scripts/captured-store.mjs
-link` (run by `npm ci` and the post-checkout hook) copies them into this
+link` (run by `pnpm install` and the post-checkout hook) copies them into this
 directory, and `node scripts/captured-store.mjs publish <release>` stores a new
 capture. See [`docs/release-captured-store.md`](../../docs/release-captured-store.md).
 
