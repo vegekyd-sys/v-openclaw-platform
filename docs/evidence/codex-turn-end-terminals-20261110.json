@@ -1,0 +1,295 @@
+{
+ "patched": {
+  "id": "candidate-5abb6a9b-f7cb-4cb0-922d-2a96773f3341",
+  "ok": true,
+  "sourceCommit": "bbd9198c68217a32c38001069ce856aa49caf0b0",
+  "dirty": true,
+  "inputSha256": "4e1568e70428b2667aead871f80eb163cfe574ac7ac1e43ab114d542e522a81a",
+  "baseRelease": "workboard-full-context-20261110",
+  "runtimeSha": "8fa70fd3a8d3dfff213ee1958d617cdffa5784d9ce94ee3314ceeb0e4343b3ce",
+  "executionUser": "lab-db91-parity",
+  "result": {
+   "startedAt": "2026-11-09T18:42:59.255Z",
+   "patched": true,
+   "notes": [
+    "placement.codexAppServer: pgrep matched another user's codex process on the VLab host; earlier runs show the candidate's app-server in foreground"
+   ],
+   "workerConfig": {
+    "path": "shared-vlab-20260909-v3/worker-openclaw.json",
+    "derived": true
+   },
+   "codexStartsFromV": true,
+   "codexPatched": true,
+   "turn1": {
+    "sleepPid": 1891984,
+    "chain": [
+     {
+      "pid": 1891984,
+      "cg": "agent-shell",
+      "argv": "sleep 9761"
+     },
+     {
+      "pid": 1891657,
+      "cg": "foreground",
+      "argv": "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5abb6a9b-f7cb-4cb0-922d-2a96773f3341/data/state/npm/projects/openclaw-codex-"
+     },
+     {
+      "pid": 1891641,
+      "cg": "foreground",
+      "argv": "node /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5abb6a9b-f7cb-4cb0-922d-2a96773f3341/data/state/npm/projects/openclaw-c"
+     },
+     {
+      "pid": 1890525,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node --max-old-space-size=4096 /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5abb6a9"
+     },
+     {
+      "pid": 1890473,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node lab/candidate/codex-turn-end-terminals.mjs"
+     },
+     {
+      "pid": 1890466,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node -e const fs=require('node:fs'),cp=require('node:child_process');const e=JSON.parse(fs.readFileSyn"
+     }
+    ],
+    "cgroupWhileRunning": "agent-shell",
+    "reply": "STARTED",
+    "exit": 0,
+    "aliveAfterTurn": false,
+    "calls": [
+     "exec_command {\"cmd\": \"ls -la\"}",
+     "exec_command {\"cmd\": \"sleep 9761\", \"yield_time_ms\": 2000}"
+    ]
+   },
+   "turn2": {
+    "sleepPid": 1892224,
+    "chainAtStart": [
+     {
+      "pid": 1892224,
+      "cg": "foreground",
+      "argv": "sleep 9762"
+     },
+     {
+      "pid": 1892223,
+      "cg": "foreground",
+      "argv": "/bin/bash --noprofile --norc -c if [ -r '/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5abb6a9b-f7cb-4cb0-922d-2a96773f334"
+     },
+     {
+      "pid": 1890525,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node --max-old-space-size=4096 /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5abb6a9"
+     },
+     {
+      "pid": 1890473,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node lab/candidate/codex-turn-end-terminals.mjs"
+     },
+     {
+      "pid": 1890466,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node -e const fs=require('node:fs'),cp=require('node:child_process');const e=JSON.parse(fs.readFileSyn"
+     }
+    ],
+    "cgroupWhileRunning": "agent-shell",
+    "chain": [
+     {
+      "pid": 1892224,
+      "cg": "agent-shell",
+      "argv": "sleep 9762"
+     },
+     {
+      "pid": 1892223,
+      "cg": "agent-shell",
+      "argv": "/bin/bash --noprofile --norc -c if [ -r '/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5abb6a9b-f7cb-4cb0-922d-2a96773f334"
+     },
+     {
+      "pid": 1890525,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node --max-old-space-size=4096 /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5abb6a9"
+     },
+     {
+      "pid": 1890473,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node lab/candidate/codex-turn-end-terminals.mjs"
+     },
+     {
+      "pid": 1890466,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node -e const fs=require('node:fs'),cp=require('node:child_process');const e=JSON.parse(fs.readFileSyn"
+     }
+    ],
+    "reply": "STARTED2",
+    "exit": 0,
+    "aliveAfterTurn": true,
+    "calls": []
+   },
+   "placement": {
+    "gateway": "foreground",
+    "codexAppServer": "session-8786.scope"
+   },
+   "sidecar": [
+    "{\"event\": \"agent-shell-cgroup.prepared\", \"group\": \"/sys/fs/cgroup/vlab.slice/vlab-candidates.slice/vlab-candidate-5abb6a9b-f7cb-4cb0-922d-2a96773f3341.service/agent-shell\", \"limits\": {\"memory.high\": \"4294967296\", \"memory.max\": \"max\"}, \"io\": [], \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1891690, \"why\": \"codex-command\", \"cmd\": \"git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1891691, \"why\": \"codex-command\", \"cmd\": \"/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1891709, \"why\": \"codex-command\", \"cmd\": \"/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1891819, \"why\": \"codex-command\", \"cmd\": \"git -c safe.bareRepository=explicit -C /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5abb6a9b-f7cb-4cb0-922d-2a96773f3341/data/state/agents/ma\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1891820, \"why\": \"codex-command\", \"cmd\": \"/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1891821, \"why\": \"codex-command\", \"cmd\": \"/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1891912, \"why\": \"codex-command\", \"cmd\": \"git -c safe.bareRepository=explicit -C /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5abb6a9b-f7cb-4cb0-922d-2a96773f3341/data/state/agents/ma\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1891984, \"why\": \"codex-command\", \"cmd\": \"sleep 9761\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1892189, \"why\": \"codex-command\", \"cmd\": \"/bin/bash -lc exec nice -n 10 /opt/vlab/node-v22.23.1-linux-x64/bin/node /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5abb6a9b-f7cb-4cb0-922d\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1892223, \"why\": \"openclaw-exec\", \"cmd\": \"/bin/bash --noprofile --norc -c if [ -r '/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5abb6a9b-f7cb-4cb0-922d-2a96773f3341/data/state/cache/s\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1892224, \"why\": \"openclaw-exec\", \"cmd\": \"sleep 9762\", \"dryRun\": false}"
+   ],
+   "verdict": "done",
+   "finishedAt": "2026-11-09T18:44:51.386Z"
+  }
+ },
+ "control-v-bytes": {
+  "id": "candidate-5ea27814-c96f-4e11-8383-406bf2f4be49",
+  "ok": true,
+  "sourceCommit": "bbd9198c68217a32c38001069ce856aa49caf0b0",
+  "dirty": true,
+  "inputSha256": "011a4702c725085e15688d4a430d109bcd0994ceab64ff926715e1d3db8d36e8",
+  "baseRelease": "workboard-full-context-20261110",
+  "runtimeSha": "8fa70fd3a8d3dfff213ee1958d617cdffa5784d9ce94ee3314ceeb0e4343b3ce",
+  "executionUser": "lab-db91-parity",
+  "result": {
+   "startedAt": "2026-11-09T18:21:10.856Z",
+   "patched": false,
+   "notes": [],
+   "workerConfig": {
+    "path": "shared-vlab-20260909-v3/worker-openclaw.json",
+    "derived": true
+   },
+   "codexStartsFromV": true,
+   "codexPatched": false,
+   "turn1": {
+    "sleepPid": 1875481,
+    "chain": [
+     {
+      "pid": 1875481,
+      "cg": "foreground",
+      "argv": "sleep 9561"
+     },
+     {
+      "pid": 1875099,
+      "cg": "foreground",
+      "argv": "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5ea27814-c96f-4e11-8383-406bf2f4be49/data/state/npm/projects/openclaw-codex-"
+     },
+     {
+      "pid": 1875092,
+      "cg": "foreground",
+      "argv": "node /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5ea27814-c96f-4e11-8383-406bf2f4be49/data/state/npm/projects/openclaw-c"
+     },
+     {
+      "pid": 1874515,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node --max-old-space-size=4096 /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5ea2781"
+     },
+     {
+      "pid": 1874492,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node lab/candidate/codex-turn-end-terminals.mjs"
+     },
+     {
+      "pid": 1874485,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node -e const fs=require('node:fs'),cp=require('node:child_process');const e=JSON.parse(fs.readFileSyn"
+     }
+    ],
+    "cgroupWhileRunning": "agent-shell",
+    "reply": "STARTED",
+    "exit": 0,
+    "aliveAfterTurn": true,
+    "calls": [
+     "exec_command {\"cmd\": \"ls -la\", \"workdir\": \"/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5ea278",
+     "exec_command {\"cmd\": \"sleep 9561\", \"workdir\": \"/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5e"
+    ]
+   },
+   "turn2": {
+    "sleepPid": 1875696,
+    "chainAtStart": [
+     {
+      "pid": 1875696,
+      "cg": "foreground",
+      "argv": "sleep 9562"
+     },
+     {
+      "pid": 1875695,
+      "cg": "foreground",
+      "argv": "/bin/bash --noprofile --norc -c if [ -r '/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5ea27814-c96f-4e11-8383-406bf2f4be4"
+     },
+     {
+      "pid": 1874515,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node --max-old-space-size=4096 /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5ea2781"
+     },
+     {
+      "pid": 1874492,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node lab/candidate/codex-turn-end-terminals.mjs"
+     },
+     {
+      "pid": 1874485,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node -e const fs=require('node:fs'),cp=require('node:child_process');const e=JSON.parse(fs.readFileSyn"
+     }
+    ],
+    "cgroupWhileRunning": "agent-shell",
+    "chain": [
+     {
+      "pid": 1875696,
+      "cg": "agent-shell",
+      "argv": "sleep 9562"
+     },
+     {
+      "pid": 1875695,
+      "cg": "agent-shell",
+      "argv": "/bin/bash --noprofile --norc -c if [ -r '/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5ea27814-c96f-4e11-8383-406bf2f4be4"
+     },
+     {
+      "pid": 1874515,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node --max-old-space-size=4096 /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5ea2781"
+     },
+     {
+      "pid": 1874492,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node lab/candidate/codex-turn-end-terminals.mjs"
+     },
+     {
+      "pid": 1874485,
+      "cg": "foreground",
+      "argv": "/opt/vlab/node-v22.23.1-linux-x64/bin/node -e const fs=require('node:fs'),cp=require('node:child_process');const e=JSON.parse(fs.readFileSyn"
+     }
+    ],
+    "reply": "STARTED2",
+    "exit": 0,
+    "aliveAfterTurn": true,
+    "calls": []
+   },
+   "placement": {
+    "gateway": "foreground",
+    "codexAppServer": "foreground"
+   },
+   "sidecar": [
+    "{\"event\": \"agent-shell-cgroup.prepared\", \"group\": \"/sys/fs/cgroup/vlab.slice/vlab-candidates.slice/vlab-candidate-5ea27814-c96f-4e11-8383-406bf2f4be49.service/agent-shell\", \"limits\": {\"memory.high\": \"4294967296\", \"memory.max\": \"max\"}, \"io\": [], \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1875155, \"why\": \"codex-command\", \"cmd\": \"git -c safe.bareRepository=explicit ls-remote https://github.com/openai/plugins.git HEAD\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1875157, \"why\": \"codex-command\", \"cmd\": \"/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1875181, \"why\": \"codex-command\", \"cmd\": \"/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1875296, \"why\": \"codex-command\", \"cmd\": \"git -c safe.bareRepository=explicit -C /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5ea27814-c96f-4e11-8383-406bf2f4be49/data/state/agents/ma\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1875297, \"why\": \"codex-command\", \"cmd\": \"/usr/lib/git-core/git remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1875298, \"why\": \"codex-command\", \"cmd\": \"/usr/lib/git-core/git-remote-https https://github.com/openai/plugins.git https://github.com/openai/plugins.git\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1875374, \"why\": \"codex-command\", \"cmd\": \"git -c safe.bareRepository=explicit -C /srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5ea27814-c96f-4e11-8383-406bf2f4be49/data/state/agents/ma\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1875481, \"why\": \"codex-command\", \"cmd\": \"sleep 9561\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1875695, \"why\": \"openclaw-exec\", \"cmd\": \"/bin/bash --noprofile --norc -c if [ -r '/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-5ea27814-c96f-4e11-8383-406bf2f4be49/data/state/cache/s\", \"dryRun\": false}",
+    "{\"event\": \"agent-shell-cgroup.moved\", \"pid\": 1875696, \"why\": \"openclaw-exec\", \"cmd\": \"sleep 9562\", \"dryRun\": false}"
+   ],
+   "verdict": "done",
+   "finishedAt": "2026-11-09T18:22:29.664Z"
+  }
+ }
+}
