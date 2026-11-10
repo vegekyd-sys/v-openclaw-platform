@@ -244,6 +244,7 @@
         "tests/v-memory-indexer.test.mjs",
         "tests/v-storage-governance.test.mjs",
         "tests/check-source-map.test.mjs",
+        "tests/captured-store.test.mjs",
         "tests/codex-model-wait-watchdog.test.mjs",
         "scripts/bundle-prep-observer.test.mjs",
         "tests/workboard-notes-limit-patch.test.mjs",

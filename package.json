@@ -11,6 +11,7 @@
     "v-platform": "platform/cli.mjs"
   },
   "scripts": {
+    "postinstall": "node scripts/captured-store.mjs link --soft --quiet",
     "test": "node platform/cli.mjs test",
     "check": "node platform/cli.mjs audit",
     "release:check": "node platform/cli.mjs release-check"
