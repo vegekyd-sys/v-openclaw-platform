@@ -1865,6 +1865,20 @@
       "sha256": "517ec6df06cff5f903d0e691600283170c66a60963c4ed593f339430b9e924dd",
       "source": "versa:9491dac5cd0",
       "note": "compaction-image-skip-20261109 (#587): compaction sanitize skips resizing across the whole history (versa/port-compaction-image-skip-20261109)"
+    },
+    {
+      "layer": "core",
+      "path": "runtime-api-1CCazqtv.js",
+      "sha256": "b1bdba866c4cf587c0db959ff9a04a5b127f37b1c470eb134e097f1a46f1d8d6",
+      "source": "versa:87199af7dfd",
+      "note": "workboard-full-context-20261110 (#591): workboard card workers start with full bootstrap context (AGENTS.md/SOUL) instead of lightContext; rollback env OPENCLAW_WORKBOARD_LIGHT_CONTEXT=1 (versa/port-workboard-full-context-20261109)"
+    },
+    {
+      "layer": "core",
+      "path": "workspace-BFk42BX6.js",
+      "sha256": "e49f5b519edee3c21f6ea939192acf8848302e8ab25145317357ca020a08870b",
+      "source": "versa:87199af7dfd",
+      "note": "workboard-full-context-20261110 (#591): workspace bootstrap filter keeps full context for workboard sessions (versa/port-workboard-full-context-20261109)"
     }
   ]
 }

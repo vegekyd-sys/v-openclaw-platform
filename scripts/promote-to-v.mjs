@@ -21,7 +21,8 @@
 //      are installed as fresh inodes with the old owner and mode (new files:
 //      root, 0644, in new directories root 0755 that undo removes again).
 //   5. Recapture V into release/captured/<name>{,.worker,.feishu,.codex,.dingtalk,.wecom,.session-relay}
-//      (every captured component of the table that V has), install the drift
+//      (every captured component of the table that V has), publish their dist/
+//      to the captured-store branch (scripts/captured-store.mjs), install the drift
 //      sentinel's expectations, and run `vlab.mjs align`.
 //
 // Sidecars (desktop handoff, secret entry, V Browser) are installed by their own scripts,
@@ -46,6 +47,7 @@ import { fileURLToPath } from 'node:url';
 import { COMPONENTS, captureRuns, presentCaptureRuns, resolveVDirs, vPathForTarget } from './lib/runtime-components.mjs';
 import { feishuVoiceLayoutRemote } from './lib/feishu-voice-layout.mjs';
 import { defaultVlabTool } from './lib/vlab-tool.mjs';
+import { publish as publishCaptures } from './captured-store.mjs';
 
 // H5-only releases keep the Gateway runtime/current metadata unchanged. The
 // entry controller requires a frozen shared H5 proof and an idle voice entry.
@@ -228,6 +230,15 @@ for (const r of runs) {
   execFileSync('node', [join(repo, 'scripts/capture-production-runtime.mjs'),
     '--host', V, '--release', r.release, '--runtime', r.runtime, ...r.args, '--out', r.out], { cwd: repo, stdio: 'inherit' });
 }
+// The dist/ bytes go to the captured-store branch, the manifests to the PR
+// (docs/release-captured-store.md). V is already changed at this point, so a
+// failed push only prints the command to finish it by hand.
+const captureNames = runs.map((r) => r.out.replace(/^release\/captured\//, ''));
+try {
+  publishCaptures(repo, captureNames);
+} catch (e) {
+  console.error(`captured-store publish failed (${e.message.split('\n')[0]}); finish it with:\n  node scripts/captured-store.mjs publish ${captureNames.join(' ')}`);
+}
 // Core first (checked with ExecStart), then every whole-directory component.
 execFileSync(join(repo, 'scripts/install-v-release-drift.sh'), [V, ...runs.map((r) => r.manifest)], { cwd: repo, stdio: 'inherit' });
 try {
@@ -262,7 +273,7 @@ try {
     if (verdict.lagging.length) {
       console.log(`VLab still lags V on files this release did not touch (V changed itself earlier):`);
       for (const f of verdict.lagging) console.log(`  ${f.kind} ${f.target}`);
-      console.log(`Commit release/captured/${args.name}*, merge it, then: node scripts/sync-vlab-from-v.mjs --name ${args.name} --owner ${args.owner} --apply`);
+      console.log(`Commit release/captured/${args.name}*/manifest.json (dist/ is on captured-store), merge it, then: node scripts/sync-vlab-from-v.mjs --name ${args.name} --owner ${args.owner} --apply`);
     }
     process.exit(0);
   }
@@ -281,7 +292,7 @@ try {
   console.error(`undo with: node scripts/promote-to-v.mjs --undo ${dir}`);
   process.exit(1);
 }
-console.log(`\nDone. Commit release/captured/${args.name}*, add its CHANGELOG.md section\n(node scripts/release-notes.mjs --from <previous V release> --to ${args.name}, then write the summary),\nand open the release PR (dev -> main, tag ${args.name}).`);
+console.log(`\nDone. Commit release/captured/${args.name}*/manifest.json (dist/ is on captured-store), add its CHANGELOG.md section\n(node scripts/release-notes.mjs --from <previous V release> --to ${args.name}, then write the summary),\nand open the release PR (dev -> main, tag ${args.name}).`);
 }
 
 // Why `vlab.mjs align` refused after the install. `mine` = this release's targets.

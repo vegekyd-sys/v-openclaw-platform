@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# After a branch checkout (including `git worktree add`), link the captured
+# runtime bytes into release/captured/*/dist from the shared cache. They are on
+# the captured-store branch, not on dev (docs/release-captured-store.md).
+# Never fails the checkout: `node scripts/captured-store.mjs link` says what is
+# missing when run by hand.
+[ "${3:-1}" = 1 ] || exit 0
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+[ -f "$root/scripts/captured-store.mjs" ] || exit 0
+command -v node >/dev/null 2>&1 || exit 0
+node "$root/scripts/captured-store.mjs" link --soft --quiet || true
+exit 0

@@ -4,12 +4,24 @@ Private release and sandbox infrastructure for V.
 
 Night Shift (夜班模式) moved to its own repository, [`vegekyd-sys/v-nightshift`](https://github.com/vegekyd-sys/v-nightshift), on 2026-10-02, with its history. Change it by that repository's `docs/change-flow.md`. The Workboard dist patches it relies on (`scripts/apply-workboard-*-patch.mjs`) stay here.
 
+## Setup
+
+The repository uses **pnpm** (2026-11-10; `package.json` `packageManager`). Its
+content-addressed store is shared by every worktree, so a new worktree costs
+hard links instead of another copy of `node_modules`:
+
+```bash
+corepack enable          # once per machine; or: brew install pnpm
+pnpm install             # in each worktree (npm install / npm ci are refused)
+pnpm test
+```
+
 ## V-Platform installation-package initiative (2026-09-06)
 
 The versioned [V-Platform controller](platform/README.md) now owns the component,
-adaptation and acceptance inventory. Run `npm test` for the unified offline
-regressions and `npm run check` for catalog drift detection. The 9.1 distribution
-is still being assembled: `npm run release:check` deliberately blocks release
+adaptation and acceptance inventory. Run `pnpm test` for the unified offline
+regressions and `pnpm check` for catalog drift detection. The 9.1 distribution
+is still being assembled: `pnpm release:check` deliberately blocks release
 until immutable artifacts, clean installation, state-safe rollback and fresh
 end-to-end evidence have been implemented and verified. It does not upgrade V.
 
