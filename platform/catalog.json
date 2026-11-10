@@ -194,6 +194,7 @@
         "scripts/patch-openclaw91-astra.test.mjs",
         "scripts/configure-v-deepseek-output-budget.test.mjs",
         "scripts/configure-v-luna-context.test.mjs",
+        "scripts/configure-v-codex-post-turn-compact.test.mjs",
         "scripts/align-vlab-model-config.test.mjs",
         "scripts/configure-v-announce-timeout.test.mjs"
       ]

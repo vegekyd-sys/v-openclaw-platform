@@ -1,0 +1,7 @@
+{
+  "support": ["lab/candidate/codex-post-turn-compact.mjs"],
+  "command": ["/opt/vlab/node-v22.23.1-linux-x64/bin/node", "lab/candidate/codex-post-turn-compact.mjs"],
+  "env": { "ARM": "v" },
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity"
+}
