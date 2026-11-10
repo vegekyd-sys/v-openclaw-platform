@@ -10,6 +10,34 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## turnend-registry-20261110
+
+上线：2026-11-10 17:36 CST（17:16 文件装到 V；v-self-restart 17:32 等到空闲后停机，151 s 就绪，workers 5，有 1 项告警：恢复冲突，见下）  ·  tag `turnend-registry-20261110`
+
+**摘要**：两件事一次上线。
+- **#589 agent 命令的资源隔离**：sidecar `v-agent-shell-cgroup.service`（17:1x 装上，不需要重启）把 OpenClaw exec 的 shell、服务 relay、Codex app-server 起的命令挪进 Gateway 单元下同级的 `agent-shell`，限 `memory.high` 12G、两块盘各 80 MB/s 读写。扫整个数据目录只拖慢它自己，不再挤 Gateway。什么都不拒绝、不杀。同时 Codex 回合正常结束时也回收它留在后台终端里的命令（以前只在取消/超时时回收），`OPENCLAW_CODEX_TURN_END_TERMINALS=keep` 关闭。
+- **#579 新 worker 第一轮不再整表恢复两张登记表**：steering 租约先查请求方的索引行、owner 任务查询直接读库，只在兜底时恢复。`OPENCLAW_V_REGISTRY_LAZY_FIRST_TURN=0` 回到旧行为。
+
+相对上一版 `workboard-full-context-20261110`：3 个文件变化。
+
+**经 VLab 发版 `turnend-registry-20261110`**（claude-monitor，dev `9da16d18`）
+> 验收：#579 新 worker（vlab-worker:0）第一轮 /deepseek 与第二轮耗时相当（5.5 s / 4.8 s 含 ssh），没有 12–19 s 的首轮恢复；sessions_spawn → sessions_yield → 子 agent 结果送回 → 回复「子 agent 结果：391」。#589 共享 VLab 的 Gateway 从 `state/npm/projects/openclaw-codex-8902d781d4` 加载 Codex 插件（不是发版目标路径），复制 V 字节进去并重启后复测：/vds `exec_command` 留在后台的 `sleep 4778`（后台会话 48724）在回合结束 5 s 内被回收；未打补丁时 `sleep 4777` 回合结束 42 s 后仍在跑。
+- `codex` dist/run-attempt-D1hJO4fX.js  f67df60a → 23705af0
+- `core` subagent-registry-C24yr_PF.js  1d9f45d6 → 52b3b571
+- `core` task-registry-B4-CJZk7.js  6051d0be → 7d1871cc
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件和 sidecar 为准）：
+- #589 agent 的命令进独立 cgroup + Codex 回合结束回收后台终端
+- #579 首字：新 worker 第一轮不再整表恢复两张登记表
+- #595 docs: captured-store 新 worktree 上手 + hooksPath 绝对路径陷阱
+
+V 上验收（17:37–17:40，Gateway RPC 显式会话，未在群里发测试消息）：
+- 回收：会话 `claude-turnend-accept-20261110` 用 /vds `exec_command` 起 `sleep 4779`（yield 1 s），回合 ok 后 5 s 内进程消失。
+- 隔离：sidecar 日志 `moved pid … why=codex-command cmd=sleep 4779`；Gateway 重启后 sidecar 自己重建 `agent-shell`，Gateway 留在 `foreground`。
+- 首轮：会话 `claude-registry-accept-20261110` 切 /deepseek，新 worker 第一轮从 Gateway 派发到模型调用 2.1 s（以前 5.4–5.7 s），第二轮 0.7 s；剩余约 1.4 s 是首次 MCP 目录连接。
+- 重启告警：重启时私聊 `ou_0674d5a6…` 正有一轮在跑，重启后每条消息报 `restart recovery claim changed before agent adoption`（17:36–17:39 共 32 次）。17:39 按 10/12、10/15 的做法改库解开（session_nodes 与 entry_json 的 updatedAt 写同一毫秒、status→failed、清 restartRecovery* 与 activeWriterRunId；session_windows→failed；备份 `/root/incident-20261110-claim-wedge/before.json`），17:40 下一条消息正常进入 agent。根因仍是「重启时正有一轮在跑」的上游漏洞。
+- 重启后冷启动停顿 40.7 s（17:35，与 02:12 同类，和本版无关）。
+
 ## workboard-full-context-20261110
 
 上线：2026-11-10 02:07 CST（01:55 文件装到 V；v-self-restart 延后到 02:04 后等空闲，86 s 就绪，workers 5、postChecks 全 0、无告警）  ·  tag `workboard-full-context-20261110`
