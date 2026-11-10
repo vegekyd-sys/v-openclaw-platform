@@ -29,7 +29,9 @@
   `vlab.mjs rollback`; the server refuses to stage anything else until then.
 - Ship to V with `scripts/promote-to-v.mjs`, never by editing files on the host.
   If V is changed on the host anyway (an emergency hotfix, or V's own agent),
-  the same day either put it back or keep it: capture V into git by PR, update
+  the same day either put it back or keep it: capture V into git by PR (the
+  manifest on the PR, the dist/ bytes via `scripts/captured-store.mjs publish`;
+  `docs/release-captured-store.md`), update
   the drift sentinel, and run `scripts/sync-vlab-from-v.mjs` so VLab matches V
   (`docs/vlab-v-sync-flow.md` section 4.5). `scripts/vlab-v-parity.mjs` must
   end at ALIGNED either way.
