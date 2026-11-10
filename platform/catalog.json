@@ -513,7 +513,8 @@
         "lab/compaction-image-skip.test.mjs",
         "lab/codex-turn-end-terminals.test.mjs",
         "lab/workboard-full-context.test.mjs",
-        "lab/cli-readonly-live.test.mjs"
+        "lab/cli-readonly-live.test.mjs",
+        "lab/skill-review-bounded.test.mjs"
       ]
     }
   ],

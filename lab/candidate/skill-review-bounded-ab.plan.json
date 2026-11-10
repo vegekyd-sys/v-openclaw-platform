@@ -1,0 +1,22 @@
+{
+  "support": [
+    "lab/candidate/skill-review-bounded-ab.mjs",
+    "lab/candidate/el-gap-probe.mjs",
+    "lab/skill-review-bounded.plan.json",
+    "lab/release-files/skill-review-bounded/session-manager-CNTG_BAJ.js",
+    "lab/release-files/skill-review-bounded/experience-review-prompt-D7yNaj4l.js",
+    "lab/release-files/skill-review-bounded/workspace-skill-read-zRQlt5fk.js",
+    "lab/release-files/skill-review-bounded/autonomous-apply-uc26z0yI.js",
+    "lab/release-files/skill-review-bounded/experience-review-default-Dr4f0pMZ.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/skill-review-bounded-ab.mjs"
+  ],
+  "env": {
+    "AB_BUILD_TURNS": "40",
+    "AB_ORDER": "AB"
+  },
+  "timeoutSeconds": 7200,
+  "user": "lab-db91-parity"
+}
