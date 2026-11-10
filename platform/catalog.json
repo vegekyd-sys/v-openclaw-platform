@@ -511,7 +511,8 @@
         "lab/loopback-exec-run-instance.test.mjs",
         "lab/compaction-image-skip.test.mjs",
         "lab/workboard-full-context.test.mjs",
-        "lab/cli-readonly-live.test.mjs"
+        "lab/cli-readonly-live.test.mjs",
+        "lab/codex-skill-usage.test.mjs"
       ]
     }
   ],
