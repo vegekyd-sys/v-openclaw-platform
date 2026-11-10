@@ -10,6 +10,173 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## workboard-full-context-20261110
+
+上线：2026-11-10 02:07 CST（01:55 文件装到 V；v-self-restart 延后到 02:04 后等空闲，86 s 就绪，workers 5、postChecks 全 0、无告警）  ·  tag `workboard-full-context-20261110`
+
+**摘要**：夜班卡（workboard 派出的会话）开始和普通聊天一样带上 V 的工作区上下文：AGENTS.md、SOUL、IDENTITY、USER、MEMORY。原来 workboard 派卡写死 `lightContext: true`，bootstrap 过滤后什么都不留，所以夜班卡从 Worker 时代起就没有 AGENTS.md（11/09 的卡 developer 指令约 6.6 万字符，只有记忆召回和技能列表两节）。改成所有 harness 同一份 system prompt，不按 harness 分别处理。回滚开关 `OPENCLAW_WORKBOARD_LIGHT_CONTEXT=1`（要重启）。
+
+相对上一版 `compaction-image-skip-20261109`：2 个文件变化。
+
+**经 VLab 发版 `workboard-full-context-20261110`**（claude-monitor，dev `58be3753`）
+> 验收：VLab: workboard card v591a (Worker, 8b1b9b25) and v591b (/vds codex vds-deepseek-flash, f627fbb3) both answered R3=Speak up and SOUL=SOUL.md heading from bootstrap context, only tool workboard_complete; before #591 cards had no AGENTS.md. Evidence collected under config d53e088b; config then aligned to V default model (vds) and restored after accept.
+- `core` runtime-api-1CCazqtv.js  62ecf47e → b1bdba86
+- `core` workspace-BFk42BX6.js  5c74cd7c → e49f5b51
+
+**这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #591 夜班卡和聊天一样带上 V 的工作区上下文（AGENTS/SOUL/IDENTITY/USER/MEMORY）
+
+VLab 配置对齐：验收后把共享 VLab 的默认模型改成和 V 一样的 `deepseek/vds-deepseek-flash`（makaron 与 defaults），Codex 的 deepseek provider 重试次数改成 1。因为 accept 要求配置哈希等于暂存时的值，accept 时临时换回暂存时的配置（d53e088b，验收证据就是在它下面取得的），accept 后立即恢复对齐配置并重启 VLab。
+
+V 上验收（11/10 09:00，第一张真实夜班卡，未发测试卡）：Gateway 02:04 重启后夜班空闲到 09:00。第一张卡 `372eb1d0`（GeeLark 定时发布投递）的 Codex rollout（09:00:27 开始）里出现 AGENTS.md 首行「AGENTS.md — Makaron Workspace Entry Point」；developer 指令 94,250 字符（11/09 约 66,000），workspace context 75,035 字符（11/09 61,985），多出的约 2.8 万与 VLab 量到的一致。该卡正常 `workboard_complete`（39 次请求，输入 329 万 token）；随后 5 张 GeeLark 投递卡同样带上 AGENTS.md，没有发消息或问用户的调用。Gateway 02:04 以来无 ≥30 s 停顿。成本与行为对比等上线后完成满 60 张卡再出（按 11/09 口径）。
+
+## compaction-image-skip-20261109
+
+上线：2026-11-09 23:05 CST（22:52 文件装到 V；v-self-restart 延后到 23:02 后等空闲，23:04 停机，86 s 就绪，workers 5、postChecks 全 0、无告警）  ·  tag `compaction-image-skip-20261109`
+
+**摘要**：会话溢出自动压缩时，不再在 Gateway 主线程上重新缩放全部历史图片。原来 skill-workshop 复盘回合在 Gateway 里压缩大会话前，会把上百张图同步重编码一遍，而这些结果压缩时根本用不到。11/09 出现过两次：14:01 缩放 208 张、所有对话停 41 s；22:24 缩放 209 张、停 28.5 s。服务端 compact 端点那条路不变。开关 `OPENCLAW_COMPACTION_IMAGE_RESIZE_SKIP=0` 可以恢复原行为。
+
+相对上一版 `cli-readonly-live-20261109`：2 个文件变化。
+
+**经 VLab 发版 `compaction-image-skip-20261109`**（claude-monitor，dev `abd35ed8`）
+> 验收：Shared VLab 2026-11-09 22:43-22:47 CST after deploy (history-image-prune 35009274, compact 517ec6df): dedicated session viewed three 2400x2400 PNGs with view_image (red/green/blue answered), then /compact: 'Compacted (58k -> 678)', journal shows 0 'Image resized' lines during compaction (the three >1200 px history images were not re-encoded); follow-up turn after compaction answered from the summa…
+- `core` compact-gStBcHDe.js  54be6901 → 517ec6df
+- `core` history-image-prune-Dg0CDQ4a.js  3e5c9c8b → 35009274
+
+V 上验收：
+- 专用会话 `agent:makaron:explicit:accept587-w`（固定 Worker flash，用 Gateway `agent` 接口，不进群）：先用 view_image 看三张 2400×2400 的 PNG，回答「红、绿、蓝」；再用 `sessions.compact` 压缩，返回 `compacted: true`，用时 25 s（主要是摘要模型调用）。压缩期间 journal 里 0 行 `Image resized`，Gateway 只有一次 5.8 s 的心跳延迟。测试图片已删。
+- 第一次验收用的会话实际跑在 /vds（Codex）上，Codex 走自己的压缩路径，覆盖不到补丁，所以改用固定 Worker 的会话重做。第一次触发压缩时 CLI 握手超时：当时是重启后的冷启动窗口，23:06 有 33.5 s 停顿、23:10 有 23.5 s 停顿，之后恢复正常。
+- 共享 VLab（22:43–22:47）同样通过：`/compact` 把 58k 压到 678，0 张缩放，压缩后的下一轮能正确回答。溢出场景的 A/B 对比（最长停顿 52.9 s → 1.2 s）见 PR #587 的 candidate 证据。
+
+## cli-readonly-live-20261109
+
+上线：2026-11-09 21:31 CST（21:29 文件装到 V；**不重启 Gateway**：CLI 每次是新进程，装上即生效；Gateway 持有写句柄，原本就不走快照，下次自然重启时加载新字节）  ·  tag `cli-readonly-live-20261109`
+
+**摘要**：`openclaw status`、`nodes list`、`nodes status` 在 V 上每次 30–60 s、写 5–6 GB。原因是 CLI 读设备身份/令牌时把 593 MB 的状态库整库复制到 `~/.cache/openclaw`，Gateway 一直在写 WAL，复制前后 WAL 对不上就换目录重来，最多 10 次，最后失败、不带设备身份连 Gateway。现在属主相同、`-wal`/`-shm` 已存在时直接用只读连接读活库，不复制；快照目录按读者 pid 命名，属主已死且超过 10 分钟的由下一次快照分配回收。开关 `OPENCLAW_V_LIVE_WAL_READS=0` 退回旧路径。源码 `openclaw-versa` `versa/port-cli-readonly-live-20261109`（8e1a007ce88）。
+
+**主机变更（不在 core 文件存档范围内，Tianyi 11/09 同意）**：
+- 夜班 v-nightshift #42（main `3bddfed`，21:19 `ship.sh v`）：`NIGHTSHIFT_OPENCLAW_ENTRY` 改指 core，撤掉主机 drop-in `91-openclaw91.conf`（它把入口指向旧的 `/opt/openclaw-2026.9.1-v`，备份在 `backups/nightshift-workboard/20261109T131924Z-3bddfed…/legacy-entry-dropin.before`）。夜班发飞书通知走 `message send` CLI，20 s 超时撑不过整库复制，11/09 下午留下 7 份副本；现在和 Gateway、PATH 上的 CLI 是同一份 core。Gateway PID 1209984 未变。
+- 删掉 `/home/openclaw/.cache/openclaw/` 下 4 份属主进程已退出的 `openclaw-sqlite-readonly-*`（19:03–20:19 留下，共约 2.3 GB）。修复后 CLI 不再分配快照，也就不会顺手回收它们。
+
+相对上一版 `noop-mutation-nonterminal-20261109`：2 个文件变化。
+
+**经 VLab 发版 `cli-readonly-live-20261109`**（cli-readonly-live，dev `59b97e1c`）
+> 验收：共享 VLab 实测（lab-db91-parity，真实 167MB 状态库，连共享 Gateway 24993）：nodes list 2.05/0.95 s、nodes status 0.90 s、status 4.90/4.74 s，全部 rc=0，写盘 0–6 MB，无快照目录、状态目录文件不变；对照 OPENCLAW_V_LIVE_WAL_READS=0 的 nodes list 写 320 MB（两次整库复制）。真实回合 agent:makaron:explicit:vlab-dev-cli-readonly-live-1794230626324：exec date→回复同一时间，status ok。
+- `core` openclaw-state-db-readonly-C7txILW9.js  07b28e22 → 6cc65a04
+- `core` sqlite-readonly-location-BvtpsFvn.js  4a17b3a1 → 09ed27c7
+
+**这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #586 lab: CLI 读设备身份不再整库复制状态库（status / nodes list 50 s → 3 s）
+
+V 上验收（21:29，openclaw 用户，`/usr/local/bin/openclaw` = core）：
+- `nodes list` 0.89 / 0.70 s、`nodes status` 0.71 s，写盘 0 MB；`status` 7.09 / 7.12 s、写 58 MB。全部 rc=0，没有新的快照目录。修复前同样命令 9–60 s、5.3–5.9 GB。
+- `status` 剩下的 58 MB 不是状态库快照（目录没有新增），来源未查。
+
+## noop-mutation-nonterminal-20261109
+
+上线：2026-11-09 16:24 CST（15:57 文件装到 V；v-self-restart 延后到 16:12 后等空闲，16:16 停机、296 s 就绪，workers 5、postChecks 全 0；告警仍只有 GrokBot 群内双向桥，11/07 起的老问题）  ·  tag `noop-mutation-nonterminal-20261109`
+
+**摘要**：回移上游 `f8db9be1a94`（#137036）。`write`、`edit`、`apply_patch` 在无改动时不再返回 `terminate: true`。原来这样一次多余的编辑会让这一轮直接结束，拿不到最终回答：/vds 的 Codex 插件会放掉回合，Worker 的循环会停。切换 /vds 后的第一张异常夜班卡 BH-ES-22（14:37）就是这样：交接文件没写就被 block。
+
+**主机变更（不在文件存档和 parity 范围内，Tianyi 11/09 同意）**：
+- `/usr/local/bin/openclaw` 15:52 从旧安装 `/opt/openclaw-2026.9.1-v/openclaw/openclaw.mjs` 改指到 Gateway 跑的 core `/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/core/openclaw.mjs`。这样 agent exec、`v-self-restart`、企微接管卡调用的 CLI 和 Gateway 是同一份代码，也用上了 #530 的快路径。
+  - 改前用 `v-self-restart --check` 在 core CLI 上校验过；改后 openclaw 和 root 两个用户的 `gateway call health`、`cron list` 都正常。
+  - 回滚：`ln -sfn /opt/openclaw-2026.9.1-v/openclaw/openclaw.mjs /usr/local/bin/openclaw`。
+- 删掉 `~/.cache/openclaw/` 下 6 份进程已退出的 `openclaw-sqlite-readonly-*` 状态库副本（各 576 MB，共约 3.4 GB）。这些是 `status` / `nodes list` 被杀后留下的，根因另开 session 修。
+
+相对上一版 `codex-watchdog-relay-20261109`：2 个文件变化。
+
+**经 VLab 发版 `noop-mutation-nonterminal-20261109`**（claude-monitor，dev `702f3301`）
+> 验收：Shared VLab 2026-11-09 15:54-15:57 CST after deploy (sessions 47372f1d, core-coding-tools 981e50c5): Worker dedicated session wrote a file, made a deliberate no-op edit (tool returned 'No changes made ... identical'), then continued to exec and replied NOOP_CONT_W1 (vlab-dev-1794210878374) — before the fix a lone no-op edit ended the turn. /vds explicit sessions on VLab expose exec_command/apply_p…
+- `core` core-coding-tools-DYAE1EWB.js  e5d69236 → 981e50c5
+- `core` sessions-CHgQo4vL.js  163893d1 → 47372f1d
+
+V 上验收：
+- 测试群 oc_260a…（临时切到 Worker，`/model deepseek/deepseek-flash --runtime default -s`）：先 write，再做一次无改动 edit，工具返回 `No changes made … identical`；这一轮继续执行 exec，回复 NOOP_ONLINE_W（16:25）。测完切回 `/vcodex`。
+- 共享 VLab（15:54–15:57）：Worker 专用会话同样通过（NOOP_CONT_W1），journal 里 0 次 `terminal dynamic tool result`。VLab 的 /vds 显式会话没有 OpenClaw 的 edit/write 动态工具，测不到 Codex 那条路；但 Codex 只在工具结果带 `terminate` 时才放掉回合，补丁去掉的正是这个标记，所以 Codex 也覆盖到了。
+- /vds 监控加了 `turn released after terminal dynamic tool result` 告警，用来盯真实夜班流量。
+
+## codex-watchdog-relay-20261109
+
+上线：2026-11-09 12:23 CST（12:18 文件装到 V；v-self-restart 12:21 停机写配置、101 s 就绪，workers 5、postChecks 全 0；唯一告警是 GrokBot 群内双向桥 stream，11/07 23:32 起就在报错，与本次无关）  ·  tag `codex-watchdog-relay-20261109`
+
+**摘要**：makaron 的默认模型从 Worker flash 改成 /vds（Codex + DeepSeek flash），交互群、夜班 Workboard 卡、没写模型的 cron、子 agent 一起切过去（Tianyi 11/09 定，不灰度）。同时上两处 Codex 保护：① 模型请求一直不应答时回合有界结束、交给回退（#534，此前可超过 930 s 无回复）；② hook relay 期限从进程启动算，启动晚了也会先拒绝而不是让工具照常执行（#582）。
+
+**配置变更（不在文件存档和 parity 范围内）**：`agents.defaults.model.primary`、`agents.entries.makaron.model.primary` → `deepseek/vds-deepseek-flash`，回退保持 `[openai/gpt-6-luna]`；makaron `codex-home/config.toml` 的 `[model_providers.deepseek]` 加 `request_max_retries = 1`、`stream_max_retries = 1`（备份 `config.toml.bak-vds-default-20261109`）。worker 那份配置未改。写死 flash 的 cron 仍在 Worker。重启后用 `sessions.patch {model:null}` 复位了 38 个最近一次运行是 /vds 的手动覆盖会话（37+1，逐个核对 resolved=vds），让它们拿回回退；/vcodex、/vcc 的手动选择不动。
+
+相对上一版 `vds-tasks-rowindex-20261108`：2 个文件变化。
+
+**经 VLab 发版 `codex-watchdog-relay-20261109`**（claude-monitor，dev `ce84c818`）
+> 验收：Shared VLab 2026-11-09 10:53-10:56 CST after syncing the Gateway Codex copy (run-attempt f67df60a) and restart: /vds dedicated session ran a foreground 'sleep 120' through the hook relay (1a9524b6) past the 90 s provider timeout without interruption and replied WD534_LONG_OK + timestamp (vlab-dev-1794192868195); Worker session exec reply WORKER_OK (vlab-dev-1794192869769); journal since 10:53 has …
+- `core` native-hook-relay-cli-DTqrikhm.js  dc73ce92 → 1a9524b6
+- `codex` dist/run-attempt-D1hJO4fX.js  71a11b78 → f67df60a
+
+V 上验收：
+- 上线前（V，Tianyi 同意，Gateway `agent` 接口一次性会话，6 步夜班形态任务：生成并读回 300 行文本、两次 sleep 20、写读 JSON、写报告）：c24 Worker 完成 p50/p90/max 65.6/92.9/101.7 s，/vds 72.1/79.4/84.8 s，两边 24/24；第二轮 /vds（12:07，加心跳闸门和 3 分钟收尾观察）78.6/81.9/84.2 s，24/24，心跳延迟仅一次 4.2 s。第一轮之后 10:43:46 出现过一次 39 s 主线程停顿，第二轮没有复现，原因未定。
+- 上线前基线（11/08–11/09 飞书真实消息，发出→第一段回答）：Worker flash n=158 p50 20.0 s、p90 91 s；/vds n=41 p50 13.4 s、p90 44.5 s。
+- 测试群 oc_ede0…（复位覆盖后不带手动模型）：exec 回合 12:27 回复可见，卡片 Runtime codex、Model vds-deepseek-flash，日志无 `configured fallbacks disabled by user model override`。
+- cron：测试群一次性 `--model deepseek/vds-deepseek-flash` 任务跑在 codex harness，lark-cli 读日历、邮件都成功（10:50）。
+- 共享 VLab：120 s 前台工具未被看门狗打断、relay 超时 0（见上）。故障路径（挂起/断流 95–100 s 回退、晚启动 relay 被拒）是 candidate 证据，见 #534/#536。
+- 待观察：切换后第一张真实夜班卡的 harness 与完成情况；语音通话还没测。
+
+## vds-tasks-rowindex-20261108
+
+上线：2026-11-08 18:43 CST（18:38 文件装到 V；v-self-restart 等到空闲重启，18:43:06 就绪，workers 5、postChecks 全 0）  ·  tag `vds-tasks-rowindex-20261108`
+
+**摘要**：两处 Gateway 主线程减负，/vds 高并发下明显变快。① /vds（Codex）每回合不再把全部任务（V 上约 1.9 万条）克隆排序后再过滤，改为先过滤再克隆（#574）。② 建会话行（会话事件快照、列表、状态）时子 agent run 走索引，不再两次扫整个注册表（1.3–1.6 万个 run），Worker 和 /vds 都受益（#578）。#576（插件启用判断记忆，成对 A/B 约 25 ms/回合）收益太小未上。
+
+V 上验收：
+- 上线前后同法对比（11/08，经 Tianyi 同意在 V 上压测：Gateway `agent` 接口给 10 个一次性显式会话各先 `/vds` 再并发派 3 步 exec 任务，不进任何群；上线后在重启 23 分钟后、避开 19:00 定时任务）：
+
+| /vds 10 并发 | 上线前 18:14 | 上线后 19:06 |
+|---|---|---|
+| 到第一次调用工具 | 12.8–15.0 s，p50 14.1 | 7.6–9.0 s，p50 8.1 |
+| 完成 | 47.8–51.9 s，p50 49.8 | 41.9–44.0 s，p50 43.3 |
+| Gateway RSS 峰值 / 停顿 | 2.4 GB / 0 | 2.6 GB / 0 |
+
+  两次是不同时段的单独运行（DeepSeek 时延会有波动），幅度与 VLab 成对 A/B（#574：c10 到首个工具快 2.6–6.6 s）一致。
+- 测试群 oc_260a… `/vds`：三个并行 echo 正确回复；派两个可见子 agent 后 yield，18:46 最终卡片带两个结果；重启后 owner changed / 绑定报错 / settle wake failed 均为 0。测完切回 `/vcodex`。
+- 共享 VLab（18:27–18:40）：/vds 并行工具、子 agent 交回、sessions.list、Worker 冒烟均正常，journal 无报错。
+
+相对上一版 `loopback-early-status-20261108`：3 个文件变化。
+
+**经 VLab 发版 `vds-tasks-rowindex-20261108`**（vds-tasks-rowindex-20261108，dev `84ce10f4`）
+> 验收：共享 VLab 验收 2026-11-08 18:27–18:40 CST（#574 #578，dev 84ce10f4）。部署后 Gateway 就绪、journal 无 TypeError/uncaught。/vds（codex）三个并行 echo 正确回复；/vds 父会话派 2 个可见子 agent 后 sessions_yield，最终回复 VTR_FINAL VTR_SA VTR_SB；sessions.list 正常（20 行，8 行带子 agent 信息）；Worker exec 冒烟 VTR_W 正常。性能证据见 #574/#578 的 VLab 成对 A/B（c10 到首个工具快 2.6–6.6 s；每回合约 95 ms），上线后在 V 上用同法 /vds c10 前后对比（上线前基线 V 18:14：首个工具 p50≈14.1 s、完成 p50≈49.8 s）。
+- `core` plugin-sdk/agent-harness-task-runtime.js  50dc439b → 595673bc
+- `core` session-utils-list-BUP03AzS.js  a6d40fb5 → 5392dd65
+- `core` subagent-registry.store.sqlite-hzGu4QSk.js  4bc27059 → 23154eac
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #578 perf(gateway): 会话行选子 agent run 走索引，不再两次扫整个注册表
+- #574 perf(gateway): Codex 回合先过滤再克隆任务，不再整表克隆
+- #580 release: 捕获 loopback-early-status-20261108 并补 CHANGELOG
+
+## loopback-early-status-20261108
+
+上线：2026-11-08 17:10 CST（17:05 文件装到 V，避开 17:00 定时任务；v-self-restart 等到空闲，17:05:51 重启，17:10:37 就绪，workers 5、postChecks 全 0）  ·  tag `loopback-early-status-20261108`
+
+**摘要**：两件事一次重启上线。① /vcc（claude-cli）的定时任务点名要 `exec` 时，经 MCP 回环调 OpenClaw exec 不再报「Secret egress proxy requires an admitted agent run instance」（#573）：十二家群「每日当天行程置顶」从 11/06 08:00 起每天连 `echo ok` 都失败、lark-cli 一次没跑起来。② Worker 回复的第一个可见事件是工具调用时，模型一开始流工具调用就推「正在 …」状态行，不再等参数流完（#575）。
+
+V 上验收（测试群 oc_260a…，lark-cli 以 Tianyi 身份）：
+- 上线前基线：#575 V 11/05–07 工具类回复「工具事件 → 卡片开始」P50 0.55 s / P90 1.86 s；#573 当天 claude-cli 转录里 egress 报错 13 处。
+- #575：测试群切到默认（`/model deepseek/deepseek-flash --runtime default -s`，Runtime vlab-worker），三条「exec sleep 2 && echo」消息，「工具事件 → 卡片开始」3 / 3 / 250 ms；卡片开始 → 创建完成 540–613 ms 是飞书接口耗时。
+- #573：测试群建一次性定时任务（isolated、`--model anthropic/claude-opus-5-5`、`--tools exec,message`，与置顶任务同形），17:15 运行：转录里是 `mcp__openclaw__exec`，`echo EXEC_OK_573` 与 `lark-cli im +chat-list` 都成功（rc=0），无 egress 报错，回复「EXEC=成功 LARK=成功」；任务运行后自动删除，测完测试群切回 `/vcodex`。十二家的真实任务明早 08:00/08:05 自然运行时再确认。
+- 未覆盖：共享 VLab 上没有复测飞书（入站被同 appId 的 versa-mirror95 分走）和 secret egress（VLab 未开）。
+
+相对上一版 `restore-narrow-settle-parallel-20261108`：4 个文件变化。
+
+**经 VLab 发版 `loopback-early-status-20261108`**（loopback-early-status-20261108，dev `0bd3a629`）
+> 验收：共享 VLab 验收 2026-11-08 16:47–16:58 CST（#573 #575，dev 0bd3a629）。部署后 Gateway 就绪；Worker 工具回合冒烟（exec echo LES_42 → 回复 LES_42）正常。#575 飞书端到端证据为 PR 内 candidate 三组 A/B（V 飞书插件 + vlab-worker + 假飞书，工具回合卡片首推 3469→1887 ms，正文路径不变，开关关闭=改前）；共享 VLab 的飞书入站此时被 versa-mirror95（同 appId cli_aae2c999，16:54 启动）分走，未在共享 VLab 复测飞书。#573 的 secret egress proxy 在共享 VLab 未开启、且无 claude 登录，证据为 PR 内 candidate 对照（candidate-214db0f2 改前…
+- `core` agent-runner.runtime-CAdsMsQt.js  09f1b500 → ec866319
+- `core` builtin-openclaw-zQV8Wwjr.js  a44b846a → 10af16f4
+- `core` mcp-http-BL3X6y4w.js  6a1e20fc → c10aece4
+- `core` tool-resolution-Con11qMn.js  aa63296c → 055335eb
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #575 首字：工具调用一开始就推状态行（early-tool-status 在 V 当前字节上重建 + 飞书端到端 A/B）
+- #573 fix(vcc): 定时任务里 OpenClaw exec 报 Secret egress proxy requires an admitted agent run instance
+- #572 release: 捕获 fallback-dsml-subagent-wake-20261108 与 restore-narrow-settle-parallel-20261108 并补 CHANGELOG
+
 ## restore-narrow-settle-parallel-20261108
 
 上线：2026-11-08 10:04 CST（09:56 文件装到 V；v-self-restart 等到空闲，10:00:04 重启，10:04:42 就绪。10:08:35 Gateway 因钉钉 WebSocket 握手 400 未捕获异常崩溃一次，10:08:41 自动拉起，见下）  ·  tag `restore-narrow-settle-parallel-20261108`

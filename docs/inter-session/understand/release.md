@@ -3,7 +3,7 @@
 1. **怎么声明和发布补丁**：每个组件都是整文件替换。改出来的字节必须由 V 现在跑的字节生成，并用测试钉死。新测试必须登记进 catalog。新加的 `scripts/patch-*.mjs` 必须登记成 adaptation，并写指纹。v-session-relay 插件目前不属于任何可发布组件，CI 也不跑它的测试。
 2. **candidate 改代码的两种方式**：plan 的 `files` 会做 before 哈希校验，并写进 receipt。在测试脚本里直接改 `$VLAB_CANDIDATE_RUNTIME` 不会被 receipt 记下。
 3. **共享 VLab**：只有一个发版槽。stage 要求 lease、dev 上的提交，并且 VLab 已和 V 对齐。出口只有两个：上 V 后 align，或者 rollback。合入 dev 和上 V 都要 Tianyi 针对这次变更明确批准，重启 V 另由人决定。
-4. **CI**：`npm test`、`node --test tests/workboard-*-patch.test.mjs`、`./tests/vlab-static.sh`。
+4. **CI**：`pnpm test`、`node --test tests/workboard-*-patch.test.mjs`、`./tests/vlab-static.sh`。
 5. **PR 和 CHANGELOG**：PR 用中文写，带 candidate ID 和前后哈希。上 V 之后，捕获和 CHANGELOG 放同一个 PR。dev→main 发版 PR 和 tag 目前落后。
 
 ---
@@ -89,7 +89,7 @@
 ## (4) PR 至少要过的检查
 
 ```sh
-npm ci && npm test                       # = node platform/cli.mjs test：catalog 里 310 个测试，并发 2
+pnpm install --frozen-lockfile && pnpm test   # = node platform/cli.mjs test：catalog 里 310 个测试，并发 2
 node --test tests/workboard-*-patch.test.mjs
 ./tests/vlab-static.sh                   # Feishu 补丁测试、捕获可重建校验、每个捕获都有 CHANGELOG 一节、scan-secrets
 node platform/cli.mjs audit              # 新补丁、新测试都已登记，指纹无漂移

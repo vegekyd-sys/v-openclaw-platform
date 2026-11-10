@@ -15,18 +15,21 @@ media/
 artifacts/
 backups/
 node_modules/
+# pnpm-lock.yaml is the lockfile (2026-11-10); npm's would only drift from it.
+/package-lock.json
 dist/
 tmp/
 release/*.local.json
 
 
-# release/captured/<release>/ holds the exact bytes a production host is
-# running, so that a live release can be rebuilt from git rather than from a
-# hand-carried patch. The generic dist/ and state/ rules above would otherwise
-# swallow the whole capture. Git cannot re-include a file whose parent
-# directory is excluded, so the directories are un-ignored first.
-!release/captured/*/dist/
-!release/captured/*/dist/**
+# release/captured/<release>/ records the exact bytes a production host is
+# running. Since 2026-11-10 only its manifest.json is on dev; the dist/ bytes
+# are on the captured-store branch, and `node scripts/captured-store.mjs link`
+# copies them in (marking each copy with .dist-tree). See
+# docs/release-captured-store.md.
+release/captured/*/dist
+release/captured/*/dist.tmp-*
+release/captured/*/.dist-tree
 # Release bytes built for a staged release (lab/release-files/<release>/) keep
 # the target's dist/ layout so the plan maps them one to one.
 !lab/release-files/*/**/dist/

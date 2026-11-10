@@ -4,6 +4,12 @@ Each `<release>/` here holds the exact bytes by which a live host's OpenClaw
 runtime differs from its upstream base install, plus a `manifest.json` that
 records where they came from and when.
 
+Since 2026-11-10 only the manifests are committed here. The `dist/` bytes are on
+the `captured-store` branch under the same paths; `node scripts/captured-store.mjs
+link` (run by `pnpm install` and the post-checkout hook) copies them into this
+directory, and `node scripts/captured-store.mjs publish <release>` stores a new
+capture. See [`docs/release-captured-store.md`](../../docs/release-captured-store.md).
+
 **These are not a source build.** They are the existing production state, lifted
 off the server so that it can be rebuilt from git at all. Until every entry is
 either produced by a source build or deliberately retired, this directory is the
@@ -32,6 +38,8 @@ node scripts/capture-production-runtime.mjs \
 ```
 
 Read-only on the host, and safe to run while another line is deploying.
+Then `node scripts/captured-store.mjs publish v2026.9.1-db91.6` and commit the
+manifest.
 
 Diff against the **published package** (`npm:openclaw@<version>`), not against
 an install directory on the host. V's `/opt/openclaw-2026.9.1-v` had been
@@ -42,7 +50,8 @@ worker placement, ...). Against the pristine package the core diff is 96 files.
 ## Check it
 
 ```bash
-# repo side, no network: git holds bytes for everything the manifest declares
+# repo side: the linked dist/ holds bytes for everything the manifest declares
+# (node scripts/captured-store.mjs check verifies every manifest against captured-store)
 node scripts/verify-release-reproducible.mjs \
   --manifest release/captured/v2026.9.1-db91.6/manifest.json
 

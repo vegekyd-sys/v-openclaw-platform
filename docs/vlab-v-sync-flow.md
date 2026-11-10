@@ -151,8 +151,8 @@ node scripts/clean-v-residue.mjs [--apply | --undo <dir>]                       
 node lab/vlab.mjs stage / deploy / accept ...                      # VLab 上验收
 node scripts/promote-to-v.mjs --release <VLab release> --name <V 发版名>     # 先看计划
 node scripts/promote-to-v.mjs --release <VLab release> --name <V 发版名> --owner <o> --apply
-# → 装同一份字节到 V（先备份，写 undo.json）→ 捕获组件表里每个组件（core/worker/飞书/钉钉/企微）→ 更新哨兵 → vlab.mjs align
-git add release/captured/<V 发版名>*；node scripts/release-notes.mjs --from <上一版> --to <V 发版名> 生成 CHANGELOG.md 一节并写摘要；提交 PR；dev → main 发版 PR，打 tag <V 发版名>
+# → 装同一份字节到 V（先备份，写 undo.json）→ 捕获组件表里每个组件（core/worker/飞书/钉钉/企微）→ dist/ 推到 captured-store 分支 → 更新哨兵 → vlab.mjs align
+git add release/captured/<V 发版名>*（只有 manifest；dist/ 在 captured-store，见 docs/release-captured-store.md）；node scripts/release-notes.mjs --from <上一版> --to <V 发版名> 生成 CHANGELOG.md 一节并写摘要；提交 PR；dev → main 发版 PR，打 tag <V 发版名>
 ```
 
 `promote-to-v.mjs` 不重启 V：dist 文件在下次 Gateway 启动时才生效，什么时候重启由人决定。V 上的文件不是这个版本的"改动前"字节时，它拒绝执行；需要撤销用 `--undo <V 上的备份目录>`。
@@ -170,7 +170,7 @@ git add release/captured/<V 发版名>*；node scripts/release-notes.mjs --from 
 
 | 决定 | 做什么 |
 | --- | --- |
-| **保留** | 1. `capture-production-runtime.mjs` 捕获 V（core 以 `npm:openclaw@2026.9.1` 为基准，加 worker、飞书），提交并开 PR 合入 dev，把改动来源的提交也一起带进来。<br>2. `install-v-release-drift.sh` 用新清单更新哨兵。<br>3. `node scripts/sync-vlab-from-v.mjs --name <新发版> --owner <o> --apply`：从 dev 里的捕获取字节（必须等于 V 的线上字节），走正常的 package → stage → deploy，parity 必须是 ALIGNED 才会 accept，然后 align。VLab 因此留有发版记录，也可以回滚。<br>4. 开 dev → main 发版 PR，打 tag。 |
+| **保留** | 1. `capture-production-runtime.mjs` 捕获 V（core 以 `npm:openclaw@2026.9.1` 为基准，加 worker、飞书），`node scripts/captured-store.mjs publish <name>...` 把 dist/ 推到 captured-store，提交 manifest 并开 PR 合入 dev，把改动来源的提交也一起带进来。<br>2. `install-v-release-drift.sh` 用新清单更新哨兵。<br>3. `node scripts/sync-vlab-from-v.mjs --name <新发版> --owner <o> --apply`：从 captured-store 分支取捕获的字节（必须等于 V 的线上字节），走正常的 package → stage → deploy，parity 必须是 ALIGNED 才会 accept，然后 align。VLab 因此留有发版记录，也可以回滚。<br>4. 开 dev → main 发版 PR，打 tag。 |
 | **不保留** | 把 V 恢复回去：`promote-to-v.mjs --undo <备份目录>`，或者热改自己留下的备份；然后确认哨兵回到 0。 |
 
 `sync-vlab-from-v.mjs` 故意不处理两种情况：只存在于 VLab 的文件（stage 不能删文件），以及 V 上等于原版、因而不在捕获里的文件。这两种都说明 VLab 带着 V 没有的东西，应该用 `vlab-rebase-to-v.mjs`。

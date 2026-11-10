@@ -1,0 +1,17 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/subagent-row-index/subagent-registry.store.sqlite-hzGu4QSk.js",
+      "target": "openclaw/dist/subagent-registry.store.sqlite-hzGu4QSk.js",
+      "before": "4bc27059fa5b0127892c1f0f3f6285d3334a98333f781e9f1dab245ab9bba9e7",
+      "after": "23154eac039ed5f2c73388ac92db900e120262d65522d00b131af802d1d62542"
+    },
+    {
+      "source": "lab/release-files/subagent-row-index/session-utils-list-BUP03AzS.js",
+      "target": "openclaw/dist/session-utils-list-BUP03AzS.js",
+      "before": "a6d40fb5ae98bb8b61ff157487b4a59942c32f126620eda56869c24fc06b3de2",
+      "after": "5392dd6581423d3a86d49f08db79c20941dcc24d663343605ad473a584c3054c"
+    }
+  ]
+}

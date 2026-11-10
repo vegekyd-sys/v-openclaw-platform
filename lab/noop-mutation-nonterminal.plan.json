@@ -1,0 +1,17 @@
+{
+  "baseRelease": "codex-watchdog-relay-20261109",
+  "files": [
+    {
+      "source": "lab/release-files/noop-mutation-nonterminal/sessions-CHgQo4vL.js",
+      "target": "openclaw/dist/sessions-CHgQo4vL.js",
+      "before": "163893d16aab725f73d5ad6732dea1048b49c829a2d0f09540083b4ace1394d0",
+      "after": "47372f1d37c4f7d1e93a36b7dbe2d114444ec9bbf3cdb20f9c3638735bcf4be1"
+    },
+    {
+      "source": "lab/release-files/noop-mutation-nonterminal/core-coding-tools-DYAE1EWB.js",
+      "target": "openclaw/dist/core-coding-tools-DYAE1EWB.js",
+      "before": "e5d69236e0a88dca8b52d3bb127a386d9f7b83d7710ac7502e6cf2918200b088",
+      "after": "981e50c585febbe91890182256c6ce93d57c107420194fea89486406b0062ee0"
+    }
+  ]
+}

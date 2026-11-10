@@ -244,9 +244,13 @@
         "tests/v-memory-indexer.test.mjs",
         "tests/v-storage-governance.test.mjs",
         "tests/check-source-map.test.mjs",
+        "tests/captured-store.test.mjs",
+        "tests/codex-model-wait-watchdog.test.mjs",
         "scripts/bundle-prep-observer.test.mjs",
         "tests/workboard-notes-limit-patch.test.mjs",
         "tests/workboard-owner-concurrency-patch.test.mjs",
+        "tests/relay-deadline-process-start-patch.test.mjs",
+        "tests/noop-mutation-nonterminal-patch.test.mjs",
         "scripts/db91-firstword-files.test.mjs",
         "scripts/db91-hi-trace.test.mjs",
         "scripts/db91-prepared-scope.test.mjs",
@@ -481,6 +485,8 @@
         "lab/subagent-active-precheck.test.mjs",
         "lab/subagent-restore-narrow.test.mjs",
         "lab/registry-lazy-first-turn.test.mjs",
+        "lab/harness-tasks-filter-first.test.mjs",
+        "lab/subagent-row-index.test.mjs",
         "lab/cli-startup-fast.test.mjs",
         "lab/doctor-subprocess.test.mjs",
         "lab/sessions-search-candidate-rows.test.mjs",
@@ -503,7 +509,10 @@
         "lab/dsml-spaced-calls.test.mjs",
         "lab/subagent-settle-wake.test.mjs",
         "lab/subagent-settle-wake-missing-task.test.mjs",
-        "lab/loopback-exec-run-instance.test.mjs"
+        "lab/loopback-exec-run-instance.test.mjs",
+        "lab/compaction-image-skip.test.mjs",
+        "lab/workboard-full-context.test.mjs",
+        "lab/cli-readonly-live.test.mjs"
       ]
     }
   ],

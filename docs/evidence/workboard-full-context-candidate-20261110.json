@@ -1,0 +1,309 @@
+{
+ "on-vds": {
+  "receipt": "candidate-aa6a9588-b426-4da7-81bf-7cb5031dbf27",
+  "ok": true,
+  "dirty": true,
+  "sourceCommit": "abd35ed875018c796e45caac396a2a1b8850c15d",
+  "baseRelease": "compaction-image-skip-20261109",
+  "runtimeSha": "331ef7eb7ce0fc33fbce40b585921c0a61155bb65b00a68fc76989cec2231ddb",
+  "result": {
+   "startedAt": "2026-11-09T16:56:59.838Z",
+   "modelKind": "vds",
+   "model": "deepseek/vds-deepseek-flash",
+   "notes": [],
+   "patched": {
+    "runtimeApi": true,
+    "workspace": true
+   },
+   "workerConfig": {
+    "path": "shared-vlab-20260909-v3/worker-openclaw.json",
+    "derived": true
+   },
+   "gatewayReadyMs": 68680,
+   "workspaceSeed": {
+    "sharedWorkspace": "/srv/vlab-production-mirror/labs/instances/db91-parity/workspace/w1",
+    "copied": [
+     "AGENTS.md",
+     "SOUL.md",
+     "IDENTITY.md",
+     "USER.md",
+     "MEMORY.md",
+     "TOOLS.md",
+     "HEARTBEAT.md"
+    ]
+   },
+   "expected": {
+    "ruleNumber": 4,
+    "rule": "Tool-call process note",
+    "soulHeading": "SOUL.md — V's Identity"
+   },
+   "card": {
+    "id": "e35ff17b-e0f0-4684-a104-68cd76f2c9cf",
+    "boardId": null
+   },
+   "dispatch": {
+    "started": [
+     {
+      "sessionKey": "agent:makaron:subagent:workboard-default-e35ff17b-e0f0-4684-a104-68cd76f2c9cf",
+      "runId": "workboard:e35ff17b-e0f0-4684-a104-68cd76f2c9cf:1794243494358"
+     }
+    ],
+    "startFailures": []
+   },
+   "result": {
+    "status": "done",
+    "secs": 24,
+    "answer": {
+     "rule5": "Tool-call process note",
+     "soul": "SOUL.md — V's Identity"
+    }
+   },
+   "rollouts": [
+    {
+     "file": "rollout-2026-11-10T00-58-26-01a1c13f-31c6-7dd2-8e01-1e824415c34b.jsonl",
+     "cwd": "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-aa6a9588-b426-4da7-81bf-7cb5031dbf27/data/workspace/makaron",
+     "agentsMessage": false,
+     "workspaceContextFiles": [
+      "SOUL.md",
+      "IDENTITY.md",
+      "USER.md",
+      "MEMORY.md"
+     ],
+     "developerChars": 11606,
+     "ruleTextIn": [
+      "developer:You are a personal agent running inside "
+     ],
+     "soulTextIn": [
+      "developer:<openclaw_workspace_context> The followi"
+     ]
+    }
+   ],
+   "toolCalls": [
+    "workboard_complete {\"id\": \"e35ff17b-e0f0-4684-a104-68cd76f2c9cf\", \"token\": \"[redacted]\", \"summary\": \"WFC-5da6aa R",
+    "workboard_complete {\"id\": \"e35ff17b-e0f0-4684-a104-68cd76f2c9cf\", \"proof\": {\"status\": \"passed\", \"note\": \"context-probe\"}, \"summary\": \"WFC-5"
+   ],
+   "readWorkspaceFiles": false,
+   "knowsRule": true,
+   "knowsSoul": true,
+   "verdict": "done",
+   "finishedAt": "2026-11-09T16:58:37.413Z"
+  }
+ },
+ "off-vds": {
+  "receipt": "candidate-91394f9e-e83c-4012-9f71-f63789acaca2",
+  "ok": true,
+  "dirty": true,
+  "sourceCommit": "abd35ed875018c796e45caac396a2a1b8850c15d",
+  "baseRelease": "compaction-image-skip-20261109",
+  "runtimeSha": "331ef7eb7ce0fc33fbce40b585921c0a61155bb65b00a68fc76989cec2231ddb",
+  "result": {
+   "startedAt": "2026-11-09T16:56:59.734Z",
+   "modelKind": "vds",
+   "model": "deepseek/vds-deepseek-flash",
+   "notes": [],
+   "patched": {
+    "runtimeApi": false,
+    "workspace": false
+   },
+   "workerConfig": {
+    "path": "shared-vlab-20260909-v3/worker-openclaw.json",
+    "derived": true
+   },
+   "gatewayReadyMs": 67313,
+   "workspaceSeed": {
+    "sharedWorkspace": "/srv/vlab-production-mirror/labs/instances/db91-parity/workspace/w1",
+    "copied": [
+     "AGENTS.md",
+     "SOUL.md",
+     "IDENTITY.md",
+     "USER.md",
+     "MEMORY.md",
+     "TOOLS.md",
+     "HEARTBEAT.md"
+    ]
+   },
+   "expected": {
+    "ruleNumber": 4,
+    "rule": "Tool-call process note",
+    "soulHeading": "SOUL.md — V's Identity"
+   },
+   "card": {
+    "id": "37a471f4-ff3e-4db2-96ae-a9919209392e",
+    "boardId": null
+   },
+   "dispatch": {
+    "started": [
+     {
+      "sessionKey": "agent:makaron:subagent:workboard-default-37a471f4-ff3e-4db2-96ae-a9919209392e",
+      "runId": "workboard:37a471f4-ff3e-4db2-96ae-a9919209392e:1794243490201"
+     }
+    ],
+    "startFailures": []
+   },
+   "result": {
+    "status": "done",
+    "secs": 23,
+    "answer": {
+     "rule5": "UNKNOWN",
+     "soul": "UNKNOWN"
+    }
+   },
+   "rollouts": [
+    {
+     "file": "rollout-2026-11-10T00-58-25-01a1c13f-2efa-75d1-8cc7-cbaf679f8687.jsonl",
+     "cwd": "/srv/vlab-production-mirror/labs/candidate-tests/runs/candidate-91394f9e-e83c-4012-9f71-f63789acaca2/data/workspace/makaron",
+     "agentsMessage": false,
+     "workspaceContextFiles": [],
+     "developerChars": 2988,
+     "ruleTextIn": [],
+     "soulTextIn": []
+    }
+   ],
+   "toolCalls": [
+    "workboard_complete {\"id\": \"37a471f4-ff3e-4db2-96ae-a9919209392e\", \"token\": \"[redacted]\", \"summary\": \"WFC-7d8ec4 R",
+    "workboard_complete {\"id\": \"37a471f4-ff3e-4db2-96ae-a9919209392e\", \"proof\": {\"label\": \"context-probe\", \"status\": \"passed\", \"note\": \"context-"
+   ],
+   "readWorkspaceFiles": false,
+   "knowsRule": false,
+   "knowsSoul": false,
+   "verdict": "done",
+   "finishedAt": "2026-11-09T16:58:33.269Z"
+  }
+ },
+ "on-pi": {
+  "receipt": "candidate-9cfab19a-ea16-4d6e-bccd-b2072d004587",
+  "ok": true,
+  "dirty": true,
+  "sourceCommit": "abd35ed875018c796e45caac396a2a1b8850c15d",
+  "baseRelease": "compaction-image-skip-20261109",
+  "runtimeSha": "331ef7eb7ce0fc33fbce40b585921c0a61155bb65b00a68fc76989cec2231ddb",
+  "result": {
+   "startedAt": "2026-11-09T16:59:39.498Z",
+   "modelKind": "pi",
+   "model": "deepseek/deepseek-flash",
+   "notes": [],
+   "patched": {
+    "runtimeApi": true,
+    "workspace": true
+   },
+   "workerConfig": {
+    "path": "shared-vlab-20260909-v3/worker-openclaw.json",
+    "derived": true
+   },
+   "gatewayReadyMs": 68600,
+   "workspaceSeed": {
+    "sharedWorkspace": "/srv/vlab-production-mirror/labs/instances/db91-parity/workspace/w1",
+    "copied": [
+     "AGENTS.md",
+     "SOUL.md",
+     "IDENTITY.md",
+     "USER.md",
+     "MEMORY.md",
+     "TOOLS.md",
+     "HEARTBEAT.md"
+    ]
+   },
+   "expected": {
+    "ruleNumber": 4,
+    "rule": "Tool-call process note",
+    "soulHeading": "SOUL.md — V's Identity"
+   },
+   "card": {
+    "id": "6d1c5d4f-ea68-427f-933b-763a88894c3c",
+    "boardId": null
+   },
+   "dispatch": {
+    "started": [
+     {
+      "sessionKey": "agent:makaron:subagent:workboard-default-6d1c5d4f-ea68-427f-933b-763a88894c3c",
+      "runId": "workboard:6d1c5d4f-ea68-427f-933b-763a88894c3c:1794243652034"
+     }
+    ],
+    "startFailures": []
+   },
+   "result": {
+    "status": "done",
+    "secs": 17,
+    "answer": {
+     "rule5": "Tool-call process note",
+     "soul": "SOUL.md — V's Identity"
+    }
+   },
+   "transcriptBytes": 15605,
+   "toolCalls": [],
+   "readWorkspaceFiles": false,
+   "knowsRule": true,
+   "knowsSoul": true,
+   "verdict": "done",
+   "finishedAt": "2026-11-09T17:01:08.843Z"
+  }
+ },
+ "off-pi": {
+  "receipt": "candidate-39638faf-eebc-4e12-a442-12902184f8a8",
+  "ok": true,
+  "dirty": true,
+  "sourceCommit": "abd35ed875018c796e45caac396a2a1b8850c15d",
+  "baseRelease": "compaction-image-skip-20261109",
+  "runtimeSha": "331ef7eb7ce0fc33fbce40b585921c0a61155bb65b00a68fc76989cec2231ddb",
+  "result": {
+   "startedAt": "2026-11-09T16:59:39.477Z",
+   "modelKind": "pi",
+   "model": "deepseek/deepseek-flash",
+   "notes": [],
+   "patched": {
+    "runtimeApi": false,
+    "workspace": false
+   },
+   "workerConfig": {
+    "path": "shared-vlab-20260909-v3/worker-openclaw.json",
+    "derived": true
+   },
+   "gatewayReadyMs": 69038,
+   "workspaceSeed": {
+    "sharedWorkspace": "/srv/vlab-production-mirror/labs/instances/db91-parity/workspace/w1",
+    "copied": [
+     "AGENTS.md",
+     "SOUL.md",
+     "IDENTITY.md",
+     "USER.md",
+     "MEMORY.md",
+     "TOOLS.md",
+     "HEARTBEAT.md"
+    ]
+   },
+   "expected": {
+    "ruleNumber": 4,
+    "rule": "Tool-call process note",
+    "soulHeading": "SOUL.md — V's Identity"
+   },
+   "card": {
+    "id": "d682060f-9386-4cb0-94dc-958db3b71f7c",
+    "boardId": null
+   },
+   "dispatch": {
+    "started": [
+     {
+      "sessionKey": "agent:makaron:subagent:workboard-default-d682060f-9386-4cb0-94dc-958db3b71f7c",
+      "runId": "workboard:d682060f-9386-4cb0-94dc-958db3b71f7c:1794243655778"
+     }
+    ],
+    "startFailures": []
+   },
+   "result": {
+    "status": "done",
+    "secs": 12,
+    "answer": {
+     "rule5": "UNKNOWN",
+     "soul": "UNKNOWN"
+    }
+   },
+   "transcriptBytes": 18183,
+   "toolCalls": [],
+   "readWorkspaceFiles": false,
+   "knowsRule": false,
+   "knowsSoul": false,
+   "verdict": "done",
+   "finishedAt": "2026-11-09T17:01:07.184Z"
+  }
+ }
+}

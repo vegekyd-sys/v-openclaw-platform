@@ -1760,6 +1760,125 @@
       "sha256": "70e6e032318e0b74b5aca5ecfbcbbebd75398c5bb51baecb61d466870879862a",
       "source": "versa:9a64665f56b",
       "note": "restore-narrow-settle-parallel-20261108 (#570): supports_parallel_tool_calls for the /vds DeepSeek catalog (versa/vds-parallel-tool-calls-20261108)"
+    },
+    {
+      "layer": "core",
+      "path": "mcp-http-BL3X6y4w.js",
+      "sha256": "c10aece48b15cb8195f6ac51f31758fa65daf6d1e2745e3502f7e793f13e213e",
+      "source": "versa:647f1203f38",
+      "note": "loopback-early-status-20261108 (#573): loopback MCP passes the grant-bound admitted run instance to tool resolution (versa/fix-loopback-exec-run-instance-20261108)"
+    },
+    {
+      "layer": "core",
+      "path": "tool-resolution-Con11qMn.js",
+      "sha256": "055335ebf0286c2763e9e4f99e3620d81b752efebeb63dafdddc88dcdff87741",
+      "source": "versa:647f1203f38",
+      "note": "loopback-early-status-20261108 (#573): exec built with the admitted run instance, tool cache keyed by it (versa/fix-loopback-exec-run-instance-20261108)"
+    },
+    {
+      "layer": "core",
+      "path": "builtin-openclaw-zQV8Wwjr.js",
+      "sha256": "10af16f4f27e7c87115d3d923bc9c6ed01729e27053052a4b78087b73e49348d",
+      "source": "versa:ad7497575da",
+      "note": "loopback-early-status-20261108 (#575): early tool status on input_start (versa/port-early-tool-status-20261108)"
+    },
+    {
+      "layer": "core",
+      "path": "agent-runner.runtime-CAdsMsQt.js",
+      "sha256": "ec866319e0125f124acd499d42a76bc49672b92618a8f358a1b7afc343e4a2d3",
+      "source": "versa:ad7497575da",
+      "note": "loopback-early-status-20261108 (#575): reply runner treats input_start as tool start (versa/port-early-tool-status-20261108)"
+    },
+    {
+      "layer": "core",
+      "path": "plugin-sdk/agent-harness-task-runtime.js",
+      "sha256": "595673bccefde24a079d3ba68a107cb2cbfeb9b0fda07f02d3736c3537d56e51",
+      "source": "versa:44fec25ee34",
+      "note": "vds-tasks-rowindex-20261108 (#574): Codex harness filters task records before cloning (versa/harness-tasks-filter-first-20261108-pb)"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-registry.store.sqlite-hzGu4QSk.js",
+      "sha256": "23154eac039ed5f2c73388ac92db900e120262d65522d00b131af802d1d62542",
+      "source": "versa:1422a7978de",
+      "note": "vds-tasks-rowindex-20261108 (#578): child/requester/owner indexes on the subagent registry map (versa/subagent-row-index-lookup-20261108)"
+    },
+    {
+      "layer": "core",
+      "path": "session-utils-list-BUP03AzS.js",
+      "sha256": "5392dd6581423d3a86d49f08db79c20941dcc24d663343605ad473a584c3054c",
+      "source": "versa:1422a7978de",
+      "note": "vds-tasks-rowindex-20261108 (#578): session rows pick subagent runs through the registry indexes (versa/subagent-row-index-lookup-20261108)"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/run-attempt-D1hJO4fX.js",
+      "sha256": "f67df60a4e880c96a32a415d0e26c5863c24e0ab9126e8a7755cd009c29b0d4b",
+      "source": "versa:26bd024052c",
+      "note": "codex-watchdog-relay-20261109 (#534): bound a Codex turn whose model request never answers (versa/port-codex-model-wait-20261101)"
+    },
+    {
+      "layer": "core",
+      "path": "native-hook-relay-cli-DTqrikhm.js",
+      "sha256": "1a9524b65477e3c2197002d944c3f5f199b42dd7544ff5c687d935f463db11ea",
+      "source": "versa:df437a4b1f8",
+      "note": "codex-watchdog-relay-20261109 (#582): native hook relay deadline counts from process start (versa/port-relay-deadline-20261107, on the #530 fast path 15c5a88b59d)"
+    },
+    {
+      "layer": "core",
+      "path": "sessions-CHgQo4vL.js",
+      "sha256": "47372f1d37c4f7d1e93a36b7dbe2d114444ec9bbf3cdb20f9c3638735bcf4be1",
+      "source": "versa:a08e348642d",
+      "note": "noop-mutation-nonterminal-20261109 (#584): no-op edit/write results no longer carry terminate (backport of upstream f8db9be1a94 #137036, versa/port-noop-nonterminal-20261109)"
+    },
+    {
+      "layer": "core",
+      "path": "core-coding-tools-DYAE1EWB.js",
+      "sha256": "981e50c585febbe91890182256c6ce93d57c107420194fea89486406b0062ee0",
+      "source": "versa:a08e348642d",
+      "note": "noop-mutation-nonterminal-20261109 (#584): no-op apply_patch result no longer carries terminate (backport of upstream f8db9be1a94 #137036)"
+    },
+    {
+      "layer": "core",
+      "path": "openclaw-state-db-readonly-C7txILW9.js",
+      "sha256": "6cc65a04954c73a4eae3d4c6e946a095e7ab52cb1524d6705223594e46c68009",
+      "source": "versa:8e1a007ce88",
+      "note": "cli-readonly-live-20261109 (#586): CLI reads a live WAL state DB in place instead of copying it (versa/port-cli-readonly-live-20261109)"
+    },
+    {
+      "layer": "core",
+      "path": "sqlite-readonly-location-BvtpsFvn.js",
+      "sha256": "09ed27c7811c5561e1ece02a5ca0cc2705bf0166c24156fed66a1de79838c630",
+      "source": "versa:8e1a007ce88",
+      "note": "cli-readonly-live-20261109 (#586): snapshot dirs named by the reader pid; abandoned ones swept (versa/port-cli-readonly-live-20261109)"
+    },
+    {
+      "layer": "core",
+      "path": "history-image-prune-Dg0CDQ4a.js",
+      "sha256": "350092743774c9f75ca767cdfad56808d79b1d5643c82276649d845dbe1e288a",
+      "source": "versa:9491dac5cd0",
+      "note": "compaction-image-skip-20261109 (#587): compaction sanitize keeps image bytes instead of resizing when server-side compaction will not run (versa/port-compaction-image-skip-20261109)"
+    },
+    {
+      "layer": "core",
+      "path": "compact-gStBcHDe.js",
+      "sha256": "517ec6df06cff5f903d0e691600283170c66a60963c4ed593f339430b9e924dd",
+      "source": "versa:9491dac5cd0",
+      "note": "compaction-image-skip-20261109 (#587): compaction sanitize skips resizing across the whole history (versa/port-compaction-image-skip-20261109)"
+    },
+    {
+      "layer": "core",
+      "path": "runtime-api-1CCazqtv.js",
+      "sha256": "b1bdba866c4cf587c0db959ff9a04a5b127f37b1c470eb134e097f1a46f1d8d6",
+      "source": "versa:87199af7dfd",
+      "note": "workboard-full-context-20261110 (#591): workboard card workers start with full bootstrap context (AGENTS.md/SOUL) instead of lightContext; rollback env OPENCLAW_WORKBOARD_LIGHT_CONTEXT=1 (versa/port-workboard-full-context-20261109)"
+    },
+    {
+      "layer": "core",
+      "path": "workspace-BFk42BX6.js",
+      "sha256": "e49f5b519edee3c21f6ea939192acf8848302e8ab25145317357ca020a08870b",
+      "source": "versa:87199af7dfd",
+      "note": "workboard-full-context-20261110 (#591): workspace bootstrap filter keeps full context for workboard sessions (versa/port-workboard-full-context-20261109)"
     }
   ]
 }
