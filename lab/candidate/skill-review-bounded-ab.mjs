@@ -173,7 +173,14 @@ const server = http.createServer((req, res) => {
     sse(res, body.model, { role: "assistant", content: "ok" }, "stop");
   });
 });
-await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+// The stand-in must not take a port the candidate Gateways will use (base port .. +400).
+const gatewayBasePort = Number(configB.gateway?.port);
+for (;;) {
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const p = server.address().port;
+  if (!(p >= gatewayBasePort - 20 && p <= gatewayBasePort + 400)) break;
+  await new Promise((resolve) => server.close(resolve));
+}
 const standinPort = server.address().port;
 
 // ---- configuration: V's model and Workshop setup on the embedded runtime ----
