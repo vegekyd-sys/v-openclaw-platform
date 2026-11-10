@@ -1,0 +1,19 @@
+{
+  "support": [
+    "lab/candidate/worker-first-turn-profile.mjs",
+    "lab/candidate/cpuprofile-window.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/worker-first-turn-profile.mjs"
+  ],
+  "timeoutSeconds": 5400,
+  "user": "lab-db91-parity",
+  "env": {
+    "ARM": "narrow",
+    "ROUNDS": "3",
+    "PROFILE": "0",
+    "SEEDED_START": "0",
+    "ACK_TIMEOUT_MS": "180000"
+  }
+}
