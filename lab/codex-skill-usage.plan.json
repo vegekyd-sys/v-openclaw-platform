@@ -1,0 +1,23 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/codex-skill-usage/agent-tools.before-tool-call-g2OT63u5.js",
+      "target": "openclaw/dist/agent-tools.before-tool-call-g2OT63u5.js",
+      "before": "618ab46aa1b398a0815c461fd7af3b721272968ed3652e77639171604bb5f9e9",
+      "after": "2c45dd2222b97890a1acb71ad58d3bb7a24119deef083686310ff75f023c348a"
+    },
+    {
+      "source": "lab/release-files/codex-skill-usage/agent-harness-runtime.js",
+      "target": "openclaw/dist/plugin-sdk/agent-harness-runtime.js",
+      "before": "4024aeb4ff992994a176675b5288826c5491dd195c126a350a0a8898c5126c07",
+      "after": "024611aca2560cc1595803dd9f96f43b6a2ebe80659f36c1228a7651ce7d8e42"
+    },
+    {
+      "source": "lab/release-files/codex-skill-usage/run-attempt-D1hJO4fX.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/run-attempt-D1hJO4fX.js",
+      "before": "23705af0ceb5a879284ed04206cfba97be80bc872bfaf8cab21f601b3551d5cb",
+      "after": "84703202ddb5ec907ab804c5793f6435054f8fe4042616ca7fcd616715f4432c"
+    }
+  ]
+}
