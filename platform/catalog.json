@@ -512,6 +512,7 @@
         "lab/subagent-settle-wake-missing-task.test.mjs",
         "lab/loopback-exec-run-instance.test.mjs",
         "lab/compaction-image-skip.test.mjs",
+        "lab/remote-node-stable.test.mjs",
         "lab/codex-turn-end-terminals.test.mjs",
         "lab/workboard-full-context.test.mjs",
         "lab/cli-readonly-live.test.mjs"

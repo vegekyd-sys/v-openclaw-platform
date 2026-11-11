@@ -1,0 +1,8 @@
+{
+  "support": ["lab/candidate/remote-node-stable-e2e.mjs"],
+  "files": [{ "source": "lab/release-files/remote-node-stable/remote-CiV-Qx_e.js", "target": "openclaw/dist/remote-CiV-Qx_e.js" }],
+  "command": ["/opt/vlab/node-v22.23.1-linux-x64/bin/node", "lab/candidate/remote-node-stable-e2e.mjs"],
+  "env": { "ARM": "stable" },
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity"
+}
