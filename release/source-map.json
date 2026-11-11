@@ -1900,6 +1900,13 @@
       "sha256": "7d1871ccd23f833d37e4f2e4ab3d1abfdfb72423c87246ff0f470348f3a40bf0",
       "source": "versa:4ee0e038099",
       "note": "turnend-registry-20261110 (#579): owner task lookup reads the store without restoring the task registry first; restore only on the fallback (versa/port-registry-lazy-first-turn-20261108)"
+    },
+    {
+      "layer": "core",
+      "path": "remote-CiV-Qx_e.js",
+      "sha256": "5d169ac3d78bc0203825b3788cd6dec5d9176006ce9f90340fd3188241043df4",
+      "source": "versa:8f8b5ed3525",
+      "note": "remote-node-stable-20261111 (#599): paired macOS exec nodes stay in the remote skill note while they reconnect, sorted by label (versa/port-remote-node-stable-20261111); OPENCLAW_REMOTE_NODE_STABLE_ELIGIBILITY=0 disables"
     }
   ]
 }

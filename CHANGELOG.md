@@ -10,6 +10,23 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## remote-node-stable-20261111
+
+上线：2026-11-11 15:05 CST 文件装到 V（promote-to-v，漂移哨兵 0 发现，VLab 已 align）；生效要等 Gateway 重启：V 上一次性 timer `remote-node-stable-idle-restart` 21:30 起走 v-self-restart 等空闲（最多 30 min，仍忙则放弃不重启）  ·  tag `remote-node-stable-20261111`
+
+**摘要**：技能提示里的 Mac 节点那一行不再随笔记本睡醒而变。原来只列「此刻在线」的 macOS 节点，按连接顺序排；Tianyi Mac 经 ssh 隧道连 V，Mac 一睡就断、醒来重连排到最后，36 h 里这一行变了几十次，每次都让所有活跃 /vds 会话整份重收约 7.5 万字符的 workspace context（229 次重发里 84 次只因节点变化）。现在列已配对、7 天内出现过的 macOS 节点，按名字排序，离线节点保留最后一次探测结果，文案写明「睡着或离线时调用会失败」。重启后每个现有会话会因文案变化再收一次，之后不再因节点重发。`OPENCLAW_REMOTE_NODE_STABLE_ELIGIBILITY=0` 回到旧行为（要重启）。
+
+V 上待核对（重启后）：Gateway 日志 `[gateway] ready`；一轮 /vds 正常；Tianyi Mac 睡醒之后，Codex rollout 里不再出现只因节点变化的 `<openclaw_workspace_context>` 重发。
+
+相对上一版 `turnend-registry-20261110`：1 个文件变化。
+
+**经 VLab 发版 `remote-node-stable-20261111`**（vds-idle-firsttext，dev `a1f242e2`）
+> 验收：shared VLab 2026-11-11 14:46 CST: runtime remote-CiV-Qx_e.js = 5d169ac3 (patched); Gateway ready (pid 3141600); real /vds turn agent:makaron:explicit:vlab-dev-remote-node-stable-1794379525904 answered by deepseek/vds-deepseek-flash; VLab has no paired Mac node so the note is absent before and after; node flap behavior proven by candidate-531c7a91 (patch: 1 workspace-context delivery over 5 turns w…
+- `core` remote-CiV-Qx_e.js  86731e90 → 5d169ac3
+
+**这期间合入 dev 的 PR**（1 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #599 skills: Mac 节点睡醒不再改写提示词（paired macOS nodes 稳定展示）
+
 ## turnend-registry-20261110
 
 上线：2026-11-10 17:36 CST（17:16 文件装到 V；v-self-restart 17:32 等到空闲后停机，151 s 就绪，workers 5，有 1 项告警：恢复冲突，见下）  ·  tag `turnend-registry-20261110`
