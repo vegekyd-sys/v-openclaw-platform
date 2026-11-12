@@ -61,3 +61,18 @@ start (no restart is needed just for this: it can ride the next planned one).
   connector in a private VLab Gateway against the fake open platform; drop
   the Stream connection, hold the reconnect's handshake, `channels.stop`,
   answer 400. Results in the PR.
+
+## Results (2026-11-12, commit ddac51bd, VLab base release remote-node-stable-20261111)
+
+| | `candidate-fc59f08d` crash (V's bytes `397c42c3…`) | `candidate-4807f1ed` survive (`78cf6f85…`) |
+| --- | --- | --- |
+| user message before: ack + model reply | ✓ 「收到」 | ✓ 「收到」 |
+| reconnect handshake held, `channels.stop` | ok, handshake still waiting | ok, handshake aborted by `stop()` |
+| HTTP 400 to waiting handshakes | answered | none left waiting |
+| Gateway | **exited 1, 898 ms after the 400**: `OpenClaw hit an unexpected runtime error. Reason: Unexpected server response: 400` + stability bundle (same lines as V) | alive; one `stopped connection socket error (ignored): WebSocket was closed before the connection was established` |
+| `channels.start`, new message: ack + reply | — | ✓ 「收到」 |
+| Gateway `send` to the user | — | delivered |
+| `health` | — | ok |
+
+Local reproduction with V's `ws`/dingtalk-stream (`dingtalk-socket-guard-repro.mjs`): old chunk exit 1 with
+`Emitted 'error' event on WebSocket instance … Unexpected server response: 400`; new chunk exit 0.
