@@ -98,7 +98,7 @@ for (const file of [
 }
 report.hostRewrites = rewritten;
 
-// ---- private config: DingTalk only, no Worker (turns run in the Gateway) ----
+// ---- private config: DingTalk only ----
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 const port = Number(config.gateway?.port);
 assert(Number.isInteger(port) && port > 0, "candidate Gateway port is missing");
@@ -117,8 +117,30 @@ config.bindings = [...(config.bindings ?? []).filter((b) => b?.match?.channel !=
 config.cron = { ...(config.cron ?? {}), enabled: false };
 config.messages = { ...(config.messages ?? {}), groupChat: { ...(config.messages?.groupChat ?? {}), visibleReplies: "automatic" } };
 if (config.plugins.entries?.codex) config.plugins.entries.codex.enabled = false;
-if (config.plugins.entries?.["vlab-agent-worker-isolation"]) config.plugins.entries["vlab-agent-worker-isolation"].enabled = false;
+// Turns run on the VLab Worker, as on V (same setup as dingtalk-experience.mjs).
+const workerPlugin = config.plugins.entries?.["vlab-agent-worker-isolation"]?.config;
+if (workerPlugin) {
+  Object.assign(workerPlugin, { minWorkers: 1, maxWorkers: 2, warmSpareWorkers: 0 });
+  const workerRel = path.relative(stateDir, workerPlugin.workerConfigPath);
+  assert(!workerRel.startsWith(".."), "candidate Worker config escaped state");
+  const workerConfig = fs.readFileSync(path.join(process.env.VLAB_SHARED_STATE_DIR, workerRel), "utf8")
+    .replaceAll(process.env.VLAB_SHARED_STATE_DIR, stateDir)
+    .replaceAll("/srv/vlab-production-mirror/labs/instances/db91-parity/runtime", runtime);
+  fs.mkdirSync(path.dirname(workerPlugin.workerConfigPath), { recursive: true });
+  fs.writeFileSync(workerPlugin.workerConfigPath, workerConfig, { mode: 0o600 });
+  workerPlugin.gatewayConfigPath = configPath;
+}
+// V's per-agent model entry: the Gateway hands the turn to vlab-worker (without it the
+// shared VLab config routes the model to the codex harness, disabled here).
+const perAgent = { ...(config.agents.defaults.models?.[MODEL] ?? {}), agentRuntime: { id: "vlab-worker" } };
 config.agents.defaults.model = { ...(config.agents.defaults.model ?? {}), primary: MODEL };
+(config.agents.defaults.models ??= {})[MODEL] = perAgent;
+if (config.agents.entries?.makaron) {
+  config.agents.entries.makaron.model = { ...(typeof config.agents.entries.makaron.model === "object" ? config.agents.entries.makaron.model : {}), primary: MODEL };
+  (config.agents.entries.makaron.models ??= {})[MODEL] = perAgent;
+}
+const allow = config.agents.defaults.modelPolicy?.allow;
+if (Array.isArray(allow) && !allow.includes(MODEL)) allow.push(MODEL);
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 
 // Candidate-only: the relocated connector has no official install record (as in dingtalk-experience.mjs).
@@ -230,6 +252,12 @@ try {
   }
 } catch (err) {
   report.error = redact(String(err?.stack ?? err)).slice(0, 3000);
+  report.diagnostics = {
+    cards: fake.cards().map((c) => ({ status: c.status, content: String(c.content ?? "").slice(0, 300) })),
+    webhook: fake.webhookMessages.map((m) => ({ msgtype: m.msgtype, text: String(m.text ?? "").slice(0, 300) })),
+    robot: fake.robotMessages.map((m) => ({ msgKey: m.msgKey, param: JSON.stringify(m.msgParam ?? "").slice(0, 300) })),
+    lines: lines.filter((l) => /error|warn|fail|model|agent|dispatch|worker|回复|消息处理/iu.test(l.line)).slice(-60).map((l) => redact(l.line).slice(0, 300)),
+  };
   process.exitCode = 1;
 } finally {
   if (alive()) {
@@ -237,11 +265,11 @@ try {
     await Promise.race([exited, sleep(60_000)]);
     if (alive()) gateway.kill("SIGKILL");
   }
-  await fake.close();
+  report.tail = lines.slice(-25).map((l) => redact(l.line).slice(0, 300));
+  fs.writeFileSync(path.join(scratch, "dingtalk-socket-guard-report.json"), JSON.stringify(report, null, 1));
+  console.log(JSON.stringify(report, null, 1));
+  await Promise.race([fake.close(), sleep(10_000)]);
 }
-report.tail = lines.slice(-25).map((l) => redact(l.line).slice(0, 300));
-fs.writeFileSync(path.join(scratch, "dingtalk-socket-guard-report.json"), JSON.stringify(report, null, 1));
-console.log(JSON.stringify(report, null, 1));
 
 assert.equal(report.error, undefined, report.error);
 assert(report.before.acked && /收到/u.test(report.before.reply), "normal path before the fault failed");

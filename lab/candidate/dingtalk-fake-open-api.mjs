@@ -157,7 +157,7 @@ export function createFakeDingTalkOpenApi({ WebSocketServer, strictGroupIds = fa
 
   return {
     listen: () => new Promise((resolve) => server.listen(0, "127.0.0.1", () => { port = server.address().port; resolve(port); })),
-    close: () => new Promise((resolve) => { for (const ws of sockets) ws.terminate(); wss.close(); server.closeAllConnections?.(); server.close(() => resolve()); }),
+    close: () => new Promise((resolve) => { for (const ws of sockets) ws.terminate(); for (const h of held) h.socket.destroy(); wss.close(); server.closeAllConnections?.(); server.close(() => resolve()); }),
     connected: () => sockets.size > 0,
     /** Server-side drop of every Stream connection (the connector reconnects on "close"). */
     dropSockets() { for (const ws of sockets) ws.terminate(); },
