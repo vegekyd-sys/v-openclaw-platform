@@ -51,6 +51,27 @@
 
 排查时的误导：`env | grep MAKARON` 显示变量已设置，但看不出值；Gateway 环境、`.env`、`voice-media-cli.env` 全是 Tianyi 的 key。只有对比**卡内 shell 进程**的环境（`/proc/<pid>/environ`），才看出值是 `oc-sent-v2` 占位符。
 
+## 续发问题：旧账号建的项目，换 key 后导出 403
+
+Tianyi 13:2x 指出：有的条目在旧 key 时期已经建了 Makaron 项目（建项目、导入素材都不扣钱，402 出在生成那一步），恢复后复用了这个项目。
+
+- 用 Tianyi 的 key 往别人的项目里 `chat` 能成功，生成会扣 Tianyi 的钱；
+- 但 `materialize`、`composition export`、`responses get --materialize` 全部返回 `403 Forbidden`。这个项目也不在 Tianyi 账号的项目列表里。
+
+受影响的条目，以及处理方式（都是通过「需要你」或重试附言引导 agent 自己做，不替它导出）：
+
+| 条目 | 旧项目 | 状态 | 处理 |
+|---|---|---|---|
+| DL-1112-03 et-en-11 | `feb8e785` | 合成完成，导出 403 | 13:3x「继续」附言：新建项目，用 `result.json` 里 `result.designs[0]` 的 code/width/height/animation/**props**（props 里有音频）执行 `materialize --design-json` 导出。13:34 已出片 |
+| DL-1112-03 et-en-38 | `6a8aa2fb` | 合成完成，导出 403 | 同上方法回复 |
+| DL-1112-01 yr-en-02 | `1540e2f0` | 原片已生成，差字幕、尾卡和导出 | 「用这次的结果」附言：新建项目，`project media add` 加入原片后合成导出 |
+| DL-1112-04 yt-th-02 | `b19909bd` | 12:41 继续后 23 s 自标 done，被完成校验打回 blocked，**没有生成新的需要你**，静默卡住；`run-state.json` 写着「续跑复用该 projectId」 | `cards retry` 附言：不要复用旧项目，新建后按原流程出片 |
+| DL-1112-03 et-en-32、DL-1112-04 yt-th-12 | `35750c81`、`2cad8599` | 仍在复用旧项目运行 | 等它们报需要你后同样回复 |
+
+**排查方法**：对还没有 `final.mp4` 的条目，取 produce 目录里最新引用的项目 ID，和 `makaron-cli list`（Tianyi 的 key）返回的项目对比，不在列表里的就是会 403 的。
+
+**验证过的做法**：用设计稿导出不需要重新生成。13:3x 在 Tianyi 名下新建项目 `36b945ea` 跑 `materialize --design-json`，得到 20.05 s、1080×1920、带音轨的成片。agent 自己存的 `design.json` 缺 `props`，直接用会没有声音。
+
 ## V 的诊断错在哪
 
 V 把「余额 4、累计 88,250」安到了夜班群绑定的康浩源 key 上。实测康浩源的 key（`3471c221`）累计 8,250、余额 1，是另一个账号。V 也没有用一张「新开的、不自己换 key 的卡」验证；它引用的成功例子 yt-th-06，是那张卡自己读 `chat-keys.json` 换了 key。
