@@ -1,0 +1,18 @@
+{
+  "support": [
+    "lab/candidate/startup-heap-spike.mjs",
+    "lab/candidate/v-scale-session-fixture.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/startup-heap-spike.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity",
+  "env": {
+    "LABEL": "v-bytes",
+    "WORKERS": "2",
+    "WINDOW_SECONDS": "540",
+    "HEAP_MB": "7168"
+  }
+}

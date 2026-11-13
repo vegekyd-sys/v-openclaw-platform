@@ -943,6 +943,13 @@
     },
     {
       "layer": "core",
+      "path": "session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+      "sha256": "4f4cce65c21e82f7d9d5f49bbb2d9b76802c6b7b468cc741b4ce9b820a3e4096",
+      "source": "versa:ca32fca3e29",
+      "note": "lifecycle-cleanup-bounded (2026-11-13): Dreaming scrub plans candidates only, marker scan in SQLite before the writer lane (versa/port-lifecycle-cleanup-bounded-20261113, on 39242f5b4fc); not on V until promoted"
+    },
+    {
+      "layer": "core",
       "path": "session-accessor.sqlite-scope-BwPKGcgm.js",
       "sha256": "caffb3629c5cbfb1fbf6027c8dccac7fa7d829d30bd8f4ddac8c4046a4dfbf34",
       "source": "versa:aea2dae23b4",
@@ -1676,6 +1683,13 @@
       "sha256": "f3f6fdfa5fb552658072ed8d4bf0a17583c3f8dfe5bed70a9d7d82b802fc9eb2",
       "source": "versa:39242f5b4fc",
       "note": "session-delete-admission-20261105 (#558): the deletion fence reads entries only for admitted keys; deletions that keep transcript state skip the reference set and fence (versa/port-session-delete-admission-20261105)"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-lifecycle-dtL0ZEAl.js",
+      "sha256": "efa4604b435e588dfeb3b86730c183c4e4950cbb5b4ebc261fc6023819fd7646",
+      "source": "versa:ca32fca3e29",
+      "note": "lifecycle-cleanup-bounded (2026-11-13): Dreaming scrub plans candidates only, marker scan in SQLite before the writer lane (versa/port-lifecycle-cleanup-bounded-20261113, on 39242f5b4fc); not on V until promoted"
     },
     {
       "layer": "core",
