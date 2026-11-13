@@ -1,0 +1,17 @@
+{
+  "support": [
+    "lab/candidate/lifecycle-cleanup-bounded-ab.mjs",
+    "lab/candidate/v-scale-session-fixture.mjs",
+    "lab/lifecycle-cleanup-bounded.plan.json",
+    "lab/release-files/lifecycle-cleanup-bounded/session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+    "lab/release-files/lifecycle-cleanup-bounded/session-accessor.sqlite-lifecycle-dtL0ZEAl.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "--expose-gc",
+    "--max-old-space-size=7168",
+    "lab/candidate/lifecycle-cleanup-bounded-ab.mjs"
+  ],
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity"
+}
