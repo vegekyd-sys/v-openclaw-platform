@@ -12,11 +12,13 @@
 ---
 ## dingtalk-socket-guard-20261113
 
-上线：2026-11-13 09:55 CST 文件装到 V（promote-to-v，漂移哨兵 0 发现，VLab 已 align）；生效要等 Gateway 下次重启  ·  tag `dingtalk-socket-guard-20261113`
+上线：2026-11-13 12:42 CST 生效（09:55 文件装到 V，promote-to-v，漂移哨兵 0 发现，VLab 已 align；12:32 v-self-restart 重启，断服约 10 分钟，见下）  ·  tag `dingtalk-socket-guard-20261113`
 
 **摘要**：钉钉断线重连时不再把整个 Gateway 打崩。11/08 10:08 和 11/12 22:08 两次 `uncaught_exception: Unexpected server response: 400` 都是钉钉插件 `stop()` 删掉了握手中连接唯一的错误监听，钉钉随后用 400 拒绝旧 ticket，没人接住；健康检查重启钉钉 6 s / 16 s 后崩溃，加上不干净退出后的全量库检查，每次断服约 9 分钟。现在 `stop()` 会补一个只记日志的错误监听并中止握手中的连接。上游 issue DingTalk-Real-AI/dingtalk-openclaw-connector#670 仍未修。11/12 那次的源头是 `usage.cost` 卡死 Gateway 8 分钟，另案处理。
 
-V 上待核对（重启后）：Gateway 日志 `[gateway] ready`；钉钉 `connected:true`；一轮 /vds 正常。
+重启经过：12:32:46 第一次启动 DB91 carry 8/8、22 ms 通过，但启动时 doctor 自动安装了配置里有、磁盘上没有的 `vercel-ai-gateway` 插件（该 provider 是 11/12 23:48–23:51 在 V 上直接加进 openclaw.json 的），随后按设计报 `plugin migration inputs changed during startup convergence` 退出 1；第二次启动因「上次退出不干净」做 8 库全量检查，300 s 超时退出；第三次 137 s 通过，12:42:07 飞书就绪。NRestarts=2。
+
+V 上核对（12:45）：钉钉 `connection-DCvu-l09.mjs` = 78cf6f85；钉钉 `connected:true`、企业微信已认证；`restart recovery claim changed` 0、`ended during restart recovery` 0；12:45:23 一轮真实 /vds（codex + deepseek）完成；启动后堆峰值 7.66 GiB（12:44），随后 RSS 回落到 5.3G，无 OOM。
 
 相对上一版 `remote-node-stable-20261111`：1 个文件变化。
 
