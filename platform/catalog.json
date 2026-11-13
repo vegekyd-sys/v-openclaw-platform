@@ -517,7 +517,8 @@
         "lab/codex-turn-end-terminals.test.mjs",
         "lab/workboard-full-context.test.mjs",
         "lab/cli-readonly-live.test.mjs",
-        "lab/lifecycle-cleanup-bounded.test.mjs"
+        "lab/lifecycle-cleanup-bounded.test.mjs",
+        "lab/usage-offload.test.mjs"
       ]
     }
   ],
