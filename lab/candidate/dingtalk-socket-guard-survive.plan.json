@@ -1,0 +1,17 @@
+{
+  "support": [
+    "lab/candidate/dingtalk-socket-guard.mjs",
+    "lab/candidate/dingtalk-fake-open-api.mjs",
+    "apps/v-experience/dingtalk/patch-socket-guard.mjs",
+    "tmp/inputs/dingtalk-connector-0.8.26-v.tgz"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/dingtalk-socket-guard.mjs"
+  ],
+  "env": {
+    "DG_EXPECT": "survive"
+  },
+  "timeoutSeconds": 1800,
+  "user": "lab-db91-parity"
+}
