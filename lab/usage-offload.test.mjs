@@ -38,7 +38,11 @@ test('release files carry the marker, parse, and refuse a second patch', () => {
 });
 
 test('handlers and /usage cost import the readers from the offload module', () => {
-  assert.match(read('usage-C3nh9kcO.js'), /import \{ discoverAllSessions, loadCostUsageSummaryFromCache, loadSessionCostSummariesFromCache, loadSessionLogs, loadSessionUsageTimeSeries \} from "\.\/usage-offload-v1\.js";/u);
+  const usage = read('usage-C3nh9kcO.js');
+  assert.match(usage, /import \{ callUsageOffloadRpc, discoverAllSessions, isUsageOffloadEnabled, loadCostUsageSummaryFromCache, loadSessionCostSummariesFromCache, loadSessionLogs, loadSessionUsageTimeSeries \} from "\.\/usage-offload-v1\.js";/u);
+  assert.match(usage, /const usageHandlersInProcess = \{\n/u);
+  assert.match(usage, /const usageHandlers = offloadUsageRpcHandlers\(usageHandlersInProcess\);/u);
+  assert.match(usage, /export \{ usageHandlers as t, usageHandlersInProcess \};$/mu);
   assert.doesNotMatch(read('usage-C3nh9kcO.js'), /o as loadCostUsageSummaryFromCache/u);
   assert.match(read('commands-session-cost.runtime-C4rqe689.js'), /import \{ loadCostUsageSummary, loadSessionCostSummary \} from "\.\/usage-offload-v1\.js";/u);
 });
@@ -78,6 +82,12 @@ const a = ${reader('loadCostUsageSummary')}, i = ${reader('loadSessionUsageTimeS
   t = ${reader('discoverAllSessions')};
 const isCostUsageRefreshQueueIdle = () => true;
 export { a, i, n, o, r, s, t, isCostUsageRefreshQueueIdle };
+`);
+  fs.writeFileSync(path.join(dir, 'usage-C3nh9kcO.js'), `
+const usageHandlersInProcess = {
+  "usage.cost": async ({ params, context, client, respond }) => respond(true, { params, config: context.getRuntimeConfig(), scopes: client.connect.scopes, pid: process.pid })
+};
+export { usageHandlersInProcess };
 `);
   return dir;
 }
@@ -127,6 +137,21 @@ console.log(JSON.stringify({ first: first.pid, second: second.pid, crashed, aliv
   assert.match(out.crashed, /usage worker exited before answering/u);
   assert.notEqual(out.second, out.first);
   assert.equal(out.alive, false, 'idle worker exited after shutdown');
+});
+
+test('a whole usage RPC runs in the worker and only its reply comes back', (t) => {
+  const out = runScenario(t, `
+const reply = await m.callUsageOffloadRpc("usage.cost", { agentId: "makaron", days: 1 }, { agents: {}, fn: () => 1 });
+let unknown = null;
+try { await m.callUsageOffloadRpc("usage.nope", {}, {}); } catch (error) { unknown = error.message; }
+console.log(JSON.stringify({ reply, unknown, self: process.pid }));
+`);
+  assert.equal(out.reply.ok, true);
+  assert.deepEqual(out.reply.payload.params, { agentId: 'makaron', days: 1 });
+  assert.deepEqual(out.reply.payload.config, { agents: {} });
+  assert.deepEqual(out.reply.payload.scopes, ['operator.admin']);
+  assert.notEqual(out.reply.payload.pid, out.self);
+  assert.match(out.unknown, /unknown usage rpc usage\.nope/u);
 });
 
 test('OPENCLAW_USAGE_OFFLOAD=0 runs readers in-process', (t) => {

@@ -131,10 +131,23 @@ function cloneConfig(config) {
 }
 async function callUsageOffload(method, params) {
 	if (!isUsageOffloadEnabled()) return await resolveUsageOffloadReader(method)(params);
-	const payload = params && typeof params === "object" && "config" in params ? {
-		...params,
-		config: cloneConfig(params.config)
-	} : params;
+	return await sendToWorker(method, {
+		method,
+		params: params && typeof params === "object" && "config" in params ? {
+			...params,
+			config: cloneConfig(params.config)
+		} : params
+	});
+}
+/** Runs a Gateway usage RPC handler in the worker; only its reply crosses back. */
+async function callUsageOffloadRpc(rpc, params, config) {
+	return await sendToWorker(rpc, {
+		rpc,
+		params,
+		config: cloneConfig(config)
+	});
+}
+async function sendToWorker(label, message) {
 	const state = current ?? (current = startChild());
 	if (state.idleTimer) {
 		clearTimeout(state.idleTimer);
@@ -144,7 +157,7 @@ async function callUsageOffload(method, params) {
 	return await new Promise((resolve, reject) => {
 		const timer = setTimeout(() => {
 			state.pending.delete(id);
-			reject(new Error(`usage worker did not answer ${method} in time`));
+			reject(new Error(`usage worker did not answer ${label} in time`));
 			settle(state);
 		}, readPositiveInt("OPENCLAW_USAGE_OFFLOAD_TIMEOUT_MS", DEFAULT_CALL_TIMEOUT_MS));
 		timer.unref?.();
@@ -157,8 +170,7 @@ async function callUsageOffload(method, params) {
 		try {
 			state.child.send({
 				id,
-				method,
-				params: payload
+				...message
 			});
 		} catch (error) {
 			state.pending.delete(id);
@@ -175,4 +187,4 @@ const loadSessionCostSummariesFromCache = (params) => callUsageOffload("loadSess
 const loadSessionCostSummary = (params) => callUsageOffload("loadSessionCostSummary", params);
 const loadSessionLogs = (params) => callUsageOffload("loadSessionLogs", params);
 const loadSessionUsageTimeSeries = (params) => callUsageOffload("loadSessionUsageTimeSeries", params);
-export { callUsageOffload, discoverAllSessions, isUsageOffloadEnabled, loadCostUsageSummary, loadCostUsageSummaryFromCache, loadSessionCostSummariesFromCache, loadSessionCostSummary, loadSessionLogs, loadSessionUsageTimeSeries, resolveUsageOffloadReader };
+export { callUsageOffload, callUsageOffloadRpc, discoverAllSessions, isUsageOffloadEnabled, loadCostUsageSummary, loadCostUsageSummaryFromCache, loadSessionCostSummariesFromCache, loadSessionCostSummary, loadSessionLogs, loadSessionUsageTimeSeries, resolveUsageOffloadReader };

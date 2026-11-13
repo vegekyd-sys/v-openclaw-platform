@@ -1158,6 +1158,7 @@ function isUsageRefreshBudgetSpent(params) {
 	if (maxBytes !== void 0 && params.scannedBytes >= maxBytes) return true;
 	return maxMs !== void 0 && (params.now ?? performance.now()) - params.startedAt >= maxMs;
 }
+const USAGE_COST_ROLLUP_READ_CHUNK = 500;
 const USAGE_COST_ROLLUP_VERSION = 3;
 const USAGE_COST_FILE_ANCHOR_BYTES = 4096;
 function resolveUsageCostCacheDatabasePath(agentId) {
@@ -1465,23 +1466,49 @@ async function refreshCostUsageCacheForAgent(params) {
 		const filesByPath = new Map(discoveredFiles.map((file) => [file.filePath, file]));
 		for (const file of requestedFiles) filesByPath.set(file.filePath, file);
 		const files = [...filesByPath.values()];
-		const rows = readSessionCostUsageRollupRows(params.agentId, databasePath, bounded ? files.map((file) => file.filePath) : void 0);
-		const rawValues = new Map(rows.map((row) => [row.key, row.valueJson]));
-		const rollups = readUsageCostRollups(params.agentId, pricingFingerprint, databasePath, { rows });
-		if (!bounded) deleteSessionCostUsageRollupsExcept({
-			agentId: params.agentId,
-			databasePath,
-			liveKeys: new Set(files.map((file) => file.filePath)),
-			rows
-		});
 		const requestedPaths = /* @__PURE__ */ new Set();
 		for (const file of requestedFiles) requestedPaths.add(file.filePath);
 		const refreshFiles = requestedPaths.size > 0 ? files.filter((file) => requestedPaths.has(file.filePath)) : params.startMs === void 0 ? files : files.filter((file) => file.mtimeMs >= params.startMs);
 		const maxFiles = params.maxFiles !== void 0 && Number.isFinite(params.maxFiles) && params.maxFiles > 0 ? Math.floor(params.maxFiles) : void 0;
-		const staleFiles = getUsageCostStaleRollupFiles({
-			rollups,
-			files: refreshFiles
-		}).toSorted((a, b) => a.size - b.size || a.filePath.localeCompare(b.filePath)).slice(0, maxFiles);
+		let staleCandidates;
+		let readPrevious;
+		if (bounded) {
+			staleCandidates = [];
+			for (let index = 0; index < refreshFiles.length; index += USAGE_COST_ROLLUP_READ_CHUNK) {
+				const chunk = refreshFiles.slice(index, index + USAGE_COST_ROLLUP_READ_CHUNK);
+				const chunkRollups = readUsageCostRollups(params.agentId, pricingFingerprint, databasePath, { filePaths: chunk.map((file) => file.filePath) });
+				staleCandidates.push(...getUsageCostStaleRollupFiles({
+					rollups: chunkRollups,
+					files: chunk
+				}));
+			}
+			readPrevious = (file) => {
+				const [row] = readSessionCostUsageRollupRows(params.agentId, databasePath, [file.filePath]);
+				return {
+					stored: row ? readUsageCostRollups(params.agentId, pricingFingerprint, databasePath, { rows: [row] }).get(file.filePath) : void 0,
+					valueJson: row?.valueJson ?? null
+				};
+			};
+		} else {
+			const rows = readSessionCostUsageRollupRows(params.agentId, databasePath);
+			const rawValues = new Map(rows.map((row) => [row.key, row.valueJson]));
+			const rollups = readUsageCostRollups(params.agentId, pricingFingerprint, databasePath, { rows });
+			deleteSessionCostUsageRollupsExcept({
+				agentId: params.agentId,
+				databasePath,
+				liveKeys: new Set(files.map((file) => file.filePath)),
+				rows
+			});
+			staleCandidates = getUsageCostStaleRollupFiles({
+				rollups,
+				files: refreshFiles
+			});
+			readPrevious = (file) => ({
+				stored: rollups.get(file.filePath),
+				valueJson: rawValues.get(file.filePath) ?? null
+			});
+		}
+		const staleFiles = staleCandidates.toSorted((a, b) => a.size - b.size || a.filePath.localeCompare(b.filePath)).slice(0, maxFiles);
 		const resolveCost = createUsageCostResolver({
 			config: params.config,
 			agentDir
@@ -1500,9 +1527,10 @@ async function refreshCostUsageCacheForAgent(params) {
 			if (scannedFiles > 0) await new Promise((resolve) => setImmediate(resolve));
 			scannedFiles += 1;
 			scannedBytes += file.size;
+			const previous = readPrevious(file);
 			const entry = await scanUsageFileForRollup({
 				file,
-				previous: rollups.get(file.filePath),
+				previous: previous.stored,
 				pricingFingerprint,
 				resolveCost
 			});
@@ -1511,15 +1539,10 @@ async function refreshCostUsageCacheForAgent(params) {
 				agentId: params.agentId,
 				databasePath,
 				rollupId: file.filePath,
-				previousValueJson: rawValues.get(file.filePath) ?? null,
+				previousValueJson: previous.valueJson,
 				valueJson,
 				updatedAt: entry.scannedAt
 			})) throw new Error(`usage rollup changed while refreshing: ${file.filePath}`);
-			rollups.set(file.filePath, {
-				entry,
-				valueJson
-			});
-			rawValues.set(file.filePath, valueJson);
 		}
 		return "refreshed";
 	} finally {
@@ -1597,12 +1620,18 @@ const countCalendarDays = (startMs, endMs, formatDayKey) => {
 	if (startDayMs === null || endDayMs === null || endDayMs < startDayMs) return Math.ceil((endMs - startMs) / 864e5) + 1;
 	return Math.floor((endDayMs - startDayMs) / 864e5) + 1;
 };
-function buildCostUsageSummaryFromRollups(params) {
-	const dailyMap = /* @__PURE__ */ new Map();
-	const totals = createEmptyCostUsageTotals();
-	const dayFormatter = createUsageDayKeyFormatter(params.dayBucket);
-	const staleFiles = getUsageCostStaleRollupFiles(params);
-	const cachedFiles = countUsableUsageCostRollups(params);
+function createCostUsageSummaryAccumulator(dayBucket) {
+	return {
+		daily: /* @__PURE__ */ new Map(),
+		totals: createEmptyCostUsageTotals(),
+		formatDay: createUsageDayKeyFormatter(dayBucket),
+		cachedFiles: 0,
+		staleFiles: 0
+	};
+}
+function addRollupsToCostUsageSummary(acc, params) {
+	acc.staleFiles += getUsageCostStaleRollupFiles(params).length;
+	acc.cachedFiles += countUsableUsageCostRollups(params);
 	for (const file of params.files) {
 		const stored = params.rollups.get(file.filePath);
 		if (!canUseUsageCostRollupForPartial({
@@ -1613,26 +1642,35 @@ function buildCostUsageSummaryFromRollups(params) {
 			rollup: stored.entry.rollup,
 			startMs: params.startMs,
 			endMs: params.endMs,
-			formatDay: dayFormatter,
-			daily: dailyMap,
-			totals
+			formatDay: acc.formatDay,
+			daily: acc.daily,
+			totals: acc.totals
 		});
 	}
-	fillMissingDays(dailyMap, params.startMs, params.endMs, dayFormatter);
-	const status = params.refreshing ? "refreshing" : staleFiles.length > 0 ? cachedFiles > 0 ? "partial" : "stale" : "fresh";
+	const scannedAt = latestUsageCostRollupScan(params.rollups);
+	if (scannedAt !== void 0) acc.refreshedAt = Math.max(acc.refreshedAt ?? 0, scannedAt);
+}
+function finishCostUsageSummary(acc, params) {
+	fillMissingDays(acc.daily, params.startMs, params.endMs, acc.formatDay);
+	const status = params.refreshing ? "refreshing" : acc.staleFiles > 0 ? acc.cachedFiles > 0 ? "partial" : "stale" : "fresh";
 	return {
 		updatedAt: Date.now(),
-		days: countCalendarDays(params.startMs, params.endMs, dayFormatter),
-		daily: Array.from(dailyMap.entries()).map(([date, bucket]) => Object.assign({ date }, bucket)).toSorted((a, b) => a.date.localeCompare(b.date)),
-		totals,
+		days: countCalendarDays(params.startMs, params.endMs, acc.formatDay),
+		daily: Array.from(acc.daily.entries()).map(([date, bucket]) => Object.assign({ date }, bucket)).toSorted((a, b) => a.date.localeCompare(b.date)),
+		totals: acc.totals,
 		cacheStatus: {
 			status,
-			cachedFiles,
-			pendingFiles: staleFiles.length,
-			staleFiles: staleFiles.length,
-			refreshedAt: latestUsageCostRollupScan(params.rollups)
+			cachedFiles: acc.cachedFiles,
+			pendingFiles: acc.staleFiles,
+			staleFiles: acc.staleFiles,
+			refreshedAt: acc.refreshedAt
 		}
 	};
+}
+function buildCostUsageSummaryFromRollups(params) {
+	const acc = createCostUsageSummaryAccumulator(params.dayBucket);
+	addRollupsToCostUsageSummary(acc, params);
+	return finishCostUsageSummary(acc, params);
 }
 //#endregion
 //#region src/infra/session-cost-usage-cache-runtime.ts
@@ -1657,29 +1695,87 @@ async function loadCostUsageSummary(params) {
 		...windowStartMs !== void 0 ? { startMs: windowStartMs } : {}
 	});
 	const pricingFingerprint = resolveUsageCostPricingFingerprint(params.config, agentDir);
-	const files = await listUsageCountedTranscriptStats(params.agentId, windowStartMs !== void 0 ? { minMtimeMs: windowStartMs } : void 0);
+	const refreshing = () => result === "busy" || usageCostRefreshes.has(databasePath) || isSessionCostUsageRefreshRunning(params.agentId, databasePath);
+	if (windowStartMs !== void 0) return finishCostUsageSummary(await summarizeCostUsageWindow({
+		agentId: params.agentId,
+		pricingFingerprint,
+		databasePath,
+		windowStartMs,
+		startMs,
+		endMs,
+		dayBucket: params.dayBucket
+	}), {
+		startMs,
+		endMs,
+		refreshing: refreshing()
+	});
 	return buildCostUsageSummaryFromRollups({
-		rollups: readUsageCostRollups(params.agentId, pricingFingerprint, databasePath, windowStartMs !== void 0 ? { filePaths: files.map((file) => file.filePath) } : {}),
-		files,
+		rollups: readUsageCostRollups(params.agentId, pricingFingerprint, databasePath),
+		files: await listUsageCountedTranscriptStats(params.agentId),
 		startMs,
 		endMs,
 		dayBucket: params.dayBucket,
-		refreshing: result === "busy" || usageCostRefreshes.has(databasePath) || isSessionCostUsageRefreshRunning(params.agentId, databasePath)
+		refreshing: refreshing()
 	});
+}
+/** usage-offload-v1: totals for transcripts changed since windowStartMs, reading stored rollups a chunk at a time. */
+async function summarizeCostUsageWindow(params) {
+	const files = await listUsageCountedTranscriptStats(params.agentId, { minMtimeMs: params.windowStartMs });
+	const acc = createCostUsageSummaryAccumulator(params.dayBucket);
+	for (let index = 0; index < files.length; index += USAGE_COST_ROLLUP_READ_CHUNK) {
+		const chunk = files.slice(index, index + USAGE_COST_ROLLUP_READ_CHUNK);
+		addRollupsToCostUsageSummary(acc, {
+			rollups: readUsageCostRollups(params.agentId, params.pricingFingerprint, params.databasePath, { filePaths: chunk.map((file) => file.filePath) }),
+			files: chunk,
+			startMs: params.startMs,
+			endMs: params.endMs
+		});
+	}
+	return acc;
 }
 async function loadCostUsageSummaryFromCache(params) {
 	const agentDir = resolveUsageCostAgentDir(params.config, params.agentId);
 	const databasePath = resolveUsageCostCacheDatabasePath(params.agentId);
 	const pricingFingerprint = resolveUsageCostPricingFingerprint(params.config, agentDir);
 	const windowStartMs = isUsageCostWindowEnabled() ? params.startMs : void 0;
-	const loadInputs = async () => {
-		const files = await listUsageCountedTranscriptStats(params.agentId, windowStartMs !== void 0 ? { minMtimeMs: windowStartMs } : void 0);
-		return {
-			files,
-			rollups: readUsageCostRollups(params.agentId, pricingFingerprint, databasePath, windowStartMs !== void 0 ? { filePaths: files.map((file) => file.filePath) } : {})
-		};
-	};
-	let { files, rollups } = await loadInputs();
+	const refreshing = () => usageCostRefreshes.has(databasePath) || isSessionCostUsageRefreshRunning(params.agentId, databasePath);
+	if (windowStartMs !== void 0) {
+		const summarize = () => summarizeCostUsageWindow({
+			agentId: params.agentId,
+			pricingFingerprint,
+			databasePath,
+			windowStartMs,
+			startMs: params.startMs,
+			endMs: params.endMs,
+			dayBucket: params.dayBucket
+		});
+		let acc = await summarize();
+		if (params.requestRefresh !== false && acc.staleFiles > 0) if (params.refreshMode === "sync-when-empty" && acc.cachedFiles === 0) {
+			const result = await refreshCostUsageCacheForAgent({
+				config: params.config,
+				agentId: params.agentId,
+				agentDir,
+				startMs: windowStartMs
+			});
+			acc = await summarize();
+			if (result === "refreshed" && acc.staleFiles > 0) requestCostUsageCacheRefresh({
+				config: params.config,
+				agentId: params.agentId,
+				startMs: windowStartMs
+			});
+		} else requestCostUsageCacheRefresh({
+			config: params.config,
+			agentId: params.agentId,
+			startMs: windowStartMs
+		});
+		return finishCostUsageSummary(acc, {
+			startMs: params.startMs,
+			endMs: params.endMs,
+			refreshing: refreshing()
+		});
+	}
+	let rollups = readUsageCostRollups(params.agentId, pricingFingerprint, databasePath);
+	let files = await listUsageCountedTranscriptStats(params.agentId);
 	const staleFiles = getUsageCostStaleRollupFiles({
 		rollups,
 		files
@@ -1696,19 +1792,18 @@ async function loadCostUsageSummaryFromCache(params) {
 				agentDir,
 				startMs: params.startMs
 			});
-			({files, rollups} = await loadInputs());
+			rollups = readUsageCostRollups(params.agentId, pricingFingerprint, databasePath);
+			files = await listUsageCountedTranscriptStats(params.agentId);
 			if (result === "refreshed" && getUsageCostStaleRollupFiles({
 				rollups,
 				files
 			}).length > 0) requestCostUsageCacheRefresh({
 				config: params.config,
-				agentId: params.agentId,
-				startMs: windowStartMs
+				agentId: params.agentId
 			});
 		} else requestCostUsageCacheRefresh({
 			config: params.config,
-			agentId: params.agentId,
-			startMs: windowStartMs
+			agentId: params.agentId
 		});
 	}
 	return buildCostUsageSummaryFromRollups({
@@ -1717,7 +1812,7 @@ async function loadCostUsageSummaryFromCache(params) {
 		startMs: params.startMs,
 		endMs: params.endMs,
 		dayBucket: params.dayBucket,
-		refreshing: usageCostRefreshes.has(databasePath) || isSessionCostUsageRefreshRunning(params.agentId, databasePath)
+		refreshing: refreshing()
 	});
 }
 async function loadSessionCostSummariesFromCache(params) {
@@ -1729,14 +1824,20 @@ async function loadSessionCostSummariesFromCache(params) {
 		tasks: fileTasks,
 		limit: 32
 	});
-	const rollups = readUsageCostRollups(params.agentId, pricingFingerprint, databasePath, { filePaths: files.flatMap((file) => file ? [file.filePath] : []) });
 	const staleFiles = /* @__PURE__ */ new Set();
 	let cachedFiles = 0;
 	const hasExplicitRange = params.startMs !== void 0 || params.endMs !== void 0;
 	const startMs = params.startMs ?? Number.NEGATIVE_INFINITY;
 	const endMs = params.endMs ?? Number.POSITIVE_INFINITY;
 	const dayFormatter = createUsageDayKeyFormatter(params.dayBucket);
+	let rollups = /* @__PURE__ */ new Map();
+	let refreshedAt;
 	const summaries = params.sessions.map((session, index) => {
+		if (index % USAGE_COST_ROLLUP_READ_CHUNK === 0) {
+			rollups = readUsageCostRollups(params.agentId, pricingFingerprint, databasePath, { filePaths: files.slice(index, index + USAGE_COST_ROLLUP_READ_CHUNK).flatMap((file) => file ? [file.filePath] : []) });
+			const scannedAt = latestUsageCostRollupScan(rollups);
+			if (scannedAt !== void 0) refreshedAt = Math.max(refreshedAt ?? 0, scannedAt);
+		}
 		const file = files[index];
 		const stored = file ? rollups.get(file.filePath) : void 0;
 		if (!file || !stored || !isUsageCostRollupFresh({
@@ -1771,7 +1872,7 @@ async function loadSessionCostSummariesFromCache(params) {
 			cachedFiles,
 			pendingFiles: staleFiles.size,
 			staleFiles: staleFiles.size,
-			refreshedAt: latestUsageCostRollupScan(rollups)
+			refreshedAt
 		}
 	};
 }

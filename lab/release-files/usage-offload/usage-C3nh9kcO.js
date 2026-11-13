@@ -25,7 +25,7 @@ import { P as isGatewayAdmin, n as createSessionListEntryFilter } from "./sessio
 import { t as assertValidParams } from "./validation-D9mcPHCB.js";
 import { r as createEmptyCostUsageTotals, t as addCostUsageTotals } from "./session-cost-usage-totals-D4e-85ui.js";
 import { c as mergeSessionCostSummaryInto, l as createUsageAggregateAccumulator, u as resolveExistingUsageSessionFile } from "./session-cost-usage-C_mE_GAE.js";
-import { discoverAllSessions, loadCostUsageSummaryFromCache, loadSessionCostSummariesFromCache, loadSessionLogs, loadSessionUsageTimeSeries } from "./usage-offload-v1.js"; // usage-offload-v1: usage readers run in a child process
+import { callUsageOffloadRpc, discoverAllSessions, isUsageOffloadEnabled, loadCostUsageSummaryFromCache, loadSessionCostSummariesFromCache, loadSessionLogs, loadSessionUsageTimeSeries } from "./usage-offload-v1.js"; // usage-offload-v1: usage readers run in a child process
 import { n as loadUsageStatusStaleWhileRevalidate } from "./models-auth-status-usage-cache-B69k-hu_.js";
 import fs from "node:fs";
 //#region src/gateway/server-methods/usage-date-range.ts
@@ -737,7 +737,7 @@ function resolveUsageDateRangeOrRespond(params, respond) {
 		range: range.value
 	};
 }
-const usageHandlers = {
+const usageHandlersInProcess = {
 	"usage.status": async ({ respond, context, client }) => {
 		const coldRead = hasGatewayClientCap(client?.connect?.caps, GATEWAY_CLIENT_CAPS.USAGE_REFRESHING) ? "refresh-marker" : void 0;
 		respond(true, await loadUsageStatusStaleWhileRevalidate({
@@ -949,4 +949,38 @@ const usageHandlers = {
 	}
 };
 //#endregion
-export { usageHandlers as t };
+//#region usage-offload-v1: usage RPCs run whole in the usage worker (src/gateway/server-methods/usage-offload.ts)
+const USAGE_OFFLOAD_RPC_METHODS = [
+	"usage.cost",
+	"sessions.usage",
+	"sessions.usage.timeseries",
+	"sessions.usage.logs"
+];
+function canRunUsageRpcInWorker(method, client, config) {
+	if (method === "sessions.usage.timeseries" || method === "sessions.usage.logs") return true;
+	return isGatewayAdmin(client) && operatorSessionCap(client, config) !== "none";
+}
+function offloadUsageRpcHandlers(handlers) {
+	const wrapped = { ...handlers };
+	for (const method of USAGE_OFFLOAD_RPC_METHODS) {
+		const inProcess = handlers[method];
+		if (!inProcess) continue;
+		wrapped[method] = async (opts) => {
+			if (!isUsageOffloadEnabled()) return await inProcess(opts);
+			const config = opts.context.getRuntimeConfig();
+			if (!canRunUsageRpcInWorker(method, opts.client, config)) return await inProcess(opts);
+			let reply;
+			try {
+				reply = await callUsageOffloadRpc(method, opts.params, config);
+			} catch (error) {
+				opts.respond(false, void 0, errorShape(ErrorCodes.UNAVAILABLE, `usage report failed: ${error instanceof Error ? error.message : String(error)}`));
+				return;
+			}
+			opts.respond(reply.ok, reply.payload, reply.error);
+		};
+	}
+	return wrapped;
+}
+const usageHandlers = offloadUsageRpcHandlers(usageHandlersInProcess);
+//#endregion
+export { usageHandlers as t, usageHandlersInProcess };

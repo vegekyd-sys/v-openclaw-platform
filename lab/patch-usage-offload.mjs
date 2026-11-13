@@ -20,9 +20,15 @@ import assert from 'node:assert/strict';
 // - A refresh run stops after 1 GiB / 5 min of transcripts (OPENCLAW_USAGE_REFRESH_MAX_BYTES,
 //   OPENCLAW_USAGE_REFRESH_MAX_MS; 0 = unbounded) and yields between transcripts.
 //
-// Source: openclaw-versa versa/port-usage-offload-20261113 @ d25de0a30ff
-// (src/infra/session-cost-usage-offload.ts, -offload-child.ts, -bounds.ts, -aggregation.ts,
-// -cache-runtime.ts; tests session-cost-usage-offload.test.ts, session-cost-usage.test.ts).
+// - usage.cost, sessions.usage, sessions.usage.timeseries and sessions.usage.logs run as whole
+//   handlers in the worker for administrators without a session-visibility filter (timeseries and
+//   logs for every caller); only the reply crosses back. Bounded reports and refreshes read stored
+//   rollups 500 rows at a time.
+//
+// Source: openclaw-versa versa/port-usage-offload-20261113 @ 45b1333d152 (on d25de0a30ff)
+// (src/infra/session-cost-usage-{offload,offload-child,bounds,aggregation,cache-runtime,
+// projection}.ts, src/gateway/server-methods/usage{,-offload}.ts; tests
+// session-cost-usage-offload.test.ts, session-cost-usage.test.ts, usage-offload.test.ts).
 
 export const MARKER = 'usage-offload-v1';
 
@@ -60,39 +66,19 @@ function isUsageRefreshBudgetSpent(params) {
 }
 `;
 
-// core/dist/session-cost-usage-C_mE_GAE.js
-export function patchSessionCostUsage(source) {
-  assert(!source.includes(MARKER), 'already patched');
-  let out = replaceExactlyOnce(source,
-    `const USAGE_COST_ROLLUP_VERSION = 3;\n`,
-    `${BOUNDS}const USAGE_COST_ROLLUP_VERSION = 3;\n`,
-    'rollup version constant');
+function replaceBetween(source, begin, end, replacement, label) {
+  assert.equal(source.split(begin).length, 2, `Expected exactly one start of ${label}`);
+  const from = source.indexOf(begin);
+  const to = source.indexOf(end, from);
+  assert(to > from, `Expected the end of ${label}`);
+  return source.slice(0, from) + replacement + source.slice(to);
+}
 
-  // refreshCostUsageCacheForAgent: bounded inputs, no prune when bounded.
-  out = replaceExactlyOnce(out,
-    `	try {
-		const agentDir = params.agentDir ?? resolveUsageCostAgentDir(params.config, params.agentId);
-		const pricingFingerprint = resolveUsageCostPricingFingerprint(params.config, agentDir);
-		const rows = readSessionCostUsageRollupRows(params.agentId, databasePath);
-		const rawValues = new Map(rows.map((row) => [row.key, row.valueJson]));
-		const rollups = readUsageCostRollups(params.agentId, pricingFingerprint, databasePath, { rows });
-		const discoveredFiles = await listUsageCountedTranscriptStats(params.agentId, params.sessionsDir ? { sessionsDir: params.sessionsDir } : void 0);
-		const requestedFiles = [];
-		for (const requested of params.sessionFiles ?? []) {
-			const resolved = await resolveUsageCostTranscriptFile(requested);
-			if (resolved) requestedFiles.push(resolved);
-		}
-		const filesByPath = new Map(discoveredFiles.map((file) => [file.filePath, file]));
-		for (const file of requestedFiles) filesByPath.set(file.filePath, file);
-		const files = [...filesByPath.values()];
-		deleteSessionCostUsageRollupsExcept({
-			agentId: params.agentId,
-			databasePath,
-			liveKeys: new Set(files.map((file) => file.filePath)),
-			rows
-		});
-`,
-    `	try {
+const REFRESH = `async function refreshCostUsageCacheForAgent(params) {
+	const databasePath = params.databasePath ?? resolveUsageCostCacheDatabasePath(params.agentId);
+	const lock = acquireSessionCostUsageRefreshLock(params.agentId, databasePath);
+	if (!lock.acquired) return "busy";
+	try {
 		const agentDir = params.agentDir ?? resolveUsageCostAgentDir(params.config, params.agentId);
 		const pricingFingerprint = resolveUsageCostPricingFingerprint(params.config, agentDir);
 		const bounded = isUsageCostWindowEnabled() && ((params.sessionFiles?.length ?? 0) > 0 || params.startMs !== void 0);
@@ -108,23 +94,54 @@ export function patchSessionCostUsage(source) {
 		const filesByPath = new Map(discoveredFiles.map((file) => [file.filePath, file]));
 		for (const file of requestedFiles) filesByPath.set(file.filePath, file);
 		const files = [...filesByPath.values()];
-		const rows = readSessionCostUsageRollupRows(params.agentId, databasePath, bounded ? files.map((file) => file.filePath) : void 0);
-		const rawValues = new Map(rows.map((row) => [row.key, row.valueJson]));
-		const rollups = readUsageCostRollups(params.agentId, pricingFingerprint, databasePath, { rows });
-		if (!bounded) deleteSessionCostUsageRollupsExcept({
-			agentId: params.agentId,
-			databasePath,
-			liveKeys: new Set(files.map((file) => file.filePath)),
-			rows
+		const requestedPaths = /* @__PURE__ */ new Set();
+		for (const file of requestedFiles) requestedPaths.add(file.filePath);
+		const refreshFiles = requestedPaths.size > 0 ? files.filter((file) => requestedPaths.has(file.filePath)) : params.startMs === void 0 ? files : files.filter((file) => file.mtimeMs >= params.startMs);
+		const maxFiles = params.maxFiles !== void 0 && Number.isFinite(params.maxFiles) && params.maxFiles > 0 ? Math.floor(params.maxFiles) : void 0;
+		let staleCandidates;
+		let readPrevious;
+		if (bounded) {
+			staleCandidates = [];
+			for (let index = 0; index < refreshFiles.length; index += USAGE_COST_ROLLUP_READ_CHUNK) {
+				const chunk = refreshFiles.slice(index, index + USAGE_COST_ROLLUP_READ_CHUNK);
+				const chunkRollups = readUsageCostRollups(params.agentId, pricingFingerprint, databasePath, { filePaths: chunk.map((file) => file.filePath) });
+				staleCandidates.push(...getUsageCostStaleRollupFiles({
+					rollups: chunkRollups,
+					files: chunk
+				}));
+			}
+			readPrevious = (file) => {
+				const [row] = readSessionCostUsageRollupRows(params.agentId, databasePath, [file.filePath]);
+				return {
+					stored: row ? readUsageCostRollups(params.agentId, pricingFingerprint, databasePath, { rows: [row] }).get(file.filePath) : void 0,
+					valueJson: row?.valueJson ?? null
+				};
+			};
+		} else {
+			const rows = readSessionCostUsageRollupRows(params.agentId, databasePath);
+			const rawValues = new Map(rows.map((row) => [row.key, row.valueJson]));
+			const rollups = readUsageCostRollups(params.agentId, pricingFingerprint, databasePath, { rows });
+			deleteSessionCostUsageRollupsExcept({
+				agentId: params.agentId,
+				databasePath,
+				liveKeys: new Set(files.map((file) => file.filePath)),
+				rows
+			});
+			staleCandidates = getUsageCostStaleRollupFiles({
+				rollups,
+				files: refreshFiles
+			});
+			readPrevious = (file) => ({
+				stored: rollups.get(file.filePath),
+				valueJson: rawValues.get(file.filePath) ?? null
+			});
+		}
+		const staleFiles = staleCandidates.toSorted((a, b) => a.size - b.size || a.filePath.localeCompare(b.filePath)).slice(0, maxFiles);
+		const resolveCost = createUsageCostResolver({
+			config: params.config,
+			agentDir
 		});
-`,
-    'refresh inputs');
-
-  // refreshCostUsageCacheForAgent: budget and yield between transcripts.
-  out = replaceExactlyOnce(out,
-    `		for (const file of staleFiles) {
-			const entry = await scanUsageFileForRollup({`,
-    `		const budget = resolveUsageRefreshBudget();
+		const budget = resolveUsageRefreshBudget();
 		const startedAt = performance.now();
 		let scannedFiles = 0;
 		let scannedBytes = 0;
@@ -138,23 +155,93 @@ export function patchSessionCostUsage(source) {
 			if (scannedFiles > 0) await new Promise((resolve) => setImmediate(resolve));
 			scannedFiles += 1;
 			scannedBytes += file.size;
-			const entry = await scanUsageFileForRollup({`,
-    'refresh loop');
+			const previous = readPrevious(file);
+			const entry = await scanUsageFileForRollup({
+				file,
+				previous: previous.stored,
+				pricingFingerprint,
+				resolveCost
+			});
+			const valueJson = JSON.stringify(entry);
+			if (!writeSessionCostUsageRollup({
+				agentId: params.agentId,
+				databasePath,
+				rollupId: file.filePath,
+				previousValueJson: previous.valueJson,
+				valueJson,
+				updatedAt: entry.scannedAt
+			})) throw new Error(\`usage rollup changed while refreshing: \${file.filePath}\`);
+		}
+		return "refreshed";
+	} finally {
+		lock.release();
+	}
+}
+`;
 
-  // loadCostUsageSummary (the /usage cost command): bounded to its range.
-  out = replaceExactlyOnce(out,
-    `	const result = await refreshCostUsageCacheForAgent({
-		config: params.config,
-		agentId: params.agentId,
-		agentDir,
-		databasePath
-	});
-	const pricingFingerprint = resolveUsageCostPricingFingerprint(params.config, agentDir);
-	return buildCostUsageSummaryFromRollups({
-		rollups: readUsageCostRollups(params.agentId, pricingFingerprint, databasePath),
-		files: await listUsageCountedTranscriptStats(params.agentId),
-		startMs,`,
-    `	const windowStartMs = isUsageCostWindowEnabled() ? startMs : void 0;
+const PROJECTION = `function createCostUsageSummaryAccumulator(dayBucket) {
+	return {
+		daily: /* @__PURE__ */ new Map(),
+		totals: createEmptyCostUsageTotals(),
+		formatDay: createUsageDayKeyFormatter(dayBucket),
+		cachedFiles: 0,
+		staleFiles: 0
+	};
+}
+function addRollupsToCostUsageSummary(acc, params) {
+	acc.staleFiles += getUsageCostStaleRollupFiles(params).length;
+	acc.cachedFiles += countUsableUsageCostRollups(params);
+	for (const file of params.files) {
+		const stored = params.rollups.get(file.filePath);
+		if (!canUseUsageCostRollupForPartial({
+			stored,
+			file
+		}) || !stored) continue;
+		addRollupToCostUsageSummary({
+			rollup: stored.entry.rollup,
+			startMs: params.startMs,
+			endMs: params.endMs,
+			formatDay: acc.formatDay,
+			daily: acc.daily,
+			totals: acc.totals
+		});
+	}
+	const scannedAt = latestUsageCostRollupScan(params.rollups);
+	if (scannedAt !== void 0) acc.refreshedAt = Math.max(acc.refreshedAt ?? 0, scannedAt);
+}
+function finishCostUsageSummary(acc, params) {
+	fillMissingDays(acc.daily, params.startMs, params.endMs, acc.formatDay);
+	const status = params.refreshing ? "refreshing" : acc.staleFiles > 0 ? acc.cachedFiles > 0 ? "partial" : "stale" : "fresh";
+	return {
+		updatedAt: Date.now(),
+		days: countCalendarDays(params.startMs, params.endMs, acc.formatDay),
+		daily: Array.from(acc.daily.entries()).map(([date, bucket]) => Object.assign({ date }, bucket)).toSorted((a, b) => a.date.localeCompare(b.date)),
+		totals: acc.totals,
+		cacheStatus: {
+			status,
+			cachedFiles: acc.cachedFiles,
+			pendingFiles: acc.staleFiles,
+			staleFiles: acc.staleFiles,
+			refreshedAt: acc.refreshedAt
+		}
+	};
+}
+function buildCostUsageSummaryFromRollups(params) {
+	const acc = createCostUsageSummaryAccumulator(params.dayBucket);
+	addRollupsToCostUsageSummary(acc, params);
+	return finishCostUsageSummary(acc, params);
+}
+`;
+
+const LOADERS = `async function loadCostUsageSummary(params) {
+	const now = Date.now();
+	const defaultStart = new Date(now);
+	defaultStart.setDate(defaultStart.getDate() - 29);
+	const startMs = params.startMs ?? defaultStart.getTime();
+	const endMs = params.endMs ?? now;
+	const agentDir = resolveUsageCostAgentDir(params.config, params.agentId);
+	const databasePath = resolveUsageCostCacheDatabasePath(params.agentId);
+	const windowStartMs = isUsageCostWindowEnabled() ? startMs : void 0;
 	const result = await refreshCostUsageCacheForAgent({
 		config: params.config,
 		agentId: params.agentId,
@@ -163,33 +250,104 @@ export function patchSessionCostUsage(source) {
 		...windowStartMs !== void 0 ? { startMs: windowStartMs } : {}
 	});
 	const pricingFingerprint = resolveUsageCostPricingFingerprint(params.config, agentDir);
-	const files = await listUsageCountedTranscriptStats(params.agentId, windowStartMs !== void 0 ? { minMtimeMs: windowStartMs } : void 0);
+	const refreshing = () => result === "busy" || usageCostRefreshes.has(databasePath) || isSessionCostUsageRefreshRunning(params.agentId, databasePath);
+	if (windowStartMs !== void 0) return finishCostUsageSummary(await summarizeCostUsageWindow({
+		agentId: params.agentId,
+		pricingFingerprint,
+		databasePath,
+		windowStartMs,
+		startMs,
+		endMs,
+		dayBucket: params.dayBucket
+	}), {
+		startMs,
+		endMs,
+		refreshing: refreshing()
+	});
 	return buildCostUsageSummaryFromRollups({
-		rollups: readUsageCostRollups(params.agentId, pricingFingerprint, databasePath, windowStartMs !== void 0 ? { filePaths: files.map((file) => file.filePath) } : {}),
-		files,
-		startMs,`,
-    'loadCostUsageSummary');
-
-  // loadCostUsageSummaryFromCache: bounded inputs; the refresh it queues carries the range start.
-  out = replaceExactlyOnce(out,
-    `	const pricingFingerprint = resolveUsageCostPricingFingerprint(params.config, agentDir);
+		rollups: readUsageCostRollups(params.agentId, pricingFingerprint, databasePath),
+		files: await listUsageCountedTranscriptStats(params.agentId),
+		startMs,
+		endMs,
+		dayBucket: params.dayBucket,
+		refreshing: refreshing()
+	});
+}
+/** ${'${MARKER}'}: totals for transcripts changed since windowStartMs, reading stored rollups a chunk at a time. */
+async function summarizeCostUsageWindow(params) {
+	const files = await listUsageCountedTranscriptStats(params.agentId, { minMtimeMs: params.windowStartMs });
+	const acc = createCostUsageSummaryAccumulator(params.dayBucket);
+	for (let index = 0; index < files.length; index += USAGE_COST_ROLLUP_READ_CHUNK) {
+		const chunk = files.slice(index, index + USAGE_COST_ROLLUP_READ_CHUNK);
+		addRollupsToCostUsageSummary(acc, {
+			rollups: readUsageCostRollups(params.agentId, params.pricingFingerprint, params.databasePath, { filePaths: chunk.map((file) => file.filePath) }),
+			files: chunk,
+			startMs: params.startMs,
+			endMs: params.endMs
+		});
+	}
+	return acc;
+}
+async function loadCostUsageSummaryFromCache(params) {
+	const agentDir = resolveUsageCostAgentDir(params.config, params.agentId);
+	const databasePath = resolveUsageCostCacheDatabasePath(params.agentId);
+	const pricingFingerprint = resolveUsageCostPricingFingerprint(params.config, agentDir);
+	const windowStartMs = isUsageCostWindowEnabled() ? params.startMs : void 0;
+	const refreshing = () => usageCostRefreshes.has(databasePath) || isSessionCostUsageRefreshRunning(params.agentId, databasePath);
+	if (windowStartMs !== void 0) {
+		const summarize = () => summarizeCostUsageWindow({
+			agentId: params.agentId,
+			pricingFingerprint,
+			databasePath,
+			windowStartMs,
+			startMs: params.startMs,
+			endMs: params.endMs,
+			dayBucket: params.dayBucket
+		});
+		let acc = await summarize();
+		if (params.requestRefresh !== false && acc.staleFiles > 0) if (params.refreshMode === "sync-when-empty" && acc.cachedFiles === 0) {
+			const result = await refreshCostUsageCacheForAgent({
+				config: params.config,
+				agentId: params.agentId,
+				agentDir,
+				startMs: windowStartMs
+			});
+			acc = await summarize();
+			if (result === "refreshed" && acc.staleFiles > 0) requestCostUsageCacheRefresh({
+				config: params.config,
+				agentId: params.agentId,
+				startMs: windowStartMs
+			});
+		} else requestCostUsageCacheRefresh({
+			config: params.config,
+			agentId: params.agentId,
+			startMs: windowStartMs
+		});
+		return finishCostUsageSummary(acc, {
+			startMs: params.startMs,
+			endMs: params.endMs,
+			refreshing: refreshing()
+		});
+	}
 	let rollups = readUsageCostRollups(params.agentId, pricingFingerprint, databasePath);
 	let files = await listUsageCountedTranscriptStats(params.agentId);
-	const staleFiles = getUsageCostStaleRollupFiles({`,
-    `	const pricingFingerprint = resolveUsageCostPricingFingerprint(params.config, agentDir);
-	const windowStartMs = isUsageCostWindowEnabled() ? params.startMs : void 0;
-	const loadInputs = async () => {
-		const files = await listUsageCountedTranscriptStats(params.agentId, windowStartMs !== void 0 ? { minMtimeMs: windowStartMs } : void 0);
-		return {
-			files,
-			rollups: readUsageCostRollups(params.agentId, pricingFingerprint, databasePath, windowStartMs !== void 0 ? { filePaths: files.map((file) => file.filePath) } : {})
-		};
-	};
-	let { files, rollups } = await loadInputs();
-	const staleFiles = getUsageCostStaleRollupFiles({`,
-    'cache report inputs');
-  out = replaceExactlyOnce(out,
-    `			rollups = readUsageCostRollups(params.agentId, pricingFingerprint, databasePath);
+	const staleFiles = getUsageCostStaleRollupFiles({
+		rollups,
+		files
+	});
+	if (params.requestRefresh !== false && staleFiles.length > 0) {
+		const cachedFiles = countUsableUsageCostRollups({
+			rollups,
+			files
+		});
+		if (params.refreshMode === "sync-when-empty" && cachedFiles === 0) {
+			const result = await refreshCostUsageCacheForAgent({
+				config: params.config,
+				agentId: params.agentId,
+				agentDir,
+				startMs: params.startMs
+			});
+			rollups = readUsageCostRollups(params.agentId, pricingFingerprint, databasePath);
 			files = await listUsageCountedTranscriptStats(params.agentId);
 			if (result === "refreshed" && getUsageCostStaleRollupFiles({
 				rollups,
@@ -201,22 +359,90 @@ export function patchSessionCostUsage(source) {
 		} else requestCostUsageCacheRefresh({
 			config: params.config,
 			agentId: params.agentId
-		});`,
-    `			({files, rollups} = await loadInputs());
-			if (result === "refreshed" && getUsageCostStaleRollupFiles({
-				rollups,
-				files
-			}).length > 0) requestCostUsageCacheRefresh({
-				config: params.config,
-				agentId: params.agentId,
-				startMs: windowStartMs
-			});
-		} else requestCostUsageCacheRefresh({
-			config: params.config,
-			agentId: params.agentId,
-			startMs: windowStartMs
-		});`,
-    'cache report refresh request');
+		});
+	}
+	return buildCostUsageSummaryFromRollups({
+		rollups,
+		files,
+		startMs: params.startMs,
+		endMs: params.endMs,
+		dayBucket: params.dayBucket,
+		refreshing: refreshing()
+	});
+}
+async function loadSessionCostSummariesFromCache(params) {
+	const agentDir = resolveUsageCostAgentDir(params.config, params.agentId);
+	const databasePath = resolveUsageCostCacheDatabasePath(params.agentId);
+	const pricingFingerprint = resolveUsageCostPricingFingerprint(params.config, agentDir);
+	const fileTasks = params.sessions.map((session) => async () => await resolveUsageCostTranscriptFile(session.sessionFile));
+	const { results: files } = await runTasksWithConcurrency({
+		tasks: fileTasks,
+		limit: 32
+	});
+	const staleFiles = /* @__PURE__ */ new Set();
+	let cachedFiles = 0;
+	const hasExplicitRange = params.startMs !== void 0 || params.endMs !== void 0;
+	const startMs = params.startMs ?? Number.NEGATIVE_INFINITY;
+	const endMs = params.endMs ?? Number.POSITIVE_INFINITY;
+	const dayFormatter = createUsageDayKeyFormatter(params.dayBucket);
+	let rollups = /* @__PURE__ */ new Map();
+	let refreshedAt;
+	const summaries = params.sessions.map((session, index) => {
+		if (index % USAGE_COST_ROLLUP_READ_CHUNK === 0) {
+			rollups = readUsageCostRollups(params.agentId, pricingFingerprint, databasePath, { filePaths: files.slice(index, index + USAGE_COST_ROLLUP_READ_CHUNK).flatMap((file) => file ? [file.filePath] : []) });
+			const scannedAt = latestUsageCostRollupScan(rollups);
+			if (scannedAt !== void 0) refreshedAt = Math.max(refreshedAt ?? 0, scannedAt);
+		}
+		const file = files[index];
+		const stored = file ? rollups.get(file.filePath) : void 0;
+		if (!file || !stored || !isUsageCostRollupFresh({
+			stored,
+			file
+		})) {
+			staleFiles.add(file?.sourcePath ?? session.sessionFile);
+			return null;
+		}
+		cachedFiles += 1;
+		return buildSessionCostSummaryFromRollup({
+			rollup: stored.entry.rollup,
+			sessionId: session.sessionId,
+			sessionFile: session.sessionFile,
+			startMs,
+			endMs,
+			includeUntimestamped: params.includeUntimestamped === true || !hasExplicitRange,
+			formatDay: dayFormatter
+		});
+	});
+	const refreshRequested = params.requestRefresh !== false && staleFiles.size > 0;
+	if (refreshRequested) requestCostUsageCacheRefresh({
+		config: params.config,
+		agentId: params.agentId,
+		sessionFiles: [...staleFiles]
+	});
+	const refreshRunning = isSessionCostUsageRefreshRunning(params.agentId, databasePath);
+	return {
+		summaries,
+		cacheStatus: {
+			status: staleFiles.size === 0 ? "fresh" : refreshRunning || refreshRequested ? "refreshing" : cachedFiles > 0 ? "partial" : "stale",
+			cachedFiles,
+			pendingFiles: staleFiles.size,
+			staleFiles: staleFiles.size,
+			refreshedAt
+		}
+	};
+}
+`.replace('${MARKER}', MARKER);
+
+// core/dist/session-cost-usage-C_mE_GAE.js
+export function patchSessionCostUsage(source) {
+  assert(!source.includes(MARKER), 'already patched');
+  let out = replaceExactlyOnce(source,
+    `const USAGE_COST_ROLLUP_VERSION = 3;\n`,
+    `${BOUNDS}const USAGE_COST_ROLLUP_READ_CHUNK = 500;\nconst USAGE_COST_ROLLUP_VERSION = 3;\n`,
+    'rollup version constant');
+  out = replaceBetween(out, 'async function refreshCostUsageCacheForAgent(params) {', '//#endregion\n//#region src/infra/session-cost-usage-projection.ts', REFRESH, 'refreshCostUsageCacheForAgent');
+  out = replaceBetween(out, 'function buildCostUsageSummaryFromRollups(params) {', '//#endregion\n//#region src/infra/session-cost-usage-cache-runtime.ts', PROJECTION, 'buildCostUsageSummaryFromRollups');
+  out = replaceBetween(out, 'async function loadCostUsageSummary(params) {', 'function requestCostUsageCacheRefresh(params) {', LOADERS, 'cache report loaders');
 
   // Refresh queue: a full refresh remembers the oldest range start it serves.
   out = replaceExactlyOnce(out,
@@ -282,15 +508,57 @@ function isCostUsageRefreshQueueIdle() {
 
 const DIRECT = './session-cost-usage-C_mE_GAE.js';
 
+const RPC_WRAPPER = `//#region ${MARKER}: usage RPCs run whole in the usage worker (src/gateway/server-methods/usage-offload.ts)
+const USAGE_OFFLOAD_RPC_METHODS = [
+	"usage.cost",
+	"sessions.usage",
+	"sessions.usage.timeseries",
+	"sessions.usage.logs"
+];
+function canRunUsageRpcInWorker(method, client, config) {
+	if (method === "sessions.usage.timeseries" || method === "sessions.usage.logs") return true;
+	return isGatewayAdmin(client) && operatorSessionCap(client, config) !== "none";
+}
+function offloadUsageRpcHandlers(handlers) {
+	const wrapped = { ...handlers };
+	for (const method of USAGE_OFFLOAD_RPC_METHODS) {
+		const inProcess = handlers[method];
+		if (!inProcess) continue;
+		wrapped[method] = async (opts) => {
+			if (!isUsageOffloadEnabled()) return await inProcess(opts);
+			const config = opts.context.getRuntimeConfig();
+			if (!canRunUsageRpcInWorker(method, opts.client, config)) return await inProcess(opts);
+			let reply;
+			try {
+				reply = await callUsageOffloadRpc(method, opts.params, config);
+			} catch (error) {
+				opts.respond(false, void 0, errorShape(ErrorCodes.UNAVAILABLE, \`usage report failed: \${error instanceof Error ? error.message : String(error)}\`));
+				return;
+			}
+			opts.respond(reply.ok, reply.payload, reply.error);
+		};
+	}
+	return wrapped;
+}
+const usageHandlers = offloadUsageRpcHandlers(usageHandlersInProcess);
+//#endregion
+`;
+
 // core/dist/usage-C3nh9kcO.js
 export function patchUsageHandlers(source) {
   assert(!source.includes(MARKER), 'already patched');
-  return replaceExactlyOnce(source,
+  let out = replaceExactlyOnce(source,
     `import { c as mergeSessionCostSummaryInto, i as loadSessionUsageTimeSeries, l as createUsageAggregateAccumulator, o as loadCostUsageSummaryFromCache, r as loadSessionLogs, s as loadSessionCostSummariesFromCache, t as discoverAllSessions, u as resolveExistingUsageSessionFile } from "${DIRECT}";\n`,
     `import { c as mergeSessionCostSummaryInto, l as createUsageAggregateAccumulator, u as resolveExistingUsageSessionFile } from "${DIRECT}";
-import { discoverAllSessions, loadCostUsageSummaryFromCache, loadSessionCostSummariesFromCache, loadSessionLogs, loadSessionUsageTimeSeries } from "./usage-offload-v1.js"; // ${MARKER}: usage readers run in a child process
+import { callUsageOffloadRpc, discoverAllSessions, isUsageOffloadEnabled, loadCostUsageSummaryFromCache, loadSessionCostSummariesFromCache, loadSessionLogs, loadSessionUsageTimeSeries } from "./usage-offload-v1.js"; // ${MARKER}: usage readers run in a child process
 `,
     'session-cost-usage import');
+  out = replaceExactlyOnce(out, 'const usageHandlers = {\n', 'const usageHandlersInProcess = {\n', 'usage handlers');
+  out = replaceExactlyOnce(out,
+    `//#endregion\nexport { usageHandlers as t };`,
+    `//#endregion\n${RPC_WRAPPER}export { usageHandlers as t, usageHandlersInProcess };`,
+    'usage handlers export');
+  return out;
 }
 
 // core/dist/commands-session-cost.runtime-C4rqe689.js
@@ -436,10 +704,23 @@ function cloneConfig(config) {
 }
 async function callUsageOffload(method, params) {
 	if (!isUsageOffloadEnabled()) return await resolveUsageOffloadReader(method)(params);
-	const payload = params && typeof params === "object" && "config" in params ? {
-		...params,
-		config: cloneConfig(params.config)
-	} : params;
+	return await sendToWorker(method, {
+		method,
+		params: params && typeof params === "object" && "config" in params ? {
+			...params,
+			config: cloneConfig(params.config)
+		} : params
+	});
+}
+/** Runs a Gateway usage RPC handler in the worker; only its reply crosses back. */
+async function callUsageOffloadRpc(rpc, params, config) {
+	return await sendToWorker(rpc, {
+		rpc,
+		params,
+		config: cloneConfig(config)
+	});
+}
+async function sendToWorker(label, message) {
 	const state = current ?? (current = startChild());
 	if (state.idleTimer) {
 		clearTimeout(state.idleTimer);
@@ -449,7 +730,7 @@ async function callUsageOffload(method, params) {
 	return await new Promise((resolve, reject) => {
 		const timer = setTimeout(() => {
 			state.pending.delete(id);
-			reject(new Error(\`usage worker did not answer \${method} in time\`));
+			reject(new Error(\`usage worker did not answer \${label} in time\`));
 			settle(state);
 		}, readPositiveInt("OPENCLAW_USAGE_OFFLOAD_TIMEOUT_MS", DEFAULT_CALL_TIMEOUT_MS));
 		timer.unref?.();
@@ -462,8 +743,7 @@ async function callUsageOffload(method, params) {
 		try {
 			state.child.send({
 				id,
-				method,
-				params: payload
+				...message
 			});
 		} catch (error) {
 			state.pending.delete(id);
@@ -480,15 +760,40 @@ const loadSessionCostSummariesFromCache = (params) => callUsageOffload("loadSess
 const loadSessionCostSummary = (params) => callUsageOffload("loadSessionCostSummary", params);
 const loadSessionLogs = (params) => callUsageOffload("loadSessionLogs", params);
 const loadSessionUsageTimeSeries = (params) => callUsageOffload("loadSessionUsageTimeSeries", params);
-export { callUsageOffload, discoverAllSessions, isUsageOffloadEnabled, loadCostUsageSummary, loadCostUsageSummaryFromCache, loadSessionCostSummariesFromCache, loadSessionCostSummary, loadSessionLogs, loadSessionUsageTimeSeries, resolveUsageOffloadReader };
+export { callUsageOffload, callUsageOffloadRpc, discoverAllSessions, isUsageOffloadEnabled, loadCostUsageSummary, loadCostUsageSummaryFromCache, loadSessionCostSummariesFromCache, loadSessionCostSummary, loadSessionLogs, loadSessionUsageTimeSeries, resolveUsageOffloadReader };
 `;
 
 // New file core/dist/usage-offload-child-v1.js (src/infra/session-cost-usage-offload-child.ts).
-export const OFFLOAD_CHILD = `// ${MARKER}: worker process for usage-offload-v1.js. It answers one message per call, runs
-// background rollup refreshes in its own event loop, exits on "shutdown" once its refresh queue is
-// idle, and exits immediately when the Gateway's IPC channel closes.
+export const OFFLOAD_CHILD = `// ${MARKER}: worker process for usage-offload-v1.js. It answers one message per call (a reader
+// or a whole usage RPC handler), runs background rollup refreshes in its own event loop, exits on
+// "shutdown" once its refresh queue is idle, and exits immediately when the Gateway's IPC channel
+// closes. Source: openclaw-versa src/infra/session-cost-usage-offload-child.ts.
 import { isCostUsageRefreshQueueIdle } from "${DIRECT}";
 import { resolveUsageOffloadReader } from "./usage-offload-v1.js";
+const WORKER_RPC_CLIENT = { connect: { scopes: ["operator.admin"] } };
+async function runRpc(message) {
+	const { usageHandlersInProcess } = await import("./usage-C3nh9kcO.js");
+	const handler = usageHandlersInProcess[message.rpc];
+	if (!handler) throw new Error(\`unknown usage rpc \${message.rpc}\`);
+	return await new Promise((resolve, reject) => {
+		Promise.resolve(handler({
+			params: message.params ?? {},
+			context: { getRuntimeConfig: () => message.config },
+			client: WORKER_RPC_CLIENT,
+			respond: (ok, payload, error) => resolve({
+				ok,
+				payload,
+				error
+			}),
+			req: {
+				type: "req",
+				id: \`usage-offload-\${message.id}\`,
+				method: message.rpc
+			},
+			isWebchatConnect: () => false
+		})).catch(reject);
+	});
+}
 let inFlight = 0;
 let shutdownRequested = false;
 function exitWhenIdle() {
@@ -502,8 +807,9 @@ process.on("message", (message) => {
 		exitWhenIdle();
 		return;
 	}
-	if (typeof message?.id !== "number" || !message.method) return;
-	const run = resolveUsageOffloadReader(message.method);
+	if (typeof message?.id !== "number" || !message.method && !message.rpc) return;
+	const reader = message.method ? resolveUsageOffloadReader(message.method) : void 0;
+	const run = message.rpc ? () => runRpc(message) : reader;
 	if (!run) {
 		process.send?.({
 			id: message.id,

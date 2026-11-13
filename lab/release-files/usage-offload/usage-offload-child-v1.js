@@ -1,8 +1,33 @@
-// usage-offload-v1: worker process for usage-offload-v1.js. It answers one message per call, runs
-// background rollup refreshes in its own event loop, exits on "shutdown" once its refresh queue is
-// idle, and exits immediately when the Gateway's IPC channel closes.
+// usage-offload-v1: worker process for usage-offload-v1.js. It answers one message per call (a reader
+// or a whole usage RPC handler), runs background rollup refreshes in its own event loop, exits on
+// "shutdown" once its refresh queue is idle, and exits immediately when the Gateway's IPC channel
+// closes. Source: openclaw-versa src/infra/session-cost-usage-offload-child.ts.
 import { isCostUsageRefreshQueueIdle } from "./session-cost-usage-C_mE_GAE.js";
 import { resolveUsageOffloadReader } from "./usage-offload-v1.js";
+const WORKER_RPC_CLIENT = { connect: { scopes: ["operator.admin"] } };
+async function runRpc(message) {
+	const { usageHandlersInProcess } = await import("./usage-C3nh9kcO.js");
+	const handler = usageHandlersInProcess[message.rpc];
+	if (!handler) throw new Error(`unknown usage rpc ${message.rpc}`);
+	return await new Promise((resolve, reject) => {
+		Promise.resolve(handler({
+			params: message.params ?? {},
+			context: { getRuntimeConfig: () => message.config },
+			client: WORKER_RPC_CLIENT,
+			respond: (ok, payload, error) => resolve({
+				ok,
+				payload,
+				error
+			}),
+			req: {
+				type: "req",
+				id: `usage-offload-${message.id}`,
+				method: message.rpc
+			},
+			isWebchatConnect: () => false
+		})).catch(reject);
+	});
+}
 let inFlight = 0;
 let shutdownRequested = false;
 function exitWhenIdle() {
@@ -16,8 +41,9 @@ process.on("message", (message) => {
 		exitWhenIdle();
 		return;
 	}
-	if (typeof message?.id !== "number" || !message.method) return;
-	const run = resolveUsageOffloadReader(message.method);
+	if (typeof message?.id !== "number" || !message.method && !message.rpc) return;
+	const reader = message.method ? resolveUsageOffloadReader(message.method) : void 0;
+	const run = message.rpc ? () => runRpc(message) : reader;
 	if (!run) {
 		process.send?.({
 			id: message.id,
