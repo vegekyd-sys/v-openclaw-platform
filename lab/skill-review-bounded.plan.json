@@ -1,0 +1,30 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/skill-review-bounded/session-manager-CNTG_BAJ.js",
+      "target": "openclaw/dist/session-manager-CNTG_BAJ.js",
+      "before": "84317e326ad0f19575f7d6cfc5482f2a6f8c5b9f29004411a51ede68e4935edf"
+    },
+    {
+      "source": "lab/release-files/skill-review-bounded/experience-review-prompt-D7yNaj4l.js",
+      "target": "openclaw/dist/experience-review-prompt-D7yNaj4l.js",
+      "before": "bad137491562eaed5166e77c11674593ac7b4b134ab49ce425c5f40fe7db8b3e"
+    },
+    {
+      "source": "lab/release-files/skill-review-bounded/workspace-skill-read-zRQlt5fk.js",
+      "target": "openclaw/dist/workspace-skill-read-zRQlt5fk.js",
+      "before": "4fc6134eda0d2d15dfc7bdbea2545a22227aec8f4435d81ded91fabff2d9971b"
+    },
+    {
+      "source": "lab/release-files/skill-review-bounded/autonomous-apply-uc26z0yI.js",
+      "target": "openclaw/dist/autonomous-apply-uc26z0yI.js",
+      "before": "2d946ad2aa56c6ee1813b68733fa727eaa9b3bd6992a0e2902528a08e4f2c195"
+    },
+    {
+      "source": "lab/release-files/skill-review-bounded/experience-review-default-Dr4f0pMZ.js",
+      "target": "openclaw/dist/experience-review-default-Dr4f0pMZ.js",
+      "before": "604ab19a8b0e2feb3c848c5cd164d386533bbcfe62974dd911454932474541db"
+    }
+  ]
+}
