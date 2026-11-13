@@ -1575,9 +1575,9 @@
     {
       "layer": "dingtalk",
       "path": "dist/connection-DCvu-l09.mjs",
-      "sha256": "397c42c3f66d0cd7898168de21be1607303723cd797d9174ad4b1d6694d44520",
-      "source": "pending:third-party-plugin",
-      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+      "sha256": "78cf6f8540437d42d724c71b357365f3fba6422900be01ce3dcff04a13eb2ea2",
+      "source": "platform:apps/v-experience/dingtalk/patch-socket-guard.mjs",
+      "note": "dingtalk-connector 0.8.26 chunk patched by apps/v-experience/dingtalk/patch.mjs (patchDingtalkConnector, includes socket guard v-dingtalk-socket-guard-v1, PR #602; test tests/dingtalk-socket-guard.test.mjs)"
     },
     {
       "layer": "dingtalk",
