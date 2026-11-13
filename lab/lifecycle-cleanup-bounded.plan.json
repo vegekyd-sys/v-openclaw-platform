@@ -1,0 +1,17 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/lifecycle-cleanup-bounded/session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+      "target": "openclaw/dist/session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+      "before": "ea381f9d45af70ff7bd47d2613e0b70974421ab375e273b77c870212a1666f07",
+      "after": "4f4cce65c21e82f7d9d5f49bbb2d9b76802c6b7b468cc741b4ce9b820a3e4096"
+    },
+    {
+      "source": "lab/release-files/lifecycle-cleanup-bounded/session-accessor.sqlite-lifecycle-dtL0ZEAl.js",
+      "target": "openclaw/dist/session-accessor.sqlite-lifecycle-dtL0ZEAl.js",
+      "before": "f3f6fdfa5fb552658072ed8d4bf0a17583c3f8dfe5bed70a9d7d82b802fc9eb2",
+      "after": "efa4604b435e588dfeb3b86730c183c4e4950cbb5b4ebc261fc6023819fd7646"
+    }
+  ]
+}
