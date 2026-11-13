@@ -10,6 +10,56 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## startup-stall-usage-20261114
+
+上线：2026-11-14 00:30 CST 生效（00:25 promote-to-v，漂移哨兵已更新，VLab 已 align；00:29 v-self-restart 等到空闲后停机，carry 8/8、预检 20 ms，00:30:23 listen、00:30:31 飞书就绪，NRestarts 0）  ·  tag `startup-stall-usage-20261114`
+
+**摘要**：两处 Gateway 主线程长时间卡死。
+- **#604 用量查询移出主线程**：11/12 22:00 一次「查 1 天」的 `usage.cost` 卡死 Gateway 468 s（9.1 不看日期范围，主线程同步统计 2.5 万会话、整读 457 MB 旧 rollup，回复后还整读转录），连带钉钉断线、Gateway 崩溃，断服约 18 分钟。现在 4 个 usage RPC 整个在低优先级子进程里跑，只读日期范围内有变动的会话，rollup 分批读。
+- **#605 Dreaming 清理不再整表解析会话**：每次启动后 memory-core 的 Dreaming 清理（Dreaming 关着也跑）两次在主线程、写锁内解析全部 2 万条会话条目（1.85 GB）并整读 608 MB 转录，造成两次 35–50 s 停顿、堆冲到 7.6–8.4G，11/11 连续 OOM 也是它。回移上游修复，只看 dreaming 条目，判断放进 SQLite。
+
+V 上核对（00:30–00:38）：
+- 约 +350 s 那次停顿消失；启动后堆峰值 4.87 GiB（原来 7.6–8.4），之后常驻 RSS 1.9G（原来 5.3G）。
+- **启动后约 1 分钟仍有两段停顿**（00:30:48–00:31:24 overdue 36 s，00:31:36–00:32:11 stalled 39 s），不是这两个修复覆盖的范围，已交 vds-bigsession-stall 继续查。
+- 钉钉 `connected:true`（停顿后自己重连，无崩溃）、企业微信已认证、5 个 worker；`restart recovery claim changed` 0、`ended during restart recovery` 0、`Cannot reap` 0、未捕获异常 0。
+- VLab 上 `usage.cost {agentId:makaron,days:1}` 6.7 s，在 nice 19 的 `usage-offload-child` 子进程里执行，主线程无停顿；一轮真实 /vds 正常。
+
+相对上一版 `dingtalk-socket-guard-20261113`：7 个文件变化。
+
+**经 VLab 发版 `startup-stall-usage-20261114b`**（claude-monitor，dev `b66fb271`）
+> 验收：shared VLab 2026-11-14 00:15-00:23 CST, dev b66fb271 (#604 + #605): Gateway pid 922236 listen 00:15:44, NRestarts 0; through both Dreaming-cleanup windows (+55 s, +350 s) liveness/stall lines 0, RSS 0.77-0.78G (shared VLab session table is small, so this is no-regression; the V-scale benefit is from #605 candidate: stalls 71+60 s -> 4.5 s, RSS 6.4G -> 0.85G). #604: usage.cost {agentId:makaron,days…
+- `core` commands-session-cost.runtime-C4rqe689.js  ad936731 → 149a2dc5
+- `core` session-accessor.sqlite-lifecycle-dtL0ZEAl.js  f3f6fdfa → efa4604b
+- `core` session-accessor.sqlite-lifecycle-state-CrB_K2kA.js  ea381f9d → 4f4cce65
+- `core` session-cost-usage-C_mE_GAE.js  0514592d → 0581a16d
+- `core` usage-C3nh9kcO.js  5b614d0a → 44c5f048
+- `core` usage-offload-child-v1.js  — → 19297dc3
+- `core` usage-offload-v1.js  — → f54e269d
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #605 fix(sessions): Gateway 启动后 Dreaming 清理不再整表解析会话（两次 35–50 s 停顿 + 堆 8G）
+- #604 fix(usage): usage 报表移出 Gateway 主线程并按日期范围裁剪（11/12 卡死 8 分钟）
+
+## dingtalk-socket-guard-20261113
+
+上线：2026-11-13 12:42 CST 生效（09:55 文件装到 V，promote-to-v，漂移哨兵 0 发现，VLab 已 align；12:32 v-self-restart 重启，断服约 10 分钟，见下）  ·  tag `dingtalk-socket-guard-20261113`
+
+**摘要**：钉钉断线重连时不再把整个 Gateway 打崩。11/08 10:08 和 11/12 22:08 两次 `uncaught_exception: Unexpected server response: 400` 都是钉钉插件 `stop()` 删掉了握手中连接唯一的错误监听，钉钉随后用 400 拒绝旧 ticket，没人接住；健康检查重启钉钉 6 s / 16 s 后崩溃，加上不干净退出后的全量库检查，每次断服约 9 分钟。现在 `stop()` 会补一个只记日志的错误监听并中止握手中的连接。上游 issue DingTalk-Real-AI/dingtalk-openclaw-connector#670 仍未修。11/12 那次的源头是 `usage.cost` 卡死 Gateway 8 分钟，另案处理。
+
+重启经过：12:32:46 第一次启动 DB91 carry 8/8、22 ms 通过，但启动时 doctor 自动安装了配置里有、磁盘上没有的 `vercel-ai-gateway` 插件（该 provider 是 11/12 23:48–23:51 在 V 上直接加进 openclaw.json 的），随后按设计报 `plugin migration inputs changed during startup convergence` 退出 1；第二次启动因「上次退出不干净」做 8 库全量检查，300 s 超时退出；第三次 137 s 通过，12:42:07 飞书就绪。NRestarts=2。
+
+V 上核对（12:45）：钉钉 `connection-DCvu-l09.mjs` = 78cf6f85；钉钉 `connected:true`、企业微信已认证；`restart recovery claim changed` 0、`ended during restart recovery` 0；12:45:23 一轮真实 /vds（codex + deepseek）完成；启动后堆峰值 7.66 GiB（12:44），随后 RSS 回落到 5.3G，无 OOM。
+
+相对上一版 `remote-node-stable-20261111`：1 个文件变化。
+
+**经 VLab 发版 `dingtalk-socket-guard-20261113`**（claude-monitor，dev `4c3b183e`）
+> 验收：shared VLab 2026-11-13 09:50-09:53 CST: only DingTalk connection chunk under runtime npm project = 78cf6f85 (patched, loaded by Gateway pid 430482, NRestarts=0); dingtalk-connector[__default__] started and connected:true at 09:51:03; real /vds turn agent:makaron:explicit:vlab-dev-dingtalk-socket-guard-1794534784517 answered '收到 602' by vds-deepseek-flash. stop() crash path proven in candidate (old…
+- `dingtalk` dist/connection-DCvu-l09.mjs  397c42c3 → 78cf6f85
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #602 fix(dingtalk): stopped Stream reconnect no longer crashes the Gateway (Unexpected server response: 400)
+- #600 release: capture remote-node-stable-20261111
+
 ## remote-node-stable-20261111
 
 上线：2026-11-11 15:05 CST 文件装到 V（promote-to-v，漂移哨兵 0 发现，VLab 已 align）；生效要等 Gateway 重启：V 上一次性 timer `remote-node-stable-idle-restart` 21:30 起走 v-self-restart 等空闲（最多 30 min，仍忙则放弃不重启）  ·  tag `remote-node-stable-20261111`
