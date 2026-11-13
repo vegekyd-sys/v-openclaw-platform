@@ -1921,6 +1921,41 @@
       "sha256": "5d169ac3d78bc0203825b3788cd6dec5d9176006ce9f90340fd3188241043df4",
       "source": "versa:8f8b5ed3525",
       "note": "remote-node-stable-20261111 (#599): paired macOS exec nodes stay in the remote skill note while they reconnect, sorted by label (versa/port-remote-node-stable-20261111); OPENCLAW_REMOTE_NODE_STABLE_ELIGIBILITY=0 disables"
+    },
+    {
+      "layer": "core",
+      "path": "commands-session-cost.runtime-C4rqe689.js",
+      "sha256": "149a2dc591de52aba9ed2acbd8a591b18747923158a921b55c9556dd1cf46dc2",
+      "source": "versa:45b1333d152",
+      "note": "usage-offload-20261113 (#604): usage RPCs run whole in a low-priority child process, date-range trimmed, rollups read in chunks (versa/port-usage-offload-20261113)"
+    },
+    {
+      "layer": "core",
+      "path": "session-cost-usage-C_mE_GAE.js",
+      "sha256": "0581a16d57d01bd8e060d4f0867257422c85d52564e2d1b3cc82a564c4195123",
+      "source": "versa:45b1333d152",
+      "note": "usage-offload-20261113 (#604): usage RPCs run whole in a low-priority child process, date-range trimmed, rollups read in chunks (versa/port-usage-offload-20261113)"
+    },
+    {
+      "layer": "core",
+      "path": "usage-C3nh9kcO.js",
+      "sha256": "44c5f048ed5bae4ed417a19a8d42962e6090bdfbc349b02b4fa37b73415c2e94",
+      "source": "versa:45b1333d152",
+      "note": "usage-offload-20261113 (#604): usage RPCs run whole in a low-priority child process, date-range trimmed, rollups read in chunks (versa/port-usage-offload-20261113)"
+    },
+    {
+      "layer": "core",
+      "path": "usage-offload-child-v1.js",
+      "sha256": "19297dc3bfb4cdae3142da00db8bf2ec58d504d0bbc4a549fb34b2e5165c7f3f",
+      "source": "versa:45b1333d152",
+      "note": "usage-offload-20261113 (#604): usage RPCs run whole in a low-priority child process, date-range trimmed, rollups read in chunks (versa/port-usage-offload-20261113)"
+    },
+    {
+      "layer": "core",
+      "path": "usage-offload-v1.js",
+      "sha256": "f54e269de1bd7dc1e6d4cf4f72566f29f2c0767de4e35446263662bb5546496f",
+      "source": "versa:45b1333d152",
+      "note": "usage-offload-20261113 (#604): usage RPCs run whole in a low-priority child process, date-range trimmed, rollups read in chunks (versa/port-usage-offload-20261113)"
     }
   ]
 }
