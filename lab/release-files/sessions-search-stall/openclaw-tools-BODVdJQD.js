@@ -12417,7 +12417,9 @@ function createSessionsListTool(opts) {
 const SESSIONS_SEARCH_DEFAULT_LIMIT = 10;
 const SESSIONS_SEARCH_MAX_LIMIT = 25;
 const SESSIONS_SEARCH_MAX_SESSION_KEYS = 200;
-// sessions-search-stall-v1: a Gateway call from a tool running inside the Gateway resolves without returning to the
+// sessions-search-stall-v1: every sessions.list page re-reads the whole session store; one page covers V's ~22,000 sessions.
+const SESSIONS_SEARCH_CANDIDATE_PAGE_ROWS = 5e4;
+// A Gateway call from a tool running inside the Gateway resolves without returning to the
 // event loop; each sessions_search Gateway call starts on a fresh macrotask. OPENCLAW_V_SESSIONS_SEARCH_YIELD=0 calls straight through.
 function yieldBeforeGatewayCall() {
 	if (process.env.OPENCLAW_V_SESSIONS_SEARCH_YIELD === "0") return Promise.resolve();
@@ -12518,7 +12520,7 @@ async function listVisibleSearchSessions(params) {
 					page = await params.gatewayCall({
 						method: "sessions.list",
 						params: {
-							limit: candidateRows ? 1e4 : 200,
+							limit: candidateRows ? SESSIONS_SEARCH_CANDIDATE_PAGE_ROWS : 200,
 							offset,
 							archived,
 							includeGlobal: !params.restrictToSpawned,

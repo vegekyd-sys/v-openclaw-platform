@@ -7,15 +7,17 @@ import assert from 'node:assert/strict';
 // newest transcript row per window (26,913 windows, ~22,800 pages of a 42 GB database). An
 // in-process Gateway call resolves without returning to the event loop, so all of it was one block.
 //
-// Port of openclaw-versa versa/port-sessions-search-stall-20261116 (3b96a73af08) onto V's bytes:
+// Port of openclaw-versa versa/port-sessions-search-stall-20261116 (3466c31b26c) onto V's bytes:
 // - session-transcript-reconcile: the read-only preflight Worker can skip the orphan scan, and
 //   scanTranscriptIndexNeedsReconcile runs only the dirty listing there (exported as `o`).
 // - session-transcript-search: the caller checks only the small-table part of the dirty predicate;
 //   the watermark lag is checked by that Worker at most once a minute per database, which starts
 //   the reconcile when it finds work. OPENCLAW_V_TRANSCRIPT_SEARCH_LAG_OFFTHREAD=0 restores the old
 //   listing on the caller.
-// - openclaw-tools: sessions_search yields to the event loop before every Gateway call.
-//   OPENCLAW_V_SESSIONS_SEARCH_YIELD=0 calls straight through.
+// - openclaw-tools: sessions_search yields to the event loop before every Gateway call
+//   (OPENCLAW_V_SESSIONS_SEARCH_YIELD=0 calls straight through), and lists its candidates in one
+//   50,000-row page per scope: every sessions.list page re-reads the whole store, and 10,000-row
+//   pages read V's ~22,000 sessions six times per search.
 
 export const SESSIONS_SEARCH_STALL_MARKER = '// sessions-search-stall-v1';
 
@@ -165,7 +167,9 @@ export function patchSessionsSearchTool(source) {
   out = replaceExactlyOnce(out,
     'const SESSIONS_SEARCH_MAX_SESSION_KEYS = 200;\n',
     `const SESSIONS_SEARCH_MAX_SESSION_KEYS = 200;
-${SESSIONS_SEARCH_STALL_MARKER}: a Gateway call from a tool running inside the Gateway resolves without returning to the
+${SESSIONS_SEARCH_STALL_MARKER}: every sessions.list page re-reads the whole session store; one page covers V's ~22,000 sessions.
+const SESSIONS_SEARCH_CANDIDATE_PAGE_ROWS = 5e4;
+// A Gateway call from a tool running inside the Gateway resolves without returning to the
 // event loop; each sessions_search Gateway call starts on a fresh macrotask. OPENCLAW_V_SESSIONS_SEARCH_YIELD=0 calls straight through.
 function yieldBeforeGatewayCall() {
 	if (process.env.OPENCLAW_V_SESSIONS_SEARCH_YIELD === "0") return Promise.resolve();
@@ -175,6 +179,10 @@ function yieldBeforeGatewayCall() {
 }
 `,
     'tools max session keys');
+  out = replaceExactlyOnce(out,
+    'limit: candidateRows ? 1e4 : 200,',
+    'limit: candidateRows ? SESSIONS_SEARCH_CANDIDATE_PAGE_ROWS : 200,',
+    'tools candidate page size');
   out = replaceExactlyOnce(out,
     'page = await params.gatewayCall({',
     'await yieldBeforeGatewayCall();\n\t\t\t\t\tpage = await params.gatewayCall({',

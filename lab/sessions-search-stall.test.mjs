@@ -65,12 +65,15 @@ test('the search caller no longer lists every window; the lag check runs on the 
   assert.match(reconcile, /\t\t\t\t\tneeds,\n\t\t\t\t\torphans,\n\t\t\t\t\tpath: databasePath\n/u);
 });
 
-test('sessions_search yields to the event loop before every Gateway call', () => {
+test('sessions_search yields before every Gateway call and lists candidates in one page per scope', () => {
   const tools = read(TOOLS);
   const listing = between(tools, 'async function listVisibleSearchSessions(params) {', '\nfunction compareSearchHits');
   assert.match(listing, /await yieldBeforeGatewayCall\(\);\n\t\t\t\t\tpage = await params\.gatewayCall\(\{/u);
   const execute = between(tools, 'function createSessionsSearchTool(opts) {', '\n//#endregion');
   assert.match(execute, /const scopedCandidate = chunk\.length === 1 \? chunk\[0\] : void 0;\n\t\t\t\tawait yieldBeforeGatewayCall\(\);\n\t\t\t\tconst result = scopedCandidate\?\.expectedSessionId/u);
+  assert.match(tools, /const SESSIONS_SEARCH_CANDIDATE_PAGE_ROWS = 5e4;/u);
+  assert.match(listing, /limit: candidateRows \? SESSIONS_SEARCH_CANDIDATE_PAGE_ROWS : 200,/u);
+  assert.doesNotMatch(listing, /candidateRows \? 1e4/u);
   assert.match(tools, /OPENCLAW_V_SESSIONS_SEARCH_YIELD === "0"\) return Promise\.resolve\(\);\n\treturn new Promise\(\(resolve\) => \{\n\t\tsetImmediate\(resolve\);/u);
 });
 
