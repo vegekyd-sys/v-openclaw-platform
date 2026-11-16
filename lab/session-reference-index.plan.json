@@ -1,0 +1,23 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/session-reference-index/session-accessor.sqlite-entry-store-VfW3gyuj.js",
+      "target": "openclaw/dist/session-accessor.sqlite-entry-store-VfW3gyuj.js",
+      "before": "455037c6dd4d03e06151c49bf8dcda76bc6124ea05a3c70b502cd819429d338d",
+      "after": "6aa9f48818633ba024354e5bf1c838dd37e0690916cb6ae5dade5ce064c45ffd"
+    },
+    {
+      "source": "lab/release-files/session-reference-index/session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+      "target": "openclaw/dist/session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+      "before": "4f4cce65c21e82f7d9d5f49bbb2d9b76802c6b7b468cc741b4ce9b820a3e4096",
+      "after": "c21306fac71e2e4b504f799cf6d1fe7fbf7be629d7d5c31d44e73445dba734f9"
+    },
+    {
+      "source": "lab/release-files/session-reference-index/session-accessor.sqlite-lifecycle-dtL0ZEAl.js",
+      "target": "openclaw/dist/session-accessor.sqlite-lifecycle-dtL0ZEAl.js",
+      "before": "efa4604b435e588dfeb3b86730c183c4e4950cbb5b4ebc261fc6023819fd7646",
+      "after": "acaa53092a7a4fb58eb1cd08db1fe3726d0969eb5f8f47c09f95134545ec2074"
+    }
+  ]
+}

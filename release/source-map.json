@@ -1998,6 +1998,27 @@
       "sha256": "693e19be271d3993b541599296cbc24f57250c0c2ed487c1228cdabc52341e08",
       "source": "versa:3466c31b26c",
       "note": "sessions-search-stall (2026-11-16): sessions_search no longer holds the Gateway thread for a whole search - small-table dirty check on the caller, watermark lag on the preflight Worker, a macrotask before every Gateway call, one candidate page per scope (versa/port-sessions-search-stall-20261116, on ca32fca3e29); not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-entry-store-VfW3gyuj.js",
+      "sha256": "6aa9f48818633ba024354e5bf1c838dd37e0690916cb6ae5dade5ce064c45ffd",
+      "source": "versa:1a9308eec02",
+      "note": "session-reference-index (2026-11-17): session deletions resolve surviving references from a per-connection index (fingerprint + TEMP dirty keys + epoch) instead of parsing every entry inside the write transaction; OPENCLAW_V_SESSION_REFERENCE_INDEX=0 restores the full read (versa/port-session-reference-index-20261117, on ca32fca3e29); not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+      "sha256": "c21306fac71e2e4b504f799cf6d1fe7fbf7be629d7d5c31d44e73445dba734f9",
+      "source": "versa:1a9308eec02",
+      "note": "session-reference-index (2026-11-17): session deletions resolve surviving references from a per-connection index (fingerprint + TEMP dirty keys + epoch) instead of parsing every entry inside the write transaction; OPENCLAW_V_SESSION_REFERENCE_INDEX=0 restores the full read (versa/port-session-reference-index-20261117, on ca32fca3e29); not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-lifecycle-dtL0ZEAl.js",
+      "sha256": "acaa53092a7a4fb58eb1cd08db1fe3726d0969eb5f8f47c09f95134545ec2074",
+      "source": "versa:1a9308eec02",
+      "note": "session-reference-index (2026-11-17): session deletions resolve surviving references from a per-connection index (fingerprint + TEMP dirty keys + epoch) instead of parsing every entry inside the write transaction; OPENCLAW_V_SESSION_REFERENCE_INDEX=0 restores the full read (versa/port-session-reference-index-20261117, on ca32fca3e29); not on V until promoted"
     }
   ]
 }
