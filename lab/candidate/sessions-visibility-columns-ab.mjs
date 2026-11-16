@@ -124,15 +124,20 @@ async function parent() {
         assert.equal(q.wholeStoreReads, 0, `release arm read the whole list projection: ${JSON.stringify(q.request)}`);
         assert(q.columnReads > 0, `release arm did not read columns: ${JSON.stringify(q.request)}`);
       }
-      assert.equal(r.prepares.tool.wholeStoreReads, 0, "release arm: sessions_search listings read the whole list projection");
+      // a sandboxed requester lists with spawnedBy, which keeps the list projection by design
+      for (const c of r.cases.filter((x) => !x.label.endsWith("/sandboxed"))) assert.equal(c.wholeStoreReads, 0, `release arm: ${c.label} read the whole list projection`);
     }
     for (const r of [...(rows.A ?? []), ...(rows.B0 ?? [])]) assert.equal(r.prepares.total.columnIndexReads, 0, "list-projection arm read columns");
   };
   // timing: one visibility listing (per scope), warm and cold
   const timing = (label) => {
     const out = {};
-    for (const cache of ["warm", "cold"]) {
-      for (const arm of cache === "cold" ? ["A", "B", "A", "B"] : ["A", "B"]) {
+    // warm: second call in the process. evicted: the process has validated the database (the canonical key check
+    // reads every entry JSON once per process, as a Gateway does at start), then this file is dropped from the page
+    // cache before each call — a running Gateway whose pages were reclaimed. cold: a fresh process on a dropped
+    // file, which includes that one-time check.
+    for (const cache of (process.env.TIMING_CACHES ?? "warm,evicted,cold").split(",")) {
+      for (const arm of cache === "warm" ? ["A", "B"] : ["A", "B", "A", "B"]) {
         setDist(arm === "A" ? vBytes : relBytes);
         const r = run("listing", { arm, cache });
         (out[`${arm}/${cache}`] ??= []).push(r);
@@ -142,11 +147,14 @@ async function parent() {
     log(`${label}.summary`, Object.fromEntries(Object.entries(out).map(([k, v]) => [k, v.map(({ unscoped, scoped, rssMb }) => ({ unscoped, scoped, rssMb }))])));
   };
 
-  equivalence("built", ["A", "B"]);
-  timing("built");
+  // PHASES (default all): built-equivalence, built-timing, v-lineage
+  const phases = new Set((process.env.PHASES ?? "built-equivalence,built-timing,v-lineage").split(","));
+  if (phases.has("built-equivalence")) equivalence("built", ["A", "B"]);
+  if (phases.has("built-timing")) timing("built");
+  if (!phases.has("v-lineage") && !phases.has("v-lineage-timing")) return;
   log("v-lineage", applyVLineage(66));
   log("fixture.shape.v-lineage", inspect());
-  equivalence("v-lineage", ["B0", "B"]);
+  if (phases.has("v-lineage")) equivalence("v-lineage", ["B0", "B"]);
   timing("v-lineage");
   setDist(vBytes);
 }
@@ -295,7 +303,9 @@ async function child(args) {
     const scopedParams = { ...unscopedParams, agentId: "makaron" };
     if (args.cache === "cold") evict();
     else { await listing(unscopedParams); await listing(scopedParams); }
+    if (args.cache === "evicted") evict();
     const unscoped = await listing(unscopedParams);
+    if (args.cache === "evicted") evict();
     const scoped = await listing(scopedParams);
     console.log(`RESULT ${JSON.stringify({ unscoped, scoped, prepares, rssMb: Math.round(process.memoryUsage().rss / 1048576) })}`);
     process.exit(0);
@@ -379,6 +389,7 @@ async function child(args) {
   const toolMemo = new Map();
   const caseResults = [];
   for (const kase of cases) {
+    const before = prepares.listProjectionWholeStore;
     const sequence = [];
     const callGateway = async (request) => {
       if (request.method === "sessions.search") {
@@ -392,7 +403,7 @@ async function child(args) {
     const tool = createSessionsSearchTool({ config: kase.cfg, agentId: kase.key.split(":")[1], agentSessionKey: kase.key, sandboxed: kase.sandboxed === true, callGateway });
     let result;
     try { result = await tool.execute("svc", { query: "svcquery", limit: 25 }); } catch (error) { result = { threw: String(error?.message ?? error).slice(0, 300) }; }
-    caseResults.push({ label: kase.label, sequenceSha: sha(JSON.stringify(sequence)), resultSha: sha(JSON.stringify(result?.details ?? result)), searchedKeys: sequence.reduce((n, [, keys]) => n + (keys?.length ?? 0), 0) });
+    caseResults.push({ label: kase.label, sequenceSha: sha(JSON.stringify(sequence)), resultSha: sha(JSON.stringify(result?.details ?? result)), searchedKeys: sequence.reduce((n, [, keys]) => n + (keys?.length ?? 0), 0), wholeStoreReads: prepares.listProjectionWholeStore - before });
   }
   restore();
   const tool = { wholeStoreReads: prepares.listProjectionWholeStore - toolBefore.listProjectionWholeStore, columnReads: prepares.columnIndexReads - toolBefore.columnIndexReads, byKeyReads: prepares.listProjectionByKey - toolBefore.listProjectionByKey };

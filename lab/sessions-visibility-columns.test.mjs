@@ -39,7 +39,10 @@ test('the column read takes values from covering indexes and the table header on
   const entry = read(ENTRY);
   const fn = between(entry, 'function readSqliteSessionVisibilityEntries(database) {', '\nfunction listSqliteSessionEntriesFromDatabase');
   // the only table scan reads entry_valid and typeof(pinned_at): header-only for 0/1/NULL
-  assert.match(fn, /SELECT rowid AS id, session_key, entry_valid, typeof\(pinned_at\) AS pinned_type FROM session_nodes ORDER BY session_key/u);
+  assert.match(fn, /SELECT rowid AS id, session_key, entry_valid, typeof\(pinned_at\) AS pinned_type FROM session_nodes"\)\.all\(\);/u);
+  assert.doesNotMatch(fn, /ORDER BY/u, 'ORDER BY session_key walks the primary-key index with random row lookups');
+  assert.match(fn, /keys: sortKeysAsSqliteBinary\(keys\)/u);
+  assert.match(entry, /\.toSorted\(\(left, right\) => Buffer\.compare\(left\.bytes, right\.bytes\)\)/u);
   for (const [column, index] of [
     ['updated_at', 'updated_at'],
     ['current_session_id', 'current_session_id'],

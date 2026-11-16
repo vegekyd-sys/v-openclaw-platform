@@ -631,6 +631,15 @@ const SESSION_VISIBILITY_COLUMN_INDEXES = [
 	"idx_agent_session_nodes_last_interaction_at"
 ];
 const SESSION_VISIBILITY_SPECIAL_ROW_CHUNK = 500;
+// The list projection orders keys with ORDER BY session_key (BINARY: UTF-8 bytes). The column read scans the table in
+// rowid order instead: ORDER BY would walk the primary-key index and look each row up at random, one random read per
+// row with a cold page cache.
+function sortKeysAsSqliteBinary(keys) {
+	return keys.map((key) => ({
+		key,
+		bytes: Buffer.from(key, "utf8")
+	})).toSorted((left, right) => Buffer.compare(left.bytes, right.bytes)).map(({ key }) => key);
+}
 function readSessionVisibilityIndexColumn(db, query) {
 	const values = /* @__PURE__ */ new Map();
 	for (const row of db.prepare(query).iterate()) values.set(Number(row.id), row.v);
@@ -641,7 +650,7 @@ function readSqliteSessionVisibilityEntries(database) {
 	const indexNames = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'session_nodes'").all().map((row) => row.name));
 	if (!SESSION_VISIBILITY_COLUMN_INDEXES.every((name) => indexNames.has(name))) return;
 	const read = () => {
-		const nodes = db.prepare("SELECT rowid AS id, session_key, entry_valid, typeof(pinned_at) AS pinned_type FROM session_nodes ORDER BY session_key").all();
+		const nodes = db.prepare("SELECT rowid AS id, session_key, entry_valid, typeof(pinned_at) AS pinned_type FROM session_nodes").all();
 		const updatedAt = readSessionVisibilityIndexColumn(db, "SELECT rowid AS id, updated_at AS v FROM session_nodes INDEXED BY idx_agent_session_nodes_updated_at");
 		const sessionId = readSessionVisibilityIndexColumn(db, "SELECT rowid AS id, current_session_id AS v FROM session_nodes INDEXED BY idx_agent_session_nodes_current_session_id");
 		const parent = readSessionVisibilityIndexColumn(db, "SELECT rowid AS id, parent_session_key AS v FROM session_nodes INDEXED BY idx_agent_session_nodes_parent_session_key WHERE parent_session_key IS NOT NULL");
@@ -684,7 +693,7 @@ function readSqliteSessionVisibilityEntries(database) {
 		for (const [sessionKey, entry] of projectSqliteSessionParticipantsBatch(db, parsed)) entries.set(sessionKey, entry);
 		return {
 			entries,
-			keys
+			keys: sortKeysAsSqliteBinary(keys)
 		};
 	};
 	return db.isTransaction ? read() : runSqliteDeferredTransactionSync(db, read);
