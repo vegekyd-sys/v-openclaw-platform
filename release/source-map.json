@@ -1921,6 +1921,27 @@
       "sha256": "5d169ac3d78bc0203825b3788cd6dec5d9176006ce9f90340fd3188241043df4",
       "source": "versa:8f8b5ed3525",
       "note": "remote-node-stable-20261111 (#599): paired macOS exec nodes stay in the remote skill note while they reconnect, sorted by label (versa/port-remote-node-stable-20261111); OPENCLAW_REMOTE_NODE_STABLE_ELIGIBILITY=0 disables"
+    },
+    {
+      "layer": "core",
+      "path": "session-transcript-reconcile-j5qhAafV.js",
+      "sha256": "468372b598d39c38c8e08d3b154a5ea94e18d5b04a55bd5d34b307b30ab12725",
+      "source": "versa:3466c31b26c",
+      "note": "sessions-search-stall (2026-11-16): sessions_search no longer holds the Gateway thread for a whole search - small-table dirty check on the caller, watermark lag on the preflight Worker, a macrotask before every Gateway call, one candidate page per scope (versa/port-sessions-search-stall-20261116, on ca32fca3e29); not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "session-transcript-search-pRB2YScP.js",
+      "sha256": "649662cda15babe4753f0fedce0dc640a5279a9313b7164dd109325915efe509",
+      "source": "versa:3466c31b26c",
+      "note": "sessions-search-stall (2026-11-16): sessions_search no longer holds the Gateway thread for a whole search - small-table dirty check on the caller, watermark lag on the preflight Worker, a macrotask before every Gateway call, one candidate page per scope (versa/port-sessions-search-stall-20261116, on ca32fca3e29); not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "openclaw-tools-BODVdJQD.js",
+      "sha256": "693e19be271d3993b541599296cbc24f57250c0c2ed487c1228cdabc52341e08",
+      "source": "versa:3466c31b26c",
+      "note": "sessions-search-stall (2026-11-16): sessions_search no longer holds the Gateway thread for a whole search - small-table dirty check on the caller, watermark lag on the preflight Worker, a macrotask before every Gateway call, one candidate page per scope (versa/port-sessions-search-stall-20261116, on ca32fca3e29); not on V until promoted"
     }
   ]
 }
