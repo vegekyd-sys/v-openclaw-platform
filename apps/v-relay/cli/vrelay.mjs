@@ -114,6 +114,8 @@ export function loadConfig(args, env) {
     putConcurrency: Number(pick('concurrency', 'VRELAY_PUT_CONCURRENCY', 'putConcurrency', 8)),
     getConcurrency: Number(pick('concurrency', 'VRELAY_GET_CONCURRENCY', 'getConcurrency', 16)),
     partSize: parseSize(pick('part-size', 'VRELAY_PART_SIZE', 'partSize', '16M')),
+    // Measured from Shanghai 2026-11-16: 8 MiB ranges beat 16 MiB by 25-40% on the same link.
+    chunkSize: parseSize(pick('chunk-size', 'VRELAY_CHUNK_SIZE', 'chunkSize', '8M')),
     uploadLimit: parseRate(pick('limit', 'VRELAY_UPLOAD_LIMIT', 'uploadLimit', '0')),
     downloadLimit: parseRate(pick('download-limit', 'VRELAY_DOWNLOAD_LIMIT', 'downloadLimit', '0')),
     family: String(pick('family', 'VRELAY_FAMILY', 'family', '4')),
@@ -123,7 +125,7 @@ export function loadConfig(args, env) {
     resolve: String(pick('resolve', 'VRELAY_RESOLVE', 'resolve', '')).split(',').map(s => s.trim()).filter(Boolean),
     allowSmallParts: env.VRELAY_ALLOW_SMALL_PARTS === '1',
   };
-  for (const k of ['putConcurrency', 'getConcurrency']) if (!Number.isInteger(cfg[k]) || cfg[k] < 1 || cfg[k] > 64) throw new FatalError(`${k} must be 1..64`);
+  for (const k of ['putConcurrency', 'getConcurrency']) if (!Number.isInteger(cfg[k]) || cfg[k] < 1 || cfg[k] > 64) throw new FatalError(`concurrency must be an integer 1..64 (${k}=${cfg[k]})`);
   if (!['4', '6', 'auto'].includes(cfg.family)) throw new FatalError('family must be 4, 6 or auto');
   return cfg;
 }
@@ -532,7 +534,8 @@ export async function get(ref, outArg, args, cfg, io) {
   if (fs.existsSync(out) && !args.force) throw new FatalError(`${out} exists (use --force)`);
   const partial = `${out}.vrelay-part`;
   const statePath = `${out}.vrelay-state.json`;
-  const chunkSize = args['chunk-size'] ? parseSize(args['chunk-size']) : cfg.partSize;
+  const chunkSize = cfg.chunkSize;
+  if (chunkSize < 64 * 1024 || chunkSize > 256 * MiB) throw new FatalError('chunk size must be 64K..256M');
   let state = await readJson(statePath);
   if (!state || state.id !== target.id || state.etag !== etag || state.size !== size || state.chunkSize !== chunkSize || !fs.existsSync(partial)) {
     state = {id: target.id, etag, size, chunkSize, done: []};

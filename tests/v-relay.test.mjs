@@ -127,7 +127,7 @@ function makeIo(env) {
 async function tmpdir() { return fsp.mkdtemp(path.join(os.tmpdir(), 'v-relay-test-')); }
 
 function cliEnv(home, endpoint, extra = {}) {
-  return {HOME: home, VRELAY_ENDPOINT: endpoint, VRELAY_TOKEN: TOKEN, VRELAY_ALLOW_SMALL_PARTS: '1', VRELAY_PART_SIZE: '64K', VRELAY_IDLE_TIMEOUT_MS: '1500', VRELAY_RETRIES: '4', ...extra};
+  return {HOME: home, VRELAY_ENDPOINT: endpoint, VRELAY_TOKEN: TOKEN, VRELAY_ALLOW_SMALL_PARTS: '1', VRELAY_PART_SIZE: '64K', VRELAY_CHUNK_SIZE: '64K', VRELAY_IDLE_TIMEOUT_MS: '1500', VRELAY_RETRIES: '4', ...extra};
 }
 
 async function run(argv, env) {
