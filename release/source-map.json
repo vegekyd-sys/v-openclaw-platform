@@ -1921,6 +1921,27 @@
       "sha256": "5d169ac3d78bc0203825b3788cd6dec5d9176006ce9f90340fd3188241043df4",
       "source": "versa:8f8b5ed3525",
       "note": "remote-node-stable-20261111 (#599): paired macOS exec nodes stay in the remote skill note while they reconnect, sorted by label (versa/port-remote-node-stable-20261111); OPENCLAW_REMOTE_NODE_STABLE_ELIGIBILITY=0 disables"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-entry-BlklNPKQ.js",
+      "sha256": "f552a3f517cfe5fe9d618e5902f9e69f698509e94d86f18f63d928e3ad7e2613",
+      "source": "versa:628f03f9d18",
+      "note": "sessions-visibility-columns (2026-11-16): sessions.list visibilityRowsOnly with column-only filters reads sessionId/updatedAt/archivedAt/lastInteractionAt/spawnedBy/parentSessionKey from session_nodes' covering indexes instead of decoding every entry JSON; entry_valid != 1, pinned and parent = spawned_by rows are still decoded (versa/port-sessions-visibility-columns-20261116, on 3466c31b26c); OPENCLAW_V_SESSIONS_VISIBILITY_COLUMNS=0 disables; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "combined-store-gateway-BwDhjbIt.js",
+      "sha256": "0cbe8b81f9c38f945b2e6e84c301083ee66106caf50a5bba547c64d098db2a13",
+      "source": "versa:628f03f9d18",
+      "note": "sessions-visibility-columns (2026-11-16): sessions.list visibilityRowsOnly with column-only filters reads sessionId/updatedAt/archivedAt/lastInteractionAt/spawnedBy/parentSessionKey from session_nodes' covering indexes instead of decoding every entry JSON; entry_valid != 1, pinned and parent = spawned_by rows are still decoded (versa/port-sessions-visibility-columns-20261116, on 3466c31b26c); OPENCLAW_V_SESSIONS_VISIBILITY_COLUMNS=0 disables; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "sessions-read-C6mAMxyQ.js",
+      "sha256": "5044b9b06adf4590aaefc182d697dc964532a4894f91aa1a80191349d84efa21",
+      "source": "versa:628f03f9d18",
+      "note": "sessions-visibility-columns (2026-11-16): sessions.list visibilityRowsOnly with column-only filters reads sessionId/updatedAt/archivedAt/lastInteractionAt/spawnedBy/parentSessionKey from session_nodes' covering indexes instead of decoding every entry JSON; entry_valid != 1, pinned and parent = spawned_by rows are still decoded (versa/port-sessions-visibility-columns-20261116, on 3466c31b26c); OPENCLAW_V_SESSIONS_VISIBILITY_COLUMNS=0 disables; not on V until promoted"
     }
   ]
 }
