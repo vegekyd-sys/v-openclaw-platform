@@ -10,6 +10,29 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## sessions-stall-20261117
+
+上线：2026-11-17 03:23 CST 生效（03:16 promote-to-v，漂移哨兵 0 发现，VLab 已 align；03:17 v-self-restart 等空闲 208 s 后 03:21:25 停机，启动前清掉 2 条 Codex 孤儿登记，03:23:11 就绪，03:24:24 settle：stream 4/4、worker 5/5，NRestarts 0）  ·  tag `sessions-stall-20261117`
+
+**摘要**：`sessions_search` 不再把 Gateway 主线程卡住几十秒。11/16 19:18 的 CPU profile 抓到 27 s 停顿全在这个工具里：它在 Gateway 进程内运行，一次搜索把 2.2 万个会话的整库读 6 遍，再分约 110 批逐批跑「找需要重建索引的会话」（扫 26,913 个窗口），中间从不让出主线程。
+- **#608**：落后检查挪到只读 worker 线程（每库每分钟最多一次），每次调用 Gateway 前让出事件循环，候选列表每个范围只取一页（整库读 6 → 2 次）。开关 `OPENCLAW_V_TRANSCRIPT_SEARCH_LAG_OFFTHREAD=0`、`OPENCLAW_V_SESSIONS_SEARCH_YIELD=0`。
+- **#609**：`sessions.list visibilityRowsOnly` 改读 session_nodes 的提升列和覆盖索引，不再整读 1.98 GB entry JSON；有歧义的行（entry_valid≠1、置顶、parent=spawned_by）仍按 JSON 解析。V 只读核对 21,913 行 0 处不一致。开关 `OPENCLAW_V_SESSIONS_VISIBILITY_COLUMNS=0`。
+- VLab V 规模候选：一次搜索主线程最长阻塞，热 31.4 s → 0.89 s，清页缓存 83.7 s → 8.2 s；三组结果 hash 一致。
+- 同批合入但不在 V 的 dist 里：**#607 vrelay**（Cloudflare R2 跨境大文件中转），03:20 用 `apps/v-relay/install.mjs` 装到 Mac、Air、V（V 上同时装技能 `large-file-transfer`）。
+
+V 上核对（03:23–03:28）：6 个文件的哈希与 after 一致；`Cannot reap` / restart recovery / 未捕获异常 / OOM 均 0；启动阶段两次 liveness 停顿（03:23:10 40.8 s、03:24:01 20.7 s，同 11/14 重启后的启动停顿，非本次范围）。私聊会话 `agent:makaron:explicit:monitor-sessions-stall-20261117` 一轮 /vds（deepseek/vds-deepseek-flash）调用 sessions_search「卡顿」→ 14 条 / 7 个会话，整轮 38.6 s，期间无 liveness 停顿。vrelay：V put 191 MB 37.3 s（5.11 MiB/s），Mac get 23 s，sha256 一致，测试对象已删。V 主私聊收到更新说明并回复。
+
+相对上一版 `startup-stall-usage-20261114`：6 个文件变化。
+
+**经 VLab 发版 `sessions-stall-20261117`**（claude-monitor，dev `157db0cb`）
+> 验收：shared VLab 2026-11-17 03:11-03:14 CST, dev 157db0cb (#607 #608 #609; 6 core dist files): Gateway pid 3766226 NRestarts 0. sessions.list {agentId:makaron,visibilityRowsOnly:true,configuredAgentsOnly:true} returned rows in 2.5 s round trip (server 269-320 ms). Real agent turns: agent:makaron:explicit:vlab-dev-sessions-stall-20261117-1794856334435 called sessions_search("验收") -> 25 results (answered…
+- `core` combined-store-gateway-BwDhjbIt.js  9cb53296 → 0cbe8b81
+- `core` openclaw-tools-BODVdJQD.js  0b8b6233 → 693e19be
+- `core` session-accessor.sqlite-entry-BlklNPKQ.js  258aa1be → 7cba57ac
+- `core` session-transcript-reconcile-j5qhAafV.js  85455fa4 → 468372b5
+- `core` session-transcript-search-pRB2YScP.js  399b50e6 → 649662cd
+- `core` sessions-read-C6mAMxyQ.js  5c84c606 → 5044b9b0
+
 ## startup-stall-usage-20261114
 
 上线：2026-11-14 00:30 CST 生效（00:25 promote-to-v，漂移哨兵已更新，VLab 已 align；00:29 v-self-restart 等到空闲后停机，carry 8/8、预检 20 ms，00:30:23 listen、00:30:31 飞书就绪，NRestarts 0）  ·  tag `startup-stall-usage-20261114`
