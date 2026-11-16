@@ -1,0 +1,23 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/sessions-visibility-columns/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "target": "openclaw/dist/session-accessor.sqlite-entry-BlklNPKQ.js",
+      "before": "258aa1be787081f9333db2ef576caee987b537acde9d99dcdb7f48542022a230",
+      "after": "7cba57ac7e6c80bf741934f54211070977188892f9e888480a894d72c102da37"
+    },
+    {
+      "source": "lab/release-files/sessions-visibility-columns/combined-store-gateway-BwDhjbIt.js",
+      "target": "openclaw/dist/combined-store-gateway-BwDhjbIt.js",
+      "before": "9cb53296f60b4d375f19cdd0e52d104a7b255c9feaae34656654c718bb6f5c51",
+      "after": "0cbe8b81f9c38f945b2e6e84c301083ee66106caf50a5bba547c64d098db2a13"
+    },
+    {
+      "source": "lab/release-files/sessions-visibility-columns/sessions-read-C6mAMxyQ.js",
+      "target": "openclaw/dist/sessions-read-C6mAMxyQ.js",
+      "before": "5c84c606c258ae729630a659d54bdf28d1b7cb2999b1ca86a325832b78ef5a43",
+      "after": "5044b9b06adf4590aaefc182d697dc964532a4894f91aa1a80191349d84efa21"
+    }
+  ]
+}

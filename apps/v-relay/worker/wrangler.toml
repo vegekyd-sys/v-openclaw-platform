@@ -1,0 +1,24 @@
+# v-relay Worker. No account id or secret in git: wrangler takes the account
+# from the logged-in OAuth session, and the two secrets are set with
+#   npx wrangler secret put RELAY_TOKENS     # "label=token,label2=token2"
+#   npx wrangler secret put RELAY_LINK_KEY   # >= 24 random chars, signs share links
+# Deploy:  cd apps/v-relay/worker && npx wrangler@4 deploy
+name = "v-relay"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+# *.workers.dev is DNS-poisoned and SNI-reset in mainland China; serve only the custom domain.
+workers_dev = false
+preview_urls = false
+# Mainland China cannot rely on *.workers.dev; serve the same Worker on a
+# custom domain in a zone this account owns. Set the real hostname at deploy
+# time (it stays out of git), e.g.:
+#   npx wrangler@4 deploy --domain <relay-host>
+# routes = [{ pattern = "relay.example.com", custom_domain = true }]
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "v-relay"
+
+[observability]
+enabled = true
+head_sampling_rate = 0.1
