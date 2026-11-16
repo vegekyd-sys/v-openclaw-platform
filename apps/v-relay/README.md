@@ -98,16 +98,35 @@ printf %s "$LINK_KEY" | npx wrangler@4 secret put RELAY_LINK_KEY
 
 令牌清单只存在 Tianyi 的 Mac 上：`~/.config/vrelay/relay-secrets.json`（600）。新增或吊销一台机器，就改这个文件，再重新执行 `secret put RELAY_TOKENS`。
 
-## 安装到一台机器（PR 合入后按发布流程执行）
+## 安装到 V、各节点和 Tianyi 的 Mac（PR 合入后，作为发布的一步）
+
+在 Tianyi 的 Mac 上，从已合入的提交运行（令牌只从本机 `~/.config/vrelay/relay-secrets.json` 读出，经 ssh 的 stdin 发给对应机器，每台只拿到自己那一个）：
 
 ```sh
-install -m 755 apps/v-relay/cli/vrelay.mjs /usr/local/bin/vrelay   # 或 ~/.local/bin/vrelay
-printf %s "$MACHINE_TOKEN" | vrelay login --endpoint https://<relay-host> [--limit 45mbit]
-vrelay health --route
+node apps/v-relay/install.mjs --dry-run          # 只读：列出每台机器会改什么，不传令牌
+node apps/v-relay/install.mjs                    # 安装或更新；可加 --only v,air
 ```
 
-V 上以 `openclaw` 用户安装（配置放在 `/home/openclaw/.config/vrelay/`，带 `--limit 45mbit`），然后在 V 工作区的 TOOLS 说明里加上用法。
+| 目标 | 怎么连 | 使用者 | 命令位置 | 其他 |
+|---|---|---|---|---|
+| `mac` | 本机 | tianyicai | `/opt/homebrew/bin/vrelay` | |
+| `v` | `ssh v`，sudo | openclaw（Gateway 用户） | `/usr/local/bin/vrelay` | `uploadLimit 45mbit`；技能装到 `~openclaw/.openclaw/skills/large-file-transfer/` |
+| `air` | 经 V，用 openclaw 的 Air 密钥 | tianyicai（OpenClaw.app 节点） | `/opt/homebrew/bin/vrelay` | |
+| `portal` | 经 V，用 openclaw 的 portal 密钥，sudo | ubuntu（节点进程） | `/usr/local/bin/vrelay` | 节点用的 node 不在 shell 的 PATH 上，包装脚本写死了它的路径 |
+| `shanghai` | `ssh voice-devices-via-v`，sudo | ubuntu | `/usr/local/bin/vrelay` | `uploadLimit 2mbit`（上行只有约 3 Mbit，还承载语音设备） |
+
+- 命令位置放的是一个小包装脚本，固定用安装时找到的 node（≥ 18），真正的代码在 `/usr/local/lib/vrelay/vrelay.mjs`（Mac 上是 `~/.local/share/vrelay/vrelay.mjs`）。
+- 配置写到使用者的 `~/.config/vrelay/config.json`（600，目录 700）。
+- 每个文件按 sha256、权限、属主比对，一样就不动，所以可以反复运行。装完以使用者身份跑 `vrelay --version`、`health` 和一次带令牌的 `ls`。
+- 输出里不会出现令牌；`--dry-run` 发出去的脚本里只有配置的哈希。
+
+### 让 agent 知道怎么用
+
+- **V**：技能 `large-file-transfer`（`skill/large-file-transfer/SKILL.md`）由上面的安装脚本从 git 装进 V 的 managed 技能目录。V 的技能目录在 prompt 里只列名字、不带描述，没被点名的技能很难被想起来，所以还要在 V 工作区的 `TOOLS.md` 加三行指针：原文在 `guidance/v-tools-md.md`。`TOOLS.md` 不在任何仓库里作为源头，按 v-core 的 `CONTRIBUTING.md`，在 V 的线上工作区改并提交，v-core 下次同步会带上它。
+- **Mac 上的 Claude Code 和 Codex**：`guidance/mac-agents.md` 这一段放进 `~/.claude/CLAUDE.md` 和 `~/.codex/AGENTS.md`，两份保持一致。
 
 ## 测试
 
-`node --test tests/v-relay.test.mjs`：在本地 HTTP 适配层后面跑真实的 Worker 模块，桶是内存实现，客户端是真实 CLI。覆盖：注入 500、连接重置、响应截断、卡住不动、慢块；put/get 断点续传；上传会话丢失后重新开始；边传边取，以及发送端中断时接收端超时退出、恢复后续传；sha256 不一致；签名链接；限速；路由探测；fake-IP 绕开代理；配置权限。
+`node --test tests/v-relay.test.mjs`：在本地 HTTP 适配层后面跑真实的 Worker 模块，桶是内存实现，客户端是真实 CLI。安装脚本另有一项：dry-run 不写文件也不带令牌、安装后权限正确、包装脚本在 PATH 没有 node 时也能用、重复运行没有改动、输出里没有令牌。
+
+其余覆盖：注入 500、连接重置、响应截断、卡住不动、慢块；put/get 断点续传；上传会话丢失后重新开始；边传边取，以及发送端中断时接收端超时退出、恢复后续传；sha256 不一致；签名链接；限速；路由探测；fake-IP 绕开代理；配置权限。

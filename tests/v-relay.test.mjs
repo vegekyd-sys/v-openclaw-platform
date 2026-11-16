@@ -14,6 +14,8 @@ import path from 'node:path';
 import {Readable, PassThrough} from 'node:stream';
 import worker, {parseRange, parseTokens, cleanName} from '../apps/v-relay/worker/src/index.js';
 import {main, parseRate, parseSize, Limiter, runParallel, Route, isFakeIp} from '../apps/v-relay/cli/vrelay.mjs';
+import {buildScript, configFor, TARGETS} from '../apps/v-relay/install.mjs';
+import {spawn, spawnSync} from 'node:child_process';
 
 const TOKEN = 'test-token-0123456789abcdefghij';
 const LINK_KEY = 'link-key-0123456789abcdefghijklmn';
@@ -505,5 +507,50 @@ test('download work stealing: a stalled range is taken over, large ranges are sp
     const off = await run(['get', id, path.join(dir, 'plain.bin'), '--json', '-q'], {...env, VRELAY_STEAL: 'off'});
     assert.equal(off.error, undefined, off.error?.stack);
     assert.equal(JSON.parse(off.out).steals, 0);
+  } finally { await relay.close(); await fsp.rm(dir, {recursive: true, force: true}); }
+});
+
+test('installer: dry run writes nothing, install is idempotent, token never printed', async () => {
+  const dir = await tmpdir();
+  const relay = await startRelay();
+  try {
+    const target = {label: 'mac', mode: 'user', cmd: ['bash', '-s'], bin: path.join(dir, 'bin', 'vrelay'), lib: '$HOME/.local/share/vrelay/vrelay.mjs'};
+    const secrets = {endpoint: relay.endpoint, tokens: {mac: TOKEN}};
+    const files = {cli: await fsp.readFile('apps/v-relay/cli/vrelay.mjs'), skill: await fsp.readFile('apps/v-relay/skill/large-file-transfer/SKILL.md'), config: configFor(target, secrets)};
+    // Async: the fake relay lives in this process, so a blocking spawn would deadlock.
+    const install = dryRun => new Promise((resolve, reject) => {
+      const child = spawn('bash', ['-s'], {env: {...process.env, HOME: dir}});
+      let stdout = '', stderr = '';
+      child.stdout.on('data', d => { stdout += d; }); child.stderr.on('data', d => { stderr += d; });
+      child.on('error', reject);
+      child.on('close', status => resolve({status, stdout, stderr}));
+      child.stdin.end(buildScript(target, {...files, dryRun}));
+    });
+    const cfgPath = path.join(dir, '.config', 'vrelay', 'config.json');
+
+    const dry = await install(true);
+    assert.equal(dry.status, 0, dry.stderr);
+    assert.match(dry.stdout, /would write .*config\.json/);
+    assert.ok(!fs.existsSync(cfgPath) && !fs.existsSync(target.bin), 'dry run wrote files');
+    assert.ok(!buildScript(target, {...files, dryRun: true}).includes(TOKEN), 'dry-run script carries the token');
+
+    const first = await install(false);
+    assert.equal(first.status, 0, first.stdout + first.stderr);
+    assert.match(first.stdout, /auth\s+ok/);
+    assert.match(first.stdout, /done\s+updated/);
+    assert.equal((await fsp.stat(cfgPath)).mode & 0o777, 0o600);
+    assert.equal((await fsp.stat(path.dirname(cfgPath))).mode & 0o777, 0o700);
+    assert.deepEqual(JSON.parse(await fsp.readFile(cfgPath, 'utf8')), {endpoint: relay.endpoint, token: TOKEN});
+    const v = spawnSync(target.bin, ['--version'], {env: {...process.env, HOME: dir, PATH: '/usr/bin:/bin'}, encoding: 'utf8'});
+    assert.equal(v.stdout.trim(), '0.2.0', 'wrapper works without node on PATH');
+
+    const again = await install(false);
+    assert.equal(again.status, 0, again.stderr);
+    assert.match(again.stdout, /done\s+no changes/);
+    assert.doesNotMatch(again.stdout, /wrote/);
+    for (const out of [dry.stdout, dry.stderr, first.stdout, first.stderr, again.stdout]) assert.ok(!out.includes(TOKEN), 'token printed');
+
+    assert.throws(() => configFor(TARGETS.portal, secrets), /no token for "portal"/);
+    assert.equal(JSON.parse(configFor(TARGETS.v, {endpoint: 'https://r.test', tokens: {v: TOKEN}})).uploadLimit, '45mbit');
   } finally { await relay.close(); await fsp.rm(dir, {recursive: true, force: true}); }
 });
