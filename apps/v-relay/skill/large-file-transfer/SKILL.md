@@ -1,18 +1,21 @@
 ---
 name: large-file-transfer
-description: 在 V、V 的节点（MacBook Air、mirror-v-portal、V-Shanghai）和 Tianyi 的 Mac 之间传大文件，用 vrelay（Cloudflare R2 中转）。文件超过约 50 MB，或者任何文件要交给另一台机器或节点时使用。关键词：传文件、发给我、拷到 Mac、下载到节点、大文件、视频、素材包、scp、rsync、vrelay。
+description: 跨境传文件：V（新加坡腾讯云）和 Tianyi 上海家里的机器（他的 Mac、MacBook Air）之间，用 vrelay（Cloudflare R2 中转）。同一侧的传输（V 和 mirror-v-portal 等新加坡腾讯云主机之间，Mac 和 Air 之间）直接用 scp/rsync；V-Shanghai 不走 vrelay。关键词：传文件、发给我、拷到 Mac、下载到 Air、大文件、视频、素材包、scp、rsync、vrelay。
 ---
 
-# 大文件传输：vrelay
+# 跨境大文件传输：vrelay
 
-V 和节点之间、V 和 Tianyi 的 Mac 之间传文件，一律用 `vrelay`。不要用 scp、rsync 或节点 exec 搬大文件：跨境走 Tailscale，scp 实测 10 分钟只传了 17 MB。不要往飞书里塞大附件。
+`vrelay` 只用于一条线：**新加坡的 V ↔ Tianyi 上海家里的机器（他的 Mac、MacBook Air）**。这条线跨境，ssh、scp、rsync 走 Tailscale 很慢，实测 10 分钟只传了 17 MB。vrelay 把文件分块传到 Cloudflare R2，接收方多路并行下载，两端各校验一次 sha256。2026-11-16 实测 590 MB：V → 家里约 2 分钟，Mac → V 约 1.5 分钟。
 
-vrelay 把文件分块传到 Cloudflare R2，接收方并行下载，两端各算一次 sha256 校验。2026-11-16 实测 590 MB：V → 家里约 2 分钟，Mac → V 约 1.5 分钟。
+## 用哪个
 
-## 什么时候用
-
-- 文件超过约 50 MB。
-- 任何文件（不论大小）要给另一台机器：节点、Tianyi 的 Mac、另一台服务器。
+| 从 → 到 | 用什么 |
+|---|---|
+| V ↔ Tianyi 的 Mac 或 MacBook Air，文件超过约 50 MB | **vrelay** |
+| V ↔ Mac/Air，小文件 | 都行；飞书附件、scp 都可以 |
+| V ↔ mirror-v-portal 等新加坡腾讯云主机（同一 VPC，内网约 1 ms） | 直接 scp/rsync，不用 vrelay |
+| Mac ↔ Air（同一个家庭局域网） | 直接拷，不用 vrelay |
+| V-Shanghai | **不要用 vrelay**。它自己的上行只有约 3 Mbit，vrelay 解决不了；它还承载语音设备，不要往它上面传大文件 |
 
 ## 用法
 
@@ -23,10 +26,10 @@ vrelay link <id> --hours 24    # 免令牌的下载链接（最长 7 天），�
 vrelay ls | stat <id> | rm <id>
 ```
 
-- **在 V 上发**：`vrelay put` 一开始，就在 stderr 读 `id` 那一行，马上把 id 和接收命令发给对方。对方不用等传完，传到哪下到哪。
+- **V 发给 Tianyi**：在 V 上 `vrelay put`，从 stderr 读 `id` 那一行，马上在飞书里把 id 和一行命令发给 Tianyi：`vrelay get <id> ~/Downloads/`。Tianyi 不在电脑前、要在手机上看，就发 `vrelay link <id>` 生成的链接。
   - 文件大时用后台 exec，读到 id 就先回复，再等进程结束确认 `sha256`。
-- **往节点发**：在 V 上 put，再用节点 exec 让节点执行 `vrelay get <id> <目录>`。也可以反过来，在节点上 put、在 V 上 get。
-- **发给 Tianyi**：在飞书里给出 id 和一行命令 `vrelay get <id> ~/Downloads/`。Tianyi 不在电脑前、要在手机上看，就给 `vrelay link <id>` 生成的链接。
+  - 对方不用等传完，传到哪下到哪。
+- **V 发到 Air**：V 上 put，再用节点 exec 让 Air 执行 `vrelay get <id> <目录>`。反方向就在 Air 上 put，V 上 get。
 - 下载中断了，重跑同一条 `vrelay get` 会续传。put 也一样。
 
 ## 规则

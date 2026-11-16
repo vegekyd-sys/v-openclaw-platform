@@ -14,7 +14,7 @@ import path from 'node:path';
 import {Readable, PassThrough} from 'node:stream';
 import worker, {parseRange, parseTokens, cleanName} from '../apps/v-relay/worker/src/index.js';
 import {main, parseRate, parseSize, Limiter, runParallel, Route, isFakeIp} from '../apps/v-relay/cli/vrelay.mjs';
-import {buildScript, configFor, TARGETS} from '../apps/v-relay/install.mjs';
+import {buildScript, configFor, TARGETS, main as installMain} from '../apps/v-relay/install.mjs';
 import {spawn, spawnSync} from 'node:child_process';
 
 const TOKEN = 'test-token-0123456789abcdefghij';
@@ -550,7 +550,10 @@ test('installer: dry run writes nothing, install is idempotent, token never prin
     assert.doesNotMatch(again.stdout, /wrote/);
     for (const out of [dry.stdout, dry.stderr, first.stdout, first.stderr, again.stdout]) assert.ok(!out.includes(TOKEN), 'token printed');
 
-    assert.throws(() => configFor(TARGETS.portal, secrets), /no token for "portal"/);
+    assert.throws(() => configFor(TARGETS.air, secrets), /no token for "air"/);
+    // Only the cross-border ends: Shanghai home (mac, air) and Singapore (v).
+    assert.deepEqual(Object.keys(TARGETS).sort(), ['air', 'mac', 'v']);
+    assert.throws(() => installMain(['--dry-run', '--only', 'portal']), /not a vrelay target.*scp\/rsync/);
     assert.equal(JSON.parse(configFor(TARGETS.v, {endpoint: 'https://r.test', tokens: {v: TOKEN}})).uploadLimit, '45mbit');
   } finally { await relay.close(); await fsp.rm(dir, {recursive: true, force: true}); }
 });

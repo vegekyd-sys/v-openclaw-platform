@@ -1,6 +1,10 @@
 #!/usr/bin/env node
-// Install the vrelay CLI (and, on V, the large-file-transfer skill) on V, its
-// nodes and Tianyi's Mac. Run on Tianyi's Mac, from a checkout of the reviewed
+// Install the vrelay CLI (and, on V, the large-file-transfer skill) on the two
+// ends of the cross-border link it is for: Tianyi's Shanghai home machines (the
+// Mac, the MacBook Air) and V in Singapore. Same-side copies (V <-> other
+// Singapore Tencent hosts such as mirror-v-portal, Mac <-> Air on the home LAN)
+// use scp/rsync directly; V-Shanghai is out of scope (its own ~3 Mbit uplink is
+// the limit, and it carries voice devices). Run on Tianyi's Mac, from a checkout of the reviewed
 // commit: the only copy of the relay tokens is ~/.config/vrelay/relay-secrets.json
 // there, and each machine gets only its own token, over ssh stdin. Nothing is
 // printed that contains a token.
@@ -17,8 +21,6 @@
 //   mac       local                         user tianyicai  /opt/homebrew/bin/vrelay
 //   v         ssh v, sudo                    user openclaw   /usr/local/bin/vrelay  + skill, uploadLimit 45mbit
 //   air       via V (openclaw's Air key)     user tianyicai  /opt/homebrew/bin/vrelay
-//   portal    via V (openclaw's portal key)  user ubuntu     /usr/local/bin/vrelay
-//   shanghai  ssh voice-devices-via-v, sudo  user ubuntu     /usr/local/bin/vrelay  uploadLimit 2mbit (3 Mbit uplink, voice)
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -41,9 +43,6 @@ export const TARGETS = {
   v: {label: 'v', mode: 'root', runUser: 'openclaw', cmd: ['ssh', '-o', 'BatchMode=yes', 'v', 'sudo -n bash -s'], bin: '/usr/local/bin/vrelay', lib: '/usr/local/lib/vrelay/vrelay.mjs',
     config: {uploadLimit: '45mbit'}, skillDir: '/home/openclaw/.openclaw/skills/large-file-transfer'},
   air: {label: 'air', mode: 'user', cmd: viaV('v_air_ed25519', {host: 'macbook-air-4', user: 'tianyicai'}, 'bash -s'), bin: '/opt/homebrew/bin/vrelay', lib: '$HOME/.local/share/vrelay/vrelay.mjs'},
-  portal: {label: 'portal', mode: 'root', runUser: 'ubuntu', cmd: viaV('mirror_portal_ed25519', {host: 'mirror-v-portal', user: 'ubuntu'}, 'sudo -n bash -s'), bin: '/usr/local/bin/vrelay', lib: '/usr/local/lib/vrelay/vrelay.mjs'},
-  shanghai: {label: 'shanghai', mode: 'root', runUser: 'ubuntu', cmd: ['ssh', '-o', 'BatchMode=yes', 'voice-devices-via-v', 'sudo -n bash -s'], bin: '/usr/local/bin/vrelay', lib: '/usr/local/lib/vrelay/vrelay.mjs',
-    config: {uploadLimit: '2mbit'}},
 };
 
 const sha = data => crypto.createHash('sha256').update(data).digest('hex');
@@ -114,7 +113,7 @@ export function buildScript(target, {cli, skill, config, dryRun}) {
   }
   const lib = target.lib.startsWith('$HOME') ? target.lib.replace('$HOME', '$RUN_HOME') : target.lib;
   // The wrapper pins the node chosen above, so it works even where the agent's
-  // PATH has no node (mirror-v-portal), and falls back to PATH if it moves.
+  // PATH has no node (an app-launched node agent), and falls back to PATH if it moves.
   lines.push(
     `LIB="${lib}"`,
     'WRAPPER=$(printf \'#!/bin/sh\\n# installed by apps/v-relay/install.mjs\\nNODE=%s\\n[ -x "$NODE" ] || NODE=$(command -v node)\\nexec "$NODE" %s "$@"\\n\' "$NODE" "$LIB")',
@@ -154,7 +153,10 @@ export function main(argv) {
     else if (argv[i] !== '--dry-run') throw new Error(`unknown argument ${argv[i]}`);
   }
   const names = args.only ?? Object.keys(TARGETS);
-  for (const n of names) if (!TARGETS[n]) throw new Error(`unknown target ${n} (known: ${Object.keys(TARGETS).join(', ')})`);
+  for (const n of names) {
+    if (['portal', 'shanghai'].includes(n)) throw new Error(`${n} is not a vrelay target: vrelay is only for Shanghai home (mac, air) <-> Singapore (v); use scp/rsync on the same side`);
+    if (!TARGETS[n]) throw new Error(`unknown target ${n} (known: ${Object.keys(TARGETS).join(', ')})`);
+  }
   const secrets = readSecrets(args.secrets);
   const cli = fs.readFileSync(CLI);
   const skill = fs.readFileSync(SKILL);

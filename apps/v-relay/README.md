@@ -1,6 +1,12 @@
 # v-relay：机器之间传大文件
 
-V 网关、V 的各个 node、Tianyi 的 Mac 之间互传几百 MB 到 GB 级文件。日常命令和消息照旧走 Tailscale，不受影响。
+跨境传几百 MB 到 GB 级文件：Tianyi 上海家里的机器（他的 Mac、MacBook Air）↔ 新加坡腾讯云上的 V。日常命令和消息照旧走 Tailscale，不受影响。
+
+**只用于这条跨境线。** 同一侧直接 scp/rsync：
+- V ↔ mirror-v-portal 等新加坡腾讯云主机：同一 VPC，内网约 1 ms。
+- Mac ↔ Air：同一个家庭局域网。
+
+V-Shanghai 不在范围内：它发出的速度被自己约 3 Mbit 的上行卡住，vrelay 解决不了；它还承载语音设备。
 
 ```
 发送端 ──分块并行 PUT──▶ Worker (v-relay) ──R2 binding──▶ R2 桶 v-relay (APAC, 7 天过期)
@@ -98,7 +104,7 @@ printf %s "$LINK_KEY" | npx wrangler@4 secret put RELAY_LINK_KEY
 
 令牌清单只存在 Tianyi 的 Mac 上：`~/.config/vrelay/relay-secrets.json`（600）。新增或吊销一台机器，就改这个文件，再重新执行 `secret put RELAY_TOKENS`。
 
-## 安装到 V、各节点和 Tianyi 的 Mac（PR 合入后，作为发布的一步）
+## 安装到 V、Air 和 Tianyi 的 Mac（PR 合入后，作为发布的一步）
 
 在 Tianyi 的 Mac 上，从已合入的提交运行（令牌只从本机 `~/.config/vrelay/relay-secrets.json` 读出，经 ssh 的 stdin 发给对应机器，每台只拿到自己那一个）：
 
@@ -112,9 +118,8 @@ node apps/v-relay/install.mjs                    # 安装或更新；可加 --on
 | `mac` | 本机 | tianyicai | `/opt/homebrew/bin/vrelay` | |
 | `v` | `ssh v`，sudo | openclaw（Gateway 用户） | `/usr/local/bin/vrelay` | `uploadLimit 45mbit`；技能装到 `~openclaw/.openclaw/skills/large-file-transfer/` |
 | `air` | 经 V，用 openclaw 的 Air 密钥 | tianyicai（OpenClaw.app 节点） | `/opt/homebrew/bin/vrelay` | |
-| `portal` | 经 V，用 openclaw 的 portal 密钥，sudo | ubuntu（节点进程） | `/usr/local/bin/vrelay` | 节点用的 node 不在 shell 的 PATH 上，包装脚本写死了它的路径 |
-| `shanghai` | `ssh voice-devices-via-v`，sudo | ubuntu | `/usr/local/bin/vrelay` | `uploadLimit 2mbit`（上行只有约 3 Mbit，还承载语音设备） |
 
+- 只有这三个目标；`--only portal` 或 `--only shanghai` 会直接报错并说明原因。
 - 命令位置放的是一个小包装脚本，固定用安装时找到的 node（≥ 18），真正的代码在 `/usr/local/lib/vrelay/vrelay.mjs`（Mac 上是 `~/.local/share/vrelay/vrelay.mjs`）。
 - 配置写到使用者的 `~/.config/vrelay/config.json`（600，目录 700）。
 - 每个文件按 sha256、权限、属主比对，一样就不动，所以可以反复运行。装完以使用者身份跑 `vrelay --version`、`health` 和一次带令牌的 `ls`。
