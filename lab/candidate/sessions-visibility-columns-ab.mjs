@@ -84,11 +84,12 @@ async function parent() {
 
   // Two lineage shapes. As built, the cloned subagent rows keep their template's spawnedBy, so ~10,800 rows have
   // parent_session_key = spawned_by and take the JSON path (worst case). V (2026-11-16): 66 of 21,913.
+  const rowsClock = Date.now();
   const equivalence = (label, order) => {
     const rows = {};
     for (const arm of order) {
       setDist(arm === "A" ? vBytes : relBytes);
-      const r = run("rows", { arm });
+      const r = run("rows", { arm, now: rowsClock });
       (rows[arm] ??= []).push(r);
       const columnRequests = r.requests.filter((q) => q.columnRequest);
       log(`${label}.rows.${arm}`, {
@@ -155,7 +156,8 @@ async function parent() {
   log("v-lineage", applyVLineage(66));
   log("fixture.shape.v-lineage", inspect());
   if (phases.has("v-lineage")) equivalence("v-lineage", ["B0", "B"]);
-  timing("v-lineage");
+  if (phases.has("v-lineage-profile")) { setDist(relBytes); log("v-lineage.profile", run("profile", {})); }
+  if (phases.has("v-lineage") || phases.has("v-lineage-timing")) timing("v-lineage");
   setDist(vBytes);
 }
 
@@ -291,6 +293,28 @@ async function child(args) {
     return () => { clearInterval(timer); max = Math.max(max, performance.now() - last); return Math.round(max); };
   };
 
+  if (args.mode === "profile") {
+    // where a cold column read spends its time: the same statements, timed one by one after the file is dropped
+    await call("sessions.list", { visibilityRowsOnly: true, limit: 1 }); // validated, as in a running Gateway
+    const evictNow = () => { for (const f of [dbPath, `${dbPath}-wal`]) if (fs.existsSync(f)) execFileSync("dd", [`of=${f}`, "oflag=nocache", "conv=notrunc,fdatasync", "count=0"], { stdio: "ignore" }); };
+    const out = {};
+    for (const round of ["cold", "warm"]) {
+      if (round === "cold") evictNow();
+      const db = new DatabaseSync(dbPath, { readOnly: true });
+      const time = (label, fn) => { const t = performance.now(); const n = fn(); out[`${round}.${label}`] = { ms: Math.round(performance.now() - t), n }; return n; };
+      time("table-header-scan", () => db.prepare("SELECT rowid AS id, session_key, entry_valid, typeof(pinned_at) AS pinned_type FROM session_nodes").all().length);
+      for (const [label, col, where] of [["updated_at", "updated_at", ""], ["current_session_id", "current_session_id", ""], ["parent_session_key", "parent_session_key", " WHERE parent_session_key IS NOT NULL"], ["spawned_by", "spawned_by", " WHERE spawned_by IS NOT NULL"], ["archived_at", "archived_at", " WHERE archived_at IS NOT NULL"], ["last_interaction_at", "last_interaction_at", " WHERE last_interaction_at IS NOT NULL"]]) {
+        time(`index.${label}`, () => db.prepare(`SELECT rowid AS id, ${col} AS v FROM session_nodes INDEXED BY idx_agent_session_nodes_${label}${where}`).all().length);
+      }
+      const special = db.prepare("SELECT session_key FROM session_nodes WHERE entry_valid != 1 OR pinned_at IS NOT NULL OR (parent_session_key IS NOT NULL AND parent_session_key = spawned_by)").all().map((r) => r.session_key);
+      if (round === "cold") evictNow();
+      time("special-rows-json", () => { let n = 0; const q = db.prepare("SELECT json_remove(entry_json, '$.skillsSnapshot', '$.systemPromptReport') AS e FROM session_nodes WHERE session_key = ?"); for (const k of special) { JSON.parse(q.get(k).e); n += 1; } return n; });
+      db.close();
+    }
+    console.log(`RESULT ${JSON.stringify(out)}`);
+    process.exit(0);
+  }
+
   if (args.mode === "listing") {
     const evict = () => { for (const f of [dbPath, `${dbPath}-wal`]) if (fs.existsSync(f)) execFileSync("dd", [`of=${f}`, "oflag=nocache", "conv=notrunc,fdatasync", "count=0"], { stdio: "ignore" }); };
     const listing = async (params) => {
@@ -311,7 +335,8 @@ async function child(args) {
     process.exit(0);
   }
 
-  // mode "rows"
+  // mode "rows": every arm lists at the same clock (activeMinutes and the subagent display window depend on it)
+  if (args.now) { const fixed = args.now; Date.now = () => fixed; }
   const t0 = performance.now();
   await call("sessions.list", { visibilityRowsOnly: true, limit: 1 }); // validates the database (canonical key check)
   const raw = new DatabaseSync(dbPath);

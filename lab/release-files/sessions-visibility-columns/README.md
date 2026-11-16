@@ -35,12 +35,13 @@ all carry an explicit `parentSessionKey`.
 
 ## Change (marker `sessions-visibility-columns-v1`)
 
-Source: openclaw-versa `versa/port-sessions-visibility-columns-20261116` @ `628f03f9d18` (two commits on
+Source: openclaw-versa `versa/port-sessions-visibility-columns-20261116` @ `13eee00de5c` (three commits on
 `3466c31b26c`, the PR #608 source; the new test `sessions-read.visibility-columns.test.ts` compares 147
 `visibilityRowsOnly` requests against the list projection and fails on the old code).
 
 - `session-accessor.sqlite-entry-BlklNPKQ.js`: `readSqliteSessionVisibilityEntries` — in one deferred read
-  transaction (or the caller's), `SELECT rowid, session_key, entry_valid, typeof(pinned_at)` from the table, and
+  transaction (or the caller's), `SELECT rowid, session_key, entry_valid, typeof(pinned_at)` from the table in rowid
+  order (keys then sorted by UTF-8 bytes, the order of `ORDER BY session_key`), and
   each other column from its covering index (`INDEXED BY`), joined by rowid. A 0/1/NULL value lives in the record
   header, so the table scan does not walk the overflow pages (where every column after `entry_json` is stored).
   Each entry is `{ sessionId, updatedAt, archivedAt?, lastInteractionAt?, spawnedBy?, parentSessionKey? }`. Rows the
@@ -77,9 +78,72 @@ Deploy: replace the three dist files and restart the Gateway once. Independent o
 
 ## Candidate (VLab)
 
-CANDIDATE_RESULTS
+Harnesses: `lab/candidate/sessions-visibility-columns-ab.mjs` (equivalence, per-listing timing, cold breakdown) and
+`lab/candidate/sessions-visibility-columns-e2e.mjs` (one `sessions_search`, derived from PR #608's harness; it needs
+PR #608's release files, branch `claude/sweet-wu-5b78f9`). VLab runtime `startup-stall-usage-20261114b`, whose touched
+files are V's bytes (asserted). Fixture: private makaron database built from the shared VLab store
+(`lab/candidate/v-scale-session-fixture.mjs`), 21,813 nodes / 1.7 GB entry JSON, plus edge rows written by OpenClaw's
+own writer (pinned, archived, spawned with implicit and explicit parentSessionKey, parent-only, parent != spawner,
+last interaction, equal timestamps, cron run key, a second agent) and one row rewritten raw (`entry_valid = 0`) in
+every arm. Two lineage shapes: **as built**, 10,802 cloned subagent rows have `parent_session_key = spawned_by`
+(JSON path, worst case); **V's shape**, 66 spawned rows kept (V 2026-11-16: 66).
 
-## Not changed
+How "cold" is measured matters. A fresh process's first listing also runs the canonical key check
+(`scanCanonicalSqliteSessionEntries`), which reads every row's entry JSON once per process — a Gateway does that once
+at start. PR #608's "cold 25.6 s" was a fresh process on a dropped file, so it is mostly that one-time check (here:
+A 25.6 s / B 24.1 s fresh-process first listing, unchanged by this patch). The numbers below are **evicted**: the
+process has listed once (database validated), then this database file is dropped from the page cache
+(`dd oflag=nocache`, our file only) before each measured call — a running Gateway whose pages were reclaimed.
+
+**Equivalence** (every `sessions.list` response field but `ts`, and the agent/session-key sequence the
+`sessions_search` tool sends to `sessions.search`): 45 requests (3 agent scopes x 4 archived modes x pages, sort
+orders, `includeGlobal`/`includeUnknown`, `activeMinutes`, `configuredAgentsOnly`, two list-projection filters) and 35
+tool cases (8 requesters x visibility all/agent/tree/self + 3 sandboxed).
+- as built, V's bytes vs release: 80 comparisons, **0 differences** (`candidate-fd2bbc95`);
+- V's shape, kill switch vs release, one fixed clock: 80 comparisons, **0 differences** (`candidate-9f5e63ea`; an
+  earlier run without the fixed clock differed on `activeMinutes: 60` only, a row crossing the cutoff between arms).
+- The release arm read no whole-store list projection for any column request; sandboxed requesters (`spawnedBy`)
+  keep it, as designed.
+
+**One visibility listing** (`archived: "all"`, `limit: 50000`; unscoped / makaron), main-thread block = call time:
+
+| | V's bytes | release |
+| --- | --- | --- |
+| V's shape, warm | 4.2–4.4 s | **0.6 s** |
+| V's shape, evicted | 56–63 s | **7.9–8.1 s** |
+| as built (10,802 JSON rows), warm | 4.2 s | 2.8–2.9 s |
+| as built, evicted | 20.4–21.1 s | 20.8–21.1 s |
+
+(`candidate-858d6d43`, `candidate-9f5e63ea`; the fixture's evicted times are larger in V's shape because rewriting
+10,727 rows' JSON scattered the file.)
+
+**One `sessions_search`** (in-process tool call, 2 listings + 109 `sessions.search`; `candidate-9611491a`, V's shape,
+5,200 historical windows with transcripts; identical results in all arms):
+
+| | longest block | total |
+| --- | --- | --- |
+| V's bytes, warm | 31.4 s | 31.4 s |
+| PR #608 only, warm | 4.4–4.8 s | 11.5–12.0 s |
+| PR #608 + this, warm | **0.89 s** | 4.4–4.9 s |
+| V's bytes, evicted | 83.7 s | 83.7 s |
+| PR #608 only, evicted | 56.0–56.2 s | 64 s |
+| PR #608 + this, evicted | **8.2 s** | 12.7–13.3 s |
+
+**What is left cold** (release statements timed one by one after eviction, `candidate-9f5e63ea`): the table scan for
+`entry_valid` / `typeof(pinned_at)` 6.6 s, the six index reads 0.6 s together, the 77 JSON rows 0.16 s. No statement
+reads entry JSON beyond those rows. On this fixture the table scan costs 6.5 s even warm through a plain connection,
+while on V's real database the same scan took 25–28 ms warm (read-only, 2026-11-16) and a locally built 20,000-row
+x 80 KB table (fresh and rewritten) 20–40 ms — the fixture's figure is not V's. An earlier version scanned with
+`ORDER BY session_key`, which walks the primary-key index with a random row lookup per row (9.3 s evicted); it now
+scans in rowid order and sorts the keys by UTF-8 bytes.
+
+## Not changed / follow-ups
+
+- Cold, the column read still blocks the Gateway thread for its table and index pages (8 s on the fixture). Two ways
+  to take it off the main thread entirely: run the column read on a read-only worker thread and await it (the
+  visibility path would preload per-database snapshots before the synchronous store load), or a partial index
+  `WHERE entry_valid != 1 OR pinned_at IS NOT NULL` that makes the read index-only (a schema change on V).
+- The canonical key check reads every entry JSON once per process (Gateway start).
 
 - The subagent-run read index the visibility rows derive `spawnedBy` from (`buildSubagentSessionListReadIndex`,
   ~4.3 s of the 19:18 profile on V's 9,400 runs) is still built once per listing on the Gateway thread.

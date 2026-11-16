@@ -20,8 +20,6 @@
   "timeoutSeconds": 0,
   "user": "lab-db91-parity",
   "env": {
-    "TARGET_ROWS": "21800",
-    "PHASES": "built-timing,v-lineage",
-    "TIMING_CACHES": "warm,evicted"
+    "TARGET_ROWS": "21800"
   }
 }
