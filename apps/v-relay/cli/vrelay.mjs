@@ -333,7 +333,6 @@ export async function runParallel({tasks, concurrency, cfg, run, onRetry = () =>
     const limit = Math.max(minSlowMs, slowFactor * median());
     for (const [n, f] of inflight) if (performance.now() - f.started > limit && !f.cancelled) { f.cancelled = true; f.cancel?.(`slow: >${Math.round(limit)} ms`); }
   }, 1000);
-  watchdog.unref?.();
   const worker = async () => {
     const conn = new Connection(cfg);
     try {
