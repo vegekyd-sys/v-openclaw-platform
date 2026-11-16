@@ -6,7 +6,8 @@
 name = "v-relay"
 main = "src/index.js"
 compatibility_date = "2026-11-01"
-workers_dev = true
+# *.workers.dev is DNS-poisoned and SNI-reset in mainland China; serve only the custom domain.
+workers_dev = false
 preview_urls = false
 # Mainland China cannot rely on *.workers.dev; serve the same Worker on a
 # custom domain in a zone this account owns. Set the real hostname at deploy
