@@ -1,0 +1,23 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/sessions-search-stall/session-transcript-reconcile-j5qhAafV.js",
+      "target": "openclaw/dist/session-transcript-reconcile-j5qhAafV.js",
+      "before": "85455fa43c681eda0b831d6dc9b147925c149acc503fd936a018e765faca325b",
+      "after": "468372b598d39c38c8e08d3b154a5ea94e18d5b04a55bd5d34b307b30ab12725"
+    },
+    {
+      "source": "lab/release-files/sessions-search-stall/session-transcript-search-pRB2YScP.js",
+      "target": "openclaw/dist/session-transcript-search-pRB2YScP.js",
+      "before": "399b50e688169ad0fea5382c38c00f89925aa29b99949bc92446d5adee3690bc",
+      "after": "649662cda15babe4753f0fedce0dc640a5279a9313b7164dd109325915efe509"
+    },
+    {
+      "source": "lab/release-files/sessions-search-stall/openclaw-tools-BODVdJQD.js",
+      "target": "openclaw/dist/openclaw-tools-BODVdJQD.js",
+      "before": "0b8b623310c01d8153a7f751c1f3a2042a2f3481d62499effce4f34d60ed2799",
+      "after": "b2c72213315e25db01159544e73447232b5a6820b79755eb7db592916c025361"
+    }
+  ]
+}
