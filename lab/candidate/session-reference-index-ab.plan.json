@@ -1,0 +1,22 @@
+{
+  "support": [
+    "lab/candidate/session-reference-index-ab.mjs",
+    "lab/candidate/v-scale-session-fixture.mjs",
+    "lab/session-reference-index.plan.json",
+    "lab/release-files/session-reference-index/session-accessor.sqlite-entry-store-VfW3gyuj.js",
+    "lab/release-files/session-reference-index/session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+    "lab/release-files/session-reference-index/session-accessor.sqlite-lifecycle-dtL0ZEAl.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "--expose-gc",
+    "--max-old-space-size=7168",
+    "lab/candidate/session-reference-index-ab.mjs"
+  ],
+  "timeoutSeconds": 5400,
+  "user": "lab-db91-parity",
+  "env": {
+    "PROFILE_OPS": "0,8",
+    "PROFILE_ARM": "B"
+  }
+}
