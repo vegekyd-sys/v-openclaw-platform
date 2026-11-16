@@ -520,6 +520,7 @@
         "lab/cli-readonly-live.test.mjs",
         "lab/lifecycle-cleanup-bounded.test.mjs",
         "lab/usage-offload.test.mjs",
+        "lab/sessions-visibility-columns.test.mjs",
         "lab/sessions-search-stall.test.mjs"
       ]
     }

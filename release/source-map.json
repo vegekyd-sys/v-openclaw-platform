@@ -1924,6 +1924,27 @@
     },
     {
       "layer": "core",
+      "path": "session-accessor.sqlite-entry-BlklNPKQ.js",
+      "sha256": "7cba57ac7e6c80bf741934f54211070977188892f9e888480a894d72c102da37",
+      "source": "versa:13eee00de5c",
+      "note": "sessions-visibility-columns (2026-11-16): sessions.list visibilityRowsOnly with column-only filters reads sessionId/updatedAt/archivedAt/lastInteractionAt/spawnedBy/parentSessionKey from session_nodes' covering indexes instead of decoding every entry JSON; entry_valid != 1, pinned and parent = spawned_by rows are still decoded (versa/port-sessions-visibility-columns-20261116, on 3466c31b26c); OPENCLAW_V_SESSIONS_VISIBILITY_COLUMNS=0 disables; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "combined-store-gateway-BwDhjbIt.js",
+      "sha256": "0cbe8b81f9c38f945b2e6e84c301083ee66106caf50a5bba547c64d098db2a13",
+      "source": "versa:13eee00de5c",
+      "note": "sessions-visibility-columns (2026-11-16): sessions.list visibilityRowsOnly with column-only filters reads sessionId/updatedAt/archivedAt/lastInteractionAt/spawnedBy/parentSessionKey from session_nodes' covering indexes instead of decoding every entry JSON; entry_valid != 1, pinned and parent = spawned_by rows are still decoded (versa/port-sessions-visibility-columns-20261116, on 3466c31b26c); OPENCLAW_V_SESSIONS_VISIBILITY_COLUMNS=0 disables; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "sessions-read-C6mAMxyQ.js",
+      "sha256": "5044b9b06adf4590aaefc182d697dc964532a4894f91aa1a80191349d84efa21",
+      "source": "versa:13eee00de5c",
+      "note": "sessions-visibility-columns (2026-11-16): sessions.list visibilityRowsOnly with column-only filters reads sessionId/updatedAt/archivedAt/lastInteractionAt/spawnedBy/parentSessionKey from session_nodes' covering indexes instead of decoding every entry JSON; entry_valid != 1, pinned and parent = spawned_by rows are still decoded (versa/port-sessions-visibility-columns-20261116, on 3466c31b26c); OPENCLAW_V_SESSIONS_VISIBILITY_COLUMNS=0 disables; not on V until promoted"
+    },
+    {
+      "layer": "core",
       "path": "session-transcript-reconcile-j5qhAafV.js",
       "sha256": "468372b598d39c38c8e08d3b154a5ea94e18d5b04a55bd5d34b307b30ab12725",
       "source": "versa:3466c31b26c",
