@@ -3,15 +3,20 @@
 // Cloudflare credential. Machines only hold a relay token (RELAY_TOKENS); the
 // R2 binding never leaves the Worker. See apps/v-relay/README.md.
 //
+// Large files are stored as independent part objects (p/<id>/<n>) under a
+// manifest (o/<id>) instead of an R2 multipart upload, because multipart parts
+// cannot be read until the upload completes. With part objects a receiver can
+// download each part as soon as it lands ("pipelined": total time is the
+// slower leg, not the sum of both). Small files are a single object at o/<id>.
+//
 // Only Web platform APIs are used so the same module runs under node --test
-// with an in-memory bucket (tests/v-relay-*.test.mjs).
+// with an in-memory bucket (tests/v-relay.test.mjs).
 
 const MiB = 1024 * 1024;
 // Workers reject request bodies over 100 MB (Free and Paid). Stay under it.
 export const MAX_PART_BYTES = 95 * MiB;
-// R2: every part except the last must be at least 5 MiB, and all non-final
-// parts must have the same size.
-export const MIN_PART_BYTES = 5 * MiB;
+// Parts are ordinary objects, so R2's 5 MiB multipart minimum does not apply.
+export const MIN_PART_BYTES = 64 * 1024;
 export const MAX_PARTS = 10000;
 const DEFAULT_MAX_OBJECT_BYTES = 50 * 1024 * MiB;
 const MAX_LINK_SECONDS = 7 * 24 * 3600;
@@ -36,6 +41,9 @@ function newId(length = 12) {
 }
 
 const objectKey = id => `o/${id}`;
+const partPrefix = id => `p/${id}/`;
+const partKey = (id, n) => `${partPrefix(id)}${String(n).padStart(5, '0')}`;
+const isParts = meta => meta?.kind === 'parts';
 
 async function sha256Bytes(text) {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(text)));
@@ -128,23 +136,35 @@ function describe(object) {
   return {
     id: object.key.slice(2),
     name: meta.name ?? null,
-    size: object.size,
+    size: isParts(meta) ? Number(meta.size) : object.size,
     sha256: meta.sha256 ?? null,
+    state: meta.state ?? 'complete',
     by: meta.by ?? null,
     uploaded: object.uploaded instanceof Date ? object.uploaded.toISOString() : object.uploaded ?? null,
-    etag: object.httpEtag ?? null,
+    etag: etagOf(object),
   };
+}
+
+// Stable across the manifest rewrite at completion, so a receiver that started
+// during the upload can resume against the finished object.
+function etagOf(object) {
+  const meta = object.customMetadata ?? {};
+  return isParts(meta) ? `"p-${String(meta.sha256 ?? '').slice(0, 32)}"` : object.httpEtag ?? null;
 }
 
 function objectHeaders(object) {
   const meta = object.customMetadata ?? {};
+  const size = isParts(meta) ? Number(meta.size) : object.size;
   const headers = new Headers({
     'content-type': 'application/octet-stream',
     'accept-ranges': 'bytes',
     'cache-control': 'private, no-store',
-    'x-relay-size': String(object.size),
+    'x-relay-size': String(size),
+    'x-relay-state': meta.state ?? 'complete',
   });
-  if (object.httpEtag) headers.set('etag', object.httpEtag);
+  const etag = etagOf(object);
+  if (etag) headers.set('etag', etag);
+  if (isParts(meta)) headers.set('x-relay-part-size', meta.partSize);
   if (meta.sha256) headers.set('x-relay-sha256', meta.sha256);
   if (meta.name) {
     headers.set('x-relay-name', encodeURIComponent(meta.name));
@@ -162,11 +182,38 @@ async function readJson(request, limit = 4 * MiB) {
 }
 
 function limits(env) {
-  const allowSmall = String(env.ALLOW_SMALL_PARTS ?? '') === '1';
   return {
-    minPart: allowSmall ? 1 : MIN_PART_BYTES,
+    minPart: MIN_PART_BYTES,
     maxObject: intHeader(String(env.MAX_OBJECT_BYTES ?? '')) ?? DEFAULT_MAX_OBJECT_BYTES,
   };
+}
+
+const manifestMeta = (meta, patch) => ({...meta, ...patch});
+
+async function putManifest(env, id, meta) {
+  return env.BUCKET.put(objectKey(id), new Uint8Array(0), {httpMetadata: {contentType: 'application/octet-stream'}, customMetadata: meta});
+}
+
+async function listParts(env, id) {
+  const sizes = new Map();
+  let cursor;
+  do {
+    const page = await env.BUCKET.list({prefix: partPrefix(id), cursor, limit: 1000});
+    for (const o of page.objects) sizes.set(Number(o.key.slice(partPrefix(id).length)), o.size);
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return sizes;
+}
+
+function expectedPartSize(meta, n) {
+  const size = Number(meta.size), partSize = Number(meta.partSize);
+  return Math.min(partSize, size - (n - 1) * partSize);
+}
+
+async function deleteObject(env, id) {
+  const keys = [...(await listParts(env, id)).keys()].map(n => partKey(id, n));
+  for (let i = 0; i < keys.length; i += 1000) await env.BUCKET.delete(keys.slice(i, i + 1000));
+  await env.BUCKET.delete(objectKey(id));
 }
 
 async function createUpload(request, env, by) {
@@ -179,11 +226,9 @@ async function createUpload(request, env, by) {
   if (Math.ceil(size / partSize) > MAX_PARTS) throw new HttpError(400, `more than ${MAX_PARTS} parts; raise partSize`);
   if (!SHA256_RE.test(body.sha256 ?? '')) throw new HttpError(400, 'sha256 must be 64 lowercase hex');
   const id = newId();
-  const upload = await env.BUCKET.createMultipartUpload(objectKey(id), {
-    httpMetadata: {contentType: 'application/octet-stream'},
-    customMetadata: {name: cleanName(body.name), size: String(size), sha256: body.sha256, partSize: String(partSize), by, createdAt: new Date().toISOString()},
-  });
-  return json(201, {id, uploadId: upload.uploadId, partSize, parts: Math.ceil(size / partSize), maxPartBytes: MAX_PART_BYTES});
+  const parts = Math.ceil(size / partSize);
+  await putManifest(env, id, {kind: 'parts', state: 'uploading', name: cleanName(body.name), size: String(size), sha256: body.sha256, partSize: String(partSize), parts: String(parts), by, createdAt: new Date().toISOString()});
+  return json(201, {id, partSize, parts, maxPartBytes: MAX_PART_BYTES});
 }
 
 async function putSmall(request, env, by) {
@@ -198,7 +243,7 @@ async function putSmall(request, env, by) {
   const object = await env.BUCKET.put(objectKey(id), length === 0 ? new Uint8Array(0) : request.body, {
     sha256,
     httpMetadata: {contentType: 'application/octet-stream'},
-    customMetadata: {name, size: String(length), sha256, partSize: '0', by, createdAt: new Date().toISOString()},
+    customMetadata: {kind: 'single', state: 'complete', name, size: String(length), sha256, by, createdAt: new Date().toISOString()},
   });
   if (!object) throw new HttpError(500, 'put failed');
   if (object.size !== length) {
@@ -208,51 +253,99 @@ async function putSmall(request, env, by) {
   return json(201, describe(object));
 }
 
+async function uploadingManifest(env, id) {
+  const head = await env.BUCKET.head(objectKey(id));
+  if (!head || !isParts(head.customMetadata)) throw new HttpError(404, 'NoSuchUpload: upload not found');
+  return head;
+}
+
 async function uploadPart(request, env, id, partNumber) {
-  const uploadId = request.headers.get('x-relay-upload-id');
-  if (!uploadId) throw new HttpError(400, 'x-relay-upload-id required');
-  if (!Number.isSafeInteger(partNumber) || partNumber < 1 || partNumber > MAX_PARTS) throw new HttpError(400, 'bad part number');
+  const head = await uploadingManifest(env, id);
+  const meta = head.customMetadata;
+  if (meta.state !== 'uploading') throw new HttpError(409, 'upload already completed');
+  const parts = Number(meta.parts);
+  if (!Number.isSafeInteger(partNumber) || partNumber < 1 || partNumber > parts) throw new HttpError(400, `part number must be 1..${parts}`);
   const length = intHeader(request.headers.get('content-length'));
   if (length == null) throw new HttpError(411, 'content-length required');
-  if (length < 1 || length > MAX_PART_BYTES) throw new HttpError(413, `part must be 1..${MAX_PART_BYTES} bytes`);
-  const upload = env.BUCKET.resumeMultipartUpload(objectKey(id), uploadId);
-  const part = await upload.uploadPart(partNumber, request.body);
-  return json(200, {partNumber: part.partNumber, etag: part.etag});
+  const expected = expectedPartSize(meta, partNumber);
+  if (length !== expected) throw new HttpError(400, `part ${partNumber} must be ${expected} bytes, got ${length}`);
+  const sha256 = request.headers.get('x-relay-sha256');
+  if (sha256 != null && !SHA256_RE.test(sha256)) throw new HttpError(400, 'x-relay-sha256 must be 64 lowercase hex');
+  // With sha256, R2 rejects a body that does not match it.
+  const object = await env.BUCKET.put(partKey(id, partNumber), request.body, sha256 ? {sha256} : {});
+  if (!object || object.size !== expected) {
+    await env.BUCKET.delete(partKey(id, partNumber));
+    throw new HttpError(409, `stored ${object?.size} bytes for part ${partNumber}, expected ${expected}`);
+  }
+  return json(200, {partNumber, etag: object.httpEtag ?? object.etag ?? 'ok'});
 }
 
 async function completeUpload(request, env, id) {
-  const body = await readJson(request);
-  if (!body.uploadId) throw new HttpError(400, 'uploadId required');
-  if (!Array.isArray(body.parts) || body.parts.length < 1 || body.parts.length > MAX_PARTS) throw new HttpError(400, 'parts required');
-  const parts = body.parts.map(p => ({partNumber: Number(p.partNumber), etag: String(p.etag ?? '')}));
-  for (let i = 0; i < parts.length; i++) {
-    if (parts[i].partNumber !== i + 1 || !parts[i].etag) throw new HttpError(400, 'parts must be 1..N in order with etags');
-  }
-  const upload = env.BUCKET.resumeMultipartUpload(objectKey(id), body.uploadId);
-  const object = await upload.complete(parts);
-  const head = await env.BUCKET.head(objectKey(id));
-  const expected = Number(head?.customMetadata?.size);
-  if (!head || head.size !== expected) {
-    await env.BUCKET.delete(objectKey(id));
-    throw new HttpError(409, `stored ${head?.size ?? object?.size} bytes, expected ${expected}; object deleted`);
-  }
-  return json(200, describe(head));
+  await readJson(request); // body ignored; kept for compatibility
+  const head = await uploadingManifest(env, id);
+  const meta = head.customMetadata;
+  if (meta.state === 'complete') return json(200, describe(head));
+  const sizes = await listParts(env, id);
+  const missing = [];
+  for (let n = 1; n <= Number(meta.parts); n++) if (sizes.get(n) !== expectedPartSize(meta, n)) missing.push(n);
+  if (missing.length) throw new HttpError(409, `${missing.length} part(s) missing or wrong size: ${missing.slice(0, 10).join(',')}${missing.length > 10 ? ',...' : ''}`);
+  const object = await putManifest(env, id, manifestMeta(meta, {state: 'complete', completedAt: new Date().toISOString()}));
+  return json(200, describe(object));
 }
 
 async function abortUpload(request, env, id) {
-  const uploadId = request.headers.get('x-relay-upload-id');
-  if (!uploadId) throw new HttpError(400, 'x-relay-upload-id required');
-  await env.BUCKET.resumeMultipartUpload(objectKey(id), uploadId).abort();
+  await deleteObject(env, id);
   return json(200, {aborted: id});
+}
+
+async function partsStatus(env, id) {
+  const head = await env.BUCKET.head(objectKey(id));
+  if (!head) throw new HttpError(404, 'not found');
+  const meta = head.customMetadata ?? {};
+  if (!isParts(meta)) return json(200, {id, state: 'complete', size: head.size, partSize: Math.max(1, head.size), parts: 1, done: [1]});
+  const parts = Number(meta.parts);
+  let done;
+  if (meta.state === 'complete') done = Array.from({length: parts}, (_, i) => i + 1);
+  else {
+    const sizes = await listParts(env, id);
+    done = [...sizes.keys()].filter(n => n >= 1 && n <= parts && sizes.get(n) === expectedPartSize(meta, n)).sort((a, b) => a - b);
+  }
+  return json(200, {id, state: meta.state, size: Number(meta.size), partSize: Number(meta.partSize), parts, sha256: meta.sha256, done});
+}
+
+// Streams [start, start+length) of a part-backed object, part by part.
+function streamParts(env, id, meta, start, length) {
+  const partSize = Number(meta.partSize);
+  const {readable, writable} = new TransformStream();
+  (async () => {
+    let pos = start;
+    const end = start + length;
+    while (pos < end) {
+      const n = Math.floor(pos / partSize) + 1;
+      const offset = pos - (n - 1) * partSize;
+      const take = Math.min(end - pos, partSize - offset);
+      const part = await env.BUCKET.get(partKey(id, n), {range: {offset, length: take}});
+      if (!part) throw new Error(`part ${n} missing`);
+      await part.body.pipeTo(writable, {preventClose: true});
+      pos += take;
+    }
+    await writable.close();
+  })().catch(error => writable.abort(error).catch(() => {}));
+  return readable;
 }
 
 async function getObject(request, env, id) {
   if (request.method === 'HEAD') {
     const head = await env.BUCKET.head(objectKey(id));
     if (!head) throw new HttpError(404, 'not found');
-    return new Response(null, {status: 200, headers: (() => { const h = objectHeaders(head); h.set('content-length', String(head.size)); return h; })()});
+    const headers = objectHeaders(head);
+    headers.set('content-length', headers.get('x-relay-size'));
+    return new Response(null, {status: 200, headers});
   }
   const range = parseRange(request.headers.get('range'));
+  const head = await env.BUCKET.head(objectKey(id));
+  if (!head) throw new HttpError(404, 'not found');
+  if (isParts(head.customMetadata)) return getParts(env, id, head, range);
   let object;
   try {
     object = await env.BUCKET.get(objectKey(id), range ? {range} : {});
@@ -284,6 +377,33 @@ async function getObject(request, env, id) {
   return new Response(object.body, {status: 206, headers});
 }
 
+async function getParts(env, id, head, range) {
+  const meta = head.customMetadata;
+  const size = Number(meta.size);
+  const headers = objectHeaders(head);
+  let start = 0, length = size;
+  if (range) {
+    if (range.suffix != null) { length = Math.min(range.suffix, size); start = size - length; }
+    else {
+      start = range.offset;
+      if (start >= size) return new Response(null, {status: 416, headers: {'content-range': `bytes */${size}`}});
+      length = Math.min(range.length ?? size - start, size - start);
+    }
+  }
+  if (meta.state !== 'complete') {
+    // Mid-upload: serve only ranges whose parts have all landed.
+    const partSize = Number(meta.partSize);
+    const first = Math.floor(start / partSize) + 1, last = Math.floor((start + length - 1) / partSize) + 1;
+    for (let n = first; n <= last; n++) {
+      const part = await env.BUCKET.head(partKey(id, n));
+      if (!part || part.size !== expectedPartSize(meta, n)) throw new HttpError(409, `part ${n} not uploaded yet`);
+    }
+  }
+  headers.set('content-length', String(length));
+  if (range) headers.set('content-range', `bytes ${start}-${start + length - 1}/${size}`);
+  return new Response(length ? streamParts(env, id, meta, start, length) : null, {status: range ? 206 : 200, headers});
+}
+
 async function listObjects(url, env) {
   const cursor = url.searchParams.get('cursor') || undefined;
   const listed = await env.BUCKET.list({prefix: 'o/', cursor, limit: 1000, include: ['customMetadata']});
@@ -311,10 +431,11 @@ export async function handle(request, env) {
   if (path === '/v1/health' && method === 'GET') return json(200, {ok: true, service: 'v-relay'});
 
   const objectMatch = /^\/v1\/objects\/([^/]+)$/.exec(path);
-  if (objectMatch && (method === 'GET' || method === 'HEAD') && url.searchParams.has('sig')) {
-    const id = objectMatch[1];
+  const partsMatch = /^\/v1\/objects\/([^/]+)\/parts$/.exec(path);
+  if ((objectMatch || partsMatch) && (method === 'GET' || method === 'HEAD') && url.searchParams.has('sig')) {
+    const id = (objectMatch ?? partsMatch)[1];
     if (!ID_RE.test(id) || !(await linkAllowed(url, env, id))) throw new HttpError(403, 'link invalid or expired');
-    return getObject(request, env, id);
+    return objectMatch ? getObject(request, env, id) : partsStatus(env, id);
   }
 
   const by = await authenticate(request, env);
@@ -330,13 +451,14 @@ export async function handle(request, env) {
   if (m && method === 'POST') { if (!ID_RE.test(m[1])) throw new HttpError(400, 'bad id'); return completeUpload(request, env, m[1]); }
   m = /^\/v1\/uploads\/([^/]+)$/.exec(path);
   if (m && method === 'DELETE') { if (!ID_RE.test(m[1])) throw new HttpError(400, 'bad id'); return abortUpload(request, env, m[1]); }
+  if (partsMatch && method === 'GET') { if (!ID_RE.test(partsMatch[1])) throw new HttpError(400, 'bad id'); return partsStatus(env, partsMatch[1]); }
   m = /^\/v1\/objects\/([^/]+)\/link$/.exec(path);
   if (m && method === 'POST') { if (!ID_RE.test(m[1])) throw new HttpError(400, 'bad id'); return makeLink(request, url, env, m[1]); }
   if (objectMatch) {
     const id = objectMatch[1];
     if (!ID_RE.test(id)) throw new HttpError(400, 'bad id');
     if (method === 'GET' || method === 'HEAD') return getObject(request, env, id);
-    if (method === 'DELETE') { await env.BUCKET.delete(objectKey(id)); return json(200, {deleted: id}); }
+    if (method === 'DELETE') { await deleteObject(env, id); return json(200, {deleted: id}); }
   }
   throw new HttpError(404, 'no such route');
 }

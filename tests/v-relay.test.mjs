@@ -1,7 +1,8 @@
 // v-relay: the real Worker module behind a local HTTP adapter with an in-memory
-// R2 bucket, driven by the real vrelay CLI. Covers multipart put/get, retry on
-// injected faults, resume after interruption, sha256 mismatch, signed links,
-// rate limit and config permissions. No network, no Cloudflare.
+// R2 bucket, driven by the real vrelay CLI. Covers part-object put/get, retry on
+// injected faults, resume after interruption, pipelined download while the
+// upload runs, sha256 mismatch, signed links, rate limit, fake-IP DNS bypass
+// and config permissions. No network, no Cloudflare.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -12,7 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {Readable, PassThrough} from 'node:stream';
 import worker, {parseRange, parseTokens, cleanName} from '../apps/v-relay/worker/src/index.js';
-import {main, parseRate, parseSize, Limiter, runParallel, Route} from '../apps/v-relay/cli/vrelay.mjs';
+import {main, parseRate, parseSize, Limiter, runParallel, Route, isFakeIp} from '../apps/v-relay/cli/vrelay.mjs';
 
 const TOKEN = 'test-token-0123456789abcdefghij';
 const LINK_KEY = 'link-key-0123456789abcdefghijklmn';
@@ -76,13 +77,13 @@ class FakeBucket {
     const truncated = start + page.length < keys.length;
     return {objects: page.map(k => this.view(this.objects.get(k))), truncated, cursor: truncated ? String(start + page.length) : undefined};
   }
-  async delete(key) { this.objects.delete(key); }
+  async delete(keys) { for (const key of [keys].flat()) this.objects.delete(key); }
 }
 
 // faults: (req: {method, path, range, attempt}) -> undefined | 'reset' | 'stall' | status number
 async function startRelay({faults} = {}) {
   const bucket = new FakeBucket();
-  const env = {BUCKET: bucket, RELAY_TOKENS: `mac=${TOKEN},other=another-token-abcdefghijklmnopqrstuv`, RELAY_LINK_KEY: LINK_KEY, ALLOW_SMALL_PARTS: '1'};
+  const env = {BUCKET: bucket, RELAY_TOKENS: `mac=${TOKEN},other=another-token-abcdefghijklmnopqrstuv`, RELAY_LINK_KEY: LINK_KEY};
   const seen = [];
   const counts = new Map();
   const server = http.createServer(async (req, res) => {
@@ -127,7 +128,7 @@ function makeIo(env) {
 async function tmpdir() { return fsp.mkdtemp(path.join(os.tmpdir(), 'v-relay-test-')); }
 
 function cliEnv(home, endpoint, extra = {}) {
-  return {HOME: home, VRELAY_ENDPOINT: endpoint, VRELAY_TOKEN: TOKEN, VRELAY_ALLOW_SMALL_PARTS: '1', VRELAY_PART_SIZE: '64K', VRELAY_CHUNK_SIZE: '64K', VRELAY_IDLE_TIMEOUT_MS: '1500', VRELAY_RETRIES: '4', ...extra};
+  return {HOME: home, VRELAY_ENDPOINT: endpoint, VRELAY_TOKEN: TOKEN, VRELAY_PART_SIZE: '64K', VRELAY_CHUNK_SIZE: '64K', VRELAY_IDLE_TIMEOUT_MS: '1500', VRELAY_RETRIES: '4', ...extra};
 }
 
 async function run(argv, env) {
@@ -170,14 +171,14 @@ test('worker requires a relay token except for health and signed links', async (
   assert.equal((await call('/v1/objects', {headers: {authorization: 'Bearer wrong-token-0123456789abcdefgh'}})).status, 401);
   assert.equal((await call('/v1/objects', {headers: {authorization: `Bearer ${TOKEN}`}})).status, 200);
   assert.equal((await call('/v1/objects/abcdefgh?exp=9999999999&sig=' + '0'.repeat(64))).status, 403);
-  // Real R2 part-size rule is enforced unless ALLOW_SMALL_PARTS.
-  const res = await call('/v1/uploads', {method: 'POST', headers: {authorization: `Bearer ${TOKEN}`}, body: JSON.stringify({name: 'x', size: 10 * 1024 * 1024, sha256: 'a'.repeat(64), partSize: 1024 * 1024})});
+  // Parts below 64 KiB are refused.
+  const res = await call('/v1/uploads', {method: 'POST', headers: {authorization: `Bearer ${TOKEN}`}, body: JSON.stringify({name: 'x', size: 10 * 1024 * 1024, sha256: 'a'.repeat(64), partSize: 1024})});
   assert.equal(res.status, 400);
   const tooMany = await call('/v1/uploads', {method: 'POST', headers: {authorization: `Bearer ${TOKEN}`}, body: JSON.stringify({name: 'x', size: 6 * 1024 * 1024 * 10001, sha256: 'a'.repeat(64), partSize: 6 * 1024 * 1024})});
   assert.equal(tooMany.status, 400);
 });
 
-test('multipart put and get round-trip with retries on injected faults', async () => {
+test('part-object put and get round-trip with retries on injected faults', async () => {
   const dir = await tmpdir();
   const relay = await startRelay({faults: ({method, path: p, range, attempt}) => {
     if (method === 'PUT' && p.endsWith('/parts/2') && attempt === 1) return 500;
@@ -245,7 +246,7 @@ test('put restarts cleanly when the relay no longer knows the upload', async () 
     const {file} = await makeFile(dir, 300 * 1024);
     const env = cliEnv(dir, relay.endpoint);
     assert.ok((await run(['put', file, '-q', '--concurrency', '1'], env)).error);
-    relay.bucket.uploads.clear(); // lifecycle abort-multipart, for example
+    relay.bucket.objects.clear(); // lifecycle expiry, for example
     fail = false;
     const second = await run(['put', file, '-q'], env);
     assert.match(second.error?.message ?? '', /no longer exists/);
@@ -284,7 +285,7 @@ test('get rejects a sha256 mismatch and removes the partial file', async () => {
     const {file} = await makeFile(dir, 200 * 1024);
     const env = cliEnv(dir, relay.endpoint);
     const id = (await run(['put', file, '-q'], env)).out;
-    const obj = relay.bucket.objects.get(`o/${id}`);
+    const obj = relay.bucket.objects.get(`p/${id}/00002`);
     obj.data[1000] ^= 0xff;
     const outFile = path.join(dir, 'bad.bin');
     const r = await run(['get', id, outFile, '-q'], env);
@@ -323,6 +324,9 @@ test('small and empty files go single-shot; ls, stat, rm and signed links work',
     assert.equal((await run(['get', e.id, emptyOut, '-q'], env)).error, undefined);
     assert.equal((await fsp.stat(emptyOut)).size, 0);
     assert.equal((await run(['rm', s.id], env)).out, `deleted ${s.id}`);
+    assert.ok([...relay.bucket.objects.keys()].some(k => k.startsWith(`p/${big.id}/`)));
+    assert.equal((await run(['rm', big.id], env)).error, undefined);
+    assert.ok(![...relay.bucket.objects.keys()].some(k => k.includes(big.id)), 'rm removes every part');
     assert.match((await run(['stat', s.id], env)).error?.message ?? '', /404/);
   } finally { await relay.close(); await fsp.rm(dir, {recursive: true, force: true}); }
 });
@@ -397,5 +401,109 @@ test('route probes every address and pins transfers to a healthy one', async () 
     const outFile = path.join(dir, 'via-route.bin');
     assert.equal((await run(['get', JSON.parse(r.out).id, outFile, '-q'], env)).error, undefined);
     assert.equal(await sha(outFile), sha256);
+  } finally { await relay.close(); await fsp.rm(dir, {recursive: true, force: true}); }
+});
+
+test('get downloads while the upload is still running (pipelined)', async () => {
+  const dir = await tmpdir();
+  const relay = await startRelay();
+  try {
+    const {file, sha256} = await makeFile(dir, 640 * 1024 + 7);
+    // ~1 s upload; the receiver starts as soon as the id is known.
+    const putIo = makeIo(cliEnv(dir, relay.endpoint, {VRELAY_UPLOAD_LIMIT: '512K'}));
+    const idKnown = new Promise(resolve => { putIo.io.onId = resolve; });
+    const putDone = main(['put', file, '--json'], putIo.io);
+    const id = await idKnown;
+    assert.match(putIo.err(), new RegExp(`id ${id} \\(receivers can start now`));
+    const outFile = path.join(dir, 'piped.bin');
+    const got = await run(['get', id, outFile, '--json'], cliEnv(dir, relay.endpoint, {VRELAY_POLL_MS: '50'}));
+    assert.equal(got.error, undefined, got.error?.stack);
+    assert.equal(await putDone, 0);
+    const g = JSON.parse(got.out);
+    assert.equal(g.pipelined, true);
+    assert.equal(g.verified, true);
+    assert.match(got.err, /still uploading/);
+    assert.equal(await sha(outFile), sha256);
+    const firstRanged = relay.seen.findIndex(r => r.method === 'GET' && r.range);
+    const completed = relay.seen.findIndex(r => r.path.endsWith('/complete'));
+    assert.ok(firstRanged >= 0 && firstRanged < completed, `first chunk at ${firstRanged}, complete at ${completed}`);
+  } finally { await relay.close(); await fsp.rm(dir, {recursive: true, force: true}); }
+});
+
+test('a pipelined get gives up on a stalled sender and resumes once it is back', async () => {
+  const dir = await tmpdir();
+  let failPart6 = true;
+  const relay = await startRelay({faults: ({method, path: p}) => (failPart6 && method === 'PUT' && p.endsWith('/parts/6') ? 403 : undefined)});
+  try {
+    const {file, sha256} = await makeFile(dir, 512 * 1024);
+    const putEnv = cliEnv(dir, relay.endpoint);
+    const first = await run(['put', file, '-q', '--concurrency', '1'], putEnv);
+    assert.match(first.error?.message ?? '', /HTTP 403/);
+    const id = JSON.parse(await fsp.readFile(path.join(dir, '.cache', 'vrelay', 'put', (await fsp.readdir(path.join(dir, '.cache', 'vrelay', 'put')))[0]), 'utf8')).id;
+    const getEnv = cliEnv(dir, relay.endpoint, {VRELAY_POLL_MS: '20', VRELAY_FOLLOW_TIMEOUT_MS: '300'});
+    const outFile = path.join(dir, 'stalled.bin');
+    const stalled = await run(['get', id, outFile, '-q'], getEnv);
+    assert.match(stalled.error?.message ?? '', /no new parts/);
+    const partial = JSON.parse(await fsp.readFile(`${outFile}.vrelay-state.json`, 'utf8'));
+    assert.equal(partial.done.length, 5, 'the five landed parts were kept');
+    failPart6 = false;
+    assert.equal((await run(['put', file, '-q'], putEnv)).error, undefined);
+    const before = relay.seen.length;
+    const resumed = await run(['get', id, outFile], getEnv);
+    assert.equal(resumed.error, undefined, resumed.error?.stack);
+    assert.match(resumed.err, /resuming/);
+    assert.equal(relay.seen.slice(before).filter(r => r.method === 'GET' && r.range).length, 3);
+    assert.equal(await sha(outFile), sha256);
+  } finally { await relay.close(); await fsp.rm(dir, {recursive: true, force: true}); }
+});
+
+test('proxy fake-IPs from the system resolver are bypassed through public DNS', async () => {
+  const relay = await startRelay();
+  try {
+    assert.equal(isFakeIp('198.18.0.7'), true);
+    assert.equal(isFakeIp('198.19.255.1'), true);
+    assert.equal(isFakeIp('172.67.1.1'), false);
+    const port = new URL(relay.endpoint).port;
+    const lookup = async () => [{address: '198.18.0.7', family: 4}];
+    const resolvePublic = async () => [{address: '127.0.0.1', family: 4}];
+    const auto = await new Route({family: '4', dns: 'auto', dnsServers: ['192.0.2.1']}, {lookup, resolvePublic}).prepare(`http://relay-host.test:${port}`, {timeoutMs: 2000});
+    assert.deepEqual(auto.healthy.map(a => a.address), ['127.0.0.1']);
+    assert.match(auto.via, /public-dns/);
+    const system = await new Route({family: '4', dns: 'system'}, {lookup, resolvePublic}).prepare(`http://relay-host.test:${port}`, {timeoutMs: 200});
+    assert.deepEqual(system.probes.map(a => a.address), ['198.18.0.7']);
+    // Real addresses from the system resolver are used as they are.
+    const plain = await new Route({family: '4', dns: 'auto'}, {lookup: async () => [{address: '127.0.0.1', family: 4}], resolvePublic: async () => { throw new Error('must not be called'); }}).prepare(`http://relay-host.test:${port}`, {timeoutMs: 2000});
+    assert.equal(plain.via, 'system');
+  } finally { await relay.close(); }
+});
+
+test('download work stealing: a stalled range is taken over, large ranges are split', async () => {
+  const dir = await tmpdir();
+  const relay = await startRelay({faults: ({method, range, attempt}) => (method === 'GET' && range === 'bytes=196608-262143' && attempt === 1 ? 'stall' : undefined)});
+  try {
+    const {file, sha256} = await makeFile(dir, 512 * 1024);
+    const env = cliEnv(dir, relay.endpoint, {VRELAY_IDLE_TIMEOUT_MS: '30000', VRELAY_STALL_MS: '200', VRELAY_GET_CONCURRENCY: '4'});
+    const id = (await run(['put', file, '-q'], env)).out;
+    const outFile = path.join(dir, 'stolen.bin');
+    const started = performance.now();
+    const got = await run(['get', id, outFile, '--json', '-q'], env);
+    assert.equal(got.error, undefined, got.error?.stack);
+    const g = JSON.parse(got.out);
+    assert.ok(g.steals >= 1, `steals ${g.steals}`);
+    assert.equal(g.retries, 0);
+    assert.ok(performance.now() - started < 10000, 'did not wait for the 30 s idle timeout');
+    assert.equal(await sha(outFile), sha256);
+    // One 512 KiB chunk, 4 connections, 64 KiB minimum piece: idle connections
+    // split it, so several distinct ranges are requested and the bytes still match.
+    const before = relay.seen.length;
+    const split = await run(['get', id, path.join(dir, 'split.bin'), '--json', '-q'], {...env, VRELAY_CHUNK_SIZE: '512K', VRELAY_STEAL_MIN: '64K'});
+    assert.equal(split.error, undefined, split.error?.stack);
+    const ranges = new Set(relay.seen.slice(before).filter(r => r.method === 'GET' && r.range).map(r => r.range));
+    assert.ok(ranges.size >= 2, `ranges ${[...ranges]}`);
+    assert.equal(await sha(path.join(dir, 'split.bin')), sha256);
+    // Stealing can be turned off.
+    const off = await run(['get', id, path.join(dir, 'plain.bin'), '--json', '-q'], {...env, VRELAY_STEAL: 'off'});
+    assert.equal(off.error, undefined, off.error?.stack);
+    assert.equal(JSON.parse(off.out).steals, 0);
   } finally { await relay.close(); await fsp.rm(dir, {recursive: true, force: true}); }
 });

@@ -2,8 +2,9 @@
 // vrelay: move large files between V, its nodes and Tianyi's Mac through the
 // v-relay Worker (Cloudflare R2). Zero dependencies; Node >= 18 on macOS/Linux.
 //
-//   vrelay put <file>            -> prints an id
-//   vrelay get <id|link> [out]   -> downloads, verifies sha256
+//   vrelay put <file>            -> prints an id (early on stderr, final on stdout)
+//   vrelay get <id|link> [out]   -> downloads, verifies sha256; works while the
+//                                   upload is still running (pipelined)
 //   vrelay ls | stat <id> | rm <id>... | link <id> [--hours 24] | health
 //   vrelay login --endpoint <url> [--token-file <file>]   (token on stdin otherwise)
 //
@@ -24,9 +25,9 @@ import {fileURLToPath} from 'node:url';
 
 const MiB = 1024 * 1024;
 const MAX_PART = 95 * MiB;
-const MIN_PART = 5 * MiB;
+const MIN_PART = 64 * 1024;
 const SLICE = 256 * 1024;
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 
 class FatalError extends Error {}
 class HttpStatusError extends Error {
@@ -123,10 +124,22 @@ export function loadConfig(args, env) {
     retries: Number(pick('retries', 'VRELAY_RETRIES', 'retries', 8)),
     slowMinMs: Number(pick('slow-min-ms', 'VRELAY_SLOW_MIN_MS', 'slowMinMs', 30000)),
     resolve: String(pick('resolve', 'VRELAY_RESOLVE', 'resolve', '')).split(',').map(s => s.trim()).filter(Boolean),
-    allowSmallParts: env.VRELAY_ALLOW_SMALL_PARTS === '1',
+    // auto: if the system resolver hands out proxy fake-IPs (Clash/Surge
+    // 198.18.0.0/15), resolve the relay host through public DNS and connect
+    // directly. system: always use the system resolver (and its proxy).
+    dns: String(pick('dns', 'VRELAY_DNS', 'dns', 'auto')),
+    dnsServers: String(pick('dns-servers', 'VRELAY_DNS_SERVERS', 'dnsServers', '223.5.5.5,119.29.29.29,1.1.1.1,8.8.8.8')).split(',').map(s => s.trim()).filter(Boolean),
+    pollMs: Number(pick('poll-ms', 'VRELAY_POLL_MS', 'pollMs', 1000)),
+    followTimeoutMs: Number(pick('follow-timeout-ms', 'VRELAY_FOLLOW_TIMEOUT_MS', 'followTimeoutMs', 600000)),
+    // Work stealing on download: idle connections split the largest in-flight
+    // range (pieces >= stealMinBytes) and take over ranges with no bytes for stallMs.
+    steal: !['0', 'false', 'off', 'no'].includes(String(pick('steal', 'VRELAY_STEAL', 'steal', 'on')).toLowerCase()),
+    stealMinBytes: parseSize(pick('steal-min', 'VRELAY_STEAL_MIN', 'stealMin', '1M')),
+    stallMs: Number(pick('stall-ms', 'VRELAY_STALL_MS', 'stallMs', 3000)),
   };
   for (const k of ['putConcurrency', 'getConcurrency']) if (!Number.isInteger(cfg[k]) || cfg[k] < 1 || cfg[k] > 64) throw new FatalError(`concurrency must be an integer 1..64 (${k}=${cfg[k]})`);
   if (!['4', '6', 'auto'].includes(cfg.family)) throw new FatalError('family must be 4, 6 or auto');
+  if (!['auto', 'system'].includes(cfg.dns)) throw new FatalError('dns must be auto or system');
   return cfg;
 }
 
@@ -162,24 +175,58 @@ export class Limiter {
 // rank the healthy ones. Seen from Shanghai on 2026-11-16, one of the two
 // Cloudflare anycast addresses of a tianyi.live host was reset by the GFW while
 // the other worked, so "first address the resolver returns" is not good enough.
+// Proxy fake-IP ranges (Clash/Surge default 198.18.0.0/15). On Tianyi's Mac
+// the system resolver returns these and the transfer then goes through the
+// proxy: 2.8 MiB/s instead of 7.6 MiB/s direct (2026-11-16).
+export function isFakeIp(address) {
+  return /^198\.1[89]\./.test(address);
+}
+
+async function publicResolve(host, servers) {
+  const resolver = new dns.promises.Resolver({timeout: 3000, tries: 2});
+  resolver.setServers(servers);
+  const [v4, v6] = await Promise.all([resolver.resolve4(host).catch(() => []), resolver.resolve6(host).catch(() => [])]);
+  return [...v4.map(address => ({address, family: 4})), ...v6.map(address => ({address, family: 6}))];
+}
+
 export class Route {
-  constructor(cfg) { this.cfg = cfg; this.hosts = new Map(); }
-  async prepare(url, {timeoutMs = 6000} = {}) {
+  constructor(cfg, {lookup = host => dns.promises.lookup(host, {all: true}), resolvePublic = publicResolve} = {}) {
+    this.cfg = cfg; this.hosts = new Map(); this.lookup = lookup; this.resolvePublic = resolvePublic;
+  }
+  async resolveHost(host) {
+    if (this.cfg.resolve?.length) return {addrs: this.cfg.resolve.map(address => ({address, family: net.isIP(address)})).filter(a => a.family), via: 'config'};
+    const system = await this.lookup(host).catch(() => []);
+    if (this.cfg.dns === 'system' || !system.some(a => isFakeIp(a.address))) return {addrs: system, via: 'system'};
+    const real = (await this.resolvePublic(host, this.cfg.dnsServers ?? []).catch(() => [])).filter(a => !isFakeIp(a.address));
+    return real.length ? {addrs: real, via: 'public-dns (system resolver gave proxy fake-IPs)'} : {addrs: system, via: 'system (public DNS failed)'};
+  }
+  async prepare(url, {timeoutMs = 6000, graceMs = 1500} = {}) {
     const u = new URL(url);
     const host = u.hostname.replace(/^\[|\]$/g, '');
     if (net.isIP(host) || this.hosts.has(host)) return this.hosts.get(host) ?? null;
-    let addrs;
-    if (this.cfg.resolve?.length) addrs = this.cfg.resolve.map(address => ({address, family: net.isIP(address)})).filter(a => a.family);
-    else addrs = await dns.promises.lookup(host, {all: true}).catch(() => []);
+    let {addrs, via} = await this.resolveHost(host);
     addrs = addrs.filter((a, i) => addrs.findIndex(b => b.address === a.address) === i);
     const pref = this.cfg.family === 'auto' ? 0 : Number(this.cfg.family);
     const ordered = pref ? [...addrs.filter(a => a.family === pref), ...addrs.filter(a => a.family !== pref)] : addrs;
-    const probes = await Promise.all(ordered.slice(0, 8).map(a => probe(u, a, timeoutMs).then(ms => ({...a, ms}), error => ({...a, error: error.code || error.message}))));
+    // Don't wait for the slowest address: once one of the preferred family has
+    // answered, give the rest graceMs, then go with what is known.
+    const probes = await new Promise(resolve => {
+      const list = ordered.slice(0, 8);
+      const results = list.map(a => ({...a, error: 'slow'}));
+      let pending = list.length, timer = null;
+      const finish = () => { clearTimeout(timer); resolve(results); };
+      if (!pending) finish();
+      list.forEach((a, i) => probe(u, a, timeoutMs).then(ms => ({...a, ms}), error => ({...a, error: error.code || error.message})).then(r => {
+        results[i] = r;
+        if (--pending === 0) return finish();
+        if (r.ms != null && !timer && (!pref || r.family === pref)) timer = setTimeout(finish, graceMs);
+      }));
+    });
     const ok = probes.filter(p => p.ms != null);
     const byMs = (a, b) => a.ms - b.ms;
     let healthy = pref ? [...ok.filter(p => p.family === pref).sort(byMs), ...ok.filter(p => p.family !== pref).sort(byMs)] : ok.sort(byMs);
     if (!healthy.length) healthy = ordered; // nothing answered; let retries decide
-    const entry = {host, healthy, probes};
+    const entry = {host, healthy, probes, via};
     this.hosts.set(host, entry);
     return entry;
   }
@@ -189,7 +236,7 @@ export class Route {
     return entry.healthy[slot % entry.healthy.length];
   }
   describe() {
-    return [...this.hosts.values()].map(e => e.probes.map(p => `${p.address}${p.ms != null ? ` ${Math.round(p.ms)}ms` : ` ${p.error}`}`).join(', ')).join('; ');
+    return [...this.hosts.values()].map(e => `${e.probes.map(p => `${p.address}${p.ms != null ? ` ${Math.round(p.ms)}ms` : ` ${p.error}`}`).join(', ')} [${e.via}]`).join('; ');
   }
 }
 
@@ -319,48 +366,81 @@ const backoff = attempt => Math.min(8000, 300 * 2 ** attempt) * (0.5 + Math.rand
 
 // ---------- parallel scheduler with retry and slow-task restart ----------
 
-// tasks: array of {n, bytes}. run(task, conn, register) -> result. Returns map n->result.
-export async function runParallel({tasks, concurrency, cfg, run, onRetry = () => {}, slowFactor = 4, minSlowMs = cfg.slowMinMs ?? 30000, onDone = () => {}}) {
+// tasks: array of {n, key?, ...}; key defaults to n. run(task, conn, register)
+// -> result. Returns map key->result.
+// feed (optional): async () => {tasks, done}; one poll for more tasks, shared by
+// idle workers, until it reports done (pipelined downloads).
+// steal (optional): (inflight [{task, started, cancel}]) -> task | null. Called
+// by an idle worker before it waits; the caller may split an in-flight task and
+// return the split-off part (work stealing for ranged downloads).
+export async function runParallel({tasks, concurrency, cfg, run, feed = null, steal = null, pollMs = cfg.pollMs ?? 1000,
+  onRetry = () => {}, slowFactor = 4, minSlowMs = cfg.slowMinMs ?? 30000, onDone = () => {}}) {
   const queue = [...tasks];
+  const keyOf = task => task.key ?? task.n;
   const results = new Map();
   const attempts = new Map();
   const durations = [];
   const inflight = new Map();
   let fatal = null;
+  let exhausted = !feed;
+  let feeding = null, lastFeed = -Infinity;
   const median = () => { const s = [...durations].sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : 0; };
+  const refill = () => (feeding ??= (async () => {
+    try {
+      const wait = lastFeed + pollMs - performance.now();
+      if (wait > 0) await sleep(wait);
+      lastFeed = performance.now();
+      const r = await feed();
+      queue.push(...r.tasks);
+      if (r.done) exhausted = true;
+    } finally { feeding = null; }
+  })());
   const watchdog = setInterval(() => {
     if (durations.length < 3) return;
     const limit = Math.max(minSlowMs, slowFactor * median());
-    for (const [n, f] of inflight) if (performance.now() - f.started > limit && !f.cancelled) { f.cancelled = true; f.cancel?.(`slow: >${Math.round(limit)} ms`); }
+    for (const f of inflight.values()) if (performance.now() - f.started > limit && !f.cancelled) { f.cancelled = true; f.cancel?.(`slow: >${Math.round(limit)} ms`); }
   }, 1000);
+  const attempt = async (task, conn) => {
+    const key = keyOf(task);
+    const flight = {task, started: performance.now(), cancelled: false, cancel: null};
+    inflight.set(key, flight);
+    try {
+      const result = await run(task, conn, fn => { flight.cancel = fn; });
+      durations.push(performance.now() - flight.started);
+      results.set(key, result);
+      onDone(task, result);
+    } catch (error) {
+      const k = (attempts.get(key) ?? 0) + 1;
+      attempts.set(key, k);
+      conn.reset(); // retry on a fresh connection, next healthy address
+      if (!retryable(error) || k > cfg.retries) { fatal ??= error; return; }
+      onRetry(task, error, k);
+      inflight.delete(key);
+      await sleep(flight.cancelled ? 0 : backoff(k - 1));
+      queue.push(task);
+    } finally {
+      if (inflight.get(key) === flight) inflight.delete(key);
+    }
+  };
   const worker = async () => {
     const conn = new Connection(cfg);
     try {
-      while (!fatal && queue.length) {
-        const task = queue.shift();
-        const flight = {started: performance.now(), cancelled: false, cancel: null};
-        inflight.set(task.n, flight);
-        try {
-          const result = await run(task, conn, fn => { flight.cancel = fn; });
-          durations.push(performance.now() - flight.started);
-          results.set(task.n, result);
-          onDone(task, result);
-        } catch (error) {
-          const k = (attempts.get(task.n) ?? 0) + 1;
-          attempts.set(task.n, k);
-          conn.reset(); // retry on a fresh connection, next healthy address
-          if (!retryable(error) || k > cfg.retries) { fatal = error; break; }
-          onRetry(task, error, k);
-          await sleep(flight.cancelled ? 0 : backoff(k - 1));
-          queue.push(task);
-        } finally {
-          inflight.delete(task.n);
+      while (!fatal) {
+        if (queue.length) { await attempt(queue.shift(), conn); continue; }
+        const stolen = steal?.([...inflight.values()]);
+        if (stolen) { await attempt(stolen, conn); continue; }
+        if (!exhausted) {
+          try { await refill(); } catch (error) { fatal ??= error; break; }
+          if (!queue.length && !exhausted) await sleep(Math.min(250, pollMs));
+          continue;
         }
+        if (!inflight.size) break;
+        await sleep(100);
       }
     } finally { conn.destroy(); }
   };
   try {
-    await Promise.all(Array.from({length: Math.min(concurrency, Math.max(1, tasks.length))}, worker));
+    await Promise.all(Array.from({length: feed || steal ? concurrency : Math.min(concurrency, Math.max(1, tasks.length))}, worker));
   } finally { clearInterval(watchdog); }
   if (fatal) throw fatal;
   return results;
@@ -370,7 +450,7 @@ export async function runParallel({tasks, concurrency, cfg, run, onRetry = () =>
 
 function progress(stderr, quiet, label, total) {
   const started = performance.now();
-  let done = 0, retries = 0, lastPrint = 0;
+  let done = 0, retries = 0, steals = 0, lastPrint = 0;
   const tty = Boolean(stderr.isTTY);
   const print = (final = false) => {
     if (quiet) return;
@@ -378,13 +458,14 @@ function progress(stderr, quiet, label, total) {
     if (!final && now - lastPrint < (tty ? 500 : 5000)) return;
     lastPrint = now;
     const secs = (now - started) / 1000;
-    const line = `${label} ${fmtBytes(done)}/${fmtBytes(total)} ${(done / MiB / Math.max(secs, 0.001)).toFixed(2)} MiB/s ${secs.toFixed(1)}s${retries ? ` retries=${retries}` : ''}`;
+    const line = `${label} ${fmtBytes(done)}/${fmtBytes(total)} ${(done / MiB / Math.max(secs, 0.001)).toFixed(2)} MiB/s ${secs.toFixed(1)}s${retries ? ` retries=${retries}` : ''}${steals ? ` steals=${steals}` : ''}`;
     stderr.write(tty ? `\r${line}\x1b[K${final ? '\n' : ''}` : `${line}\n`);
   };
   return {
     add(n) { done += n; print(); },
     retry() { retries++; },
-    finish() { print(true); return {seconds: (performance.now() - started) / 1000, retries}; },
+    steal() { steals++; },
+    finish() { print(true); return {seconds: (performance.now() - started) / 1000, retries, steals}; },
     get retries() { return retries; },
   };
 }
@@ -421,7 +502,7 @@ export async function put(file, args, cfg, io) {
   // Keep under R2's 10000-part limit for very large files.
   while (Math.ceil(size / partSize) > 10000) partSize *= 2;
   if (partSize > MAX_PART) throw new FatalError(`part size ${fmtBytes(partSize)} exceeds ${fmtBytes(MAX_PART)}`);
-  if (partSize < MIN_PART && !cfg.allowSmallParts) throw new FatalError(`part size must be at least ${fmtBytes(MIN_PART)} (R2 minimum)`);
+  if (partSize < MIN_PART) throw new FatalError(`part size must be at least ${fmtBytes(MIN_PART)}`);
   const limiter = cfg.uploadLimit ? new Limiter(cfg.uploadLimit) : null;
   const real = await fsp.realpath(file);
   const stateKey = crypto.createHash('sha256').update(JSON.stringify([cfg.endpoint, real, size, st.mtimeMs, partSize])).digest('hex').slice(0, 32);
@@ -459,11 +540,14 @@ export async function put(file, args, cfg, io) {
     if (!state) {
       const res = await api(conn, cfg, 'POST', '/v1/uploads', {json: {name, size, sha256, partSize}});
       const created = JSON.parse(res.body.toString());
-      state = {endpoint: cfg.endpoint, id: created.id, uploadId: created.uploadId, size, partSize, sha256, name, etags: {}};
+      state = {endpoint: cfg.endpoint, id: created.id, size, partSize, sha256, name, etags: {}};
       await writeJsonAtomic(statePath, state);
     } else if (!args.quiet) {
       io.stderr.write(`resuming ${state.id}: ${Object.keys(state.etags).length}/${parts} parts already uploaded\n`);
     }
+    // The receiver can start right away: it downloads parts as they land.
+    if (!args.quiet) io.stderr.write(`id ${state.id} (receivers can start now: vrelay get ${state.id})\n`);
+    io.onId?.(state.id);
     const already = Object.keys(state.etags).reduce((sum, n) => sum + Math.min(partSize, size - (Number(n) - 1) * partSize), 0);
     prog.add(already);
     const tasks = [];
@@ -479,8 +563,9 @@ export async function put(file, args, cfg, io) {
           const buf = Buffer.allocUnsafe(task.length);
           const {bytesRead} = await fh.read(buf, 0, task.length, task.offset);
           if (bytesRead !== task.length) throw new FatalError(`${file} changed while uploading`);
+          const partSha = crypto.createHash('sha256').update(buf).digest('hex');
           const res = await send(c, {method: 'PUT', url: `${cfg.endpoint}/v1/uploads/${state.id}/parts/${task.n}`, body: buf, limiter, idleMs: cfg.idleMs, register,
-            headers: {authorization: `Bearer ${cfg.token}`, 'content-length': String(task.length), 'x-relay-upload-id': state.uploadId}});
+            headers: {authorization: `Bearer ${cfg.token}`, 'content-length': String(task.length), 'x-relay-sha256': partSha}});
           if (res.status === 404) throw new FatalError(`upload ${state.id} no longer exists on the relay (expired or aborted); run put again`);
           if (res.status >= 400) throw new HttpStatusError(res.status, res.body.toString());
           prog.add(task.length);
@@ -494,8 +579,7 @@ export async function put(file, args, cfg, io) {
       await fh.close();
       await saving;
     }
-    const partsList = Array.from({length: parts}, (_, i) => ({partNumber: i + 1, etag: state.etags[i + 1]}));
-    const res = await api(conn, cfg, 'POST', `/v1/uploads/${state.id}/complete`, {json: {uploadId: state.uploadId, parts: partsList}});
+    const res = await api(conn, cfg, 'POST', `/v1/uploads/${state.id}/complete`, {json: {}});
     await fsp.rm(statePath, {force: true});
     const info = JSON.parse(res.body.toString());
     if (info.sha256 !== sha256 || info.size !== size) throw new FatalError(`relay reports ${info.size} bytes / ${info.sha256}, expected ${size} / ${sha256}`);
@@ -527,6 +611,8 @@ export async function get(ref, outArg, args, cfg, io) {
   const size = Number(head.headers['x-relay-size'] ?? head.headers['content-length']);
   const sha256 = head.headers['x-relay-sha256'];
   const etag = head.headers.etag ?? '';
+  const uploading = head.headers['x-relay-state'] === 'uploading';
+  const partSize = Number(head.headers['x-relay-part-size'] ?? 0);
   const name = (() => { try { return decodeURIComponent(head.headers['x-relay-name'] ?? '') || target.id; } catch { return target.id; } })();
   let out = outArg || path.basename(name) || target.id;
   if (outArg && fs.existsSync(outArg) && fs.statSync(outArg).isDirectory()) out = path.join(outArg, path.basename(name) || target.id);
@@ -546,37 +632,109 @@ export async function get(ref, outArg, args, cfg, io) {
   }
   const done = new Set(state.done);
   const chunks = Math.max(1, Math.ceil(size / chunkSize));
-  const tasks = [];
-  for (let n = 0; n < chunks; n++) if (!done.has(n) && size > 0) tasks.push({n, offset: n * chunkSize, length: Math.min(chunkSize, size - n * chunkSize)});
+  const pending = [];
+  // A task is a byte range [pos, end) of chunk n. Stealing can shrink end and
+  // split off new ranges, so a chunk is done when all of its ranges are.
+  let seq = 0;
+  const mkTask = (n, offset, end) => ({n, key: `${n}:${offset}:${seq++}`, offset, pos: offset, end, lastByte: 0});
+  for (let n = 0; n < chunks; n++) if (!done.has(n) && size > 0) pending.push(mkTask(n, n * chunkSize, Math.min(size, (n + 1) * chunkSize)));
+  const openRanges = new Map(); // chunk n -> outstanding ranges
   const prog = progress(io.stderr, args.quiet, `get ${name}`, size);
-  prog.add(size - tasks.reduce((s, t) => s + t.length, 0));
+  prog.add(size - pending.reduce((s, t) => s + (t.end - t.offset), 0));
+  // Pipelined: while the sender is still uploading, hand out only chunks whose
+  // parts have all landed, polling the relay for new parts.
+  let tasks = pending, feed = null;
+  if (uploading && partSize > 0) {
+    tasks = [];
+    let waiting = pending;
+    let lastNews = performance.now();
+    const statusUrl = (() => { const u = new URL(target.url); u.pathname += '/parts'; return u.toString(); })();
+    const statusConn = new Connection(cfg);
+    if (!args.quiet) io.stderr.write(`${target.id} is still uploading; downloading parts as they land\n`);
+    feed = async () => {
+      const res = await api(statusConn, cfg, 'GET', statusUrl, {auth: false, headers: auth});
+      const status = JSON.parse(res.body.toString());
+      const landed = new Set(status.done);
+      const ready = [], still = [];
+      for (const t of waiting) {
+        const firstPart = Math.floor(t.offset / partSize) + 1, lastPart = Math.floor((t.end - 1) / partSize) + 1;
+        let ok = true;
+        for (let p = firstPart; p <= lastPart && ok; p++) ok = landed.has(p);
+        (ok ? ready : still).push(t);
+      }
+      waiting = still;
+      if (ready.length) lastNews = performance.now();
+      if (!waiting.length) statusConn.destroy();
+      else if (performance.now() - lastNews > cfg.followTimeoutMs) {
+        statusConn.destroy();
+        throw new FatalError(`no new parts of ${target.id} for ${Math.round(cfg.followTimeoutMs / 1000)} s; is the sender still running? (re-run get to resume)`);
+      }
+      return {tasks: ready, done: !waiting.length};
+    };
+  }
   const limiter = cfg.downloadLimit ? new Limiter(cfg.downloadLimit) : null;
   const fh = await fsp.open(partial, 'r+');
   let saving = Promise.resolve();
   try {
+    const stealMin = cfg.stealMinBytes;
+    const steal = !cfg.steal ? null : flights => {
+      const now = performance.now();
+      let best = null;
+      for (const f of flights) {
+        const t = f.task, left = t.end - t.pos;
+        if (left <= 0 || f.cancelled) continue;
+        const stalled = now - Math.max(t.lastByte, f.started) > cfg.stallMs;
+        // A stalled range is taken over whole (first); otherwise split the largest.
+        const score = stalled ? Infinity : left >= 2 * stealMin ? left : 0;
+        if (score > 0 && (!best || score > best.score || (score === best.score && left > best.left))) best = {f, t, left, stalled, score};
+      }
+      if (!best) return null;
+      const {f, t, left, stalled} = best;
+      const cut = stalled ? t.pos : t.pos + Math.floor(left / 2);
+      const piece = mkTask(t.n, cut, t.end);
+      t.end = cut;
+      openRanges.set(t.n, (openRanges.get(t.n) ?? 1) + 1);
+      if (cut === t.pos) { f.cancelled = true; f.cancel?.('stalled; range taken over'); }
+      prog.steal();
+      if (!args.quiet && io.env.VRELAY_DEBUG) io.stderr.write(`\nchunk ${t.n}: ${cut === t.pos ? 'took over stalled' : 'split'} ${fmtBytes(piece.end - piece.offset)}\n`);
+      return piece;
+    };
     await runParallel({
-      tasks, concurrency: cfg.getConcurrency, cfg,
-      onRetry: (task, error, k) => { prog.retry(); if (!args.quiet && io.env.VRELAY_DEBUG) io.stderr.write(`\nchunk ${task.n} attempt ${k}: ${error.message}\n`); },
-      onDone: task => { done.add(task.n); state.done = [...done]; saving = saving.then(() => writeJsonAtomic(statePath, state)); },
+      tasks, feed, steal, concurrency: cfg.getConcurrency, cfg,
+      onRetry: (task, error, k) => { prog.retry(); if (!args.quiet && io.env.VRELAY_DEBUG) io.stderr.write(`\nchunk ${task.n} range ${task.pos}-${task.end} attempt ${k}: ${error.message}\n`); },
+      onDone: task => {
+        const left = (openRanges.get(task.n) ?? 1) - 1;
+        if (left > 0) { openRanges.set(task.n, left); return; }
+        openRanges.delete(task.n);
+        done.add(task.n); state.done = [...done]; saving = saving.then(() => writeJsonAtomic(statePath, state));
+      },
       run: async (task, c, register) => {
-        let pos = task.offset;
-        let got = 0;
+        if (task.pos >= task.end) return;
+        const from = task.pos, to = task.end; // request [from, to); end may shrink meanwhile
+        class Enough extends Error {}
         try {
           const res = await send(c, {method: 'GET', url: target.url, idleMs: cfg.idleMs, register,
-            headers: {...auth, range: `bytes=${task.offset}-${task.offset + task.length - 1}`},
+            headers: {...auth, range: `bytes=${from}-${to - 1}`},
             onData: async chunk => {
               if (limiter) await limiter.take(chunk.length);
-              if (got + chunk.length > task.length) throw new FatalError('relay sent more bytes than requested');
-              await fh.write(chunk, 0, chunk.length, pos);
-              pos += chunk.length; got += chunk.length; prog.add(chunk.length);
+              const room = task.end - task.pos;
+              const take = Math.min(chunk.length, Math.max(0, room));
+              if (take > 0) {
+                const at = task.pos;
+                task.pos += take; // reserve before awaiting, so a concurrent split sees it
+                task.lastByte = performance.now();
+                await fh.write(chunk, 0, take, at);
+                prog.add(take);
+              }
+              if (task.pos >= task.end) throw new Enough();
             }});
-          if (res.status === 200 && task.length !== size) throw new FatalError('relay ignored the Range header');
+          if (res.status === 200 && !(from === 0 && to === size)) throw new FatalError('relay ignored the Range header');
           if (res.status >= 400) throw new HttpStatusError(res.status, res.body?.toString() ?? '');
-          if (got !== task.length) throw Object.assign(new Error(`short chunk ${got}/${task.length}`), {code: 'SHORT'});
         } catch (error) {
-          prog.add(-got);
+          if (error instanceof Enough || task.pos >= task.end) return; // range finished, or handed to another connection
           throw error;
         }
+        if (task.pos < task.end) throw Object.assign(new Error(`short range: ${task.end - task.pos} bytes missing`), {code: 'SHORT'});
       },
     });
   } finally {
@@ -595,7 +753,7 @@ export async function get(ref, outArg, args, cfg, io) {
   }
   await fsp.rename(partial, out);
   await fsp.rm(statePath, {force: true});
-  return {id: target.id, out, size, sha256: actual, verified: Boolean(sha256), ...stats, verifySeconds, concurrency: cfg.getConcurrency};
+  return {id: target.id, out, size, sha256: actual, verified: Boolean(sha256), pipelined: Boolean(feed), ...stats, verifySeconds, concurrency: cfg.getConcurrency};
 }
 
 // ---------- small commands ----------
@@ -629,7 +787,8 @@ const HELP = `vrelay ${VERSION} - large file relay over Cloudflare R2 (apps/v-re
   vrelay ls | stat <id> | rm <id>... | link <id> [--hours 24] | health
   vrelay login --endpoint https://relay.example [--token-file f] [--limit 30mbit]   (token on stdin)
 
-Options: --json  -q/--quiet  --family 4|6|auto (default 4)  --resolve ip1,ip2  --route (print probes)  --download-limit 0
+Options: --json  -q/--quiet  --family 4|6|auto (default 4)  --resolve ip1,ip2  --dns auto|system  --route (print probes)  --download-limit 0
+Pipelined: get works while put is still running; put prints the id on stderr as soon as the upload starts.
 Config: ~/.config/vrelay/config.json (mode 600); env VRELAY_ENDPOINT, VRELAY_TOKEN(_FILE), VRELAY_UPLOAD_LIMIT.
 Resume: re-run the same put/get after an interruption. Objects expire on the relay after 7 days.`;
 
