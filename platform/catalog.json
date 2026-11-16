@@ -244,6 +244,7 @@
       "purpose": "各条线在 lab/、scripts/、tests/、worker 实验目录下的离线回归；2026-09-24 从未登记状态收拢，全部离线通过",
       "files": [
         "tests/v-memory-indexer.test.mjs",
+        "tests/v-relay.test.mjs",
         "tests/v-storage-governance.test.mjs",
         "tests/check-source-map.test.mjs",
         "tests/captured-store.test.mjs",
@@ -518,7 +519,9 @@
         "lab/workboard-full-context.test.mjs",
         "lab/cli-readonly-live.test.mjs",
         "lab/lifecycle-cleanup-bounded.test.mjs",
-        "lab/usage-offload.test.mjs"
+        "lab/usage-offload.test.mjs",
+        "lab/sessions-visibility-columns.test.mjs",
+        "lab/sessions-search-stall.test.mjs"
       ]
     }
   ],
