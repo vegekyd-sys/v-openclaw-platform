@@ -2047,6 +2047,55 @@
       "sha256": "bfa6377051360fad7649dd1a4e9d6baa7b2c25d259a7a751bc5b5574ee8395f5",
       "source": "versa:3dfc7c4c4fb",
       "note": "infer-latency (2026-11-17, Gateway): a model run's hidden internal-session-effects session is created without kicking store maintenance and removed without store-wide reference reads or entry counts (runOwnedInternalSession); versa/port-infer-latency-20261117 on 1a9308eec02; needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-transcript-state-Cz9g7S9v.js",
+      "sha256": "42478a61582fa3749538dfd64fb16f3c1888ec95661467559398a37d0b28dbff",
+      "source": "versa:1d013cb6c39",
+      "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "combined-store-gateway-BwDhjbIt.js",
+      "sha256": "a2c37612e90669ee979eae0b55c0e44d5679a1af6a295cfc566dd2a4f80cfc9e",
+      "source": "versa:1d013cb6c39",
+      "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "sessions-read-C6mAMxyQ.js",
+      "sha256": "153342c9b727b2f8727a2208f54048b55e81905583f22c6372d86f1af6e0f2e8",
+      "source": "versa:1d013cb6c39",
+      "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-registry.store.sqlite-hzGu4QSk.js",
+      "sha256": "27cf50a04416aeb7bbe4a1a3910389538cca8969fb7cd18b305a3933d01ef277",
+      "source": "versa:1d013cb6c39",
+      "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-registry-read-UaDFTyfW.js",
+      "sha256": "4c88db9ca42dc14f7a45ed557722de1e5e02f63a740d4d9f032c5325c4a9d21b",
+      "source": "versa:1d013cb6c39",
+      "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "session-utils-list-BUP03AzS.js",
+      "sha256": "bbceee57c653d13b79d934d1bc3093954298374eba2983adbc6a84f8022aea2e",
+      "source": "versa:1d013cb6c39",
+      "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "v-session-lifecycle-snapshot-worker.mjs",
+      "sha256": "ab84850dba95cf1bd54c3751eccc52869b22d91913d027c1dd0b46c46a1cf059",
+      "source": "versa:1d013cb6c39",
+      "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
     }
   ]
 }
