@@ -8,6 +8,7 @@ import { t as createInvalidConfigError } from "./io.invalid-config-CCPNMRHr.js";
 import "./config-Cv60gBux.js";
 import { l as resolveExecApprovalsPath } from "./exec-approvals-config-C8L2eA5n.js";
 import { a as withSuppressedNotes } from "./note-S3UJZiOI.js";
+import { s as hasFlag } from "./argv-BGeU0eAz.js";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -137,7 +138,7 @@ async function ensureConfigReady(params, recoveryDeps) {
 	const subcommandName = commandPath[1];
 	const isRestartController = (commandName === "gateway" || commandName === "daemon") && subcommandName === "restart";
 	let preflightResult = null;
-	// infer-skip-state-preflight: one-shot inference is a provider surface, not a state owner; its preflight
+	// infer-latency: one-shot inference is a provider surface, not a state owner; its preflight
 	// snapshotted and integrity-checked the whole state database on every call.
 	const shouldConsiderStateMigration = !params.validateConfigOnly && commandName !== "config" && commandName !== "health" && commandName !== "logs" && commandName !== "sessions" && commandName !== "infer" && commandName !== "capability" && !(commandName === "gateway" && subcommandName === "call") && !isRestartController && !(commandName === "update" && subcommandName === "status");
 	const requiresLegacyStateInput = shouldRunStateMigrationOnlyWithLegacyInputs(commandPath);
@@ -162,10 +163,12 @@ async function ensureConfigReady(params, recoveryDeps) {
 		}
 	};
 	if (!didRunDoctorConfigFlow && shouldConsiderStateMigration && (!requiresLegacyStateInput || hasLegacyStateMigrationInputs())) preflightResult = await runStateMigrationPreflight();
+	// infer-latency: Gateway-dispatched inference validates plugin config in the Gateway; locally it needs core config.
+	const isGatewayDispatchedInference = (commandName === "infer" || commandName === "capability") && hasFlag(process.argv, "--gateway");
 	const configSnapshotOptions = params.validateConfigOnly ? {
 		observe: false,
 		pluginValidation: "core-only"
-	} : commandName === "logs" ? {
+	} : commandName === "logs" || isGatewayDispatchedInference ? {
 		observe: false,
 		pluginValidation: "core-only"
 	} : commandName === "status" || commandName === "gateway" && subcommandName === "call" || isRestartController ? { observe: false } : void 0;

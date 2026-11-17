@@ -1988,9 +1988,65 @@
     {
       "layer": "core",
       "path": "config-guard--4cC6uJU.js",
-      "sha256": "27ad352265f9470e661893228a390f03184e41b509f01e4a0e0cb0a23512623d",
-      "source": "versa:b94693e56a9",
-      "note": "infer-latency (2026-11-17): openclaw infer / capability skip the config guard's state migration preflight (whole state-database sqlite.backup in a child + integrity check, 8-21 s per call on V); Gateway startup and Doctor still migrate (versa/port-infer-latency-20261117, on ca32fca3e29); CLI-only, no Gateway restart; not on V until promoted"
+      "sha256": "62e6c438cb3b2dfcca47faad52ca6fa7b306596c01fe14cbaf4fd66da75576b9",
+      "source": "versa:9168f454254",
+      "note": "infer-latency (2026-11-17, CLI): `openclaw infer` skips the state migration preflight (state-database backup + integrity check), `--gateway` reads core-only config and bypasses the operator proxy, `--local` loads only the provider's plugins (pluginScope \"provider\"); versa/port-infer-latency-20261117 on 1a9308eec02; CLI processes only, no Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "command-path-policy-qUeic05b.js",
+      "sha256": "8a9bd264a26c2ffc961eaf1db8a2bd308839e13d14577f8de933e484d27e2637",
+      "source": "versa:9168f454254",
+      "note": "infer-latency (2026-11-17, CLI): `openclaw infer` skips the state migration preflight (state-database backup + integrity check), `--gateway` reads core-only config and bypasses the operator proxy, `--local` loads only the provider's plugins (pluginScope \"provider\"); versa/port-infer-latency-20261117 on 1a9308eec02; CLI processes only, no Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "runtime-plugin-load-plan-Bm46qisR.js",
+      "sha256": "8cc6c598b989143fbfb2743c63489c3398f0c954edf43432489d90690a342930",
+      "source": "versa:9168f454254",
+      "note": "infer-latency (2026-11-17, CLI): `openclaw infer` skips the state migration preflight (state-database backup + integrity check), `--gateway` reads core-only config and bypasses the operator proxy, `--local` loads only the provider's plugins (pluginScope \"provider\"); versa/port-infer-latency-20261117 on 1a9308eec02; CLI processes only, no Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "simple-completion-runtime-D9F09LT6.js",
+      "sha256": "ed3c4e2ac0540ff2d95702bcdfdcf0cf313e31b2ddf25a4b4892cbf07ba7c11f",
+      "source": "versa:9168f454254",
+      "note": "infer-latency (2026-11-17, CLI): `openclaw infer` skips the state migration preflight (state-database backup + integrity check), `--gateway` reads core-only config and bypasses the operator proxy, `--local` loads only the provider's plugins (pluginScope \"provider\"); versa/port-infer-latency-20261117 on 1a9308eec02; CLI processes only, no Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "model-fXXfAcf8.js",
+      "sha256": "154ad5bbb40a3830a4d70968f5e5798ac3845a2b91833e8569d6efd586ed3ac2",
+      "source": "versa:9168f454254",
+      "note": "infer-latency (2026-11-17, CLI): `openclaw infer` skips the state migration preflight (state-database backup + integrity check), `--gateway` reads core-only config and bypasses the operator proxy, `--local` loads only the provider's plugins (pluginScope \"provider\"); versa/port-infer-latency-20261117 on 1a9308eec02; CLI processes only, no Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "prepared-model-runtime.facts-CEW6RO02.js",
+      "sha256": "a2ea22ff6dc30e3a4efb1c20c45c512b53a019a0bdc831da1bcdd21c253db5ec",
+      "source": "versa:9168f454254",
+      "note": "infer-latency (2026-11-17, CLI): `openclaw infer` skips the state migration preflight (state-database backup + integrity check), `--gateway` reads core-only config and bypasses the operator proxy, `--local` loads only the provider's plugins (pluginScope \"provider\"); versa/port-infer-latency-20261117 on 1a9308eec02; CLI processes only, no Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+      "sha256": "c06721d55b53d7fb2d6ba25a02b2b1a81faa326420e12f4c368942b9947ffe4b",
+      "source": "versa:3dfc7c4c4fb",
+      "note": "infer-latency (2026-11-17, Gateway): a model run's hidden internal-session-effects session is created without kicking store maintenance and removed without store-wide reference reads or entry counts (runOwnedInternalSession); versa/port-infer-latency-20261117 on 1a9308eec02; needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor-K0XuW6ln.js",
+      "sha256": "13af5e83e8dd4140a4d90340dcb0ebacc62699643ecb00817b23897872131b38",
+      "source": "versa:3dfc7c4c4fb",
+      "note": "infer-latency (2026-11-17, Gateway): a model run's hidden internal-session-effects session is created without kicking store maintenance and removed without store-wide reference reads or entry counts (runOwnedInternalSession); versa/port-infer-latency-20261117 on 1a9308eec02 + #559 (cherry-picked d6f01a5e06e = b0cbe1db060, already in V's bytes); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "internal-session-effects-C8FWqbuL.js",
+      "sha256": "bfa6377051360fad7649dd1a4e9d6baa7b2c25d259a7a751bc5b5574ee8395f5",
+      "source": "versa:3dfc7c4c4fb",
+      "note": "infer-latency (2026-11-17, Gateway): a model run's hidden internal-session-effects session is created without kicking store maintenance and removed without store-wide reference reads or entry counts (runOwnedInternalSession); versa/port-infer-latency-20261117 on 1a9308eec02; needs a Gateway restart; not on V until promoted"
     }
   ]
 }
