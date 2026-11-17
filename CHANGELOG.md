@@ -10,6 +10,28 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## workboard-full-sweep-20261117
+
+上线：2026-11-18 00:09 CST 生效（00:06 promote-to-v，漂移哨兵 0 发现，VLab 已 align；00:06:39 v-self-restart 等空闲 2 s，00:07:43 停机并清掉 1 条 Codex 孤儿登记，90 s 后就绪，00:09:16 settle：stream 4/4、worker 5/5，postChecks 全 0，NRestarts 0）  ·  tag `workboard-full-sweep-20261117`
+
+**摘要**：Workboard 每 10 分钟一次的全量生命周期巡检不再卡 Gateway 主线程（V 上改前每 ~613 s 一次 6.8–8.6 s 的 liveness 停顿，用户侧表现为那几秒消息、卡片、语音全部停住）。
+- **#614（7 个 core 文件）**：只对 Workboard 全量巡检那种 `sessions.list`（lifecycleOnly、不带 activeMinutes、参数白名单）起一次性 worker 线程，读会话库 list 投影和 `subagent_runs`，只把 12 个生命周期字段传回主线程；数据和读取代码不变，结果逐字节相同。每分钟那轮和其他所有 `sessions.list` 不变。worker 失败/超时 120 s 回到主线程原路径并记 warn；`OPENCLAW_V_WORKBOARD_FULL_SWEEP_WORKER=0` 一键关闭（需重启）。
+- 源码：openclaw-versa `versa/port-workboard-full-sweep-20261117` @ `1d013cb6c39`。
+
+V 上核对（00:09–00:36）：7 个文件哈希与 after 一致。两轮全量巡检 00:19:33 与 00:29:46 都起了 worker 线程（Gateway 线程 14→15→14，各约 6 s，在后台），同时段 liveness 延迟 0 次（改前 22:56–23:44 每轮 6,764–8,629 ms）；`lifecycle snapshot worker failed` / `Cannot reap` / SqliteError / TypeError 均 0；`workboard.cards.list` 104–140 ms 正常；/vds（codex harness，deepseek/vds-deepseek-flash）显式会话 3 回合 21.2 s（重启后冷）/5.1 s/4.2 s 正常；RSS 2.6 GB。启动阶段 00:09:52 一次 11.8 s 停顿，同前几次重启后的启动停顿，非本次范围。
+
+相对上一版 `infer-latency-20261117`：7 个文件变化。
+
+**经 VLab 发版 `workboard-full-sweep-20261117`**（claude-monitor，dev `fa21ed98`）
+> 验收：shared VLab 2026-11-17 23:35-23:48 CST, dev fa21ed98 (#614; 7 core dist files, all before-hashes equal V live bytes after infer-latency-20261117): Gateway pid 380392 ready. Worker path proven: every lifecycle full-sweep sessions.list (3 RPC calls with the exact Workboard params, 457 rows, 2.2 s each, and the plugin own full sweep at 23:45:27) spawned the one-shot worker thread (Gateway threads 14-…
+- `core` combined-store-gateway-BwDhjbIt.js  0cbe8b81 → a2c37612
+- `core` session-accessor.sqlite-transcript-state-Cz9g7S9v.js  2583a789 → 42478a61
+- `core` session-utils-list-BUP03AzS.js  5392dd65 → bbceee57
+- `core` sessions-read-C6mAMxyQ.js  5044b9b0 → 153342c9
+- `core` subagent-registry-read-UaDFTyfW.js  142bb515 → 4c88db9c
+- `core` subagent-registry.store.sqlite-hzGu4QSk.js  23154eac → 27cf50a0
+- `core` v-session-lifecycle-snapshot-worker.mjs  — → ab84850d
+
 ## infer-latency-20261117
 
 上线：2026-11-17 21:59 CST 生效（21:48 promote-to-v，漂移哨兵 0 发现，VLab 已 align；21:48 v-self-restart 因 21:00 两个记忆整理 cron 回合在跑等空闲 500 s，21:58:12 停机并清掉 Codex 孤儿登记，100 s 后就绪，22:00:44 settle：stream 4/4、worker 5/5，NRestarts 0）  ·  tag `infer-latency-20261117`
