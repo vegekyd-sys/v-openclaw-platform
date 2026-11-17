@@ -10,6 +10,25 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## session-ref-index-20261117
+
+上线：2026-11-17 07:02 CST 生效（03:58 promote-to-v，漂移哨兵 0 发现，VLab 已 align；前两次 v-self-restart 都因 FCloud daily refresh 04:00 连续超时重试、V 一直不空闲而在等满 1 小时后放弃，V 未被改动；第三次 07:01:17 空闲后停机，启动前清掉 2 条 Codex 孤儿登记，07:02:44 就绪，07:02:53 settle：stream 4/4、worker 5/5，NRestarts 0）  ·  tag `session-ref-index-20261117`
+
+**摘要**：删会话不再把 Gateway 主线程卡住约 3 秒。旧代码每删一个会话，都要在写事务里整表扫一遍 session_nodes 找引用它的行（2.2 万行、每行解析 entry JSON），V 上每次 2.9–3.0 s，约每 25 分钟一次（主要是定时任务结束后清理 run 会话）。
+- **#611**：每个数据库连接维护一份会话引用索引（按 rowid、current_session_id、updated_at、entry 长度做指纹，用 TEMP 触发器和 `PRAGMA data_version` 感知本连接和其他进程的写入），删除时只查索引。开关 `OPENCLAW_V_SESSION_REFERENCE_INDEX=0`（需重启生效）。
+- 剩余风险：其他进程改了某行的引用却恰好没改变指纹四项时，索引不会察觉；按现有写入路径没有这种写法。
+- VLab 候选：删除 15–25 s → 0.18–0.32 s。
+
+V 上核对（07:03–08:38）：3 个文件哈希与 after 一致；`Cannot reap` / UNIQUE / SqliteError / 未捕获异常均 0。重启前当天 03:23–07:01 有 8 次删除事务 2.9–3.0 s（`runSqliteSessionDeletionTransaction`）。重启后 08:34:51–08:37:53 真实删除 3 个 cron run 会话（只读比对 session_nodes 键集合确认），这段时间没有超过 1 s 的事务、没有 liveness 告警；重启后再没有出现删除类慢事务。同期仍有三类停顿，与本次无关：启动阶段 44.6 s（同前几次重启）；每约 10 分钟一次 1–7 s 的心跳延迟（重启前同样存在）；08:34 两次 1.1/2.6 s 的大会话 transcript 整读。
+
+相对上一版 `sessions-stall-20261117`：3 个文件变化。
+
+**经 VLab 发版 `session-ref-index-20261117`**（claude-monitor，dev `ecf059ac`）
+> 验收：shared VLab 2026-11-17 03:52-03:56 CST, dev ecf059ac (#611; 3 core dist files): Gateway pid 3795029 NRestarts 0. Real turns deleted two subagent sessions through the patched deletion path: sessions_spawn cleanup=delete -> agent:makaron:subagent:85f4ffdb-... deleted (sessions.delete 5209 ms, first deletion in the process builds the reference index while another candidate pid 3781755 was saturating …
+- `core` session-accessor.sqlite-entry-store-VfW3gyuj.js  455037c6 → 6aa9f488
+- `core` session-accessor.sqlite-lifecycle-dtL0ZEAl.js  efa4604b → acaa5309
+- `core` session-accessor.sqlite-lifecycle-state-CrB_K2kA.js  4f4cce65 → c21306fa
+
 ## sessions-stall-20261117
 
 上线：2026-11-17 03:23 CST 生效（03:16 promote-to-v，漂移哨兵 0 发现，VLab 已 align；03:17 v-self-restart 等空闲 208 s 后 03:21:25 停机，启动前清掉 2 条 Codex 孤儿登记，03:23:11 就绪，03:24:24 settle：stream 4/4、worker 5/5，NRestarts 0）  ·  tag `sessions-stall-20261117`
