@@ -1,0 +1,707 @@
+# CPU profiles of the CLI process on V (node --cpu-prof), summarized with analyze.mjs / window-incl.mjs
+
+## before: infer model providers (12.5 s) - main CLI process
+wall ms 12020 sampled 12010
+
+== self by file
+   6465 ms  (idle)
+   1514 ms  dist/sqlite-integrity-BBPyeEpy.js
+    385 ms  lstat
+    220 ms  dist/schemas-zxit8y5H.js
+    186 ms  node:path
+    184 ms  (garbage collector)
+    174 ms  node:internal/modules/esm/utils
+    114 ms  node:internal/fs/utils
+    107 ms  dist/official-external-plugin-catalog-BPnH2jsJ.js
+     84 ms  dist/sqlite-B43NcCAq.js
+     79 ms  dist/plugin-cache-files-ephosqaM.js
+     73 ms  node:internal/modules/package_json_reader
+     72 ms  dist/model-catalog-APWJJyRm.js
+     65 ms  dist/manifest-registry-_ck0cJ4q.js
+     65 ms  dist/installed-plugin-index-DzUab7zi.js
+     64 ms  existsSync
+     62 ms  dist/plugin-metadata-snapshot-BuNx7zRZ.js
+     61 ms  node:internal/modules/esm/module_job
+     58 ms  node:fs
+     57 ms  ModuleWrap
+     56 ms  dist/plugin-registry-snapshot-BgY5CJXJ.js
+     54 ms  
+     53 ms  (program)
+     51 ms  node:internal/modules/esm/loader
+     45 ms  node:internal/async_hooks
+     43 ms  dist/stable-stringify-C8X7niaI.js
+     40 ms  node:internal/util/comparisons
+     39 ms  internalModuleStat
+     34 ms  node:internal/modules/cjs/loader
+     34 ms  dist/discovery-BQKfofUJ.js
+
+== self by function
+   6465 ms  (idle) :0
+   1512 ms  runSqliteCheck dist/sqlite-integrity-BBPyeEpy.js:111
+    385 ms  lstat :0
+    184 ms  (garbage collector) :0
+    173 ms  compileSourceTextModule node:internal/modules/esm/utils:344
+    127 ms  resolve node:path:1260
+    104 ms  (anon) node:internal/fs/utils:708
+     76 ms  inspectAuthProfileTable dist/sqlite-B43NcCAq.js:294
+     64 ms  existsSync :0
+     57 ms  ModuleWrap :0
+     53 ms  (program) :0
+     47 ms  realpathSync node:fs:2715
+     47 ms  freezeSnapshotValue dist/plugin-metadata-snapshot-BuNx7zRZ.js:184
+     47 ms  stripRemoteTransportOverrides dist/model-catalog-APWJJyRm.js:117
+     46 ms  get exports node:internal/modules/package_json_reader:86
+     40 ms  dedupeOfficialExternalPluginCatalogEntries dist/official-external-plugin-catalog-BPnH2jsJ.js:609
+     39 ms  internalModuleStat :0
+     39 ms  (anon) :1
+     33 ms  structuredClone node:internal/worker/js_transferable:112
+     32 ms  parse :0
+     30 ms  getPluginCacheRoot dist/plugin-cache-DGWspMEc.js:153
+     28 ms  pathFacts dist/plugin-cache-files-ephosqaM.js:26
+     27 ms  init dist/schemas-zxit8y5H.js:7
+     27 ms  stringifyObjectValue dist/stable-stringify-C8X7niaI.js:21
+     26 ms  (anon) dist/ansi-DrXAcdMD.js:1
+     25 ms  compile dist/schemas-zxit8y5H.js:1587
+     24 ms  _instantiate node:internal/modules/esm/module_job:206
+     24 ms  relative node:path:1371
+     24 ms  open :0
+     23 ms  getActiveRemoteModelCatalog dist/model-catalog-APWJJyRm.js:214
+
+== inclusive by function
+  12010 ms  (root) :0
+   6465 ms  (idle) :0
+   1573 ms  runDoctorConfigPreflight dist/doctor-config-preflight-DVcMOddw.js:403
+   1523 ms  refreshMigrationCheckpoint dist/doctor-config-preflight-DVcMOddw.js:436
+   1520 ms  runWithOpenClawStateWriteAccess dist/openclaw-state-db-Bh3Bq87y.js:3561
+   1520 ms  withOpenClawStateStartupCheckpointConnection dist/openclaw-state-db-Bh3Bq87y.js:3655
+   1520 ms  withOpenClawStateStartupMigrationCheckpointDatabase dist/openclaw-state-db-Bh3Bq87y.js:3921
+   1520 ms  withStartupMigrationCheckpointDatabase dist/startup-migration-checkpoint-CZMRImdc.js:67
+   1520 ms  readMigrationCheckpoint dist/startup-migration-checkpoint-CZMRImdc.js:97
+   1520 ms  needsMigrationCheckpoint dist/startup-migration-checkpoint-CZMRImdc.js:116
+   1520 ms  needsStateMigrationCheckpoint dist/startup-migration-checkpoint-CZMRImdc.js:129
+   1518 ms  (anon) dist/openclaw-state-db-Bh3Bq87y.js:3661
+   1518 ms  runWithSqliteCoordinator dist/state-database-coordinator-DKD8Uulb.js:19
+   1514 ms  assertSqliteIntegrity dist/sqlite-integrity-BBPyeEpy.js:13
+   1512 ms  runSqliteCheck dist/sqlite-integrity-BBPyeEpy.js:111
+   1417 ms  loadPluginRegistrySnapshotWithMetadata dist/plugin-registry-snapshot-BgY5CJXJ.js:263
+   1153 ms  buildModelProviders dist/model-fXXfAcf8.js:239
+   1127 ms  getAuthProfileIdsForProvider dist/shared-Beq6KEVC.js:74
+   1127 ms  providerHasGenericConfig dist/shared-Beq6KEVC.js:79
+   1111 ms  loadAuthProfileStoreForRuntime dist/store-CZzbMlii.js:636
+    970 ms  overlayExternalAuthProfiles dist/external-auth-Ch764-dg.js:124
+    964 ms  resolveExternalAuthProfiles dist/external-auth-Ch764-dg.js:55
+    962 ms  resolveExternalAuthProfilesWithPlugins dist/provider-external-auth-BepWMQAw.js:7
+    915 ms  resolveRegistryManifestContractPluginIds dist/providers-DYtRw48-.js:108
+    915 ms  resolveExternalAuthProfileProviderPluginIds dist/providers-DYtRw48-.js:102
+    912 ms  loadPluginRegistrySnapshot dist/plugin-registry-snapshot-BgY5CJXJ.js:341
+    912 ms  loadProviderRegistrySnapshot dist/providers-DYtRw48-.js:13
+    912 ms  loadScopedProviderRegistry dist/providers-DYtRw48-.js:21
+    754 ms  buildInstalledPluginIndex dist/installed-plugin-index-DzUab7zi.js:1458
+    754 ms  loadInstalledPluginIndexWithDiscovery dist/installed-plugin-index-DzUab7zi.js:1524
+
+== timeline
+     0 24% resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66 | 11% compileSourceTextModule node:internal/modules/esm/utils:344
+   500 7% (garbage collector) :0 | 5% compile dist/schemas-zxit8y5H.js:1587
+  1000 8% resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66 | 7% compileSourceTextModule node:internal/modules/esm/utils:344
+  1500 26% (idle) | 11% compileSourceTextModule node:internal/modules/esm/utils:344
+  2000 100% (idle)
+  2500 100% (idle)
+  3000 100% (idle)
+  3500 100% (idle)
+  4000 100% (idle)
+  4500 100% (idle)
+  5000 100% (idle)
+  5500 100% (idle)
+  6000 100% (idle)
+  6500 100% (idle)
+  7000 100% (idle)
+  7500 100% (idle)
+  8000 79% (idle) | 6% compileSchema dist/schema-validator-CLfGeb79.js:113
+  8500 42% runSqliteCheck dist/sqlite-integrity-BBPyeEpy.js:111 | 6% compileSchema dist/schema-validator-CLfGeb79.js:113
+  9000 100% runSqliteCheck dist/sqlite-integrity-BBPyeEpy.js:111
+  9500 100% runSqliteCheck dist/sqlite-integrity-BBPyeEpy.js:111
+ 10000 58% runSqliteCheck dist/sqlite-integrity-BBPyeEpy.js:111 | 5% getActiveRemoteModelCatalog dist/model-catalog-APWJJyRm.js:214
+ 10500 9% stripRemoteTransportOverrides dist/model-catalog-APWJJyRm.js:117 | 8% safeRealpathSync dist/path.js:71
+ 11000 23% safeRealpathSync dist/path.js:71 | 9% resolveProjectedPath dist/plugin-registry-snapshot-BgY5CJXJ.js:58
+ 11500 21% safeRealpathSync dist/path.js:71 | 12% resolveProjectedPath dist/plugin-registry-snapshot-BgY5CJXJ.js:58
+ 12000 39% (idle) | 9% appendRegularFile dist/regular-file.js:231
+
+## before: same command - sqlite-readonly child process (sqlite.backup of the state DB)
+wall ms 6432 sampled 6422
+
+== self by file
+   6214 ms  (idle)
+     46 ms  node:internal/modules/esm/utils
+     42 ms  node:internal/modules/package_json_reader
+     15 ms  (garbage collector)
+     11 ms  dist/ansi-DrXAcdMD.js
+      8 ms  node:internal/modules/esm/loader
+      7 ms  node:internal/bootstrap/realm
+      7 ms  dist/sqlite-readonly-location-BvtpsFvn.js
+      6 ms  node:internal/modules/esm/resolve
+      5 ms  internalModuleStat
+
+== self by function
+   6214 ms  (idle) :0
+     46 ms  compileSourceTextModule node:internal/modules/esm/utils:344
+     30 ms  get exports node:internal/modules/package_json_reader:86
+     15 ms  (garbage collector) :0
+     11 ms  (anon) dist/ansi-DrXAcdMD.js:1
+      7 ms  compileForInternalLoader node:internal/bootstrap/realm:385
+      7 ms  createOnlineReadOnlyBackup dist/sqlite-readonly-location-BvtpsFvn.js:563
+      7 ms  getPackageScopeConfig node:internal/modules/package_json_reader:207
+      5 ms  internalModuleStat :0
+      4 ms  parse :0
+
+== inclusive by function
+   6422 ms  (root) :0
+   6214 ms  (idle) :0
+    148 ms  getModuleJobForImport node:internal/modules/esm/loader:319
+     77 ms  #getJobFromResolveResult node:internal/modules/esm/loader:347
+     74 ms  #createModuleJob node:internal/modules/esm/loader:632
+     74 ms  #cachedDefaultResolve node:internal/modules/esm/loader:739
+     71 ms  loadAndTranslate node:internal/modules/esm/loader:608
+     71 ms  defaultResolve node:internal/modules/esm/resolve:940
+     70 ms  _link node:internal/modules/esm/module_job:161
+     70 ms  resolve node:internal/modules/esm/loader:715
+
+== timeline
+     0 59% (idle) | 9% compileSourceTextModule node:internal/modules/esm/utils:344
+   500 100% (idle)
+  1000 100% (idle)
+  1500 100% (idle)
+  2000 100% (idle)
+  2500 100% (idle)
+  3000 100% (idle)
+  3500 100% (idle)
+  4000 100% (idle)
+  4500 100% (idle)
+  5000 100% (idle)
+  5500 100% (idle)
+  6000 99% (idle) | 1% createOnlineReadOnlyBackup dist/sqlite-readonly-location-BvtpsFvn.js:563
+
+## before: infer model run --local (12.3 s)
+wall ms 12222 sampled 12211
+
+== self by file
+   7019 ms  (idle)
+   1407 ms  dist/sqlite-integrity-BBPyeEpy.js
+    236 ms  node:internal/modules/esm/utils
+    224 ms  (garbage collector)
+    198 ms  dist/schemas-zxit8y5H.js
+    111 ms  lstat
+    108 ms  node:internal/modules/package_json_reader
+    100 ms  node:internal/modules/esm/module_job
+     98 ms  node:internal/fs/utils
+     96 ms  ModuleWrap
+     89 ms  node:path
+     79 ms  node:internal/modules/esm/loader
+     75 ms  dist/model-catalog-APWJJyRm.js
+     68 ms  node:internal/url
+     65 ms  dist/plugin-metadata-snapshot-BuNx7zRZ.js
+     54 ms  parse
+     53 ms  (program)
+     53 ms  node:fs
+     45 ms  
+     44 ms  dist/official-external-plugin-catalog-BPnH2jsJ.js
+     44 ms  dist/stable-stringify-C8X7niaI.js
+     43 ms  internalModuleStat
+     43 ms  node:internal/async_hooks
+     38 ms  node:internal/modules/esm/module_map
+     36 ms  dist/plugin-cache-files-ephosqaM.js
+     36 ms  node:internal/modules/cjs/loader
+     36 ms  dist/discovery-BQKfofUJ.js
+     36 ms  read
+     35 ms  node:internal/encoding
+     31 ms  node:internal/worker/js_transferable
+     30 ms  node:internal/per_context/primordials
+     29 ms  getPackageScopeConfig
+     28 ms  dist/test-runtime-env-DQDRzsLt.js
+     28 ms  nm/zod/v4/classic/schemas.js
+     27 ms  dist/plugin-cache-DGWspMEc.js
+     26 ms  dist/ansi-DrXAcdMD.js
+     26 ms  dist/redact-Df68iObN.js
+     25 ms  dist/manifest-registry-_ck0cJ4q.js
+     25 ms  nm/typebox/build/system/environment/evaluate.mjs
+     24 ms  dist/installed-plugin-index-DzUab7zi.js
+
+== self by function
+   7019 ms  (idle) :0
+   1405 ms  runSqliteCheck dist/sqlite-integrity-BBPyeEpy.js:111
+    236 ms  compileSourceTextModule node:internal/modules/esm/utils:344
+    224 ms  (garbage collector) :0
+    111 ms  lstat :0
+     96 ms  ModuleWrap :0
+     89 ms  get exports node:internal/modules/package_json_reader:86
+     88 ms  (anon) node:internal/fs/utils:708
+     54 ms  parse :0
+     53 ms  (program) :0
+     52 ms  resolve node:path:1260
+     52 ms  freezeSnapshotValue dist/plugin-metadata-snapshot-BuNx7zRZ.js:184
+     48 ms  stripRemoteTransportOverrides dist/model-catalog-APWJJyRm.js:117
+     43 ms  internalModuleStat :0
+     36 ms  read :0
+     35 ms  (anon) :1
+     35 ms  decode node:internal/encoding:442
+     34 ms  realpathSync node:fs:2715
+     32 ms  ModuleJobSync node:internal/modules/esm/module_job:374
+     31 ms  structuredClone node:internal/worker/js_transferable:112
+     29 ms  getPackageScopeConfig :0
+     28 ms  isVitestRuntimeEnv dist/test-runtime-env-DQDRzsLt.js:3
+     27 ms  getActiveRemoteModelCatalog dist/model-catalog-APWJJyRm.js:214
+     27 ms  stringifyObjectValue dist/stable-stringify-C8X7niaI.js:21
+     26 ms  URL node:internal/url:802
+     26 ms  (anon) dist/ansi-DrXAcdMD.js:1
+     26 ms  inst._zod.parse dist/schemas-zxit8y5H.js:2775
+     25 ms  Evaluate nm/typebox/build/system/environment/evaluate.mjs:35
+     24 ms  defaultLoadSync node:internal/modules/esm/load:136
+     23 ms  compile dist/schemas-zxit8y5H.js:1587
+     22 ms  existsSync :0
+     22 ms  open :0
+     20 ms  getPluginCacheRoot dist/plugin-cache-DGWspMEc.js:153
+     20 ms  _instantiate node:internal/modules/esm/module_job:206
+     19 ms  (anon) dist/schemas-zxit8y5H.js:5573
+     19 ms  get node:internal/modules/esm/module_map:88
+     19 ms  stat :0
+     18 ms  FromSchemaObject nm/typebox/build/system/memory/clone.mjs:25
+     18 ms  fileURLToPath node:internal/url:1600
+     18 ms  stringifyStableValue dist/stable-stringify-C8X7niaI.js:7
+
+== inclusive by function
+  12211 ms  (root) :0
+   7019 ms  (idle) :0
+   1465 ms  runDoctorConfigPreflight dist/doctor-config-preflight-DVcMOddw.js:403
+   1416 ms  refreshMigrationCheckpoint dist/doctor-config-preflight-DVcMOddw.js:436
+   1413 ms  runWithOpenClawStateWriteAccess dist/openclaw-state-db-Bh3Bq87y.js:3561
+   1413 ms  withOpenClawStateStartupCheckpointConnection dist/openclaw-state-db-Bh3Bq87y.js:3655
+   1413 ms  withOpenClawStateStartupMigrationCheckpointDatabase dist/openclaw-state-db-Bh3Bq87y.js:3921
+   1413 ms  withStartupMigrationCheckpointDatabase dist/startup-migration-checkpoint-CZMRImdc.js:67
+   1413 ms  readMigrationCheckpoint dist/startup-migration-checkpoint-CZMRImdc.js:97
+   1413 ms  needsMigrationCheckpoint dist/startup-migration-checkpoint-CZMRImdc.js:116
+   1413 ms  needsStateMigrationCheckpoint dist/startup-migration-checkpoint-CZMRImdc.js:129
+   1410 ms  (anon) dist/openclaw-state-db-Bh3Bq87y.js:3661
+   1410 ms  runWithSqliteCoordinator dist/state-database-coordinator-DKD8Uulb.js:19
+   1407 ms  assertSqliteIntegrity dist/sqlite-integrity-BBPyeEpy.js:13
+   1405 ms  runSqliteCheck dist/sqlite-integrity-BBPyeEpy.js:111
+   1123 ms  runModelRun dist/model-fXXfAcf8.js:113
+   1092 ms  prepareSimpleCompletionModelForAgent dist/simple-completion-runtime-D9F09LT6.js:317
+   1021 ms  run node:internal/async_local_storage/async_hooks:77
+   1016 ms  withPluginCache dist/plugin-cache-DGWspMEc.js:137
+    956 ms  buildSnapshotBatch dist/prepared-model-runtime-C1N_aVhw.js:213
+    947 ms  withPreparedSimpleCompletionRuntime dist/simple-completion-runtime-D9F09LT6.js:285
+    941 ms  acquireAgentRunPreparedModelRuntime dist/prepared-model-runtime-C1N_aVhw.js:1350
+    940 ms  acquirePreparedModelRuntimeLeaseFromOwners dist/prepared-model-runtime-C1N_aVhw.js:929
+    937 ms  startSerializedSnapshotBuildBatch dist/prepared-model-runtime-C1N_aVhw.js:367
+    937 ms  publishModelRuntimeSnapshot dist/prepared-model-runtime-C1N_aVhw.js:723
+    936 ms  (anon) dist/prepared-model-runtime-C1N_aVhw.js:370
+    933 ms  prepareWorkspaceBuildGroup dist/prepared-model-runtime.facts-CEW6RO02.js:257
+    809 ms  (anon) node:internal/modules/cjs/loader:1193
+    809 ms  wrapModuleLoad node:internal/modules/cjs/loader:237
+    806 ms  (anon) node:internal/modules/cjs/loader:1519
+    806 ms  require node:internal/modules/helpers:146
+    803 ms  (anon) node:internal/modules/cjs/loader:1490
+    801 ms  (anon) node:internal/modules/cjs/loader:1878
+    800 ms  (anon) node:internal/modules/cjs/loader:1731
+    736 ms  withNativeRequireAliases dist/sdk-alias-C6604U-C.js:110
+    736 ms  tryNativeRequireModule dist/sdk-alias-C6604U-C.js:55
+    736 ms  tryNativeRequireJavaScriptModule dist/sdk-alias-C6604U-C.js:50
+    736 ms  (anon) dist/plugin-module-loader-cache-C4l9L2gm.js:474
+    736 ms  loadCachedTarget dist/plugin-module-loader-cache-C4l9L2gm.js:459
+    735 ms  (anon) dist/sdk-alias-C6604U-C.js:61
+
+== timeline
+     0 24% resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66 | 10% compileSourceTextModule node:internal/modules/esm/utils:344
+   500 6% (garbage collector) :0 | 4% compile dist/schemas-zxit8y5H.js:1587
+  1000 9% compileSourceTextModule node:internal/modules/esm/utils:344 | 9% resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66
+  1500 53% (idle) | 7% resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66
+  2000 100% (idle)
+  2500 100% (idle)
+  3000 100% (idle)
+  3500 100% (idle)
+  4000 100% (idle)
+  4500 100% (idle)
+  5000 100% (idle)
+  5500 100% (idle)
+  6000 100% (idle)
+  6500 100% (idle)
+  7000 100% (idle)
+  7500 100% (idle)
+  8000 13% runSqliteCheck dist/sqlite-integrity-BBPyeEpy.js:111 | 12% compileSchema dist/schema-validator-CLfGeb79.js:113
+  8500 100% runSqliteCheck dist/sqlite-integrity-BBPyeEpy.js:111
+  9000 100% runSqliteCheck dist/sqlite-integrity-BBPyeEpy.js:111
+  9500 68% runSqliteCheck dist/sqlite-integrity-BBPyeEpy.js:111 | 6% (garbage collector) :0
+ 10000 18% (idle) | 8% safeRealpathSync dist/path.js:71
+ 10500 61% (anon) dist/sdk-alias-C6604U-C.js:61 | 20% resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66
+ 11000 10% (garbage collector) :0 | 9% stripRemoteTransportOverrides dist/model-catalog-APWJJyRm.js:117
+ 11500 83% (idle) | 1% fetchWithPreparedRuntimeDispatcher dist/runtime-fetch-BzrhMjq6.js:50
+ 12000 90% (idle) | 1% emit node:events:466
+
+## after (fix 1): infer model run --local (4.4 s)
+wall ms 4240 sampled 4228
+
+== self by file
+    591 ms  (idle)
+    241 ms  node:internal/modules/esm/utils
+    232 ms  (garbage collector)
+    203 ms  dist/schemas-zxit8y5H.js
+    123 ms  lstat
+    105 ms  node:internal/modules/package_json_reader
+     95 ms  ModuleWrap
+     87 ms  node:path
+     82 ms  node:internal/modules/esm/module_job
+     73 ms  node:internal/url
+     72 ms  node:internal/modules/esm/loader
+     70 ms  dist/model-catalog-APWJJyRm.js
+     66 ms  dist/plugin-metadata-snapshot-BuNx7zRZ.js
+     57 ms  node:internal/async_hooks
+     56 ms  (program)
+     52 ms  
+     51 ms  node:fs
+     45 ms  open
+     42 ms  parse
+     42 ms  node:internal/modules/cjs/loader
+     41 ms  internalModuleStat
+     40 ms  dist/official-external-plugin-catalog-BPnH2jsJ.js
+     37 ms  dist/discovery-BQKfofUJ.js
+     36 ms  dist/stable-stringify-C8X7niaI.js
+     36 ms  dist/plugin-cache-files-ephosqaM.js
+     36 ms  node:internal/encoding
+     33 ms  node:internal/modules/esm/load
+     29 ms  dist/test-runtime-env-DQDRzsLt.js
+     28 ms  dist/ansi-DrXAcdMD.js
+     26 ms  dist/installed-plugin-index-DzUab7zi.js
+     26 ms  read
+     26 ms  nm/typebox/build/system/memory/clone.mjs
+     25 ms  dist/manifest-DAqWVneG.js
+     25 ms  dist/json-schema-defaults-CEZYvzdq.js
+     25 ms  dist/plugin-auto-enable-CKnydTHu.js
+     24 ms  node:internal/modules/customization_hooks
+     24 ms  node:internal/worker/js_transferable
+     23 ms  node:internal/modules/esm/module_map
+     23 ms  getPackageScopeConfig
+     23 ms  nm/zod/v4/classic/schemas.js
+
+== self by function
+    591 ms  (idle) :0
+    241 ms  compileSourceTextModule node:internal/modules/esm/utils:344
+    232 ms  (garbage collector) :0
+    123 ms  lstat :0
+     95 ms  ModuleWrap :0
+     84 ms  get exports node:internal/modules/package_json_reader:86
+     56 ms  (program) :0
+     51 ms  resolve node:path:1260
+     50 ms  freezeSnapshotValue dist/plugin-metadata-snapshot-BuNx7zRZ.js:184
+     45 ms  open :0
+     44 ms  stripRemoteTransportOverrides dist/model-catalog-APWJJyRm.js:117
+     42 ms  parse :0
+     41 ms  internalModuleStat :0
+     37 ms  (anon) :1
+     36 ms  decode node:internal/encoding:442
+     34 ms  realpathSync node:fs:2715
+     31 ms  defaultLoadSync node:internal/modules/esm/load:136
+     30 ms  inst._zod.parse dist/schemas-zxit8y5H.js:2775
+     29 ms  isVitestRuntimeEnv dist/test-runtime-env-DQDRzsLt.js:3
+     28 ms  (anon) dist/ansi-DrXAcdMD.js:1
+     26 ms  read :0
+     26 ms  promiseInitHook node:internal/async_hooks:328
+     24 ms  getActiveRemoteModelCatalog dist/model-catalog-APWJJyRm.js:214
+     23 ms  getPackageScopeConfig :0
+     23 ms  stringifyObjectValue dist/stable-stringify-C8X7niaI.js:21
+     22 ms  (anon) dist/schemas-zxit8y5H.js:5573
+     22 ms  URL node:internal/url:802
+     22 ms  fileURLToPath node:internal/url:1600
+     22 ms  Evaluate nm/typebox/build/system/environment/evaluate.mjs:35
+     21 ms  existsSync :0
+     21 ms  compile dist/schemas-zxit8y5H.js:1587
+     20 ms  structuredClone node:internal/worker/js_transferable:112
+     20 ms  wrapSafe node:internal/modules/cjs/loader:1671
+     18 ms  promiseBeforeHook node:internal/async_hooks:346
+     18 ms  init dist/schemas-zxit8y5H.js:7
+     17 ms  FromSchemaObject nm/typebox/build/system/memory/clone.mjs:25
+     17 ms  _instantiate node:internal/modules/esm/module_job:206
+     17 ms  readdir :0
+     17 ms  _propagate node:internal/async_local_storage/async_hooks:64
+     17 ms  dedupeOfficialExternalPluginCatalogEntries dist/official-external-plugin-catalog-BPnH2jsJ.js:609
+
+== inclusive by function
+   4228 ms  (root) :0
+   1181 ms  runModelRun dist/model-fXXfAcf8.js:113
+   1079 ms  prepareSimpleCompletionModelForAgent dist/simple-completion-runtime-D9F09LT6.js:317
+    957 ms  buildSnapshotBatch dist/prepared-model-runtime-C1N_aVhw.js:213
+    951 ms  withPreparedSimpleCompletionRuntime dist/simple-completion-runtime-D9F09LT6.js:285
+    945 ms  acquirePreparedModelRuntimeLeaseFromOwners dist/prepared-model-runtime-C1N_aVhw.js:929
+    945 ms  acquireAgentRunPreparedModelRuntime dist/prepared-model-runtime-C1N_aVhw.js:1350
+    942 ms  (anon) dist/prepared-model-runtime-C1N_aVhw.js:370
+    942 ms  startSerializedSnapshotBuildBatch dist/prepared-model-runtime-C1N_aVhw.js:367
+    942 ms  publishModelRuntimeSnapshot dist/prepared-model-runtime-C1N_aVhw.js:723
+    939 ms  prepareWorkspaceBuildGroup dist/prepared-model-runtime.facts-CEW6RO02.js:257
+    835 ms  run node:internal/async_local_storage/async_hooks:77
+    834 ms  withPluginCache dist/plugin-cache-DGWspMEc.js:137
+    750 ms  prepareWorkspacePluginRegistries dist/prepared-model-runtime.facts-CEW6RO02.js:171
+    749 ms  loadAgentRuntimePluginRegistryHandle dist/runtime-plugins-CWkOjN1D.js:82
+    734 ms  wrapModuleLoad node:internal/modules/cjs/loader:237
+    733 ms  (anon) node:internal/modules/cjs/loader:1193
+    730 ms  (anon) node:internal/modules/cjs/loader:1519
+    730 ms  require node:internal/modules/helpers:146
+    727 ms  (anon) node:internal/modules/cjs/loader:1490
+    725 ms  (anon) node:internal/modules/cjs/loader:1731
+    725 ms  (anon) node:internal/modules/cjs/loader:1878
+    715 ms  loadOpenClawPluginsInternal dist/loader-UHuBXZwI.js:5116
+    715 ms  loadOpenClawPlugins dist/loader-UHuBXZwI.js:5109
+    715 ms  loadPluginRegistryHandle dist/loader-UHuBXZwI.js:5590
+    706 ms  loadRuntimePluginCandidate dist/loader-UHuBXZwI.js:799
+    697 ms  withProfile dist/plugin-load-profile-BJhF3y_n.js:58
+    669 ms  readConfigFileSnapshotInternal dist/io.runtime-CKu7Rw0j.js:1675
+    664 ms  loadPluginMetadataSnapshot dist/plugin-metadata-snapshot-BuNx7zRZ.js:354
+    661 ms  getModuleJobForImport node:internal/modules/esm/loader:319
+    655 ms  measureDiagnosticsTimelineSpanSync dist/diagnostics-timeline-H3aAUCYk.js:252
+    650 ms  (anon) dist/plugin-module-loader-cache-C4l9L2gm.js:474
+    650 ms  loadCachedTarget dist/plugin-module-loader-cache-C4l9L2gm.js:459
+    649 ms  validateConfigObjectWithPluginMode dist/io.types-OGkkiIAC.js:2268
+    649 ms  validateConfigObjectWithPlugins dist/io.types-OGkkiIAC.js:2262
+    649 ms  (anon) dist/io.runtime-CKu7Rw0j.js:1800
+    649 ms  (anon) dist/sdk-alias-C6604U-C.js:61
+    649 ms  withNativeRequireAliases dist/sdk-alias-C6604U-C.js:110
+    649 ms  tryNativeRequireModule dist/sdk-alias-C6604U-C.js:55
+    649 ms  tryNativeRequireJavaScriptModule dist/sdk-alias-C6604U-C.js:50
+
+== timeline
+     0 16% resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66 | 11% compileSourceTextModule node:internal/modules/esm/utils:344
+   250 29% resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66 | 9% compileSourceTextModule node:internal/modules/esm/utils:344
+   500 9% (garbage collector) :0 | 8% compile dist/schemas-zxit8y5H.js:1587
+   750 5% loadPluginManifest dist/manifest-DAqWVneG.js:926 | 4% safeRealpathSync dist/path.js:71
+  1000 8% freezeSnapshotValue dist/plugin-metadata-snapshot-BuNx7zRZ.js:184 | 5% safeRealpathSync dist/path.js:71
+  1250 12% resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66 | 12% compileSourceTextModule node:internal/modules/esm/utils:344
+  1500 20% compileSourceTextModule node:internal/modules/esm/utils:344 | 19% resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66
+  1750 20% compileSchema dist/schema-validator-CLfGeb79.js:113 | 6% checkSchemaWithCurrentFormats dist/schema-validator-CLfGeb79.js:132
+  2000 29% (idle) | 4% safeRealpathSync dist/path.js:71
+  2250 12% safeRealpathSync dist/path.js:71 | 8% isVitestRuntimeEnv dist/test-runtime-env-DQDRzsLt.js:3
+  2500 54% (anon) dist/sdk-alias-C6604U-C.js:61 | 12% resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66
+  2750 61% (anon) dist/sdk-alias-C6604U-C.js:61 | 28% resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66
+  3000 15% compileCodexSchema dist/shared-client-DxcfF9KX.js:4926 | 11% (anon) dist/sdk-alias-C6604U-C.js:61
+  3250 17% stripRemoteTransportOverrides dist/model-catalog-APWJJyRm.js:117 | 11% (garbage collector) :0
+  3500 28% (idle) | 15% (garbage collector) :0
+  3750 92% (idle) | 1% buildManagedResponse dist/provider-transport-fetch-NIYC8sLd.js:341
+  4000 90% (idle) | 0% hasReadableSseData dist/provider-transport-fetch-NIYC8sLd.js:35
+
+### after: startup window 0-2050 ms
+window 0 2050 ms 2040
+  2040 (root) :0
+   669 readConfigFileSnapshotInternal dist/io.runtime-CKu7Rw0j.js:1675
+   649 validateConfigObjectWithPluginMode dist/io.types-OGkkiIAC.js:2268
+   649 validateConfigObjectWithPlugins dist/io.types-OGkkiIAC.js:2262
+   649 (anon) dist/io.runtime-CKu7Rw0j.js:1800
+   648 validateConfigObjectWithPluginsBase dist/io.types-OGkkiIAC.js:2312
+   537 measure dist/io.read-helpers-KfhJP4_w.js:143
+   483 loadPluginMetadataSnapshot dist/plugin-metadata-snapshot-BuNx7zRZ.js:354
+   483 resolvePluginMetadataSnapshot dist/plugin-metadata-snapshot-BuNx7zRZ.js:451
+   481 measureDiagnosticsTimelineSpanSync dist/diagnostics-timeline-H3aAUCYk.js:252
+   459 resolveConfigWidePluginMetadataSnapshot dist/io.plugin-metadata-CBHpHYQd.js:34
+   456 load dist/io.runtime-CKu7Rw0j.js:688
+   450 loadPluginMetadataSnapshotImpl dist/plugin-metadata-snapshot-BuNx7zRZ.js:480
+   450 measureDiagnosticsTimelineSpanSync.phase dist/plugin-metadata-snapshot-BuNx7zRZ.js:376
+   448 resolveConfigWidePluginMetadataSnapshotImpl dist/io.plugin-metadata-CBHpHYQd.js:55
+   435 resolveSnapshot dist/io.plugin-metadata-CBHpHYQd.js:57
+   412 loadPluginRegistrySnapshotWithMetadata dist/plugin-registry-snapshot-BgY5CJXJ.js:263
+   356 evaluate :0
+   298 buildInstalledPluginIndex dist/installed-plugin-index-DzUab7zi.js:1458
+   298 loadInstalledPluginIndexWithDiscovery dist/installed-plugin-index-DzUab7zi.js:1524
+   225 resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66
+   160 discoverOpenClawPlugins dist/discovery-BQKfofUJ.js:1222
+   157 tracePluginLifecyclePhase dist/discovery-BQKfofUJ.js:278
+   136 discoverPluginDirectory dist/discovery-BQKfofUJ.js:913
+   130 measureCliCommandStartup dist/command-startup-timing-HL7l5RPQ.js:11
+   130 measure dist/command-execution-startup-txKtxxfd.js:51
+   130 tracePluginLifecyclePhase.scope dist/discovery-BQKfofUJ.js:1257
+   118 resolve dist/plugin-module-loader-cache-C4l9L2gm.js:253
+   112 (garbage collector) :0
+    99 validatePluginSchemaValue dist/schema-validator-CLfGeb79.js:244
+    98 validateJsonSchemaValue dist/schema-validator-CLfGeb79.js:276
+    95 (anon) dist/model-fXXfAcf8.js:321
+    95 runCommandWithRuntime dist/cli-utils-CExnPwgX.js:21
+    95 (anon) dist/model-fXXfAcf8.js:320
+    95 listener file:///home/openclaw/.cache/infer-latency/core/node_modules/commander/lib/command.js:558
+    95 (anon) file:///home/openclaw/.cache/infer-latency/core/node_modules/commander/lib/command.js:1615
+    95 (anon) file:///home/openclaw/.cache/infer-latency/core/node_modules/commander/lib/command.js:1497
+    93 resolveCommandSecretRefsViaGateway dist/command-secret-gateway-DCJZ8pGz.js:477
+    93 resolveCommandConfigWithSecrets dist/command-config-resolution-CDgIeuo0.js:5
+    93 resolveLocalCapabilityRuntimeConfig dist/shared-Beq6KEVC.js:124
+    93 runModelRun dist/model-fXXfAcf8.js:113
+    91 classifyConfiguredTargetRefs dist/command-secret-gateway-DCJZ8pGz.js:155
+    90 collectConfigAssignments dist/runtime-config-collectors-BM8UOZpc.js:777
+    85 hasStalePersistedPluginFiles dist/plugin-registry-snapshot-BgY5CJXJ.js:170
+    85 hasStalePluginFiles dist/plugin-registry-snapshot-BgY5CJXJ.js:288
+    85 requiresDerivedRegistryValidation dist/plugin-registry-snapshot-BgY5CJXJ.js:233
+    84 (anon) dist/plugin-registry-snapshot-BgY5CJXJ.js:172
+    83 collectChannelConfigAssignments dist/runtime-config-collectors-BM8UOZpc.js:27
+    81 readFileSync node:fs:433
+    77 discoverInDirectory dist/discovery-BQKfofUJ.js:1039
+    74 realpathSync node:fs:2715
+    68 discoverFromPath dist/discovery-BQKfofUJ.js:1089
+    67 lstat :0
+    66 inst.safeParse dist/schemas-zxit8y5H.js:5584
+    65 (anon) dist/schemas-zxit8y5H.js:799
+    64 _ dist/schemas-zxit8y5H.js:29
+    64 inst._zod.parse dist/schemas-zxit8y5H.js:2405
+    64 loadPluginManifest dist/manifest-DAqWVneG.js:926
+    63 resolveCandidateManifest dist/discovery-BQKfofUJ.js:741
+    62 init dist/schemas-zxit8y5H.js:7
+
+### after: runtime-prep window 2050-3650 ms
+window 2050 3650 ms 1601
+  1601 (root) :0
+  1088 runModelRun dist/model-fXXfAcf8.js:113
+  1079 prepareSimpleCompletionModelForAgent dist/simple-completion-runtime-D9F09LT6.js:317
+   957 buildSnapshotBatch dist/prepared-model-runtime-C1N_aVhw.js:213
+   951 withPreparedSimpleCompletionRuntime dist/simple-completion-runtime-D9F09LT6.js:285
+   945 acquirePreparedModelRuntimeLeaseFromOwners dist/prepared-model-runtime-C1N_aVhw.js:929
+   945 acquireAgentRunPreparedModelRuntime dist/prepared-model-runtime-C1N_aVhw.js:1350
+   942 (anon) dist/prepared-model-runtime-C1N_aVhw.js:370
+   942 startSerializedSnapshotBuildBatch dist/prepared-model-runtime-C1N_aVhw.js:367
+   942 publishModelRuntimeSnapshot dist/prepared-model-runtime-C1N_aVhw.js:723
+   939 prepareWorkspaceBuildGroup dist/prepared-model-runtime.facts-CEW6RO02.js:257
+   806 withPluginCache dist/plugin-cache-DGWspMEc.js:137
+   750 prepareWorkspacePluginRegistries dist/prepared-model-runtime.facts-CEW6RO02.js:171
+   749 loadAgentRuntimePluginRegistryHandle dist/runtime-plugins-CWkOjN1D.js:82
+   715 loadOpenClawPluginsInternal dist/loader-UHuBXZwI.js:5116
+   715 loadOpenClawPlugins dist/loader-UHuBXZwI.js:5109
+   715 loadPluginRegistryHandle dist/loader-UHuBXZwI.js:5590
+   706 loadRuntimePluginCandidate dist/loader-UHuBXZwI.js:799
+   697 withProfile dist/plugin-load-profile-BJhF3y_n.js:58
+   625 (anon) dist/plugin-module-loader-cache-C4l9L2gm.js:474
+   625 loadCachedTarget dist/plugin-module-loader-cache-C4l9L2gm.js:459
+   623 (anon) dist/sdk-alias-C6604U-C.js:61
+   623 withNativeRequireAliases dist/sdk-alias-C6604U-C.js:110
+   623 tryNativeRequireModule dist/sdk-alias-C6604U-C.js:55
+   623 tryNativeRequireJavaScriptModule dist/sdk-alias-C6604U-C.js:50
+   620 (anon) dist/loader-UHuBXZwI.js:487
+   620 (anon) dist/loader-UHuBXZwI.js:1060
+   202 prepare dist/prepared-model-runtime.facts-CEW6RO02.js:270
+   181 loadPluginMetadataSnapshot dist/plugin-metadata-snapshot-BuNx7zRZ.js:354
+   178 withPluginRuntimeRegistryScope dist/gateway-request-scope-CmMd3nUp.js:54
+   177 (anon) dist/generation-scope-CcvBHxkU.js:11
+   177 withPluginMetadataSnapshotScope.trustConfigIdentity dist/generation-scope-CcvBHxkU.js:11
+   177 (anon) dist/current-plugin-metadata-snapshot-BqMIdsHK.js:576
+   177 withPluginMetadataSnapshotScope dist/current-plugin-metadata-snapshot-BqMIdsHK.js:555
+   177 withPluginRuntimeGenerationScope dist/generation-scope-CcvBHxkU.js:9
+   174 measureDiagnosticsTimelineSpanSync dist/diagnostics-timeline-H3aAUCYk.js:252
+   165 collectConfiguredProviderIdsNeedingStaticCatalog dist/prepared-model-runtime.configured-B_V2AuhE.js:72
+   164 loadPluginRegistrySnapshotWithMetadata dist/plugin-registry-snapshot-BgY5CJXJ.js:263
+   163 evaluateSync :0
+   163 planEffectiveModelCatalogRows dist/model-catalog-APWJJyRm.js:504
+   163 (anon) dist/model.static-catalog-B4mBD5e6.js:322
+   163 resolveConfiguredManifestModel dist/prepared-model-runtime.facts-CEW6RO02.js:286
+   162 planManifestModelCatalogRows dist/manifest-planner-BThnVsVf.js:14
+   161 (anon) dist/manifest-planner-BThnVsVf.js:60
+   161 planManifestModelCatalogPluginEntries dist/manifest-planner-BThnVsVf.js:56
+   159 getActiveRemoteModelCatalog dist/model-catalog-APWJJyRm.js:214
+   159 getRemoteModelCatalogProviderOverlay dist/model-catalog-APWJJyRm.js:257
+   159 resolveRemoteProvider dist/model-catalog-APWJJyRm.js:510
+   158 loadPluginMetadataSnapshotImpl dist/plugin-metadata-snapshot-BuNx7zRZ.js:480
+   158 measureDiagnosticsTimelineSpanSync.phase dist/plugin-metadata-snapshot-BuNx7zRZ.js:376
+   148 resolve dist/sdk-alias-C6604U-C.js:114
+   140 resolve dist/plugin-module-loader-cache-C4l9L2gm.js:253
+   139 applyPluginAutoEnable dist/plugin-auto-enable-CKnydTHu.js:843
+   129 resolveCommandConfigWithSecrets dist/command-config-resolution-CDgIeuo0.js:5
+   129 resolvePluginMetadataSnapshot dist/plugin-metadata-snapshot-BuNx7zRZ.js:451
+   124 validateAndSanitizeRemoteModelCatalogBundle dist/model-catalog-APWJJyRm.js:133
+   118 resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66
+    95 (garbage collector) :0
+    89 (anon) :1
+    89 buildInstalledPluginIndex dist/installed-plugin-index-DzUab7zi.js:1458
+
+## after (fix 1): infer model run --gateway (6.2 s), CLI side
+wall ms 6164 sampled 6153
+
+== self by file
+   4131 ms  (idle)
+    134 ms  dist/schemas-zxit8y5H.js
+    132 ms  node:internal/modules/esm/utils
+    111 ms  (garbage collector)
+     69 ms  node:internal/modules/package_json_reader
+     63 ms  lstat
+     59 ms  ModuleWrap
+     55 ms  node:internal/modules/esm/module_job
+     50 ms  node:path
+     47 ms  dist/plugin-metadata-snapshot-BuNx7zRZ.js
+     46 ms  node:internal/modules/esm/loader
+     45 ms  (program)
+     39 ms  node:fs
+     32 ms  node:internal/modules/cjs/loader
+     32 ms  parse
+     31 ms  node:internal/async_hooks
+     31 ms  node:internal/url
+     29 ms  dist/discovery-BQKfofUJ.js
+     29 ms  internalModuleStat
+     28 ms  
+
+== self by function
+   4131 ms  (idle) :0
+    131 ms  compileSourceTextModule node:internal/modules/esm/utils:344
+    111 ms  (garbage collector) :0
+     63 ms  lstat :0
+     59 ms  ModuleWrap :0
+     49 ms  get exports node:internal/modules/package_json_reader:86
+     45 ms  (program) :0
+     35 ms  freezeSnapshotValue dist/plugin-metadata-snapshot-BuNx7zRZ.js:184
+     32 ms  parse :0
+     29 ms  compile dist/schemas-zxit8y5H.js:1587
+     29 ms  internalModuleStat :0
+     28 ms  resolve node:path:1260
+     27 ms  (anon) dist/schemas-zxit8y5H.js:5573
+     25 ms  (anon) dist/ansi-DrXAcdMD.js:1
+     22 ms  realpathSync node:fs:2715
+     20 ms  _instantiate node:internal/modules/esm/module_job:206
+     19 ms  structuredClone node:internal/worker/js_transferable:112
+     18 ms  getPackageScopeConfig :0
+     18 ms  (anon) :1
+     17 ms  wrapSafe node:internal/modules/cjs/loader:1671
+
+== inclusive by function
+   6153 ms  (root) :0
+   4131 ms  (idle) :0
+    730 ms  readConfigFileSnapshotInternal dist/io.runtime-CKu7Rw0j.js:1675
+    712 ms  validateConfigObjectWithPluginMode dist/io.types-OGkkiIAC.js:2268
+    712 ms  validateConfigObjectWithPlugins dist/io.types-OGkkiIAC.js:2262
+    712 ms  (anon) dist/io.runtime-CKu7Rw0j.js:1800
+    711 ms  validateConfigObjectWithPluginsBase dist/io.types-OGkkiIAC.js:2312
+    628 ms  getModuleJobForImport node:internal/modules/esm/loader:319
+    611 ms  measure dist/io.read-helpers-KfhJP4_w.js:143
+    518 ms  resolveConfigWidePluginMetadataSnapshot dist/io.plugin-metadata-CBHpHYQd.js:34
+    518 ms  load dist/io.runtime-CKu7Rw0j.js:688
+    512 ms  resolveConfigWidePluginMetadataSnapshotImpl dist/io.plugin-metadata-CBHpHYQd.js:55
+    497 ms  resolvePluginMetadataSnapshot dist/plugin-metadata-snapshot-BuNx7zRZ.js:451
+    497 ms  resolveSnapshot dist/io.plugin-metadata-CBHpHYQd.js:57
+    496 ms  loadPluginMetadataSnapshot dist/plugin-metadata-snapshot-BuNx7zRZ.js:354
+    494 ms  measureDiagnosticsTimelineSpanSync dist/diagnostics-timeline-H3aAUCYk.js:252
+    462 ms  loadPluginMetadataSnapshotImpl dist/plugin-metadata-snapshot-BuNx7zRZ.js:480
+    462 ms  measureDiagnosticsTimelineSpanSync.phase dist/plugin-metadata-snapshot-BuNx7zRZ.js:376
+    425 ms  loadPluginRegistrySnapshotWithMetadata dist/plugin-registry-snapshot-BgY5CJXJ.js:263
+    377 ms  #getJobFromResolveResult node:internal/modules/esm/loader:347
+
+== timeline
+     0 19% resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66 | 11% (anon) dist/ansi-DrXAcdMD.js:1
+   250 31% resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66 | 13% compileSourceTextModule node:internal/modules/esm/utils:344
+   500 12% (garbage collector) :0 | 11% compile dist/schemas-zxit8y5H.js:1587
+   750 5% pluginCacheRealpathSync dist/plugin-cache-files-ephosqaM.js:41 | 4% (garbage collector) :0
+  1000 14% freezeSnapshotValue dist/plugin-metadata-snapshot-BuNx7zRZ.js:184 | 11% safeRealpathSync dist/path.js:71
+  1250 13% resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66 | 11% compileSourceTextModule node:internal/modules/esm/utils:344
+  1500 16% compileSourceTextModule node:internal/modules/esm/utils:344 | 15% resolve dist/entry.esm-resolve-fast-path-jqbSGeOV.js:66
+  1750 19% compileSchema dist/schema-validator-CLfGeb79.js:113 | 6% checkSchemaWithCurrentFormats dist/schema-validator-CLfGeb79.js:132
+  2000 93% (idle) | 1% createSocket dist/client-D8eBb67K.js:896
+  2250 100% (idle) | 0% writeOrBuffer node:internal/streams/writable:548
+  2500 100% (idle)
+  2750 99% (idle) | 0% handleMessage dist/client-D8eBb67K.js:516
+  3000 99% (idle) | 1% handleMessage dist/client-D8eBb67K.js:516
+  3250 100% (idle)
+  3500 100% (idle) | 0% readableAddChunkPushByteMode node:internal/streams/readable:463
+  3750 100% (idle)
+  4000 100% (idle)
+  4250 100% (idle)
+  4500 100% (idle)
+  4750 100% (idle)
+  5000 100% (idle)
+  5250 100% (idle)
+  5500 100% (idle)
+  5750 100% (idle) | 0% stopAndWait dist/client-D8eBb67K.js:1544
+  6000 94% (idle) | 1% (anon) node:internal/streams/writable:934

@@ -1984,6 +1984,13 @@
       "sha256": "acaa53092a7a4fb58eb1cd08db1fe3726d0969eb5f8f47c09f95134545ec2074",
       "source": "versa:1a9308eec02",
       "note": "session-reference-index (2026-11-17): session deletions resolve surviving references from a per-connection index (fingerprint + TEMP dirty keys + epoch) instead of parsing every entry inside the write transaction; OPENCLAW_V_SESSION_REFERENCE_INDEX=0 restores the full read (versa/port-session-reference-index-20261117, on ca32fca3e29); not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "config-guard--4cC6uJU.js",
+      "sha256": "27ad352265f9470e661893228a390f03184e41b509f01e4a0e0cb0a23512623d",
+      "source": "versa:b94693e56a9",
+      "note": "infer-latency (2026-11-17): openclaw infer / capability skip the config guard's state migration preflight (whole state-database sqlite.backup in a child + integrity check, 8-21 s per call on V); Gateway startup and Doctor still migrate (versa/port-infer-latency-20261117, on ca32fca3e29); CLI-only, no Gateway restart; not on V until promoted"
     }
   ]
 }

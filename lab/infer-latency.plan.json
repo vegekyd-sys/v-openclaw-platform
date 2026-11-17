@@ -1,0 +1,11 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/infer-latency/config-guard--4cC6uJU.js",
+      "target": "openclaw/dist/config-guard--4cC6uJU.js",
+      "before": "8a221eb34c58271215cf5305c696376dc861e19a2a67e00965deb05acbae4f9d",
+      "after": "27ad352265f9470e661893228a390f03184e41b509f01e4a0e0cb0a23512623d"
+    }
+  ]
+}
