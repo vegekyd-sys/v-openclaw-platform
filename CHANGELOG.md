@@ -10,6 +10,31 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## infer-latency-20261117
+
+上线：2026-11-17 21:59 CST 生效（21:48 promote-to-v，漂移哨兵 0 发现，VLab 已 align；21:48 v-self-restart 因 21:00 两个记忆整理 cron 回合在跑等空闲 500 s，21:58:12 停机并清掉 Codex 孤儿登记，100 s 后就绪，22:00:44 settle：stream 4/4、worker 5/5，NRestarts 0）  ·  tag `infer-latency-20261117`
+
+**摘要**：`openclaw infer` 从十几秒降到三四秒，`--gateway` 不再比普通 `openclaw agent` 回合慢。
+- **#613 CLI（6 个文件）**：infer 不再跑状态迁移预检（子进程整库 `sqlite.backup()` 862 MB + integrity check）；`--gateway` 只做 core 配置校验；`--local` 只加载所选 provider 的插件。
+- **#613 Gateway（3 个文件）**：model run 的隐藏会话创建不触发全库维护，结束清理时不做全库引用读取和计数（只对 internal-session-effects key 生效）。11/17 11:25 那次 29.9 s 停顿就是一次 `infer --gateway` 的隐藏会话创建。
+- 源码：openclaw-versa `versa/port-infer-latency-20261117`，CLI `9168f454254`、Gateway `3dfc7c4c4fb`。
+
+V 上核对（22:01–22:05，各 5 轮交替，第 1 轮是重启后冷启动）：9 个文件哈希与 after 一致。`infer model providers --json` 3.5–3.8 s（改前 11.5 s）；`infer model run --local` 3.0–3.95 s（冷 5.7 s，改前 12.2 s）；`infer model run --gateway` 4.4–5.4 s（冷 71.8 s：工作区沙箱冷启动 15.9 s、回复后约 34 s 的首次清理，改前 13.6–31.1 s）；同模型同 prompt 的 `openclaw agent` 4.2–4.8 s（冷 11.3 s）。重启后 22:00:45 起 liveness 延迟 0 次；`Cannot reap` / SqliteError / UNIQUE / TypeError 均 0；每次 `--gateway` 结束仍有一次约 1.3 s 的 session 写（`slow SQLite session write`），低于 liveness 阈值，待查。启动阶段 22:00:39 一次 20.6 s 停顿，同 07:03、03:23 几次重启后的启动停顿，非本次范围。
+
+相对上一版 `session-ref-index-20261117`：9 个文件变化。
+
+**经 VLab 发版 `infer-latency-20261117`**（claude-monitor，dev `084deec0`）
+> 验收：shared VLab 2026-11-17 20:15-20:19 CST, dev 084deec0 (#613; 9 core dist files, all before-hashes equal V live bytes): Gateway pid 271224 NRestarts 0. 5 alternating rounds: infer model providers --json 3.7-6.8 s (first cold); infer model run --gateway deepseek-flash 2.8-3.0 s after the first (10.3 s cold) vs openclaw agent same model/prompt 3.5-8.6 s; infer model run --local (service secrets.env lo…
+- `core` command-path-policy-qUeic05b.js  4b1ccc0e → 8a9bd264
+- `core` config-guard--4cC6uJU.js  8a221eb3 → 62e6c438
+- `core` internal-session-effects-C8FWqbuL.js  ec7c324e → bfa63770
+- `core` model-fXXfAcf8.js  e24d0391 → 154ad5bb
+- `core` prepared-model-runtime.facts-CEW6RO02.js  5035f0bb → a2ea22ff
+- `core` runtime-plugin-load-plan-Bm46qisR.js  132c9ec9 → 8cc6c598
+- `core` session-accessor-K0XuW6ln.js  a854b511 → 13af5e83
+- `core` session-accessor.sqlite-lifecycle-state-CrB_K2kA.js  c21306fa → c06721d5
+- `core` simple-completion-runtime-D9F09LT6.js  13c43a6d → ed3c4e2a
+
 ## session-ref-index-20261117
 
 上线：2026-11-17 07:02 CST 生效（03:58 promote-to-v，漂移哨兵 0 发现，VLab 已 align；前两次 v-self-restart 都因 FCloud daily refresh 04:00 连续超时重试、V 一直不空闲而在等满 1 小时后放弃，V 未被改动；第三次 07:01:17 空闲后停机，启动前清掉 2 条 Codex 孤儿登记，07:02:44 就绪，07:02:53 settle：stream 4/4、worker 5/5，NRestarts 0）  ·  tag `session-ref-index-20261117`
