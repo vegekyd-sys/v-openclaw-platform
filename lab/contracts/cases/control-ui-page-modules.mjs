@@ -1,16 +1,16 @@
-// VOICE-RTC/provider-plugin: the page's import map swaps in V's RTC chat bundle
-// and every module the page can reach actually loads.
+// Every module the Control UI page can reach actually loads. Since 2026.10.10 the page
+// carries no RTC import map: Tianyi dropped the Control UI RTC voice on 2026-11-04 and
+// kept voice only in the separate v-voice entry.
 export default {
-  id: "VOICE-RTC/page-modules",
-  ledger: ["VOICE-RTC/provider-plugin"],
+  id: "CONTROL-UI/page-modules",
+  ledger: ["VOICE-RTC/control-ui"],
   needs: [],
   async run({ gw, assert }) {
     const html = await (await gw.http("/")).text();
     const map = html.match(/<script type="importmap"[^>]*>([\s\S]*?)<\/script>/);
-    assert(map, "the page has no import map, so the RTC chat bundle is never used");
-    const imports = JSON.parse(map[1]).imports ?? {};
+    const imports = map ? (JSON.parse(map[1]).imports ?? {}) : {};
     const rtc = Object.values(imports).find((u) => /rtc/i.test(u));
-    assert(rtc, "the import map does not point at an RTC bundle");
+    assert(!rtc, `the page still swaps in an RTC bundle: ${rtc}`);
 
     const entry = [...html.matchAll(/<script[^>]+type="module"[^>]+src="([^"]+)"/g)].map((m) => m[1]);
     const seen = new Set();
@@ -35,6 +35,6 @@ export default {
     }
     assert(seen.size > 20, `only walked ${seen.size} modules, the walk did not reach the app`);
     assert(missing.length === 0, `${missing.length} of ${seen.size} modules fail to load: ${missing.slice(0, 5).join(", ")}`);
-    return `${seen.size} modules load; RTC bundle ${rtc}`;
+    return `${seen.size} modules load; no RTC bundle`;
   },
 };
