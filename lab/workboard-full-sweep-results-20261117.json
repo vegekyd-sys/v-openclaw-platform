@@ -1,0 +1,248 @@
+{
+ "candidate": "candidate-02f14630-a8ac-41b3-8764-d9743ec6553d",
+ "date": "2026-11-17",
+ "host": "vlab91",
+ "fixture": {
+  "templates": 3,
+  "cloned": 19115,
+  "sessions": 22922,
+  "entryMb": 1803,
+  "avgEntryKb": 81,
+  "orphanWindows": 8,
+  "orphanEvents": 0,
+  "transcriptMb": 0,
+  "dbMb": 2128
+ },
+ "variety": {
+  "aborted": 198,
+  "abortedFalse": 1471,
+  "failed": 215,
+  "archived": 361,
+  "pinned": 10,
+  "running": 7,
+  "recent": 5
+ },
+ "subagentRuns": {
+  "ok": 21325,
+  "error": 593,
+  "running": 105,
+  "total": 22033,
+  "payloadMb": 263
+ },
+ "arms": {
+  "A": {
+   "ops": [
+    {
+     "kind": "full",
+     "wallMs": 6394,
+     "maxBlockMs": 6395,
+     "cpuMs": 7524,
+     "heapPeakMb": 102,
+     "rows": 10000,
+     "worker": false
+    },
+    {
+     "kind": "partial",
+     "wallMs": 14,
+     "maxBlockMs": 15,
+     "cpuMs": 54,
+     "heapPeakMb": 1,
+     "rows": 5,
+     "worker": false
+    },
+    {
+     "kind": "full",
+     "wallMs": 5418,
+     "maxBlockMs": 5418,
+     "cpuMs": 5872,
+     "heapPeakMb": 137,
+     "rows": 10000,
+     "worker": false
+    },
+    {
+     "kind": "partial",
+     "wallMs": 10,
+     "maxBlockMs": 10,
+     "cpuMs": 38,
+     "heapPeakMb": 1,
+     "rows": 5,
+     "worker": false
+    },
+    {
+     "kind": "full",
+     "wallMs": 5402,
+     "maxBlockMs": 5402,
+     "cpuMs": 5889,
+     "heapPeakMb": 139,
+     "rows": 10000,
+     "worker": false
+    },
+    {
+     "kind": "partial",
+     "wallMs": 19,
+     "maxBlockMs": 20,
+     "cpuMs": 73,
+     "heapPeakMb": 1,
+     "rows": 5,
+     "worker": false
+    },
+    {
+     "kind": "full",
+     "wallMs": 5400,
+     "maxBlockMs": 5400,
+     "cpuMs": 5844,
+     "heapPeakMb": 137,
+     "rows": 10000,
+     "worker": false
+    },
+    {
+     "kind": "partial",
+     "wallMs": 20,
+     "maxBlockMs": 21,
+     "cpuMs": 55,
+     "heapPeakMb": 1,
+     "rows": 5,
+     "worker": false
+    },
+    {
+     "kind": "full",
+     "wallMs": 5402,
+     "maxBlockMs": 5402,
+     "cpuMs": 5835,
+     "heapPeakMb": 138,
+     "rows": 10000,
+     "worker": false
+    },
+    {
+     "kind": "partial",
+     "wallMs": 10,
+     "maxBlockMs": 10,
+     "cpuMs": 38,
+     "heapPeakMb": 1,
+     "rows": 5,
+     "worker": false
+    }
+   ],
+   "digests": {
+    "full": "df9328315daaedd463a897a63636b872945771d03b1c9b152e817ac2a8f21be5",
+    "partial": "edfd8faa640ca415617b72bea7978a55fc1d75b6c3106cf4de0e7ecb5e66b39f"
+   },
+   "workerSnapshots": 0,
+   "warnings": []
+  },
+  "B": {
+   "ops": [
+    {
+     "kind": "full",
+     "wallMs": 7556,
+     "maxBlockMs": 774,
+     "cpuMs": 9490,
+     "heapPeakMb": 52,
+     "rows": 10000,
+     "worker": true
+    },
+    {
+     "kind": "partial",
+     "wallMs": 14,
+     "maxBlockMs": 14,
+     "cpuMs": 38,
+     "heapPeakMb": 1,
+     "rows": 5,
+     "worker": false
+    },
+    {
+     "kind": "full-main-thread",
+     "wallMs": 5754,
+     "maxBlockMs": 5755,
+     "cpuMs": 6292,
+     "heapPeakMb": 138,
+     "rows": 10000,
+     "worker": false
+    },
+    {
+     "kind": "full",
+     "wallMs": 7471,
+     "maxBlockMs": 671,
+     "cpuMs": 9046,
+     "heapPeakMb": 64,
+     "rows": 10000,
+     "worker": true
+    },
+    {
+     "kind": "partial",
+     "wallMs": 9,
+     "maxBlockMs": 9,
+     "cpuMs": 33,
+     "heapPeakMb": 1,
+     "rows": 5,
+     "worker": false
+    },
+    {
+     "kind": "full",
+     "wallMs": 7717,
+     "maxBlockMs": 690,
+     "cpuMs": 9556,
+     "heapPeakMb": 60,
+     "rows": 10000,
+     "worker": true
+    },
+    {
+     "kind": "partial",
+     "wallMs": 9,
+     "maxBlockMs": 9,
+     "cpuMs": 35,
+     "heapPeakMb": 1,
+     "rows": 5,
+     "worker": false
+    },
+    {
+     "kind": "full",
+     "wallMs": 7391,
+     "maxBlockMs": 655,
+     "cpuMs": 8908,
+     "heapPeakMb": 61,
+     "rows": 10000,
+     "worker": true
+    },
+    {
+     "kind": "partial",
+     "wallMs": 9,
+     "maxBlockMs": 9,
+     "cpuMs": 30,
+     "heapPeakMb": 1,
+     "rows": 5,
+     "worker": false
+    },
+    {
+     "kind": "full",
+     "wallMs": 7614,
+     "maxBlockMs": 651,
+     "cpuMs": 9049,
+     "heapPeakMb": 61,
+     "rows": 10000,
+     "worker": true
+    },
+    {
+     "kind": "partial",
+     "wallMs": 8,
+     "maxBlockMs": 8,
+     "cpuMs": 29,
+     "heapPeakMb": 1,
+     "rows": 5,
+     "worker": false
+    }
+   ],
+   "digests": {
+    "full": "df9328315daaedd463a897a63636b872945771d03b1c9b152e817ac2a8f21be5",
+    "partial": "edfd8faa640ca415617b72bea7978a55fc1d75b6c3106cf4de0e7ecb5e66b39f",
+    "fullMainThread": "df9328315daaedd463a897a63636b872945771d03b1c9b152e817ac2a8f21be5"
+   },
+   "workerSnapshots": 5,
+   "warnings": []
+  }
+ },
+ "earlier": {
+  "candidate-68ee75f9": "worker for the stores only: B full-listing main-thread block 1295-1516 ms (A 5360-5440 ms steady); A/B digests differed only through random active run ids in the harness",
+  "candidate-2d488e11": "same build; full digests A = B = B main-thread; the partial digest differed by one row crossing the 2-minute window between arms (fixture time), fixed in the harness; profile of B: 844 ms of the 1.3-1.5 s block was the persisted subagent_runs read"
+ }
+}
