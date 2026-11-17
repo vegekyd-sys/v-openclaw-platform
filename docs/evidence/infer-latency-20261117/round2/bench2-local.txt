@@ -1,0 +1,10 @@
+arm=A mode=local start=14:41:16.555 rc=0 elapsed_ms=12206 out=['收到'] stderr_lines=5
+arm=B mode=local start=14:41:31.445 rc=0 elapsed_ms=3211 out=['收到'] stderr_lines=2
+arm=A mode=local start=14:41:37.342 rc=0 elapsed_ms=13602 out=['收到'] stderr_lines=5
+arm=B mode=local start=14:41:53.622 rc=0 elapsed_ms=3039 out=['收到'] stderr_lines=2
+arm=A mode=local start=14:41:59.339 rc=0 elapsed_ms=13380 out=['收到'] stderr_lines=5
+arm=B mode=local start=14:42:15.406 rc=0 elapsed_ms=3093 out=['收到'] stderr_lines=2
+arm=A mode=local start=14:42:21.161 rc=0 elapsed_ms=11927 out=['收到'] stderr_lines=5
+arm=B mode=local start=14:42:35.762 rc=0 elapsed_ms=4597 out=['收到'] stderr_lines=2
+arm=A mode=local start=14:42:43.041 rc=0 elapsed_ms=12114 out=['收到'] stderr_lines=5
+arm=B mode=local start=14:42:57.816 rc=0 elapsed_ms=3086 out=['收到'] stderr_lines=2
