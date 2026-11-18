@@ -1,0 +1,26 @@
+[Unit]
+Description=Archive finished Night Shift sub-agent sessions older than 7 days (V)
+Documentation=file:/opt/v-session-archive/README.md
+After=openclaw-gateway.service
+
+[Service]
+Type=oneshot
+# Same identity as the Gateway: reads the agent and Workboard SQLite files
+# read-only and archives through `openclaw gateway call sessions.patchMany`.
+User=openclaw
+Group=openclaw
+Environment=HOME=/home/openclaw
+Environment=OPENCLAW_HOME=/home/openclaw
+WorkingDirectory=/tmp
+StateDirectory=v-session-archive
+StateDirectoryMode=0750
+# Daily increment is ~1-2k sessions; a backlog is taken 3,000 a night.
+ExecStart=/usr/bin/python3 /opt/v-session-archive/archive.py --apply --older-than-days 7 --batch 25 --pause-s 3 --max-per-run 3000 --max-run-s 1800 --stop-call-s 15
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=10
+MemoryHigh=1G
+MemoryMax=1536M
+OOMScoreAdjust=1000
+TimeoutStartSec=45min
+NoNewPrivileges=true
