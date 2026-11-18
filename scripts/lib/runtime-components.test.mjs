@@ -24,6 +24,7 @@ test('V directories: core from ExecStart, Worker beside it, Feishu fixed, Codex 
     dingtalk: V_DT,
     wecom: '/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin',
     'session-relay': '/home/openclaw/.openclaw/extensions/v-session-relay',
+    'meeting-bridge': '/home/openclaw/.openclaw/extensions/v-meeting-bridge',
     handoff: '/opt/v-desktop-handoff',
     'secret-entry': '/opt/v-secret-entry',
     'browser-fill': '/opt/v-browser-fill',
@@ -68,12 +69,15 @@ test('promote mapping: existing targets map exactly as before; new channel plugi
     '/home/openclaw/.openclaw/extensions/v-session-relay/core/transports/bridge.js');
   assert.equal(componentOfTarget('extensions/v-session-relay/openclaw.plugin.json').id, 'session-relay');
   assert.equal(vPathForTarget('extensions/v-session-relay-old/index.js', vDirs), null, 'the directory name is exact');
+  assert.equal(vPathForTarget('extensions/v-meeting-bridge/core/bridge.js', vDirs),
+    '/home/openclaw/.openclaw/extensions/v-meeting-bridge/core/bridge.js');
+  assert.equal(componentOfTarget('extensions/v-meeting-bridge/openclaw.plugin.json').id, 'meeting-bridge');
   assert.equal(componentOfTarget('sidecar:handoff/plugin/index.js'), null, 'sidecars are never stage targets');
 });
 
 test('captures: the three existing runs are unchanged, Codex, DingTalk, WeCom and the session relay are whole-directory captures', () => {
   const runs = captureRuns('rel', vDirs);
-  assert.deepEqual(runs.map((r) => r.suffix), ['', '.worker', '.feishu', '.codex', '.dingtalk', '.wecom', '.session-relay']);
+  assert.deepEqual(runs.map((r) => r.suffix), ['', '.worker', '.feishu', '.codex', '.dingtalk', '.wecom', '.session-relay', '.meeting-bridge']);
   // Exactly the arguments promote-to-v.mjs passed before.
   assert.deepEqual(runs.slice(0, 3).map((r) => [r.release, r.runtime, r.args, r.out]), [
     ['rel', `${V_CORE}/dist`, ['--base', 'npm:openclaw@2026.9.1', '--upstream', '2026.9.1', '--sourceCheckout', '/opt/openclaw-experiments/db91-release-v2026.9.1-db91.6/source'], 'release/captured/rel'],
@@ -87,9 +91,11 @@ test('captures: the three existing runs are unchanged, Codex, DingTalk, WeCom an
   assert.equal(runs[5].manifest, 'release/captured/rel.wecom/manifest.json');
   assert.deepEqual([runs[6].release, runs[6].runtime, runs[6].args, runs[6].out, runs[6].optional], ['rel.session-relay',
     '/home/openclaw/.openclaw/extensions/v-session-relay', ['--base', 'none', '--exclude', 'node_modules', '--sudo'], 'release/captured/rel.session-relay', true]);
-  assert.deepEqual(runs.filter((r) => r.optional).map((r) => r.id), ['session-relay'], 'only the session relay may be missing on V');
-  assert.deepEqual(captureSuffixes(), ['.worker', '.feishu', '.codex', '.dingtalk', '.wecom', '.session-relay']);
-  assert.deepEqual(releaseNoteComponents(), [['core', ''], ['worker', '.worker'], ['feishu', '.feishu'], ['codex', '.codex'], ['dingtalk', '.dingtalk'], ['wecom', '.wecom'], ['session-relay', '.session-relay']]);
+  assert.deepEqual([runs[7].release, runs[7].runtime, runs[7].args, runs[7].optional], ['rel.meeting-bridge',
+    '/home/openclaw/.openclaw/extensions/v-meeting-bridge', ['--base', 'none', '--exclude', 'node_modules', '--sudo'], true]);
+  assert.deepEqual(runs.filter((r) => r.optional).map((r) => r.id), ['session-relay', 'meeting-bridge'], 'only our own plugins may be missing on V');
+  assert.deepEqual(captureSuffixes(), ['.worker', '.feishu', '.codex', '.dingtalk', '.wecom', '.session-relay', '.meeting-bridge']);
+  assert.deepEqual(releaseNoteComponents(), [['core', ''], ['worker', '.worker'], ['feishu', '.feishu'], ['codex', '.codex'], ['dingtalk', '.dingtalk'], ['wecom', '.wecom'], ['session-relay', '.session-relay'], ['meeting-bridge', '.meeting-bridge']]);
 });
 
 test('captures: a promotion before the session relay release skips its capture; afterwards it is captured', () => {
@@ -97,7 +103,7 @@ test('captures: a promotion before the session relay release skips its capture; 
   const asked = [];
   const before = presentCaptureRuns(runs, (dir) => { asked.push(dir); return false; });
   assert.deepEqual(before.map((r) => r.suffix), ['', '.worker', '.feishu', '.codex', '.dingtalk', '.wecom']);
-  assert.deepEqual(asked, ['/home/openclaw/.openclaw/extensions/v-session-relay'], 'only optional components are looked up on V');
+  assert.deepEqual(asked, ['/home/openclaw/.openclaw/extensions/v-session-relay', '/home/openclaw/.openclaw/extensions/v-meeting-bridge'], 'only optional components are looked up on V');
   assert.deepEqual(presentCaptureRuns(runs, () => true), runs);
   // A required component that is missing still fails loudly in the capture itself, never silently.
   assert.equal(presentCaptureRuns(runs, () => false).find((r) => r.id === 'wecom').runtime, vDirs.wecom);
@@ -146,8 +152,10 @@ test('parity pairs: existing three unchanged; DingTalk/WeCom follow VLab\'s load
   // The session relay: same place on both, may be absent on both (optional), still blocking.
   assert.deepEqual([after[7].component, after[7].prefix, after[7].v, after[7].vlab, after[7].blocking, after[7].optional],
     ['session-relay', 'extensions/v-session-relay', '/home/openclaw/.openclaw/extensions/v-session-relay', `${VLAB_RUNTIME}/extensions/v-session-relay`, true, true]);
+  assert.deepEqual([after[8].component, after[8].prefix, after[8].v, after[8].vlab, after[8].blocking, after[8].optional],
+    ['meeting-bridge', 'extensions/v-meeting-bridge', '/home/openclaw/.openclaw/extensions/v-meeting-bridge', `${VLAB_RUNTIME}/extensions/v-meeting-bridge`, true, true]);
   assert.equal(after.slice(0, 7).some((p) => p.optional), false, 'every other runtime directory must exist');
-  assert.deepEqual(after.slice(8).map((p) => [p.component, p.prefix, p.v, p.vlab, p.blocking]), [
+  assert.deepEqual(after.slice(9).map((p) => [p.component, p.prefix, p.v, p.vlab, p.blocking]), [
     ['handoff', 'sidecar:handoff/plugin', '/opt/v-desktop-handoff/plugin', '/opt/vlab-v-desktop-handoff/plugin', true],
     ['handoff', 'sidecar:handoff/service', '/opt/v-desktop-handoff/service', '/opt/vlab-v-desktop-handoff/service', true],
     ['handoff', 'sidecar:handoff/desktop', '/opt/v-desktop-handoff/desktop', '/opt/vlab-v-desktop-handoff/desktop', true],
@@ -295,7 +303,7 @@ test('release notes: a component missing from the previous release is a first ap
 
 test('captures of V channel plugins read as root (they live under /home/openclaw/.openclaw)', () => {
   const vDirs = { core: '/opt/x/core', worker: '/opt/w', feishu: '/opt/f', codex: V_CODEX, dingtalk: '/home/openclaw/.openclaw/npm/projects/d/node_modules/@dingtalk-real-ai/dingtalk-connector', wecom: '/home/openclaw/.openclaw/extensions/wecom-openclaw-plugin',
-    'session-relay': '/home/openclaw/.openclaw/extensions/v-session-relay' };
+    'session-relay': '/home/openclaw/.openclaw/extensions/v-session-relay', 'meeting-bridge': '/home/openclaw/.openclaw/extensions/v-meeting-bridge' };
   const runs = Object.fromEntries(captureRuns('r', vDirs).map((r) => [r.id, r.args]));
   assert(runs.codex.includes('--sudo') && runs.dingtalk.includes('--sudo') && runs.wecom.includes('--sudo') && runs['session-relay'].includes('--sudo'));
   assert(!runs.core.includes('--sudo') && !runs.feishu.includes('--sudo'));
