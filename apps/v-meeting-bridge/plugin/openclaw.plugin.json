@@ -5,6 +5,14 @@
   "activation": {
     "onStartup": true
   },
+  "contracts": {
+    "tools": [
+      "meeting_join",
+      "meeting_say",
+      "meeting_screenshot",
+      "meeting_leave"
+    ]
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -13,23 +21,52 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "bin": { "type": "string" },
-          "profile": { "type": "string" }
+          "bin": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          }
         }
       },
-      "progressEmoji": { "type": "string" },
-      "storeDir": { "type": "string" },
-      "runTimeoutMs": { "type": "integer", "minimum": 10000 },
+      "progressEmoji": {
+        "type": "string"
+      },
+      "storeDir": {
+        "type": "string"
+      },
+      "runTimeoutMs": {
+        "type": "integer",
+        "minimum": 10000
+      },
       "timing": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "pollMs": { "type": "integer", "minimum": 500 },
-          "joinRetryMs": { "type": "integer", "minimum": 1000 },
-          "progressReactMs": { "type": "integer", "minimum": 0 },
-          "stillWorkingMs": { "type": "integer", "minimum": 0 },
-          "maxMinutes": { "type": "integer", "minimum": 1 },
-          "maxPollFailures": { "type": "integer", "minimum": 1 }
+          "pollMs": {
+            "type": "integer",
+            "minimum": 500
+          },
+          "joinRetryMs": {
+            "type": "integer",
+            "minimum": 1000
+          },
+          "progressReactMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stillWorkingMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "maxMinutes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxPollFailures": {
+            "type": "integer",
+            "minimum": 1
+          }
         }
       }
     }
