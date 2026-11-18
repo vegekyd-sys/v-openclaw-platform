@@ -2,7 +2,7 @@
 
 OpenAI 2026-11-17 发布 GPT-6.2 Sol 和 GPT-6.2 Astra，API id 为 `gpt-6.2-sol`、`gpt-6.2-astra`（OpenAI Developers 公告；Codex 0.169.1 内置目录也是这两个 slug）。目标：`/vcodex` 指向 6.2 Sol，`/astra` 指向 6.2 Astra，旧模型保留回退别名，其他别名不变。
 
-状态：共享 VLab 已验证并已回滚；Tianyi 10:0x 授权 12:30 上 V，并追加两项：**`/terra` 改走 Codex harness**、**`/vcodex` `/astra` `/terra` 思考档位都用 high**（回退别名 `/vcodex61` `/astra60` 保持原档位）。
+状态：**2026-11-18 10:41 CST 已上线生产 V 并验收通过**，VLab 已同步（parity ALIGNED）。Tianyi 授权上线（原定 12:30，10:37 让提前「现在重启」），并追加两项：**`/terra` 改走 Codex harness**、**`/vcodex` `/astra` `/terra` 思考档位都用 high**（回退别名 `/vcodex61` `/astra60` 保持原档位）。
 
 ## 结论
 
@@ -62,7 +62,27 @@ OpenAI 2026-11-17 发布 GPT-6.2 Sol 和 GPT-6.2 Astra，API id 为 `gpt-6.2-sol
 
 Gateway 写入后 Worker 配置会被自动同步（第二份 apply 报 `No change`），verify 两份都通过。
 
-## V 上线步骤（Tianyi 已授权，12:30）
+## 生产 V 上线记录（2026-11-18）
+
+- 10:2x：Codex 0.169.1 装到 `/opt/codex-0.169.1-v`（npm integrity 与清单一致，二进制 SHA-256 `105102da…ce8b5`，属主 openclaw）；脚本与停机命令放在 `/opt/v-release-backups/gpt62-20261118/`（`gpt62-aliases.mjs` 与 PR 中逐字节一致，`apply.sh`）。在两份配置副本上 dry-run，verify 通过。
+- 10:37：会话归档任务（协调会话负责）按约定由其停止后再重启。
+- `v-self-restart` run `20261118-103749-fbbf`：10:38:21 空闲闸门通过 → 10:38:22 停机（PID 1674115）→ `apply.sh` 49 s rc 0 → 配置校验 ok → 10:40:55 就绪（PID 2228331）→ 10:41:46 settled（workers 5/5，streams 4/4）。配置备份 `*.bak-self-restart-20261118-103749-fbbf`。
+- 重启后：两份配置 verify ok；app-server 进程为 `/opt/codex-0.169.1-v/…/codex`；10:40 起 `not supported` 0、`pool is closing` 0、`Agent failed before reply` 0。重启后真实 `/vds` 流量在 0.169.1 上 rollout `effort=high`。另有 `failed to mirror codex app-server prompt`（原因 `native prompt annotation would restore redacted evidence`），11/17 已有同样记录，与升级无关。
+
+### 飞书真实验收（lark-cli，Tianyi 身份，「V 生产发布验收 0910」`oc_104de997…`）
+
+| 时间 | 入口 | 会话模型 / runtime | 工具 | 回复 |
+|---|---|---|---|---|
+| 10:57 | `/vcodex` | `gpt-6.2-sol` / codex | bash → `VM-8-2-ubuntu` | `SOL62_PROD_1118 VM-8-2-ubuntu` |
+| 10:57 | `/astra` | `gpt-6.2-astra` / codex | bash | `ASTRA62_PROD_1118 VM-8-2-ubuntu` |
+| 10:58 | `/terra` | `gpt-6.1-terra` / codex | bash | `TERRA61_CODEX_PROD_1118 VM-8-2-ubuntu` |
+| 10:59 | `/vds` | `vds-deepseek-flash` / codex | bash | `VDS_PROD_1118 VM-8-2-ubuntu` |
+
+V 上 Codex rollout 对应 `cli_version=0.169.1`、模型 `gpt-6.2-sol/gpt-6.2-astra/gpt-6.1-terra`。验收群会话本身显式设了 `thinking=low`，所以这几轮 effort 为 low——**会话里显式设置的档位优先于别名默认的 high**；high 由 VLab 无覆盖会话验证（见上）。验收后群回到默认模型（`modelOverrideSource=null`）。升级前已切到 `/vcodex` 的会话（10:52 有一个仍在 `gpt-6.1-sol`）要重发 `/vcodex` 才换到 6.2。
+
+VLab 11:00 用同一脚本同步并重启（configSha `4e7ee33e…`），`/vcodex` `/vds` 冒烟通过；`scripts/vlab-v-parity.mjs` ALIGNED（18855 文件，模型配置无差异）。V 只改配置与新增 Codex 客户端目录，`release/captured` 字节无变化，无需新 capture。
+
+## V 上线步骤（已按此执行）
 
 1. 安装客户端到新目录（不影响运行中的服务）：
    `npm install @openai/codex@0.169.1` 到 `/opt/codex-0.169.1-v`，`chown -R openclaw:openclaw`，核对二进制 SHA-256 与清单一致、`--version` 为 0.169.1。0.159.2 保留。
