@@ -15,6 +15,8 @@ function gatewayLike(runtime = 'vlab-worker') {
           'openai/gpt-6-sol': { alias: 'vcodex60', params: { thinking: 'medium' }, agentRuntime: { id: 'codex' } },
           'openai/gpt-6.1-sol': { alias: 'vcodex', params: { thinking: 'medium' }, agentRuntime: { id: 'codex' } },
           'deepseek/vds-deepseek-flash': { alias: 'vds', agentRuntime: { id: 'codex' } },
+          'openai/gpt-6.1-terra': { alias: 'terra', params: { thinking: 'medium' }, agentRuntime: { id: runtime } },
+          'openai/gpt-5.6-terra': { alias: 'terra56', params: { thinking: 'medium' }, agentRuntime: { id: runtime } },
         },
       },
       entries: {
@@ -66,6 +68,20 @@ test('moves /vcodex and /astra to 6.2 and keeps each scope runtime and thinking'
   assert.deepEqual(c.models.providers.openai.models.map((m) => m.id), ['gpt-6.1-terra', 'gpt-6-luna', 'gpt-6.2-sol', 'gpt-6.2-astra']);
   assert.equal(c.plugins.entries.codex.config.appServer.mode, 'yolo', 'appServer merge keeps other keys');
   assert.equal(c.plugins.entries.codex.config.appServer.command, codex);
+});
+
+test('/terra moves to the Codex harness and keeps its thinking; /terra56 stays', () => {
+  for (const shape of ['vlab-worker', 'openclaw']) {
+    const c = gatewayLike(shape);
+    applySets(c, plan(c).sets);
+    assert.deepEqual(c.agents.defaults.models['openai/gpt-6.1-terra'], { alias: 'terra', params: { thinking: 'medium' }, agentRuntime: { id: 'codex' } });
+    assert.equal(c.agents.defaults.models['openai/gpt-5.6-terra'].agentRuntime.id, shape);
+    assert.deepEqual(verify(c).problems, []);
+  }
+  const odd = gatewayLike();
+  odd.agents.defaults.models['openai/gpt-6.1-terra'].alias = 'x';
+  odd.agents.defaults.models['openai/gpt-5.6-terra'].alias = 'terra';
+  assert.throws(() => plan(odd), /\/terra points at openai\/gpt-5.6-terra/);
 });
 
 test('worker shape keeps its own runtime id', () => {

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Point /vcodex at GPT-6.2 Sol and /astra at GPT-6.2 Astra on OpenClaw 2026.9.1.
+// Point /vcodex at GPT-6.2 Sol and /astra at GPT-6.2 Astra on OpenClaw 2026.9.1,
+// and run /terra (GPT-6.1 Terra) on the Codex harness.
 //
 // Works on either config shape (Gateway openclaw.json or the Worker's
 // worker-openclaw.json): every change copies the runtime/params of the entry
@@ -42,6 +43,13 @@ export const MOVES = [
   ['astra', 'openai/gpt-6-astra', 'openai/gpt-6.2-astra', 'astra60'],
 ];
 
+// alias -> [ref, runtime id]: same model, moved onto another harness in every
+// scope that defines the alias (Tianyi 2026-11-18: /terra runs on Codex).
+// `revert` does not undo this; roll back from the config backups instead.
+export const RUNTIMES = [
+  ['terra', 'openai/gpt-6.1-terra', 'codex'],
+];
+
 const lower = (s) => String(s ?? '').toLowerCase();
 
 function modelScopes(config) {
@@ -81,6 +89,12 @@ export function plan(config, { codexCommand } = {}) {
       const { alias: _drop, ...rest } = owner;
       patch[newRef] = { ...structuredClone(rest), alias };
       patch[oldRef] = { ...structuredClone(rest), alias: fallback };
+    }
+    for (const [alias, ref, runtime] of RUNTIMES) {
+      const owner = Object.entries(map).find(([, v]) => lower(v?.alias) === alias);
+      if (!owner) continue;
+      if (owner[0] !== ref) throw new Error(`${where}: /${alias} points at ${owner[0]}, expected ${ref}`);
+      if (owner[1].agentRuntime?.id !== runtime) patch[ref] = { agentRuntime: { id: runtime } };
     }
     if (Object.keys(patch).length) sets.push({ path: where, value: patch });
   }
@@ -125,6 +139,13 @@ export function verify(config, { codexCommand } = {}) {
       if (lower(map[oldRef]?.alias) !== fallback) problems.push(`${where}: ${oldRef} alias is ${map[oldRef]?.alias}, expected ${fallback}`);
       const strip = ({ alias: _a, ...r }) => JSON.stringify(r);
       if (map[oldRef] && map[newRef] && strip(map[oldRef]) !== strip(map[newRef])) problems.push(`${where}: ${newRef} params/runtime differ from ${oldRef}`);
+    }
+    for (const [alias, ref, runtime] of RUNTIMES) {
+      const owners = Object.entries(map).filter(([, v]) => lower(v?.alias) === alias).map(([k]) => k);
+      if (!owners.length) continue;
+      report[`${where}:/${alias}`] = { ref: owners.join(','), runtime: map[ref]?.agentRuntime?.id, thinking: map[ref]?.params?.thinking };
+      if (owners.length !== 1 || owners[0] !== ref) problems.push(`${where}: /${alias} -> ${owners}`);
+      if (map[ref]?.agentRuntime?.id !== runtime) problems.push(`${where}: ${ref} runtime is ${map[ref]?.agentRuntime?.id}, expected ${runtime}`);
     }
   }
   const app = config.plugins?.entries?.codex?.config?.appServer;
