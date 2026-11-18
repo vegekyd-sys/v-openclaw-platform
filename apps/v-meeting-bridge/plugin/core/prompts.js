@@ -24,7 +24,8 @@ ${lines}`;
 
 export function briefPrompt({ meetingId, transcriptPath }) {
   return `[会议桥接 · meeting_id=${meetingId}] 会议已结束。完整逐字稿在 ${transcriptPath}。
-请写一份会后短纪要：结论、待办（负责人 + 事项）、未决问题，各 3–6 条，中文简洁。只输出纪要正文，会由桥接发到本群。`;
+请写一份会后短纪要，只输出纪要正文，会由桥接发到本群（飞书富文本，支持 **加粗** 和列表）。
+格式：第一行 **会议纪要 · 主题（时间）**；然后 **结论**、**待办**、**未决问题** 三段，每段 3–6 条，用「- 」开头的列表；待办写成「负责人：事项」。中文简洁，不要表格和标题符号 #。`;
 }
 
 export const COPY = Object.freeze({

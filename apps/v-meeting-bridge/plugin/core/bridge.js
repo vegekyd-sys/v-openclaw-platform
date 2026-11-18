@@ -281,7 +281,10 @@ export class MeetingBridge {
     push(this.r.sentTexts, body, KEEP_SENT);
     let messageId = null;
     let meetingError = null;
-    try {
+    // After meeting_leave (or the meeting ending) the last words only go to the chat: the meeting
+    // answers 121011 "bot is not in the meeting".
+    if (this.r.status !== "listening") meetingError = "not in the meeting";
+    else try {
       ({ messageId } = await this.d.lark.sendText(this.r.meetingId, body, crypto.randomUUID()));
       if (messageId) push(this.r.sentIds, messageId, KEEP_SENT);
     } catch (err) {

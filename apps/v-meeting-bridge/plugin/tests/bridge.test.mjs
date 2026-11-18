@@ -284,12 +284,23 @@ test("joining after a wait leaves no provisional record behind (it would rejoin 
   await m.shutdown();
 });
 
-test("lark-cli IM fallback sends JSON content, so a leading @ is never read as a file", async () => {
+test("lark-cli IM fallback sends a markdown post as JSON content, so a leading @ is never read as a file", async () => {
   const seen = [];
   const lark = createLarkCli({ exec: async (_bin, args) => { seen.push(args); return { code: 0, stdout: "{\"ok\":true,\"data\":{}}" }; } });
-  await lark.imSend({ to: "oc_abc", text: "@all 收到" });
+  await lark.imSend({ to: "oc_abc", text: "@all **结论**\n- 跑通了" });
   await lark.imSend({ to: "user:ou_x", text: "hi" });
-  assert.deepEqual(seen[0].slice(0, 9), ["im", "+messages-send", "--as", "bot", "--chat-id", "oc_abc", "--msg-type", "text", "--content"]);
-  assert.deepEqual(JSON.parse(seen[0][9]), { text: "@all 收到" });
+  assert.deepEqual(seen[0].slice(0, 9), ["im", "+messages-send", "--as", "bot", "--chat-id", "oc_abc", "--msg-type", "post", "--content"]);
+  assert.deepEqual(JSON.parse(seen[0][9]), { zh_cn: { content: [[{ tag: "md", text: "@all **结论**\n- 跑通了" }]] } });
   assert.deepEqual(seen[1].slice(4, 6), ["--user-id", "ou_x"]);
+});
+
+test("after leaving, V's last words go to the chat only (the meeting would answer 121011)", async () => {
+  const w = world();
+  await w.store.init();
+  const b = bridgeFor(w);
+  b.r.status = "ending";
+  const res = await b.say("已退出会议。");
+  assert.equal(w.sent.length, 0);
+  assert.deepEqual(w.group, [{ to: "oc_test_group", text: "【会中】已退出会议。" }]);
+  assert.equal(res.sent, false);
 });
