@@ -72,6 +72,16 @@ export function createLarkCli({ bin = "lark-cli", profile, env, timeoutMs = 30_0
     async react(meetingId, emoji) {
       await run(["vc", "+meeting-message-send", "--as", "bot", "--meeting-id", meetingId, "--msg-type", "reaction", "--emoji-type", emoji]);
     },
+    /**
+     * A plain-text IM message as the app (the bound chat's mirror when the channel adapter is not
+     * reachable from the service). --content JSON, never --text: lark-cli reads a --text that starts
+     * with "@" as a file path.
+     */
+    async imSend({ to, text }) {
+      const target = String(to ?? "").replace(/^(chat|user):/u, "");
+      const flag = target.startsWith("ou_") ? "--user-id" : "--chat-id";
+      await run(["im", "+messages-send", "--as", "bot", flag, target, "--msg-type", "text", "--content", JSON.stringify({ text })]);
+    },
     async leave(meetingId) {
       await run(["vc", "+meeting-leave", "--as", "bot", "--meeting-id", meetingId]);
     },
