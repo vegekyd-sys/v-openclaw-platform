@@ -12,14 +12,15 @@
   "user": "lab-db91-parity",
   "env": {
     "MIX": "1",
-    "MIX_BG": "14",
+    "MIX_BG": "10",
+    "MIX_BG_TURNS": "2",
     "MIX_STEPS": "8",
-    "MIX_WINDOW_S": "300",
-    "MIX_ROUNDS": "3",
+    "MIX_WINDOW_S": "180",
+    "MIX_ROUNDS": "4",
     "MIX_PROBE_EVERY_S": "12",
     "MIX_PROBES": "6",
-    "MIX_BASE_S": "240",
-    "MIX_WARM_S": "180",
+    "MIX_BASE_S": "180",
+    "MIX_WARM_S": "120",
     "AB_ENVS": "OPENCLAW_V_INTERACTIVE_PRIORITY",
     "OPENCLAW_V_INTERACTIVE_PRIORITY_BACKGROUND": ":lt-bg-",
     "OPENCLAW_V_INTERACTIVE_PRIORITY_MAX_WAIT_MS": "3000",
@@ -44,6 +45,6 @@
     "SEED_CHILD_ENTRY_KB": "0",
     "SEED_STAT1_FROM_V": "/var/tmp/vdsdeep-20261108/v-agent-stat1.json",
     "SUBSCRIBE_SESSIONS": "1",
-    "OUT_DIR": "/var/tmp/conc40-20261118/mix1"
+    "OUT_DIR": "/var/tmp/conc40-20261118/mix2"
   }
 }

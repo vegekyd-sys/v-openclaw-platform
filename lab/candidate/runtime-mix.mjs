@@ -1536,7 +1536,15 @@ const MIX_PROBE_EVERY_S = Number(process.env.MIX_PROBE_EVERY_S ?? 12);
 const MIX_PROBES = Number(process.env.MIX_PROBES ?? 6);
 const MIX_BASE_S = Number(process.env.MIX_BASE_S ?? 240);
 const MIX_WARM_S = Number(process.env.MIX_WARM_S ?? 180);
-const mixBgKey = (i) => `agent:makaron:explicit:lt-bg-${String(i).padStart(2, "0")}`;
+// a Night Shift card's session is bounded: it ends with the card. A background slot moves to a fresh
+// session every MIX_BG_TURNS turns, so per-turn costs that grow with the transcript (history read,
+// mirror facts) do not drift the windows apart.
+const MIX_BG_TURNS = Number(process.env.MIX_BG_TURNS ?? 2);
+// MIX_BG_ARMS=vds,flash: instead of the AB_ENVS switch, the windows alternate the background's runtime
+// (each slot's next session is created on the window's arm; probes stay on /vds)
+const MIX_BG_ARMS = (process.env.MIX_BG_ARMS ?? "").split(",").filter(Boolean);
+let mixBgArm = MIX_BG_ARMS[0] ?? "vds";
+const mixBgKey = (i, gen = 0, arm = "vds") => `agent:makaron:explicit:lt-bg-${arm}-${String(i).padStart(2, "0")}-g${gen}`;
 const mixProbeKey = (i) => `agent:makaron:explicit:lt-probe-${String(i).padStart(2, "0")}`;
 async function mixTurn(key, message, label, expected) {
   const id = randomUUID();
@@ -1553,9 +1561,10 @@ async function mixTurn(key, message, label, expected) {
   return r;
 }
 async function runMix() {
-  const setSide = (side) => fs.writeFileSync(abSwitchFile, side);
+  const setSide = (side) => { if (MIX_BG_ARMS.length) mixBgArm = side; else fs.writeFileSync(abSwitchFile, side); };
+  const SIDES = MIX_BG_ARMS.length === 2 ? MIX_BG_ARMS : ["off", "on"];
+  const HOME_SIDE = MIX_BG_ARMS.length ? MIX_BG_ARMS[0] : "on";
   for (let i = 0; i < MIX_PROBES; i++) await prepareSession(mixProbeKey(i), VDS_REF);
-  for (let i = 0; i < MIX_BG; i++) await prepareSession(mixBgKey(i), VDS_REF);
   const probes = [];
   let probeN = 0;
   let probing = true;
@@ -1570,9 +1579,17 @@ async function runMix() {
   const bgTurns = [];
   let bgStopAt = 0;
   const bgMessage = (label) => `（自动化后台任务 ${label}）按顺序做 ${MIX_STEPS} 步，每一步都单独用 shell 执行一次 \`sleep 1; date +%s%N | sha256sum | cut -c1-8\`（每步一条命令，不要合并，也不要并行），步骤之间不用说明。全部做完后只回复最后一步输出的 8 个字符。`;
+  const slotArm = [];
   const bgLoop = async (i) => {
     let n = 0;
-    while (Date.now() < bgStopAt) { const label = `bg-${i}-${n++}`; bgTurns.push(await mixTurn(mixBgKey(i), bgMessage(label), label)); }
+    while (Date.now() < bgStopAt) {
+      const gen = Math.floor(n / MIX_BG_TURNS);
+      if (n % MIX_BG_TURNS === 0) slotArm[i] = mixBgArm;
+      const key = mixBgKey(i, gen, slotArm[i]);
+      if (n % MIX_BG_TURNS === 0) await prepareSession(key, REF[slotArm[i]]);
+      const label = `bg-${i}-${n++}`;
+      bgTurns.push(await mixTurn(key, bgMessage(label), label));
+    }
   };
   const windows = [];
   const runWindow = async (name, side, seconds) => {
@@ -1586,17 +1603,17 @@ async function runMix() {
     windows.push({ name, side, from, to, threadCpu: threadsDiff(threadsFrom, gatewayThreads()), metrics: windowMetrics(from, to) });
     emit({ phase: "mix-window", name, side, seconds });
   };
-  setSide("on");
-  await runWindow("base-before", "on", MIX_BASE_S);
+  setSide(HOME_SIDE);
+  await runWindow("base-before", HOME_SIDE, MIX_BASE_S);
   bgStopAt = Infinity;
   const bgDone = Promise.all(Array.from({ length: MIX_BG }, (_, i) => bgLoop(i)));
-  await runWindow("warm", "on", MIX_WARM_S);
-  for (let round = 0; round < MIX_ROUNDS; round++) for (const side of round % 2 === 0 ? ["off", "on"] : ["on", "off"]) await runWindow(`r${round}-${side}`, side, MIX_WINDOW_S);
+  await runWindow("warm", HOME_SIDE, MIX_WARM_S);
+  for (let round = 0; round < MIX_ROUNDS; round++) for (const side of round % 2 === 0 ? SIDES : [...SIDES].reverse()) await runWindow(`r${round}-${side}`, side, MIX_WINDOW_S);
   bgStopAt = 0;
-  setSide("on");
+  setSide(HOME_SIDE);
   await Promise.race([bgDone, sleep(TURN_TIMEOUT_MS)]);
   await sleep(SETTLE_MS);
-  await runWindow("base-after", "on", MIX_BASE_S);
+  await runWindow("base-after", HOME_SIDE, MIX_BASE_S);
   probing = false;
   await probeLoop;
   const probeRuns = await Promise.all(probes);
@@ -1626,7 +1643,7 @@ async function runMix() {
   emit({ phase: "mix-summary", windows: out });
   fs.writeFileSync(path.join(OUT_DIR, "mix-runs.json"), JSON.stringify({
     probes: probeRuns.map((r) => ({ label: r.label, key: r.key.split(":").pop(), sentAt: r.sentAt, runStartMs: ms(r.firstAgentAt, r.sentAt), firstTextMs: ms(r.firstTextAt, r.sentAt), doneMs: ms(r.endAt, r.sentAt), terminal: r.terminal, correct: r.correct, error: r.error })),
-    background: bgTurns.map((r) => ({ label: r.label, sentAt: r.sentAt, doneMs: ms(r.endAt, r.sentAt), terminal: r.terminal, tools: (r.spans ?? []).length, spans: (r.spans ?? []).map((sp) => [sp.startAt - r.sentAt, sp.endAt ? sp.endAt - sp.startAt : null]) })),
+    background: bgTurns.map((r) => ({ label: r.label, key: r.key.split(":").pop(), sentAt: r.sentAt, doneMs: ms(r.endAt, r.sentAt), terminal: r.terminal, tools: (r.spans ?? []).length, spans: (r.spans ?? []).map((sp) => [sp.startAt - r.sentAt, sp.endAt ? sp.endAt - sp.startAt : null]) })),
     gateLines, windows: out,
   }, null, 1));
   return out;
