@@ -71,7 +71,7 @@ test("subtitles reach V as one turn; the reply goes to the meeting and, prefixed
   await w.store.init();
   const b = bridgeFor(w);
   void b.start();
-  await until(() => w.sent.length === 1);
+  await until(() => w.group.length === 1);
   assert.match(w.turns[0], /meeting_id=7709354683467238405/u);
   assert.match(w.turns[0], /Tianyi：AV，你听得到吗？/u);
   assert.deepEqual(w.sent, ["听得到，我只能打字。"]);
@@ -126,26 +126,28 @@ test("lines that arrive while V is answering go out together in the next turn", 
 });
 
 test("a slow turn shows progress: reaction first, then a short line, unless V already spoke", async () => {
-  const w = world({ turnDelayMs: 150, replies: ["结论在这"], events: [speech("帮我查一下 PR")] });
+  // Wide gaps between the timers so a loaded CI runner cannot reorder them.
+  const timing = { progressReactMs: 50, stillWorkingMs: 400 };
+  const w = world({ turnDelayMs: 1_200, replies: ["结论在这"], events: [speech("帮我查一下 PR")] });
   await w.store.init();
-  const b = bridgeFor(w, { progressReactMs: 30, stillWorkingMs: 90 });
+  const b = bridgeFor(w, timing);
   void b.start();
-  await until(() => w.sent.length === 2);
+  await until(() => w.group.length === 1, 10_000);
   assert.deepEqual(w.reacts, ["OnIt"]);
   assert.deepEqual(w.sent, ["还在弄，马上好。", "结论在这"]);
   assert.equal(w.group.length, 1, "the progress line is not mirrored to the group");
 
-  const w2 = world({ turnDelayMs: 150, events: [speech("帮我查一下")] });
+  const w2 = world({ events: [speech("帮我查一下")] });
   await w2.store.init();
-  const b2 = bridgeFor(w2, { progressReactMs: 30, stillWorkingMs: 90 });
+  const b2 = bridgeFor(w2, timing);
   w2.runTurn = async ({ message }) => {
     w2.turns.push(message);
     await b2.say("我去翻一下最近合入的 PR");
-    await sleep(150);
+    await sleep(700);
     return { status: "ok", text: "NO_REPLY" };
   };
   void b2.start();
-  await until(() => w2.turns.length === 1 && b2.r.stats.turns === 1);
+  await until(() => b2.r.stats.silent === 1, 10_000);
   assert.deepEqual(w2.reacts, []);
   assert.deepEqual(w2.sent, ["我去翻一下最近合入的 PR"]);
   assert.equal(w2.group[0].text, "【会中】我去翻一下最近合入的 PR");
