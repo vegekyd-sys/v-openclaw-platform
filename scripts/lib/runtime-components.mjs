@@ -126,6 +126,18 @@ export const COMPONENTS = [
     capture: { base: 'none', sudo: true },
   },
   {
+    // v-meeting-bridge (apps/v-meeting-bridge/plugin): V in Feishu meetings. Our own
+    // plugin like the session relay: auto-discovered extensions directory on V,
+    // inactive until plugins.allow / plugins.entries / plugins.load.paths name it;
+    // on VLab only the load path loads it. Absent on both hosts before
+    // meeting-bridge-20261118-e.
+    id: 'meeting-bridge', kind: 'runtime', label: 'meeting-bridge', suffix: '.meeting-bridge', blocking: true, absentOk: true,
+    target: /^(extensions\/v-meeting-bridge)\/(.+)$/,
+    v: { fixed: `${V_HOME}/extensions/v-meeting-bridge` },
+    vlab: { fixed: 'extensions/v-meeting-bridge' },
+    capture: { base: 'none', sudo: true },
+  },
+  {
     // Blocking since 2026-11-04. It was advisory from 2026-10-05, when V had been
     // installed from a newer commit, and VLab stayed behind for a month: V runs
     // apps/v-desktop-handoff of dev, VLab lacked 9 service files of it.
