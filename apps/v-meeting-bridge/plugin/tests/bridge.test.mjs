@@ -270,3 +270,26 @@ test("lark-cli wrapper: app identity, profile, parsing and error classes", async
   }
   assert.deepEqual(seen[1][1].slice(seen[1][1].indexOf("--page-token"), seen[1][1].indexOf("--page-token") + 2), ["--page-token", "pt1"]);
 });
+
+test("joining after a wait leaves no provisional record behind (it would rejoin after a restart)", async () => {
+  const w = world();
+  w.joinErrors.push(new LarkCliError("会议未开始", { code: "NOT_READY" }));
+  const dir = path.join(w.tmp, "store");
+  const store = await new Store(dir).init();
+  const m = new Manager({ store, lark: w.lark, runTurn: (p) => w.runTurn(p), postGroup: (d, t) => w.postGroup(d, t), timing: { pollMs: 10, joinRetryMs: 5 } });
+  await m.start({ meetingNumber: "434878659", sessionKey: "sk", delivery: GROUP, waitMinutes: 1 });
+  await until(() => m.list()[0]?.status === "listening");
+  await sleep(30);
+  assert.deepEqual(fs.readdirSync(dir).filter((n) => n.endsWith(".json")), [`${MID}.json`]);
+  await m.shutdown();
+});
+
+test("lark-cli IM fallback sends JSON content, so a leading @ is never read as a file", async () => {
+  const seen = [];
+  const lark = createLarkCli({ exec: async (_bin, args) => { seen.push(args); return { code: 0, stdout: "{\"ok\":true,\"data\":{}}" }; } });
+  await lark.imSend({ to: "oc_abc", text: "@all 收到" });
+  await lark.imSend({ to: "user:ou_x", text: "hi" });
+  assert.deepEqual(seen[0].slice(0, 9), ["im", "+messages-send", "--as", "bot", "--chat-id", "oc_abc", "--msg-type", "text", "--content"]);
+  assert.deepEqual(JSON.parse(seen[0][9]), { text: "@all 收到" });
+  assert.deepEqual(seen[1].slice(4, 6), ["--user-id", "ou_x"]);
+});

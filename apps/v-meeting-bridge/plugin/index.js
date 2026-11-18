@@ -170,14 +170,21 @@ export default definePluginEntry({
           return;
         }
         const store = await new Store(dir).init();
+        const lark = createLarkCli(config.larkCli);
         const manager = new Manager({
           store, logger, timing: config.timing, progressEmoji: config.progressEmoji,
-          lark: createLarkCli(config.larkCli),
+          lark,
           runTurn: createTurnRunner(runtime.subagent, { runTimeoutMs: config.runTimeoutMs }),
           async postGroup(delivery, text) {
-            const adapter = await runtime.channel?.outbound?.loadAdapter?.(delivery.channel);
-            if (typeof adapter?.sendText !== "function") throw new Error(`${delivery.channel} has no outbound sendText`);
-            await adapter.sendText({ cfg: getConfig(), to: delivery.to, text, ...(delivery.accountId ? { accountId: delivery.accountId } : {}), ...(delivery.threadId ? { threadId: delivery.threadId } : {}) });
+            const adapter = await runtime.channel?.outbound?.loadAdapter?.(delivery.channel).catch(() => null);
+            if (typeof adapter?.sendText === "function") {
+              await adapter.sendText({ cfg: getConfig(), to: delivery.to, text, ...(delivery.accountId ? { accountId: delivery.accountId } : {}), ...(delivery.threadId ? { threadId: delivery.threadId } : {}) });
+              return;
+            }
+            // Shared VLab 2026-11-18: from the service the channel registry had no Feishu adapter
+            // ("feishu has no outbound sendText"). Feishu chats fall back to the same app via lark-cli.
+            if (delivery.channel === "feishu") return lark.imSend({ to: delivery.to, text });
+            throw new Error(`${delivery.channel} has no outbound sendText`);
           },
           defaultWorkspaceDir(agentId) {
             try { return agentId ? runtime.agent?.resolveAgentWorkspaceDir?.(getConfig(), agentId) ?? null : null; } catch { return null; }

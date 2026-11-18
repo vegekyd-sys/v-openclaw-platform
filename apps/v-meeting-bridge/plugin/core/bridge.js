@@ -127,6 +127,8 @@ export class MeetingBridge {
       this.d.onRekey?.(old, this);
       await this.#writeHeader();
       await this.save();
+      // Otherwise the provisional record would rejoin the meeting after the next Gateway restart.
+      if (old !== this.r.id) await this.d.store.remove?.(old).catch(() => {});
       this.log("info", `joined meeting ${this.r.meetingNumber} → ${meetingId}, bound to ${this.r.sessionKey}`);
       return true;
     } catch (err) {

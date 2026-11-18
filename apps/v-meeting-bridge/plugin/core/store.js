@@ -39,6 +39,13 @@ export class Store {
     return next;
   }
 
+  /** Drop a record file (the provisional "pending-…" record once the meeting id is known). */
+  async remove(id) {
+    await (this.chains.get(id) ?? Promise.resolve()).catch(() => {});
+    this.chains.delete(id);
+    await fs.rm(this.file(id), { force: true });
+  }
+
   async list() {
     let names = [];
     try { names = await fs.readdir(this.dir); } catch { return []; }
