@@ -2,7 +2,7 @@
 
 OpenAI 2026-11-17 发布 GPT-6.2 Sol 和 GPT-6.2 Astra，API id 为 `gpt-6.2-sol`、`gpt-6.2-astra`（OpenAI Developers 公告；Codex 0.169.1 内置目录也是这两个 slug）。目标：`/vcodex` 指向 6.2 Sol，`/astra` 指向 6.2 Astra，旧模型保留回退别名，其他别名不变。
 
-状态：共享 VLab 已验证并已回滚；**生产 V 未改，等 Tianyi 授权。**
+状态：共享 VLab 已验证并已回滚；Tianyi 10:0x 授权 12:30 上 V，并追加两项：**`/terra` 改走 Codex harness**、**`/vcodex` `/astra` `/terra` 思考档位都用 high**（回退别名 `/vcodex61` `/astra60` 保持原档位）。
 
 ## 结论
 
@@ -20,6 +20,8 @@ OpenAI 2026-11-17 发布 GPT-6.2 Sol 和 GPT-6.2 Astra，API id 为 `gpt-6.2-sol
 | `agents.defaults.models` | `openai/gpt-6.2-sol` 取得 `vcodex`（codex，medium）；`openai/gpt-6.1-sol` 改名 `vcodex61`。`openai/gpt-6.2-astra` 取得 `astra`（Gateway vlab-worker / Worker openclaw，low）；`openai/gpt-6-astra` 改名 `astra60` |
 | `agents.entries.makaron.models` | 同上（vcodex：codex medium；astra：codex high） |
 | `agents.entries.v-codex.models`、`hy-codex.models` | 只有 astra：6.2 Astra 取得 `astra`（codex high），6 Astra 改 `astra60` |
+| `/terra`（`openai/gpt-6.1-terra`，只在 defaults） | `agentRuntime` vlab-worker/openclaw → `codex`，thinking medium → high；`/terra56` 不动 |
+| 三个别名的 thinking | `/vcodex`、`/astra`、`/terra` 在所有 scope 都是 `high`（原来 vcodex medium、astra defaults low/entries high、terra medium） |
 | `plugins.entries.codex.config.appServer.command` | `/opt/codex-0.159.2-v/…/codex` → `/opt/codex-0.169.1-v/…/codex`（只改 command，mode/sandbox/serviceTier 保留）。**该键需重启**，CLI 提示 `Restart the gateway to apply` |
 
 新别名的 runtime/thinking 全部从当前持有该别名的条目复制，不重写；`/vcodex60`、`/vcodex56`、`/vds`、`/terra`、`/luna` 等不动。`modelPolicy.allow` 已含 `openai/*`，不用改。
@@ -49,7 +51,18 @@ OpenAI 2026-11-17 发布 GPT-6.2 Sol 和 GPT-6.2 Astra，API id 为 `gpt-6.2-sol
 
 回滚：停机恢复两份配置备份，`configSha` 回到 `b38326c2…`、Worker `d3d710a0…`，5 个 worker，`/vds` 正常；lease 已释放。`tools/codex-0.169.1` 保留以便同步。
 
-## V 上线步骤（待授权）
+### 追加验证（10:18–10:26，同一 lease 流程，完整演练停机→写入→启动后回滚）
+
+| 入口 | 结果 |
+|---|---|
+| short-v / makaron `/terra` | `gpt-6.1-terra`，runtime `codex`，bash 工具 + 回复；Codex rollout `cli=0.169.1 model=gpt-6.1-terra` |
+| makaron `/terra56` | 仍 `gpt-5.6-terra` / vlab-worker |
+| `/vcodex` `/astra`（两条通道）`/vds` 组合回归 | 均通过 |
+| 思考档位（直接 `chat.send`，不带覆盖） | Codex rollout：`gpt-6.2-sol high`、`gpt-6.2-astra high`、`gpt-6.1-terra high`（makaron 与 short-v）；Worker 通道 `/astra` 会话 `thinkingDefault=high`，回复带思考块 |
+
+Gateway 写入后 Worker 配置会被自动同步（第二份 apply 报 `No change`），verify 两份都通过。
+
+## V 上线步骤（Tianyi 已授权，12:30）
 
 1. 安装客户端到新目录（不影响运行中的服务）：
    `npm install @openai/codex@0.169.1` 到 `/opt/codex-0.169.1-v`，`chown -R openclaw:openclaw`，核对二进制 SHA-256 与清单一致、`--version` 为 0.169.1。0.159.2 保留。

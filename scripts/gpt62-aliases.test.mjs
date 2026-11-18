@@ -59,8 +59,12 @@ test('moves /vcodex and /astra to 6.2 and keeps each scope runtime and thinking'
   const v = verify(c, { codexCommand: codex });
   assert.deepEqual(v.problems, []);
   assert.equal(c.agents.defaults.models['openai/gpt-6.2-astra'].agentRuntime.id, 'vlab-worker');
-  assert.equal(c.agents.defaults.models['openai/gpt-6.2-astra'].params.thinking, 'low');
-  assert.equal(c.agents.entries.makaron.models['openai/gpt-6.2-astra'].params.thinking, 'high');
+  for (const m of [c.agents.defaults.models, c.agents.entries.makaron.models]) {
+    assert.equal(m['openai/gpt-6.2-astra'].params.thinking, 'high');
+    assert.equal(m['openai/gpt-6.2-sol'].params.thinking, 'high');
+  }
+  assert.equal(c.agents.defaults.models['openai/gpt-6-astra'].params.thinking, 'low', 'fallback keeps its level');
+  assert.equal(c.agents.defaults.models['openai/gpt-6.1-sol'].params.thinking, 'medium', 'fallback keeps its level');
   assert.equal(c.agents.entries.makaron.models['openai/gpt-6.1-sol'].alias, 'vcodex61');
   assert.equal(c.agents.entries['hy-codex'].models['openai/gpt-6-astra'].alias, 'astra60');
   assert.equal(c.agents.entries['hy-codex'].models['openai/gpt-6.2-sol'], undefined, 'hy-codex never had /vcodex');
@@ -70,12 +74,13 @@ test('moves /vcodex and /astra to 6.2 and keeps each scope runtime and thinking'
   assert.equal(c.plugins.entries.codex.config.appServer.command, codex);
 });
 
-test('/terra moves to the Codex harness and keeps its thinking; /terra56 stays', () => {
+test('/terra moves to the Codex harness at thinking high; /terra56 stays', () => {
   for (const shape of ['vlab-worker', 'openclaw']) {
     const c = gatewayLike(shape);
     applySets(c, plan(c).sets);
-    assert.deepEqual(c.agents.defaults.models['openai/gpt-6.1-terra'], { alias: 'terra', params: { thinking: 'medium' }, agentRuntime: { id: 'codex' } });
+    assert.deepEqual(c.agents.defaults.models['openai/gpt-6.1-terra'], { alias: 'terra', params: { thinking: 'high' }, agentRuntime: { id: 'codex' } });
     assert.equal(c.agents.defaults.models['openai/gpt-5.6-terra'].agentRuntime.id, shape);
+    assert.equal(c.agents.defaults.models['openai/gpt-5.6-terra'].params.thinking, 'medium');
     assert.deepEqual(verify(c).problems, []);
   }
   const odd = gatewayLike();
@@ -89,6 +94,17 @@ test('worker shape keeps its own runtime id', () => {
   applySets(c, plan(c).sets);
   assert.equal(c.agents.defaults.models['openai/gpt-6.2-astra'].agentRuntime.id, 'openclaw');
   assert.deepEqual(verify(c).problems, []);
+});
+
+test('a config migrated before the thinking change is raised to high', () => {
+  const c = gatewayLike();
+  applySets(c, plan(c).sets);
+  c.agents.defaults.models['openai/gpt-6.2-astra'].params.thinking = 'low';
+  c.agents.entries.makaron.models['openai/gpt-6.2-sol'].params.thinking = 'medium';
+  assert.deepEqual(verify(c).problems.length, 2);
+  applySets(c, plan(c).sets);
+  assert.deepEqual(verify(c).problems, []);
+  assert.equal(c.agents.defaults.models['openai/gpt-6.2-astra'].agentRuntime.id, 'vlab-worker');
 });
 
 test('second run is a no-op', () => {

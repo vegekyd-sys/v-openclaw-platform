@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Point /vcodex at GPT-6.2 Sol and /astra at GPT-6.2 Astra on OpenClaw 2026.9.1,
-// and run /terra (GPT-6.1 Terra) on the Codex harness.
+// and run /terra (GPT-6.1 Terra) on the Codex harness. All three run at
+// thinking=high (Tianyi 2026-11-18); the fallback aliases keep their old level.
 //
 // Works on either config shape (Gateway openclaw.json or the Worker's
 // worker-openclaw.json): every change copies the runtime/params of the entry
@@ -46,6 +47,8 @@ export const MOVES = [
 // alias -> [ref, runtime id]: same model, moved onto another harness in every
 // scope that defines the alias (Tianyi 2026-11-18: /terra runs on Codex).
 // `revert` does not undo this; roll back from the config backups instead.
+export const THINKING = 'high';
+
 export const RUNTIMES = [
   ['terra', 'openai/gpt-6.1-terra', 'codex'],
 ];
@@ -80,21 +83,28 @@ export function plan(config, { codexCommand } = {}) {
     for (const [alias, oldRef, newRef, fallback] of MOVES) {
       const owner = map[oldRef];
       if (lower(owner?.alias) !== alias) {
-        if (lower(map[newRef]?.alias) === alias) continue; // already migrated
+        if (lower(map[newRef]?.alias) === alias) { // already migrated; only the thinking level may lag
+          if (map[newRef].params?.thinking !== THINKING) patch[newRef] = { params: { thinking: THINKING } };
+          continue;
+        }
         const other = Object.entries(map).find(([, v]) => lower(v?.alias) === alias);
         if (other) throw new Error(`${where}: /${alias} points at ${other[0]}, expected ${oldRef}`);
         continue; // this scope does not define the alias
       }
       assertAliasFree(map, fallback, where, oldRef);
       const { alias: _drop, ...rest } = owner;
-      patch[newRef] = { ...structuredClone(rest), alias };
+      const moved = structuredClone(rest);
+      patch[newRef] = { ...moved, params: { ...moved.params, thinking: THINKING }, alias };
       patch[oldRef] = { ...structuredClone(rest), alias: fallback };
     }
     for (const [alias, ref, runtime] of RUNTIMES) {
       const owner = Object.entries(map).find(([, v]) => lower(v?.alias) === alias);
       if (!owner) continue;
       if (owner[0] !== ref) throw new Error(`${where}: /${alias} points at ${owner[0]}, expected ${ref}`);
-      if (owner[1].agentRuntime?.id !== runtime) patch[ref] = { agentRuntime: { id: runtime } };
+      const want = {};
+      if (owner[1].agentRuntime?.id !== runtime) want.agentRuntime = { id: runtime };
+      if (owner[1].params?.thinking !== THINKING) want.params = { thinking: THINKING };
+      if (Object.keys(want).length) patch[ref] = want;
     }
     if (Object.keys(patch).length) sets.push({ path: where, value: patch });
   }
@@ -137,7 +147,8 @@ export function verify(config, { codexCommand } = {}) {
       report[`${where}:/${alias}`] = { ref: owners.join(','), runtime: map[newRef]?.agentRuntime?.id, thinking: map[newRef]?.params?.thinking };
       if (owners.length !== 1 || owners[0] !== newRef) problems.push(`${where}: /${alias} -> ${owners}`);
       if (lower(map[oldRef]?.alias) !== fallback) problems.push(`${where}: ${oldRef} alias is ${map[oldRef]?.alias}, expected ${fallback}`);
-      const strip = ({ alias: _a, ...r }) => JSON.stringify(r);
+      const strip = ({ alias: _a, params: { thinking: _t, ...p } = {}, ...r }) => JSON.stringify({ ...r, params: p });
+      if (map[newRef]?.params?.thinking !== THINKING) problems.push(`${where}: ${newRef} thinking is ${map[newRef]?.params?.thinking}`);
       if (map[oldRef] && map[newRef] && strip(map[oldRef]) !== strip(map[newRef])) problems.push(`${where}: ${newRef} params/runtime differ from ${oldRef}`);
     }
     for (const [alias, ref, runtime] of RUNTIMES) {
@@ -145,6 +156,7 @@ export function verify(config, { codexCommand } = {}) {
       if (!owners.length) continue;
       report[`${where}:/${alias}`] = { ref: owners.join(','), runtime: map[ref]?.agentRuntime?.id, thinking: map[ref]?.params?.thinking };
       if (owners.length !== 1 || owners[0] !== ref) problems.push(`${where}: /${alias} -> ${owners}`);
+      if (map[ref]?.params?.thinking !== THINKING) problems.push(`${where}: ${ref} thinking is ${map[ref]?.params?.thinking}`);
       if (map[ref]?.agentRuntime?.id !== runtime) problems.push(`${where}: ${ref} runtime is ${map[ref]?.agentRuntime?.id}, expected ${runtime}`);
     }
   }
