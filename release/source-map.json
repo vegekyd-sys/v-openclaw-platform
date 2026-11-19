@@ -2096,6 +2096,62 @@
       "sha256": "ab84850dba95cf1bd54c3751eccc52869b22d91913d027c1dd0b46c46a1cf059",
       "source": "versa:1d013cb6c39",
       "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "session-manager-CNTG_BAJ.js",
+      "sha256": "9aab7aa2e50cdb10c1f2ec4cf582cfef3d53d0a727873c727fc8473b0e8e49bb",
+      "source": "versa:3ed6d576c4c",
+      "note": "skill-review-bounded (2026-11-10, Gateway+Worker): Skill Workshop experience reviews read a bounded evidence excerpt (64 events/32 KiB), run with only skill_workshop, minimal prompt, low thinking and 8k output, yield to foreground turns, review a session at most once a day, tag at-cap skills and expire week-old autonomous proposals; backport of upstream #173889/#190158 on versa/port-skill-review-bounded-20261110 (#597); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "experience-review-prompt-D7yNaj4l.js",
+      "sha256": "1072e48231d2886a2c5c6f65449aea6b36e6308952bf48f09a4a83bda85a9ef5",
+      "source": "versa:3ed6d576c4c",
+      "note": "skill-review-bounded (2026-11-10, Gateway+Worker): Skill Workshop experience reviews read a bounded evidence excerpt (64 events/32 KiB), run with only skill_workshop, minimal prompt, low thinking and 8k output, yield to foreground turns, review a session at most once a day, tag at-cap skills and expire week-old autonomous proposals; backport of upstream #173889/#190158 on versa/port-skill-review-bounded-20261110 (#597); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "workspace-skill-read-zRQlt5fk.js",
+      "sha256": "950515e1552977c2416eca106864e09c6afb645ebd2e29099bdd0958a05c270b",
+      "source": "versa:3ed6d576c4c",
+      "note": "skill-review-bounded (2026-11-10, Gateway+Worker): Skill Workshop experience reviews read a bounded evidence excerpt (64 events/32 KiB), run with only skill_workshop, minimal prompt, low thinking and 8k output, yield to foreground turns, review a session at most once a day, tag at-cap skills and expire week-old autonomous proposals; backport of upstream #173889/#190158 on versa/port-skill-review-bounded-20261110 (#597); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "autonomous-apply-uc26z0yI.js",
+      "sha256": "24362153ce4535a3dab4642c40765f8053cb1ac937f74a5056195966aa8e7f21",
+      "source": "versa:3ed6d576c4c",
+      "note": "skill-review-bounded (2026-11-10, Gateway+Worker): Skill Workshop experience reviews read a bounded evidence excerpt (64 events/32 KiB), run with only skill_workshop, minimal prompt, low thinking and 8k output, yield to foreground turns, review a session at most once a day, tag at-cap skills and expire week-old autonomous proposals; backport of upstream #173889/#190158 on versa/port-skill-review-bounded-20261110 (#597); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "experience-review-default-Dr4f0pMZ.js",
+      "sha256": "25d57a4c6108e9e6750c10128bbcf099e39cb30552d3665e8f2f46db8c6bf583",
+      "source": "versa:3ed6d576c4c",
+      "note": "skill-review-bounded (2026-11-10, Gateway+Worker): Skill Workshop experience reviews read a bounded evidence excerpt (64 events/32 KiB), run with only skill_workshop, minimal prompt, low thinking and 8k output, yield to foreground turns, review a session at most once a day, tag at-cap skills and expire week-old autonomous proposals; backport of upstream #173889/#190158 on versa/port-skill-review-bounded-20261110 (#597); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "agent-tools.before-tool-call-g2OT63u5.js",
+      "sha256": "2c45dd2222b97890a1acb71ad58d3bb7a24119deef083686310ff75f023c348a",
+      "source": "versa:1cd93260ce7",
+      "note": "codex-skill-usage (2026-11-10): count a skill read through the Codex native shell (cat/sed/head of a catalog SKILL.md) as skill usage, so /vds and /vcodex turns write skill_usage; versa/port-codex-skill-usage-20261110 (#597); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "plugin-sdk/agent-harness-runtime.js",
+      "sha256": "024611aca2560cc1595803dd9f96f43b6a2ebe80659f36c1228a7651ce7d8e42",
+      "source": "versa:1cd93260ce7",
+      "note": "codex-skill-usage (2026-11-10): count a skill read through the Codex native shell (cat/sed/head of a catalog SKILL.md) as skill usage, so /vds and /vcodex turns write skill_usage; versa/port-codex-skill-usage-20261110 (#597); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/run-attempt-D1hJO4fX.js",
+      "sha256": "84703202ddb5ec907ab804c5793f6435054f8fe4042616ca7fcd616715f4432c",
+      "source": "versa:1cd93260ce7",
+      "note": "codex-skill-usage (2026-11-10): count a skill read through the Codex native shell (cat/sed/head of a catalog SKILL.md) as skill usage, so /vds and /vcodex turns write skill_usage; versa/port-codex-skill-usage-20261110 (#597); needs a Gateway restart; not on V until promoted"
     }
   ]
 }
