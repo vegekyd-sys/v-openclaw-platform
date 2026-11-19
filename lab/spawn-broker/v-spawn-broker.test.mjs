@@ -93,6 +93,53 @@ test("the helper going away ends the relays it holds and is restarted on the nex
 	assert.throws(() => process.kill(child.pid, 0));
 });
 
+test("a slow spawn falls back alone and leaves the relays the helper holds running", async () => {
+	const running = await spawnViaBroker(process.execPath, [relay], { stdio: STDIO, env });
+	const brokerPid = spawnBrokerStats().brokerPid;
+	const timeoutsBefore = spawnBrokerStats().timeouts;
+	process.kill(brokerPid, "SIGSTOP");
+	try {
+		assert.equal(await spawnViaBroker(process.execPath, [relay], { stdio: STDIO, env, timeoutMs: 200 }), null);
+	} finally {
+		process.kill(brokerPid, "SIGCONT");
+	}
+	assert.equal(spawnBrokerStats().brokerPid, brokerPid, "helper kept");
+	assert.equal(spawnBrokerStats().timeouts, timeoutsBefore + 1);
+	process.kill(running.pid, 0); // still alive
+	const result = await drive(running, 10);
+	assert.deepEqual(result.exit, { code: 7, signal: null });
+	const next = await spawnViaBroker(process.execPath, [relay], { stdio: STDIO, env });
+	assert.equal(spawnBrokerStats().brokerPid, brokerPid);
+	next.kill("SIGKILL");
+});
+
+test("an unresponsive helper is replaced only once no brokered relay depends on it", async () => {
+	const running = await spawnViaBroker(process.execPath, [relay], { stdio: STDIO, env });
+	const brokerPid = spawnBrokerStats().brokerPid;
+	process.kill(brokerPid, "SIGSTOP");
+	try {
+		for (let i = 0; i < 3; i++) assert.equal(await spawnViaBroker(process.execPath, [relay], { stdio: STDIO, env, timeoutMs: 100 }), null);
+		assert.equal(await spawnViaBroker(process.execPath, [relay], { stdio: STDIO, env }), null);
+		assert.equal(spawnBrokerStats().brokerPid, brokerPid, "kept while a relay depends on it");
+	} finally {
+		process.kill(brokerPid, "SIGCONT");
+	}
+	process.kill(running.pid, 0);
+	const exited = new Promise((resolve) => running.once("exit", resolve));
+	running.kill("SIGKILL");
+	await exited;
+	assert.equal(await spawnViaBroker(process.execPath, [relay], { stdio: STDIO, env }), null);
+	for (let i = 0; i < 50; i++) {
+		try { process.kill(brokerPid, 0); } catch { break; }
+		await new Promise((r) => setTimeout(r, 100));
+	}
+	assert.throws(() => process.kill(brokerPid, 0), "old helper retired");
+	const next = await spawnViaBroker(process.execPath, [relay], { stdio: STDIO, env });
+	assert.ok(next);
+	assert.notEqual(spawnBrokerStats().brokerPid, brokerPid);
+	next.kill("SIGKILL");
+});
+
 test("the caller's thread is not blocked by the fork when its heap is large (Linux)", { skip: process.platform !== "linux" }, async () => {
 	const keep = [];
 	for (let i = 0; i < 4; i++) { const b = Buffer.allocUnsafeSlow(256 * 1024 * 1024); for (let j = 0; j < b.length; j += 4096) b[j] = 1; keep.push(b); }

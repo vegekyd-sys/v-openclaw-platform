@@ -16,13 +16,17 @@
 // exactly when it did before (Gateway exit), and runs its usual parent-loss cleanup.
 //
 // OPENCLAW_V_SPAWN_BROKER=0 turns it off (read per call). Any helper failure falls back to a direct
-// spawn for that call and restarts the helper on the next one.
+// spawn for that call and restarts the helper on the next one. A spawn that misses its deadline only
+// falls back for that call: the helper is never killed for it, because losing the helper ends every
+// relay it holds. After MAX_CONSECUTIVE_TIMEOUTS in a row spawns go direct, and the helper is replaced
+// once no brokered relay depends on it.
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { fileURLToPath } from "node:url";
 
 const MARKER = "v-spawn-broker-v1";
 const SPAWN_TIMEOUT_MS = 5000;
+const MAX_CONSECUTIVE_TIMEOUTS = 3;
 const ELIGIBLE = new Set(["pipe", "inherit", "ignore", "ipc"]);
 
 function stopReading(socket) {
@@ -101,7 +105,7 @@ function runBroker() {
 // ---------------------------------------------------------------- Gateway side
 function state() {
 	const slot = Symbol.for("openclaw.v.spawnBroker.v1");
-	globalThis[slot] ??= { broker: null, ready: null, seq: 0, holds: 0, children: new Map(), stats: { brokered: 0, fallback: 0, restarts: 0, lastError: null } };
+	globalThis[slot] ??= { broker: null, ready: null, seq: 0, holds: 0, children: new Map(), abandoned: new Set(), consecutiveTimeouts: 0, retire: null, stats: { brokered: 0, fallback: 0, restarts: 0, timeouts: 0, lastError: null } };
 	return globalThis[slot];
 }
 
@@ -199,12 +203,19 @@ function startBroker(s) {
 	console.log(`[v-spawn-broker.1] ${JSON.stringify({ event: "start", pid: broker.pid, starts: s.stats.restarts })}`);
 	let readyResolve;
 	s.ready = new Promise((resolve) => { readyResolve = resolve; });
+	// A helper that never reports ready (it has no relays yet) is killed; loss handling fails the waiters.
+	const readyTimer = setTimeout(() => { try { broker.kill("SIGKILL"); } catch {} }, SPAWN_TIMEOUT_MS);
+	readyTimer.unref?.();
 	const pending = s.children;
 	broker.on("message", (m, handle) => {
-		if (m?.t === "ready") { readyResolve(true); return; }
+		if (m?.t === "ready") { clearTimeout(readyTimer); readyResolve(true); return; }
 		const entry = pending.get(m?.id);
 		if (!entry) {
 			handle?.destroy?.();
+			// The caller already fell back to a direct spawn; this relay never got a start message.
+			if (m?.t === "spawned" && s.abandoned.delete(m.id) && m.pid) {
+				try { process.kill(m.pid, "SIGKILL"); } catch {}
+			}
 			return;
 		}
 		const child = entry.child;
@@ -247,9 +258,13 @@ function startBroker(s) {
 		if (s.broker !== broker) return;
 		s.broker = null;
 		s.ready = null;
+		s.retire = null;
 		s.holds = 0;
+		s.consecutiveTimeouts = 0;
+		s.abandoned.clear();
 		s.stats.lastError = why;
 		console.log(`[v-spawn-broker.1] ${JSON.stringify({ event: "lost", pid: broker.pid, why, children: pending.size, brokered: s.stats.brokered, fallback: s.stats.fallback })}`);
+		clearTimeout(readyTimer);
 		readyResolve(false);
 		for (const [id, entry] of pending) {
 			pending.delete(id);
@@ -262,6 +277,10 @@ function startBroker(s) {
 				}
 			}
 		}
+	};
+	s.retire = (why) => {
+		try { broker.kill("SIGKILL"); } catch {}
+		lost(why);
 	};
 	broker.once("exit", (code, signal) => lost(`exit ${code ?? signal}`));
 	broker.once("error", (error) => lost(error.message));
@@ -279,6 +298,13 @@ async function spawnViaBroker(execPath, argv, options) {
 	if (process.env.OPENCLAW_V_SPAWN_BROKER === "0" || process.platform === "win32") return null;
 	const stdio = options?.stdio;
 	if (!Array.isArray(stdio) || options.detached || !stdio.every((v) => ELIGIBLE.has(v))) return null;
+	if (s.consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
+		s.stats.fallback += 1;
+		// Unresponsive: spawn directly; replace the helper once no brokered relay depends on it.
+		if (![...s.children.values()].some((entry) => entry.child.pid !== undefined)) s.retire?.(`${s.consecutiveTimeouts} spawns timed out in a row`);
+		return null;
+	}
+	const timeoutMs = options.timeoutMs ?? SPAWN_TIMEOUT_MS;
 	let held = false;
 	try {
 		if (!s.broker?.connected) startBroker(s);
@@ -289,11 +315,16 @@ async function spawnViaBroker(execPath, argv, options) {
 		const id = ++s.seq;
 		const child = new BrokeredChild(id, broker, stdio);
 		const result = await new Promise((resolve, reject) => {
+			// A slow spawn fails only this call; killing the helper would end every relay it holds.
 			const timer = setTimeout(() => {
 				s.children.delete(id);
+				if (s.broker === broker) {
+					s.abandoned.add(id);
+					s.consecutiveTimeouts += 1;
+				}
+				s.stats.timeouts += 1;
 				reject(new Error("spawn broker timed out"));
-				try { broker.kill("SIGKILL"); } catch {}
-			}, SPAWN_TIMEOUT_MS);
+			}, timeoutMs);
 			timer.unref?.();
 			s.children.set(id, {
 				child,
@@ -307,6 +338,7 @@ async function spawnViaBroker(execPath, argv, options) {
 			});
 		});
 		s.stats.brokered += 1;
+		s.consecutiveTimeouts = 0;
 		return result;
 	} catch (error) {
 		s.stats.fallback += 1;
