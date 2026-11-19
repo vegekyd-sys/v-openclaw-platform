@@ -11,7 +11,7 @@ So this deliberately does NOT ask the Gateway whether it is healthy. It counts
 worker processes, reads the journal, and sends its alerts straight to Feishu
 over HTTPS. Nothing in the alert path goes through the thing being watched.
 """
-import calendar, json, os, re, subprocess, sys, time, urllib.request, urllib.error
+import calendar, json, os, re, sqlite3, subprocess, sys, time, urllib.request, urllib.error
 
 STATE_PATH = "/var/lib/v-sentinel/state.json"
 CONFIG_PATH = "/home/openclaw/.openclaw/openclaw.json"
@@ -133,6 +133,13 @@ SESSION_STORES_ROOT = "/home/openclaw/.openclaw/agents"
 DISK_BUDGET_EVERY_S = 600
 # 85% of 48 GiB leaves ~7 GB, about 2-3 weeks at 2026-10 growth, to act without data loss.
 DISK_BUDGET_WARN_RATIO = 0.85
+# Unarchived sessions per agent (2026-11-18). The Workboard lifecycle sweep reads
+# at most 10,000 sessions; above that it cannot tell a prepared card's session is
+# missing. V runs session.maintenance in warn mode, so nothing in OpenClaw keeps
+# the count down: ops/v-session-archive archives finished Night Shift sub-agent
+# sessions daily and holds makaron near 7,000. This fires when that job has
+# stopped working, with room left before 10,000. Counted with the budget, read-only.
+UNARCHIVED_SESSIONS_WARN = 8000
 # Feishu messages that sat claimed for 300 s without reaching an agent. Each one
 # is a user message nobody has started on. 10-05..10-14: 0-12 a day, all inside
 # known stalls; 10-15 21:16-21:34: 8.
@@ -550,6 +557,25 @@ def measure_session_budgets():
     return out
 
 
+def count_unarchived_sessions():
+    """[(agent, unarchived session rows)] from each agent DB, read-only."""
+    out = []
+    for agent in sorted(os.listdir(SESSION_STORES_ROOT)) if os.path.isdir(SESSION_STORES_ROOT) else []:
+        db = os.path.join(SESSION_STORES_ROOT, agent, "agent", "openclaw-agent.sqlite")
+        if not os.path.isfile(db):
+            continue
+        try:
+            con = sqlite3.connect("file:%s?mode=ro" % db, uri=True, timeout=5)
+            try:
+                n = con.execute("SELECT count(*) FROM session_nodes WHERE archived_at IS NULL").fetchone()[0]
+            finally:
+                con.close()
+        except sqlite3.Error:
+            continue
+        out.append((agent, n))
+    return out
+
+
 def disk_space(mount):
     """[avail MB, size MB] of the filesystem mounted exactly at mount, else None.
     An unmounted data disk would otherwise report the root filesystem under it."""
@@ -819,6 +845,11 @@ def main():
         except Exception as e:
             st["budgets"] = []
             print("session budget measurement failed: %s" % e, file=sys.stderr)
+        try:
+            st["unarchived"] = [list(row) for row in count_unarchived_sessions()]
+        except Exception as e:
+            st["unarchived"] = []
+            print("unarchived session count failed: %s" % e, file=sys.stderr)
         st["budget_measured_at"] = now_s
     budgets = [tuple(b[:3]) for b in st.get("budgets") or []]
     enforcing = any((b[3] if len(b) > 3 else "enforce") == "enforce" for b in st.get("budgets") or [])
@@ -835,6 +866,13 @@ def main():
     latch("budget_over", bool(over),
           "session 磁盘用量已超预算：%s。%s" % (fmt(over), consequence),
           "session 磁盘用量已回到预算以内。")
+    many = [(a, n) for a, n in st.get("unarchived") or [] if n > UNARCHIVED_SESSIONS_WARN]
+    latch("unarchived_sessions", bool(many),
+          "未归档会话超过 %d：%s。Workboard 巡检最多读 1 万个会话，超过后它发现不了已准备卡片的会话丢失。"
+          "每天的自动归档（v-session-archive.timer）可能没在跑：看 journalctl -u v-session-archive 和 "
+          "/var/lib/v-session-archive/last-run.json。"
+          % (UNARCHIVED_SESSIONS_WARN, "、".join("%s %d" % row for row in many)),
+          "未归档会话已回到 %d 以下。" % UNARCHIVED_SESSIONS_WARN)
     latch("budget_exhausted", s.pop("budget_exhausted", 0) > 0,
           "Gateway 报告 session 磁盘预算已耗尽（能删的都删了仍超预算），自动维护退避 30 分钟。"
           "调高 session.maintenance.maxDiskBytes 或导出删除旧会话。",

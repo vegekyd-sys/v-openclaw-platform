@@ -1,0 +1,23 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/spawn-broker-workboard-index/supervisor-BuLJGQyc.js",
+      "target": "openclaw/dist/supervisor-BuLJGQyc.js",
+      "before": "3dcf2b54a8baaa337cbf96989e0ac4106bc010c96482cbf0c4c4f6265f7fdd11",
+      "after": "3fca1a79be535e4558f56f9d3e2efc364b62f405a07d2e1a19da8661b9d943e5"
+    },
+    {
+      "source": "lab/release-files/spawn-broker-workboard-index/sqlite-store-CH-caj1l.js",
+      "target": "openclaw/dist/sqlite-store-CH-caj1l.js",
+      "before": "d06ee044d85a76f19c5fa034b019f934735027afab56934d9d2c9aa5c2633c34",
+      "after": "9ff2826f52d522b5122e1542a3adb3b306d20bc13d673d4988050d5bef1e4168"
+    },
+    {
+      "source": "lab/release-files/spawn-broker-workboard-index/v-spawn-broker.mjs",
+      "target": "openclaw/dist/v-spawn-broker.mjs",
+      "before": null,
+      "after": "4d365d79b8b526dfd388cf49b10e05a8b56bc6eacc6f606adcfb91b4d90e3a21"
+    }
+  ]
+}

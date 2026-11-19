@@ -1,0 +1,59 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/infer-latency/config-guard--4cC6uJU.js",
+      "target": "openclaw/dist/config-guard--4cC6uJU.js",
+      "before": "8a221eb34c58271215cf5305c696376dc861e19a2a67e00965deb05acbae4f9d",
+      "after": "62e6c438cb3b2dfcca47faad52ca6fa7b306596c01fe14cbaf4fd66da75576b9"
+    },
+    {
+      "source": "lab/release-files/infer-latency/command-path-policy-qUeic05b.js",
+      "target": "openclaw/dist/command-path-policy-qUeic05b.js",
+      "before": "4b1ccc0efa5fc55ef16959964c91a12fd8ae1e22519b90d7a1b0c219f5d87b21",
+      "after": "8a9bd264a26c2ffc961eaf1db8a2bd308839e13d14577f8de933e484d27e2637"
+    },
+    {
+      "source": "lab/release-files/infer-latency/runtime-plugin-load-plan-Bm46qisR.js",
+      "target": "openclaw/dist/runtime-plugin-load-plan-Bm46qisR.js",
+      "before": "132c9ec91bd60838e0f9ebdd78b168be80c15e7f091797a08255acfa0809479c",
+      "after": "8cc6c598b989143fbfb2743c63489c3398f0c954edf43432489d90690a342930"
+    },
+    {
+      "source": "lab/release-files/infer-latency/simple-completion-runtime-D9F09LT6.js",
+      "target": "openclaw/dist/simple-completion-runtime-D9F09LT6.js",
+      "before": "13c43a6d7d6381ba3d7a674c49cc902818fddfc5ab9c5e31a247fdea729e6c31",
+      "after": "ed3c4e2ac0540ff2d95702bcdfdcf0cf313e31b2ddf25a4b4892cbf07ba7c11f"
+    },
+    {
+      "source": "lab/release-files/infer-latency/model-fXXfAcf8.js",
+      "target": "openclaw/dist/model-fXXfAcf8.js",
+      "before": "e24d03915fb258feb6ba2f0162e32b5ceb55a44bda499ebfc5726de50ad6c20d",
+      "after": "154ad5bbb40a3830a4d70968f5e5798ac3845a2b91833e8569d6efd586ed3ac2"
+    },
+    {
+      "source": "lab/release-files/infer-latency/prepared-model-runtime.facts-CEW6RO02.js",
+      "target": "openclaw/dist/prepared-model-runtime.facts-CEW6RO02.js",
+      "before": "5035f0bb5ba089df3a2645c42ecf5023b30e9bb6503df27b6d422ca757b2d49f",
+      "after": "a2ea22ff6dc30e3a4efb1c20c45c512b53a019a0bdc831da1bcdd21c253db5ec"
+    },
+    {
+      "source": "lab/release-files/infer-latency/session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+      "target": "openclaw/dist/session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+      "before": "c21306fac71e2e4b504f799cf6d1fe7fbf7be629d7d5c31d44e73445dba734f9",
+      "after": "c06721d55b53d7fb2d6ba25a02b2b1a81faa326420e12f4c368942b9947ffe4b"
+    },
+    {
+      "source": "lab/release-files/infer-latency/session-accessor-K0XuW6ln.js",
+      "target": "openclaw/dist/session-accessor-K0XuW6ln.js",
+      "before": "a854b511ef5d0100ac7a89ecb778dd4ba0aa53e6ae3ffa8e9b522b13171eb674",
+      "after": "13af5e83e8dd4140a4d90340dcb0ebacc62699643ecb00817b23897872131b38"
+    },
+    {
+      "source": "lab/release-files/infer-latency/internal-session-effects-C8FWqbuL.js",
+      "target": "openclaw/dist/internal-session-effects-C8FWqbuL.js",
+      "before": "ec7c324ee091457519e2cbc4d57ec6a55a62aac624d73e92d08021db24a4e597",
+      "after": "bfa6377051360fad7649dd1a4e9d6baa7b2c25d259a7a751bc5b5574ee8395f5"
+    }
+  ]
+}
