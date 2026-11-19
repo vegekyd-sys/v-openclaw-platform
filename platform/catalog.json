@@ -527,7 +527,8 @@
         "lab/sessions-search-stall.test.mjs",
         "lab/session-reference-index.test.mjs",
         "lab/infer-latency.test.mjs",
-        "lab/workboard-full-sweep.test.mjs"
+        "lab/workboard-full-sweep.test.mjs",
+        "lab/egress-proxy-tls-reuse.test.mjs"
       ]
     }
   ],

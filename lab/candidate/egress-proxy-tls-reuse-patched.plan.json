@@ -1,0 +1,28 @@
+{
+  "support": [
+    "lab/egress-proxy-tls-reuse-harness.mjs"
+  ],
+  "command": [
+    "/bin/sh",
+    "-c",
+    "exec /opt/vlab/node-v22.23.1-linux-x64/bin/node lab/egress-proxy-tls-reuse-harness.mjs --dist \"$VLAB_CANDIDATE_RUNTIME/openclaw/dist\" --runs \"$RUNS\" --requests 4 --concurrency 4 --ballast-mb \"$BALLAST_MB\" --external https://www.baidu.com/,https://api.github.com/zen"
+  ],
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 900,
+  "env": {
+    "RUNS": "30",
+    "BALLAST_MB": "0",
+    "HTTPS_PROXY": "",
+    "HTTP_PROXY": "",
+    "https_proxy": "",
+    "http_proxy": "",
+    "NO_PROXY": ""
+  },
+  "files": [
+    {
+      "source": "lab/release-files/egress-proxy-tls-reuse/runtime-Cy2RRq4n.js",
+      "target": "openclaw/dist/runtime-Cy2RRq4n.js",
+      "before": "f39ed2a440713fa141d58c61ae3f96c32e119501accb8f663c68bf5d1d57ed1f"
+    }
+  ]
+}

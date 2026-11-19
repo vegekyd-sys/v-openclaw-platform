@@ -1,0 +1,10 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/egress-proxy-tls-reuse/runtime-Cy2RRq4n.js",
+      "target": "openclaw/dist/runtime-Cy2RRq4n.js",
+      "before": "f39ed2a440713fa141d58c61ae3f96c32e119501accb8f663c68bf5d1d57ed1f"
+    }
+  ]
+}
