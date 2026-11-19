@@ -26,6 +26,14 @@ import assert from 'node:assert/strict';
 //     is reused while the CA certificate file is unchanged (mtime+size) and it stays valid for
 //     more than an hour; a failed mint is dropped so the next CONNECT retries. The TLS server
 //     itself stays per registration, since its request handler carries that run's authorization.
+//   - ca-DsWeiCkK.js: the secret egress proxy CA is valid for 30 days instead of 1 (Tianyi
+//     2026-11-19: "best not to expire"). Every Gateway start makes a new CA in a new
+//     secret-egress-proxy/gateway-* directory, and nothing re-signs it in place
+//     (isValidDebugProxyCaPair does not look at expiry), so a Gateway up for more than a day
+//     served leaves under an expired CA to every proxied exec HTTPS client. On V a workspace
+//     script (memory-graph-tls.py, nightly Librarian step) re-signs it for 7 days when under 2
+//     days are left; with 30 days it stays a no-op. The debug proxy CA (7 days) and the 1-day
+//     leaves are unchanged: the leaf cache above re-mints a leaf with under an hour left.
 
 export const MARKER = 'egress-proxy-tls-reuse-v1';
 
@@ -122,6 +130,27 @@ export function patchRuntime(source) {
   return out;
 }
 
+export const CA_MARKER = 'egress-proxy-ca-30d-v1';
+const SECRET_EGRESS_CA_DAYS = 30;
+
+// core/dist/ca-DsWeiCkK.js
+export function patchCa(source) {
+  assert(!source.includes(CA_MARKER), 'already patched');
+  return replaceExactlyOnce(
+    source,
+    `		commonName: "OpenClaw Secret Egress Proxy",
+		purpose: "secret egress proxy",
+		validityDays: 1
+	});`,
+    `		commonName: "OpenClaw Secret Egress Proxy",
+		purpose: "secret egress proxy",
+		validityDays: ${SECRET_EGRESS_CA_DAYS}
+	}); // ${CA_MARKER}: one CA per Gateway start, never re-signed in place; 1 day expired under long-running Gateways`,
+    'secret egress CA validity',
+  );
+}
+
 export const FILES = [
   { name: 'runtime-Cy2RRq4n.js', base: 'core/dist', target: 'openclaw/dist', before: 'f39ed2a440713fa141d58c61ae3f96c32e119501accb8f663c68bf5d1d57ed1f', patch: patchRuntime },
+  { name: 'ca-DsWeiCkK.js', base: 'core/dist', target: 'openclaw/dist', before: 'e8b1b1eda3b5783ae49abed14805147037524904ea27efa13901e2d66c5f12aa', patch: patchCa, marker: CA_MARKER },
 ];

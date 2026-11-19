@@ -4,8 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import { FILES, MARKER } from './patch-egress-proxy-tls-reuse.mjs';
+import { X509Certificate } from 'node:crypto';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { CA_MARKER, FILES, MARKER } from './patch-egress-proxy-tls-reuse.mjs';
 import { OUTPUT_DIR, PLAN } from './build-egress-proxy-tls-reuse.mjs';
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -21,7 +22,8 @@ test('plan lists every patched file with V before-bytes', () => {
 test('release file carries the marker, parses, and refuses a second patch', () => {
   for (const file of FILES) {
     const out = read(file.name);
-    assert(out.includes(MARKER), `${file.name} lacks ${MARKER}`);
+    const marker = file.marker ?? MARKER;
+    assert(out.includes(marker), `${file.name} lacks ${marker}`);
     assert.throws(() => file.patch(out), /already patched/u);
     const r = spawnSync(process.execPath, ['--check', path.join(repo, OUTPUT_DIR, file.name)], { encoding: 'utf8' });
     assert.equal(r.status, 0, `${file.name} does not parse: ${r.stderr}`);
@@ -166,6 +168,57 @@ test('a failed mint is not cached', { skip: !toolsPresent && !process.env.CI && 
     // leaf minted for registration 1.
     assert.equal(out.load.ok200, 2, JSON.stringify(out.load));
     assert.equal(out.load.opensslSpawns, 3, JSON.stringify(out.load));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ------------------------------------------------------------------ the CA module itself
+// ca-DsWeiCkK.js runs as patched, with its six imports stubbed (openssl is the real binary).
+const CA_STUBS = {
+  'resolve-system-bin-CzPVYNl7.js': 'export const t = (name) => name;\n',
+  'ip-BkT2Is0E.js': 'import net from "node:net";\nexport const _ = (value) => (net.isIP(value) ? value : undefined);\n',
+  'keyed-async-queue-CTreGrmR.js': 'export class t { constructor() { this.tails = new Map(); } enqueue(key, task) { const run = (this.tails.get(key) ?? Promise.resolve()).then(task, task); this.tails.set(key, run.catch(() => {})); return run; } }\n',
+  'file-lock-BBkXFzlE.js': 'export const s = async (_path, _options, task) => await task();\n',
+  'file-lock-D_h5coVv.js': '',
+  'exec-D7bZ8DC6.js': 'import { execFile } from "node:child_process";\nexport const n = (file, args, options) => new Promise((resolve, reject) => execFile(file, args, { timeout: options?.timeoutMs }, (error, stdout, stderr) => (error ? reject(error) : resolve({ stdout, stderr }))));\n',
+};
+
+test('the secret egress CA is valid for 30 days; the debug CA and leaves are unchanged', { skip: !toolsPresent && !process.env.CI && 'openssl is required' }, async () => {
+  const src = read('ca-DsWeiCkK.js');
+  assert(src.includes(CA_MARKER));
+  assert.match(src, /purpose: "secret egress proxy",\n\t\tvalidityDays: 30\n/u);
+  assert.match(src, /purpose: "debug proxy",\n\t\tvalidityDays: 7\n/u);
+  assert(src.includes('"-days",\n\t\t\t"1",'), 'leaves stay at one day');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'egress-ca-30d-'));
+  try {
+    const dist = path.join(root, 'dist');
+    fs.mkdirSync(dist);
+    for (const [name, body] of Object.entries(CA_STUBS)) fs.writeFileSync(path.join(dist, name), body);
+    fs.writeFileSync(path.join(dist, 'ca-DsWeiCkK.js'), src);
+    const caModule = await import(pathToFileURL(path.join(dist, 'ca-DsWeiCkK.js')).href);
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    const egressDir = path.join(root, 'egress');
+    const ca = await caModule.n(egressDir);
+    const caCert = new X509Certificate(fs.readFileSync(ca.certPath));
+    assert(caCert.ca);
+    assert(Date.parse(caCert.validTo) - Date.now() >= 29 * dayMs, `CA notAfter ${caCert.validTo}`);
+    assert(Date.parse(caCert.validTo) - Date.now() <= 31 * dayMs, `CA notAfter ${caCert.validTo}`);
+
+    for (const hostname of ['api.example.com', '127.0.0.1']) {
+      const leaf = await caModule.r({ certDir: egressDir, ca, hostname });
+      const leafCert = new X509Certificate(leaf.cert);
+      assert.equal(leafCert.verify(caCert.publicKey), true, `${hostname} leaf is signed by the CA`);
+      assert.equal(leafCert.checkIssued(caCert), true);
+      assert.equal(hostname === '127.0.0.1' ? leafCert.checkIP(hostname) : leafCert.checkHost(hostname), hostname);
+      const leafLeft = Date.parse(leafCert.validTo) - Date.now();
+      assert(leafLeft > 23 * 60 * 60 * 1000 && leafLeft <= dayMs + 60_000, `leaf notAfter ${leafCert.validTo}`);
+    }
+
+    const debug = await caModule.t(path.join(root, 'debug'));
+    const debugLeft = Date.parse(new X509Certificate(fs.readFileSync(debug.certPath)).validTo) - Date.now();
+    assert(debugLeft > 6 * dayMs && debugLeft <= 7 * dayMs + 60_000, 'debug proxy CA stays at 7 days');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

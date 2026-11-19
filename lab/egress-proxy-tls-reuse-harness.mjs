@@ -17,6 +17,7 @@
 // refusal for an unbound host, and leaf re-minting after the CA file changes.
 import assert from 'node:assert/strict';
 import cp from 'node:child_process';
+import { X509Certificate } from 'node:crypto';
 import fs from 'node:fs';
 import https from 'node:https';
 import module from 'node:module';
@@ -212,6 +213,7 @@ export async function measure({ distDir, externalUrls = [], runs = 30, hosts = [
   const proxy = await runtime.startGatewaySecretEgressProxy({});
   const proxyStartMs = performance.now() - startMs;
   const caDir = path.dirname(proxy.caCertPath);
+  const caNotAfter = new X509Certificate(fs.readFileSync(proxy.caCertPath)).validTo;
   const opensslAtStart = opensslCount();
   const register = (index) => {
     const env = proxy.registerRun({ runId: `harness-run-${index}`, instanceId: `i${index}` }, [{ sentinel, allowedHosts: ['localhost'], name: 'HARNESS_SECRET' }]);
@@ -277,6 +279,7 @@ export async function measure({ distDir, externalUrls = [], runs = 30, hosts = [
     node: process.version,
     params: { runs, hosts, requestsPerHost, concurrency, ballastMb },
     proxyStartMs: Math.round(proxyStartMs),
+    caNotAfter: caNotAfter,
     opensslAtStart,
     load: {
       wallMs: Math.round(result.loadMs),
