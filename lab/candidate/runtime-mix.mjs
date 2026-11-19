@@ -1536,6 +1536,7 @@ const MIX_PROBE_EVERY_S = Number(process.env.MIX_PROBE_EVERY_S ?? 12);
 const MIX_PROBES = Number(process.env.MIX_PROBES ?? 6);
 const MIX_BASE_S = Number(process.env.MIX_BASE_S ?? 240);
 const MIX_WARM_S = Number(process.env.MIX_WARM_S ?? 180);
+const MIX_PROFILE_S = Number(process.env.MIX_PROFILE_S ?? 0);
 // a Night Shift card's session is bounded: it ends with the card. A background slot moves to a fresh
 // session every MIX_BG_TURNS turns, so per-turn costs that grow with the transcript (history read,
 // mirror facts) do not drift the windows apart.
@@ -1598,9 +1599,22 @@ async function runMix() {
     await sleep(1_500);
     const from = Date.now();
     const threadsFrom = gatewayThreads();
-    await sleep(seconds * 1000);
+    // MIX_PROFILE_S=n (with AB_PROFILE=1): the Gateway profiles its own main thread for n seconds in the
+    // middle of every measured window; the window records what ran inside that span
+    let prof = null;
+    if (PROFILE_DIR && MIX_PROFILE_S > 0 && seconds > MIX_PROFILE_S + 20 && /^r\d/u.test(name)) {
+      await sleep(Math.round((seconds - MIX_PROFILE_S) / 2) * 1000);
+      const pThreads = gatewayThreads();
+      prof = { name: `${name}`, from: Date.now() };
+      fs.writeFileSync(path.join(PROFILE_DIR, `start.${name}`), "");
+      await sleep(MIX_PROFILE_S * 1000);
+      fs.writeFileSync(path.join(PROFILE_DIR, `stop.${name}`), "");
+      prof.to = Date.now();
+      prof.mainCpuS = threadsDiff(pThreads, gatewayThreads()).byComm?.main ?? null;
+      await sleep(Math.max(0, from + seconds * 1000 - Date.now()));
+    } else await sleep(seconds * 1000);
     const to = Date.now();
-    windows.push({ name, side, from, to, threadCpu: threadsDiff(threadsFrom, gatewayThreads()), metrics: windowMetrics(from, to) });
+    windows.push({ name, side, from, to, prof, threadCpu: threadsDiff(threadsFrom, gatewayThreads()), metrics: windowMetrics(from, to) });
     emit({ phase: "mix-window", name, side, seconds });
   };
   setSide(HOME_SIDE);
@@ -1637,6 +1651,13 @@ async function runMix() {
         turnsEnded: bgEnded.length, turnsOk: bgEnded.filter((r) => r.terminal === "final").length, turnP50: pct(bgEnded.map((r) => r.endAt - r.sentAt), 0.5) },
       gateway: { eluAvg: w.metrics.eluAvg, stallMaxMs: w.metrics.stallMaxMs, stallsOver1s: w.metrics.stallsOver1s, gwCpuAvgPct: w.metrics.gwCpuAvgPct, mainThreadCpuS: w.threadCpu.byComm?.main ?? null, liveness: w.metrics.liveness },
       gate: gate.at(-1) ?? null,
+      profile: w.prof ? (() => {
+        const inP = (t) => t >= w.prof.from && t < w.prof.to;
+        const bgSpans = bgTurns.flatMap((r) => r.spans ?? []).filter((sp) => inP(sp.startAt)).length;
+        const bgTurnStarts = bgTurns.filter((r) => inP(r.sentAt)).length;
+        const probeStarts = probeRuns.filter((r) => inP(r.sentAt)).length;
+        return { ...w.prof, bgToolStarts: bgSpans, bgTurnStarts, probeStarts };
+      })() : null,
       model: MODEL_PROXY ? (() => { const fs_ = faultLog.filter((f) => inW(f.at) && f.url.includes("/responses")); return { requests: fs_.length, perMin: Math.round(fs_.length / minutes * 10) / 10, firstByteP50: pct(fs_.filter((f) => f.firstByteAt).map((f) => f.firstByteAt - f.at), 0.5), firstByteP90: pct(fs_.filter((f) => f.firstByteAt).map((f) => f.firstByteAt - f.at), 0.9) }; })() : null,
     };
   });
