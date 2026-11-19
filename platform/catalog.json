@@ -169,6 +169,7 @@
         "tests/sessions-send-reply-once.test.mjs",
         "tests/sessions-send-relay.test.mjs",
         "tests/v-session-relay.test.mjs",
+        "tests/v-meeting-bridge.test.mjs",
         "tests/v-agent-shell-cgroup.test.mjs",
         "tests/inter-session-v-bytes.test.mjs",
         "tests/inter-session-admission.test.mjs",
@@ -196,7 +197,8 @@
         "scripts/configure-v-deepseek-output-budget.test.mjs",
         "scripts/configure-v-luna-context.test.mjs",
         "scripts/align-vlab-model-config.test.mjs",
-        "scripts/configure-v-announce-timeout.test.mjs"
+        "scripts/configure-v-announce-timeout.test.mjs",
+        "scripts/gpt62-aliases.test.mjs"
       ]
     },
     {
@@ -235,6 +237,7 @@
         "lab/session-task-lifecycle.test.mjs",
         "lab/codex-suppressed-prompt-finalization.test.mjs",
         "scripts/configure-v-session-relay.test.mjs",
+        "scripts/configure-v-meeting-bridge.test.mjs",
         "tests/inter-session-plan.test.mjs",
         "lab/desktop-handback-progress.test.mjs"
       ]
@@ -244,6 +247,7 @@
       "purpose": "各条线在 lab/、scripts/、tests/、worker 实验目录下的离线回归；2026-09-24 从未登记状态收拢，全部离线通过",
       "files": [
         "tests/v-memory-indexer.test.mjs",
+        "tests/v-relay.test.mjs",
         "tests/v-storage-governance.test.mjs",
         "tests/check-source-map.test.mjs",
         "tests/captured-store.test.mjs",
@@ -378,6 +382,11 @@
         "lab/feishu-codex-early-card.test.mjs",
         "lab/feishu-card-precreate.test.mjs",
         "lab/early-tool-status.test.mjs",
+        "lab/patch-interactive-priority.test.mjs",
+        "lab/patch-spawn-broker.test.mjs",
+        "lab/spawn-broker/v-spawn-broker.test.mjs",
+        "lab/patch-workboard-hotpath-index.test.mjs",
+        "lab/spawn-broker-workboard-index.test.mjs",
         "lab/restart-recovery-claim-release.test.mjs",
         "lab/history-image-resize-skip.test.mjs",
         "lab/no-reply-after-tool.test.mjs",
@@ -518,7 +527,13 @@
         "lab/workboard-full-context.test.mjs",
         "lab/cli-readonly-live.test.mjs",
         "lab/lifecycle-cleanup-bounded.test.mjs",
-        "lab/usage-offload.test.mjs"
+        "lab/usage-offload.test.mjs",
+        "lab/sessions-visibility-columns.test.mjs",
+        "lab/sessions-search-stall.test.mjs",
+        "lab/session-reference-index.test.mjs",
+        "lab/infer-latency.test.mjs",
+        "lab/workboard-full-sweep.test.mjs",
+        "lab/egress-proxy-tls-reuse.test.mjs"
       ]
     }
   ],

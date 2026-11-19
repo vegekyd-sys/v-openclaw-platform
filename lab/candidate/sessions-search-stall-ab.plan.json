@@ -1,0 +1,23 @@
+{
+  "support": [
+    "lab/candidate/sessions-search-stall-ab.mjs",
+    "lab/candidate/v-scale-session-fixture.mjs",
+    "lab/sessions-search-stall.plan.json",
+    "lab/release-files/sessions-search-stall/session-transcript-reconcile-j5qhAafV.js",
+    "lab/release-files/sessions-search-stall/session-transcript-search-pRB2YScP.js",
+    "lab/release-files/sessions-search-stall/openclaw-tools-BODVdJQD.js",
+    "lab/release-files/sessions-search-stall/v-base/session-transcript-search-pRB2YScP.js",
+    "release/captured/remote-node-stable-20261111/dist/session-transcript-reconcile-j5qhAafV.js",
+    "release/captured/remote-node-stable-20261111/dist/openclaw-tools-BODVdJQD.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/sessions-search-stall-ab.mjs"
+  ],
+  "timeoutSeconds": 0,
+  "user": "lab-db91-parity",
+  "env": {
+    "TARGET_ROWS": "21800",
+    "HISTORY_WINDOWS": "5200"
+  }
+}

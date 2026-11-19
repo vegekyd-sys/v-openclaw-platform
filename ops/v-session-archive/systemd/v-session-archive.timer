@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily archive of finished Night Shift sub-agent sessions at 05:50 CST
+
+[Timer]
+# After the system-disk image (05:20, cloud side) and storage lifecycle (04:54).
+OnCalendar=*-*-* 05:50:00 Asia/Shanghai
+RandomizedDelaySec=5min
+Persistent=true
+Unit=v-session-archive.service
+
+[Install]
+WantedBy=timers.target

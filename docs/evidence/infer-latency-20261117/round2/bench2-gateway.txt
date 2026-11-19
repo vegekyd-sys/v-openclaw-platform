@@ -1,0 +1,11 @@
+arm=A mode=gateway start=14:43:09.666 rc=0 elapsed_ms=13611 out=['收到'] stderr_lines=1
+arm=B mode=gateway start=14:43:26.670 rc=0 elapsed_ms=5550 out=['收到'] stderr_lines=0
+arm=A mode=gateway start=14:43:35.649 rc=0 elapsed_ms=14625 out=['收到'] stderr_lines=1
+arm=B mode=gateway start=14:43:53.666 rc=0 elapsed_ms=5167 out=['收到'] stderr_lines=0
+liveness changed: 2026-11-17T14:43:51.090+08:00 liveness heartbeat delayed: overdue=1960ms elapsed=31960ms; deferring recovery decisions
+arm=A mode=gateway start=14:44:02.240 rc=0 elapsed_ms=23295 out=['收到'] stderr_lines=1
+arm=B mode=gateway start=14:44:28.938 rc=0 elapsed_ms=5329 out=['收到'] stderr_lines=0
+arm=A mode=gateway start=14:44:37.685 rc=0 elapsed_ms=31086 out=['收到'] stderr_lines=2
+arm=B mode=gateway start=14:45:12.176 rc=0 elapsed_ms=4426 out=['收到'] stderr_lines=0
+arm=A mode=gateway start=14:45:20.145 rc=0 elapsed_ms=25902 out=['收到'] stderr_lines=2
+arm=B mode=gateway start=14:45:49.479 rc=0 elapsed_ms=7885 out=['收到'] stderr_lines=0

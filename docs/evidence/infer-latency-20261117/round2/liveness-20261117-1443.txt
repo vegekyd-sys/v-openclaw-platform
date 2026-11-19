@@ -1,0 +1,4 @@
+14:43:46.489 provider-transport-fetch     [model-fetch] start provider=deepseek api=openai-completions model=deepseek-flash method=POST url=https://api.deepseek.com/v1/chat/completions timeoutMs=90000 proxy=none policy=custom
+14:43:48.473 agents/agent-command         [agent] run 8695d909-6f2c-4328-a3f0-e00136e42ced ended with stopReason=stop
+14:43:49.911 session-sqlite               slow SQLite session write {"agentId": "makaron", "criticalSectionMs": 1409, "elapsedMs": 1409, "localQueueWaitMs": 0, "storePath": "/home/openclaw/.openclaw/agents/makaron/agent/openclaw-agent.sqlite"}
+14:43:51.090 diagnostic                   liveness heartbeat delayed: overdue=1960ms elapsed=31960ms; deferring recovery decisions

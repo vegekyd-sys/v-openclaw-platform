@@ -1,0 +1,74 @@
+{
+  "id": "v-meeting-bridge",
+  "name": "V Meeting Bridge",
+  "description": "V joins a Feishu meeting from a chat, hears subtitles and meeting chat, and answers as the full V in the meeting chat and in that chat; meetings survive Gateway restarts.",
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "meeting_join",
+      "meeting_say",
+      "meeting_screenshot",
+      "meeting_leave"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "larkCli": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bin": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          }
+        }
+      },
+      "progressEmoji": {
+        "type": "string"
+      },
+      "storeDir": {
+        "type": "string"
+      },
+      "runTimeoutMs": {
+        "type": "integer",
+        "minimum": 10000
+      },
+      "timing": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "pollMs": {
+            "type": "integer",
+            "minimum": 500
+          },
+          "joinRetryMs": {
+            "type": "integer",
+            "minimum": 1000
+          },
+          "progressReactMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stillWorkingMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "maxMinutes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxPollFailures": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    }
+  }
+}
