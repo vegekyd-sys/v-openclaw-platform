@@ -198,7 +198,9 @@
         "scripts/configure-v-luna-context.test.mjs",
         "scripts/align-vlab-model-config.test.mjs",
         "scripts/configure-v-announce-timeout.test.mjs",
-        "scripts/gpt62-aliases.test.mjs"
+        "scripts/gpt62-aliases.test.mjs",
+        "scripts/gemini-neon-alias.test.mjs",
+        "tests/gemini-account-bridge.test.mjs"
       ]
     },
     {
