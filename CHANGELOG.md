@@ -40,6 +40,48 @@ V 上验收（21:41–22:00，只看真实流量，未在业务群发测试消�
 - 冷启动停顿：21:41:45 一次 event loop 最大 14.4 s（active=0，启动期，上一次 11-18 重启同期 9.5 s）。
 - 稳态（21:43–22:00）：liveness 告警 0 次（重启前一小时 4 次）；经新代理的 secret egress 请求 148 次，证书/TLS 类错误 0；broker 只启动 1 次、RSS 58 MB；Cannot reap 0。这段时间没有用户消息，首字前后对比留待真实流量。
 
+## session-ref-index-20261117
+
+上线：2026-11-17 07:02 CST 生效（03:58 promote-to-v，漂移哨兵 0 发现，VLab 已 align；前两次 v-self-restart 都因 FCloud daily refresh 04:00 连续超时重试、V 一直不空闲而在等满 1 小时后放弃，V 未被改动；第三次 07:01:17 空闲后停机，启动前清掉 2 条 Codex 孤儿登记，07:02:44 就绪，07:02:53 settle：stream 4/4、worker 5/5，NRestarts 0）  ·  tag `session-ref-index-20261117`
+
+**摘要**：删会话不再把 Gateway 主线程卡住约 3 秒。旧代码每删一个会话，都要在写事务里整表扫一遍 session_nodes 找引用它的行（2.2 万行、每行解析 entry JSON），V 上每次 2.9–3.0 s，约每 25 分钟一次（主要是定时任务结束后清理 run 会话）。
+- **#611**：每个数据库连接维护一份会话引用索引（按 rowid、current_session_id、updated_at、entry 长度做指纹，用 TEMP 触发器和 `PRAGMA data_version` 感知本连接和其他进程的写入），删除时只查索引。开关 `OPENCLAW_V_SESSION_REFERENCE_INDEX=0`（需重启生效）。
+- 剩余风险：其他进程改了某行的引用却恰好没改变指纹四项时，索引不会察觉；按现有写入路径没有这种写法。
+- VLab 候选：删除 15–25 s → 0.18–0.32 s。
+
+V 上核对（07:03–08:38）：3 个文件哈希与 after 一致；`Cannot reap` / UNIQUE / SqliteError / 未捕获异常均 0。重启前当天 03:23–07:01 有 8 次删除事务 2.9–3.0 s（`runSqliteSessionDeletionTransaction`）。重启后 08:34:51–08:37:53 真实删除 3 个 cron run 会话（只读比对 session_nodes 键集合确认），这段时间没有超过 1 s 的事务、没有 liveness 告警；重启后再没有出现删除类慢事务。同期仍有三类停顿，与本次无关：启动阶段 44.6 s（同前几次重启）；每约 10 分钟一次 1–7 s 的心跳延迟（重启前同样存在）；08:34 两次 1.1/2.6 s 的大会话 transcript 整读。
+
+相对上一版 `sessions-stall-20261117`：3 个文件变化。
+
+**经 VLab 发版 `session-ref-index-20261117`**（claude-monitor，dev `ecf059ac`）
+> 验收：shared VLab 2026-11-17 03:52-03:56 CST, dev ecf059ac (#611; 3 core dist files): Gateway pid 3795029 NRestarts 0. Real turns deleted two subagent sessions through the patched deletion path: sessions_spawn cleanup=delete -> agent:makaron:subagent:85f4ffdb-... deleted (sessions.delete 5209 ms, first deletion in the process builds the reference index while another candidate pid 3781755 was saturating …
+- `core` session-accessor.sqlite-entry-store-VfW3gyuj.js  455037c6 → 6aa9f488
+- `core` session-accessor.sqlite-lifecycle-dtL0ZEAl.js  efa4604b → acaa5309
+- `core` session-accessor.sqlite-lifecycle-state-CrB_K2kA.js  4f4cce65 → c21306fa
+
+## sessions-stall-20261117
+
+上线：2026-11-17 03:23 CST 生效（03:16 promote-to-v，漂移哨兵 0 发现，VLab 已 align；03:17 v-self-restart 等空闲 208 s 后 03:21:25 停机，启动前清掉 2 条 Codex 孤儿登记，03:23:11 就绪，03:24:24 settle：stream 4/4、worker 5/5，NRestarts 0）  ·  tag `sessions-stall-20261117`
+
+**摘要**：`sessions_search` 不再把 Gateway 主线程卡住几十秒。11/16 19:18 的 CPU profile 抓到 27 s 停顿全在这个工具里：它在 Gateway 进程内运行，一次搜索把 2.2 万个会话的整库读 6 遍，再分约 110 批逐批跑「找需要重建索引的会话」（扫 26,913 个窗口），中间从不让出主线程。
+- **#608**：落后检查挪到只读 worker 线程（每库每分钟最多一次），每次调用 Gateway 前让出事件循环，候选列表每个范围只取一页（整库读 6 → 2 次）。开关 `OPENCLAW_V_TRANSCRIPT_SEARCH_LAG_OFFTHREAD=0`、`OPENCLAW_V_SESSIONS_SEARCH_YIELD=0`。
+- **#609**：`sessions.list visibilityRowsOnly` 改读 session_nodes 的提升列和覆盖索引，不再整读 1.98 GB entry JSON；有歧义的行（entry_valid≠1、置顶、parent=spawned_by）仍按 JSON 解析。V 只读核对 21,913 行 0 处不一致。开关 `OPENCLAW_V_SESSIONS_VISIBILITY_COLUMNS=0`。
+- VLab V 规模候选：一次搜索主线程最长阻塞，热 31.4 s → 0.89 s，清页缓存 83.7 s → 8.2 s；三组结果 hash 一致。
+- 同批合入但不在 V 的 dist 里：**#607 vrelay**（Cloudflare R2 跨境大文件中转），03:20 用 `apps/v-relay/install.mjs` 装到 Mac、Air、V（V 上同时装技能 `large-file-transfer`）。
+
+V 上核对（03:23–03:28）：6 个文件的哈希与 after 一致；`Cannot reap` / restart recovery / 未捕获异常 / OOM 均 0；启动阶段两次 liveness 停顿（03:23:10 40.8 s、03:24:01 20.7 s，同 11/14 重启后的启动停顿，非本次范围）。私聊会话 `agent:makaron:explicit:monitor-sessions-stall-20261117` 一轮 /vds（deepseek/vds-deepseek-flash）调用 sessions_search「卡顿」→ 14 条 / 7 个会话，整轮 38.6 s，期间无 liveness 停顿。vrelay：V put 191 MB 37.3 s（5.11 MiB/s），Mac get 23 s，sha256 一致，测试对象已删。V 主私聊收到更新说明并回复。
+
+相对上一版 `startup-stall-usage-20261114`：6 个文件变化。
+
+**经 VLab 发版 `sessions-stall-20261117`**（claude-monitor，dev `157db0cb`）
+> 验收：shared VLab 2026-11-17 03:11-03:14 CST, dev 157db0cb (#607 #608 #609; 6 core dist files): Gateway pid 3766226 NRestarts 0. sessions.list {agentId:makaron,visibilityRowsOnly:true,configuredAgentsOnly:true} returned rows in 2.5 s round trip (server 269-320 ms). Real agent turns: agent:makaron:explicit:vlab-dev-sessions-stall-20261117-1794856334435 called sessions_search("验收") -> 25 results (answered…
+- `core` combined-store-gateway-BwDhjbIt.js  9cb53296 → 0cbe8b81
+- `core` openclaw-tools-BODVdJQD.js  0b8b6233 → 693e19be
+- `core` session-accessor.sqlite-entry-BlklNPKQ.js  258aa1be → 7cba57ac
+- `core` session-transcript-reconcile-j5qhAafV.js  85455fa4 → 468372b5
+- `core` session-transcript-search-pRB2YScP.js  399b50e6 → 649662cd
+- `core` sessions-read-C6mAMxyQ.js  5c84c606 → 5044b9b0
+
 ## startup-stall-usage-20261114
 
 上线：2026-11-14 00:30 CST 生效（00:25 promote-to-v，漂移哨兵已更新，VLab 已 align；00:29 v-self-restart 等到空闲后停机，carry 8/8、预检 20 ms，00:30:23 listen、00:30:31 飞书就绪，NRestarts 0）  ·  tag `startup-stall-usage-20261114`
