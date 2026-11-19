@@ -1,17 +1,21 @@
-# 30–40 个会话同时跑，聊天首字不变慢：归因、方案与 VLab 原型（2026-11-18）
+# 30–40 个会话同时跑，聊天首字不变慢：归因、方案与 VLab 原型（2026-11-18，11-19 续）
 
-分支 `claude/concurrency-40-sessions-45bb6e`。只做研究、原型和 VLab candidate，**未合入 dev，未动 V**。生产数据全部只读（journald、SQLite `mode=ro` + `ionice -c3`），没有在 V 上发消息、压测或抓 profile。
+分支 `claude/concurrency-40-sessions-45bb6e`。只做研究、原型和 VLab candidate，**未合入 dev，未上线 V**。生产数据只读（journald、SQLite `mode=ro` + `ionice -c3`）；11-19 14:33 经 Tianyi 授权在 V 上抓过一次 60 s 主线程 CPU profile（第 7 节），没有发消息、压测、抓堆或重启，profile 文件已删。
 
 ## 一句话结论
 
-变慢的是 **Gateway 主线程**，不是模型，也不是共享 Codex app-server。夜班 15–24 张 /vds 卡在跑时，聊天消息的「发出→开始跑」P50 从 1.1 s 变成 3.2 s、P90 从 3.6 s 变成 9.9 s。「开始跑→模型首个正文 token」的 P50 没变（8.3 s 对 8.1 s），DeepSeek 首字节 P50 0.7 s，也不随在途请求数变。/vds 回合跑在 Gateway 进程里，夜班每次工具调用、每个回合开始都要占主线程。聊天自己那约 1 s 主线程工作，被切成碎片夹在夜班的工作之间做完。
+变慢的是 **Gateway 主线程**，不是模型，也不是共享 Codex app-server。夜班 15–24 张 /vds 卡在跑时，聊天消息的「发出→开始跑」P50 从 1.1 s 变成 3.2 s、P90 从 3.6 s 变成 9.9 s；「开始跑→模型首个正文 token」P50 没变（8.3 s 对 8.1 s），DeepSeek 首字节 P50 0.7 s 也不随在途请求数变。聊天自己那约 1 s 的主线程工作，被切成碎片夹在别人的工作之间做完。
 
-VLab 上试了两个方向，结果差别很大：
+夜班留在 /vds（Tianyi 11-18 否决了改回 Worker），所以要削的是 /vds 负载在 Gateway 主线程上的单位成本。V 上的 profile（第 7 节）显示真正的大头和 VLab 看到的不一样：
 
-- **夜班改走 Worker 运行时**（聊天仍是 /vds）：同样 10 个后台会话、同样的任务，聊天首字 P50 **7.4 s → 2.5 s**，P90 **14.7 s → 3.6 s**（没有后台负载时是 1.8 / 2.8 s），夜班吞吐反而高 52%，Gateway 主线程 79% → 45%。
-- **交互优先闸门**（聊天等首字时夜班先别开新回合、新工具调用）：机制成立，收益在噪声内（首字 P50 6.0 → 5.9 s），夜班吞吐少 7%。不推荐。
+1. **exec 起子进程**：每次 exec 工具调用，Gateway 都 `spawn` 一个 service-child relay。Linux 上这一步要 fork 一个 6.1 GB 的进程，复制 139 MB 页表，**每次同步卡主线程约 54 ms**，一分钟 69 次，合计 3.8 s，占主线程 6–7%。修复：一个常驻小进程代 fork，把管道交回 Gateway，每次约 1 ms（第 8.1 节）。VLab ABBA 4 对（第 8.3 节）：聊天首字 P50 8.5 → 4.3 s、P90 14.5 → 8.1 s，「发出→开始跑」P50 1.62 → 0.65 s，后台吞吐 +12%，4 对每一对都更好。VLab 的 exec 比 V 多、单次 fork 比 V 慢，V 上的收益会小一些。
+2. **Workboard 全表读**：每次 agent 结束都读一遍全部未归档卡片（2 万张，表 650 MB），`listBoards` 每次聚合约 100 ms，合计约 4 s/分钟。修复：两个覆盖索引，查询不变（第 8.2 节）。
 
-推荐第一步：**夜班的卡改钉 Worker 运行时的 DeepSeek Flash**，先放一个项目、灰度验证写锁和内存，再全量。不用改代码：夜班 #44 已经在派卡前用 `sessions.patch` 给卡的会话钉模型。验收和风险见第 6 节。
+另外 GC 4.2 s、密钥脱敏 3.5 s、转录广播与镜像各约 2.2 s、本地 HTTPS 转发代理每次重建 TLS 上下文 0.9 s，列为后续。
+
+已否决或不推荐的方向：
+- **夜班改走 Worker**：VLab 上首字 P50 7.4→2.5 s，但 Tianyi 否决（夜班两天前才刻意切到 /vds），第 5.3 节只留作机制证据。
+- **交互优先闸门**：收益在噪声内（首字 P50 6.0→5.9 s），夜班吞吐少 7%，不推荐。
 
 ## 1. 数据与口径
 
@@ -91,12 +95,14 @@ VLab 上试了两个方向，结果差别很大：
 |---|---|---|---|
 | A. 交互优先闸门（本次原型） | 聊天分发→开始跑这段几乎全在主线程上；夜班份额约 28% | VLab：首字 P50 −0.1 s，在噪声内（第 5.2 节） | 夜班每次最多让 3 s；聊天连续不断时夜班持续变慢（不会停）；只拦得住还没开始的工作，已在流式输出的夜班请求照常 |
 | B. 刹车改看用户首字（v-nightshift） | 现刹车只看 RPC 延迟、写锁、内存 | 兜底：分发→开始跑 P50 超过 2 s 时停派新卡 | 是封顶；单独用不能减在跑的卡。和 A 叠加后，「减在跑」可以通过 A 的强制让路实现，不用杀卡 |
-| C. 夜班改走 Worker 运行时（`deepseek-flash`，夜班 #44 已支持按会话钉模型） | VLab run7：主线程每回合 Worker 0.72 s，/vds 1.55 s；本次 5.3 节：每次后台工具调用占主线程 0.12 s 对 0.33 s | VLab：聊天首字 P50 7.4→2.5 s、P90 14.7→3.6 s，夜班吞吐 +52%（第 5.3 节） | 不用改代码。但 Worker 进程跨进程写锁（9 月夜班撞过）、每个 Worker 约 1 GB、Worker 冷启动；夜班在 Codex 上调的工作流要重新验收 |
+| C. 夜班改走 Worker 运行时（`deepseek-flash`，夜班 #44 已支持按会话钉模型） | VLab run7：主线程每回合 Worker 0.72 s，/vds 1.55 s；本次 5.3 节：每次后台工具调用占主线程 0.12 s 对 0.33 s | VLab：聊天首字 P50 7.4→2.5 s、P90 14.7→3.6 s，夜班吞吐 +52%（第 5.3 节） | **11-18 Tianyi 否决**：夜班两天前才刻意切到 /vds。（原列的代价：Worker 跨进程写锁、每个约 1 GB、冷启动、工作流要重新验收） |
 | D. 主线程上的每事件成本 | VLab profile：会话快照每次 16–20 ms、转录镜像、工具重建；#576/#577 未合 | 每个点 2–14% | 改 core 共享路径，每处要单独 A/B；只降常数，不改变「谁先」 |
 | E. 夜班轮询降频 | 夜班 RPC 约 6% | ≤6% | 改 v-nightshift，低风险 |
 | F. Codex app-server 分池 | app-server 31% 单核、不饱和，DeepSeek 首字节不随在途数变 | 当前负载下约 0 | 多一个进程、多一套线程绑定；可作为隔离故障的措施，不是提速 |
 | G. 夜班单独的 DeepSeek key / provider | 同上，模型侧不排队 | 当前约 0 | 额度隔离有价值，但不改首字 |
 | H. 把 Codex 回合的事件处理挪进 worker 线程或独立进程 | 主线程是唯一的串行点 | 根治 | 改动面最大，上游代码，周期长 |
+| I. exec 改由常驻小进程代 fork（11-19 加） | V profile：relay spawn 69 次/分钟 × 54.6 ms | 主线程约 −6% | 新增一个常驻进程；第 8.1 节 |
+| J. Workboard 覆盖索引（11-19 加） | V profile：Workboard SQL 约 4 s/分钟 | 主线程约 −5% | 每次写卡多维护两个索引；第 8.2 节 |
 
 ## 4. 原型：交互优先闸门
 
@@ -162,44 +168,130 @@ VLab 上试了两个方向，结果差别很大：
 | 聊天 | 6 个会话轮流发一句算术题，不用工具 | 飞书真人，常带工具、长上下文 |
 | 首字口径 | Gateway 事件「首个正文」 | 飞书卡片首次推送（多约 1–2 s 建卡、推送） |
 
-只能证明机制和方向：Worker 运行时让 Gateway 主线程每件工作便宜 2.7 倍，聊天首字对后台负载不再敏感。V 上的收益要按第 6 节灰度去量。
+只能证明机制和方向：Worker 运行时让 Gateway 主线程每件工作便宜 2.7 倍，聊天首字对后台负载不再敏感。这个方向已被否决；它说明的「/vds 每件工作贵在 Gateway 主线程上」由第 7 节 V 的 profile 拆开。
 
 ## 6. 推荐第一步、验收标准、风险
 
-### 6.1 第一步：夜班卡改走 Worker 运行时（灰度）
+### 6.1 第一步：两处主线程修复一起灰度（夜班留在 /vds）
 
-1. 夜班派卡前钉模型的地方（v-nightshift #44 的 `sessions.patch {key, model}`）对一个项目改钉 `deepseek/deepseek-flash`（Worker 运行时），其他项目不动。改动在 v-nightshift，按它的 `docs/change-flow.md` 走。
-2. 灰度一到两天，按下面的验收看；通过后再放全部项目。
-3. 回退：把钉的模型改回 `vds-deepseek-flash`，新派的卡立刻回到 /vds；在跑的卡跑完为止。
+1. **exec 改由常驻小进程代 fork**（`lab/patch-spawn-broker.mjs`，第 8.1 节）。默认开，`OPENCLAW_V_SPAWN_BROKER=0` 每次调用时读取，不用重启就能关；broker 任何异常都回退到原来的直接 `spawn`。
+2. **Workboard 两个覆盖索引**（`lab/patch-workboard-hotpath-index.mjs`，第 8.2 节）。第一次打开库时建索引，之后不再建；回退就是 `DROP INDEX`，查询本身没改。
+3. 上线前两处都要按 AGENTS.md 先 port 到 `openclaw-versa` 的 `versa/main`（源码加测试），capture PR 在 `release/source-map.json` 里映射；再走 VLab 共享 Gateway 门禁，用 `promote-to-v` 上 V。这些都要等 Tianyi 拍板。
 
-同时（不依赖上面）：把本次的 Codex 日志采集做成常驻的只读统计（`lab/concurrency-40/`），补上 /vds 回合模型侧时间的缺口，之后每次改动都能按段对比。
+### 6.2 验收标准（V 上，夜班在跑回合 ≥15 时，与 11-18、11-19 同口径比）
 
-### 6.2 验收标准（V 上，夜班在跑回合 ≥15 时，与今天同口径比）
-
-| 指标 | 今天（夜班 ≥15） | 目标 |
+| 指标 | 现在 | 目标 |
 |---|---|---|
-| 聊天 /vds 发出→开始跑 P50 / P90 | 2.4–3.2 / 8.8–9.9 s | ≤ 1.3 / ≤ 4 s（夜班 <6 时的水平） |
-| 聊天首次可见 P50 / P90 | 12.8–14.6 / 28–32 s | ≤ 10 / ≤ 20 s |
-| Gateway 主线程 CPU（15 s 窗口）P50 / P90 | 67% / 83% | ≤ 50% / ≤ 65% |
-| 写锁超时、`slow direct Agent DB process writer admission`、stream-ack 超时 | 基线 | 不增加；按 runId 去重，和 blocked 卡做交集 |
-| 夜班产出 | 基线 | 同样卡数下完成率不降、单卡用时不增加；工作流验收由夜班 session 判定 |
-| 主机内存 | 可用 43 GB | Worker 增加后可用 ≥ 20 GB |
-
-「开始跑→首个正文 token」不在目标里：它主要是模型和工具时间，本来就不随夜班负载变。
+| journald `[v-spawn-broker.1]` | — | 启动一行、没有 `lost`；同时段 exec 成功率不变 |
+| 再抓一次 60 s 主线程 profile：`spawn` 自身 | 4.45 s（relay 3.8 s） | relay 路径 < 0.2 s |
+| 同一 profile：Workboard SQL（`listLifecycleCandidates` + `listBoards`） | 约 3.7 s | < 0.5 s |
+| Gateway 主线程 CPU（15 s 窗口）P50 / P90 | 67% / 83% | 下降 ≥ 8 个百分点 |
+| 聊天 /vds「发出→开始跑」P50 / P90 | 2.4–3.2 / 8.8–9.9 s | 下降；按 2.4 节的处理器共享模型，主线程降 10 个点约省 0.4–0.8 s |
+| exec 结果、取消、超时 | 基线 | 行为不变：输出完整、取消生效、没有孤儿进程 |
 
 ### 6.3 风险
 
-- **写锁**：Worker 进程跨进程写 agent 库，9 月夜班在 Worker 上撞过 5 s 写锁（记忆 agent-db-process-lease-5s）。之后修了大会话整读、恢复整表等（#567、#579 等），夜班刹车也会看写锁，但没有在今天的卡量下验证过。灰度时第一看这个。
-- **内存与冷启动**：每个 Worker 约 0.7–1.2 GB，一个 Worker 3 个会话；20 张卡约要 7 个 Worker。新 Worker 第一轮有冷启动成本（#567/#579 之后约 2–6 s）。V 现在 61 GB，可用 43 GB，够；但 maxWorkers 24 × 3 = 72 个会话的上限要和夜班并发上限 36 一起看。
-- **夜班工作流的行为差异**：Worker 上 DeepSeek 更爱一次并行多个工具调用（11/08 run3 的观察），对多数卡是好事；依赖 Codex 原生能力（view_image、Codex 技能、apply_patch）的步骤要逐个确认。由夜班 session 判断哪些项目可以先放。
-- **VLab 只证明方向**：见 5.4。尤其 VLab 的后台任务是 shell 循环，真实夜班卡会写文件、跑媒体生成，Worker 侧的工具执行也会把结果事件送回 Gateway。
-- **它不解决截距**：Gateway 主线程约 40% 的常驻工作和 Codex 事件无关，本次没拆开。聊天自己的「分发→开始跑」在空闲时也要约 1 s，那是另一条优化线。
+- **broker 进程本身**：它和 Gateway 同一个 cgroup，Gateway 退出时它跟着退出，relay 的「父进程丢失」语义不变。但如果 broker 单独崩溃，它手上在跑的 exec 会被当作父进程丢失而取消（等同 Gateway 重启时的行为），下一次 exec 会自动重启 broker。每次启动和丢失 journald 各记一行。
+- **句柄转交**：relay 的 stdin/stdout/stderr/control 是 libuv 建的 socketpair，经 Node IPC 转交前要先停读，否则数据会被 broker 读走丢掉。测试覆盖了 300 KB 输出、stdin、双向 control、IPC、kill、broker 被杀后自动重启；带密钥 fd、Windows、detached 这三种情况不走 broker。
+- **索引写放大**：每次写卡多维护两个索引，索引合计约几 MB，卡片写入频率每分钟几十次，代价可以忽略。第一次建索引在 Gateway 启动时，V 的规模下估计 1–3 s（冷缓存），占 Workboard 库的写锁。
+- **VLab 只证明机制**：见 5.4 和 8.3。V 上的收益要按 6.2 再抓一次 profile 去量。
 
 ### 6.4 其他方向的定位
 
+- 夜班改走 Worker（C）：Tianyi 已否决，不再推进。
 - 交互优先闸门（A）：不推荐上线。补丁和单测留在本分支，作为「推迟还没开始的工作不够」的证据。
-- 刹车改看用户首字（B）：仍建议在 v-nightshift 做，作为兜底：聊天「分发→开始跑」10 分钟 P50 > 2 s 时停派新卡。
-- 降每事件成本（D）、夜班轮询降频（E）：随手可做，收益个位数百分比。
-- app-server 分池（F）、夜班单独的 key（G）：当前负载下对首字没有收益，模型侧不排队。
-- 事件处理挪出主线程（H）：长期根治，周期长。
-- 查 /vds 后台的漂移（5.3）：如果每事件成本真的随常驻 Codex 线程数涨，那么夜班不断新建线程会让 V 越跑越慢，这条和「Gateway 运行越久越慢」的旧线索（记忆 demand-expansion-regressed-production）可能是一回事。
+- 刹车改看用户首字（B）：仍建议在 v-nightshift 做，作为兜底。
+- 第 7 节里排在后面的几项（GC、脱敏、转录广播与镜像、TLS 上下文）作为下一批，见 7.3。
+- 查 /vds 后台的漂移（5.3）：VLab 上漂移全是 SQLite 读（8.4），V 上同类读便宜得多，优先级下调。
+
+## 7. V 上的主线程 profile（2026-11-19 14:33:45–14:34:46 CST）
+
+做法：V 的 Gateway 本来就带 `--inspect=127.0.0.1:9229`。用 `lab/concurrency-40/inspector-cpu-profile.mjs` 连上抓 60 s（1 ms 采样）就断开；attach 用了 3.2 s。抓之前和之后各在 journal 记一次 liveness（之前 10 分钟 1 次告警，之后 0 次），抓完 Gateway active。分析脚本放在 V 的 `/var/tmp` 下运行，只拉回文本结果，用完整个目录删除。
+
+当时的负载：27 张夜班卡在跑，近 30 分钟聊天 60 条，首字 P50 11.0 s / P90 18.0 s。共享 Codex app-server 日志显示，这 60 s 里夜班 21 个线程共有 118 次动态工具调用；同一时段没有聊天走 Codex。
+
+### 7.1 主线程时间去哪了（60 s 里忙 39.4 s）
+
+| 项 | 主线程 | 次数 / 单次 | 来源 |
+|---|---|---|---|
+| `child_process.spawn` | 4.45 s | relay 69 次，P50 54.6 ms；execa 10 次约 53 ms | exec 工具 → `createServiceChildRelayAdapter`；本地代理生成证书 |
+| GC | 4.17 s | 512 段，P50 7.4 ms，最长 287 ms | 全局 |
+| Workboard SQL | 约 4 s | `listLifecycleCandidates` 64 次（P90 120 ms）、`listBoards` 16 次（约 97 ms）、`reconcile` 29 次 | agent/子 agent 结束钩子、定时器 |
+| 密钥脱敏 `redactRegisteredSecretValues` | 3.48 s 自身 | 716 次结构化脱敏 | 转录写入、Codex 事件、日志 |
+| 转录广播 `handleTranscriptUpdateBroadcast` | 2.21 s | 311 次，P50 7.4 ms | 全局会话事件订阅者 |
+| 转录镜像写入 `appendMessageWithMessageSequence` | 2.20 s | 288 次，P50 5.3 ms | Codex 转录镜像 |
+| 新建 TLS 上下文 | 0.94 s | 125 次，约 7.4 ms | 本地 HTTPS 转发代理每次新连接都重新载入 CA |
+| Codex 回合准备 `runCodexAppServerAttempt` | 0.21 s | 17 次 | |
+
+### 7.2 和 VLab profile 对不上的地方
+
+VLab（11-19 上午 prof1，6 个 60 s 窗）上每次后台工具调用的主线程成本，/vds 是 434 ms，Worker 是 145 ms，多出的部分几乎全是 SQLite 读：转录广播补用量读转录尾部约 76 ms、镜像找锚点 62–80 ms。V 上同一条广播路径每次只要 7.4 ms，一分钟才 2.2 s。原因是 VLab 候选的库是冷缓存、磁盘慢，而 V 的页缓存命中率约 99.7%（见记忆 vlab-fidelity-gap）。反过来，exec 的 fork 成本随 Gateway 内存涨，VLab 候选的 Gateway 只有约 1 GB，这一项被低估了。**两处修复都是按 V 的 profile 挑的。**
+
+### 7.3 下一批（这次没做）
+
+- GC 4.2 s：先看是哪几类短命大对象（转录行、事件快照），需要授权抓一次 allocation 采样。
+- 密钥脱敏 3.5 s：结构化脱敏逐字段扫全部已注册密钥。可以按值长度预筛，或给同一对象做缓存。
+- 本地 HTTPS 转发代理（`runtime-Cy2RRq4n.js` `forwardRequest`）：每次转发都新建连接和 TLS 上下文，还用 openssl 子进程生成叶子证书。复用 `https.Agent`（keepAlive）、缓存 SecureContext 和证书，预计省约 1.4 s/分钟。
+- 转录广播与镜像写入：V 上单次只要几毫秒，但次数多。可以把同一 tick 内同一会话的多次广播合并（分支 `claude/session-event-snapshot-coalesce` 已有原型）。
+
+## 8. 修复与 VLab 验证
+
+### 8.1 exec 改由常驻小进程代 fork
+
+代码：`lab/spawn-broker/v-spawn-broker.mjs`（运行时模块）、`lab/patch-spawn-broker.mjs`（dist 补丁，只改 `supervisor-*.js` 起 relay 的那一处 `spawn`）、两份单测。
+
+- Gateway 第一次需要起 relay 时，fork 一个常驻小进程（这一次 fork 照常要付约 54 ms）。之后每个 relay 都由它来 fork。
+- 小进程起好 relay 以后，先停读 relay 的各个 stdio 管道（libuv 建的 socketpair），再经 IPC 把父端句柄交给 Gateway。relay 的 IPC 通道终止在小进程，`message`、`disconnect`、`exit`、`error` 由小进程双向转发。`kill()` 由 Gateway 直接按 pid 发信号。Gateway 拿到的是一个和 ChildProcess 接口一致的对象，`createServiceChildRelayAdapter` 其余代码一行没改。
+- 小进程在 Gateway 的 IPC 断开时自己退出，所以 relay 看到的「父进程丢失」时机和原来一样。
+- 任何不能或不该代起的情况都返回 null，回退到原来的 `spawn`：stdio 里有密钥 fd、Windows、detached、开关关闭、小进程未就绪、5 s 超时或出错。
+
+隔离测量（VLab，Node 22.23.1，起一个带 IPC 和 4 条管道的子进程，调用方线程被阻塞的时间）：
+
+| 调用方匿名内存 | 直接 spawn P50 | 经小进程 |
+|---|---|---|
+| 0 GB | 1.3 ms | 1.1 ms（往返 1.7 ms，调用方不阻塞） |
+| 1 GB | 21.5 ms | 1.0 ms |
+| 2 GB | 36.2 ms | 1.0 ms |
+| 4 GB | 63.6 ms | 1.0 ms |
+| 6 GB | 93.0 ms | 1.0 ms |
+
+V 的 Gateway 是 6.1 GB，实测每次 54.6 ms：V 的 CPU 比 VLab 快，斜率更小。
+
+### 8.2 Workboard 覆盖索引
+
+代码：`lab/patch-workboard-hotpath-index.mjs`，在 `ensureWorkboardSchema` 里，接在列迁移之后执行：
+
+```sql
+CREATE INDEX IF NOT EXISTS workboard_cards_board_agg_idx ON workboard_cards(board_id, status, archived_at, updated_at);
+CREATE INDEX IF NOT EXISTS workboard_cards_lifecycle_link_idx ON workboard_cards(created_at, id, archived_at, agent_id, session_key, run_id, execution_id, execution_session_key, execution_run_id);
+```
+
+- V 的 `workboard.sqlite` 有 25,992 张卡（已归档 5,975 张），650 MB，notes 共 144 MB，automation 共 46 MB。只读测量（独立进程）：聚合每次 122–140 ms，生命周期匹配查询每次 465–680 ms。
+- 聚合原来用 `(board_id, status, position)` 索引，但仍要逐行回表读 `archived_at`、`updated_at`；加了覆盖索引后整条查询只读索引。生命周期查询按 `ORDER BY created_at, id` 走新索引，SQLite 延迟回表，只有那约 670 张未链接、要看 automation 的卡才读表行。
+- 按 V 规模造的合成库（本机）：聚合 42 → 1.5 ms，生命周期 55 → 14 ms，19,992 行结果逐行一致，建两个索引共 78 ms。单测里还用各种 automation 形态（空、非 JSON、boardId 为 null、数字）核对了加索引前后结果一致。
+
+### 8.3 VLab candidate A/B（exec 代 fork，`candidate-bbbe08e4`）
+
+同一测量台，10 个后台 /vds 槽，每槽 2 个回合换会话，每 12 s 一个聊天探针。补丁打在候选 dist 上，`OPENCLAW_V_SPAWN_BROKER` 按窗口关开交替（ABBA 4 对，每窗 3 分钟，每窗中段抓 60 s 主线程 profile）。为接近 V，做了两处设置：
+- 候选 Gateway 额外持有 3 GB 匿名内存（`LT_BALLAST_GB=3`，只加在 Gateway 进程），进程 RSS 约 6.6 GB，V 是 6.1 GB；
+- 后台任务明确要求用 OpenClaw 的 exec 工具（`MIX_BG_TOOL=exec`）。
+
+第一次跑（candidate-b6def479）没有加第二项：Codex 用自己的 shell，命令在 app-server 里执行，Gateway 一次 `spawn` 都没有，两侧没有差别。那一轮只说明「测量台没打到这条路径」，已作废。这一轮的后台工具 100% 是 `gateway_exec`（3,021 次）。
+
+| 窗口 | 探针首字 P50 / P90 | 发出→开始跑 P50 / P90 | 后台工具调用/分钟 | 主线程忙（60 s profile） | 其中 `spawn` |
+|---|---|---|---|---|---|
+| 基线（无后台） | 1.8 / 2.7 s | 0.2 / 0.2 s | 0 | — | — |
+| r0 关 / 开 | 3.9 / 7.8 · **2.7 / 7.0** | 0.8 / 1.7 · **0.4 / 1.1** | 143.7 · 148.7 | 51.5 · **39.8 s** | 17.1 · **0.003 s** |
+| r1 开 / 关 | **3.2 / 6.7** · 7.8 / 13.8 | **0.4 / 1.9** · 1.1 / 3.0 | 146.3 · 123.7 | **45.6** · 58.6 | **0.002** · 11.9 |
+| r2 关 / 开 | 6.7 / 12.4 · **5.7 / 9.4** | 1.5 / 3.3 · **0.8 / 3.1** | 115.7 · 119.7 | 59.2 · **52.1** | 12.7 · **0** |
+| r3 开 / 关 | **5.4 / 9.4** · 15.5 / 24.0 | **1.0 / 2.6** · 3.1 / 5.8 | 111.3 · 87.0 | **55.6** · 59.8 | **0** · 8.5 |
+| **四对平均 关 → 开** | **8.5 → 4.3 / 14.5 → 8.1 s** | **1.62 → 0.65 / 3.45 → 2.17 s** | **117.5 → 131.5（+12%）** | **57.2 → 48.3 s** | **12.5 → 0.001 s** |
+
+- 4 对里每一对都是开的一侧更快。全部回合答对：探针 120/120，后台 336/336。broker 是 Gateway 的子进程，常驻约 55 MB，整轮只启动一次，没有 `lost`。
+- 后台回合 P50 46.2 → 41.5 s：主线程空出来以后，夜班自己也更快。
+- 这一轮也有漂移（各对从 r0 到 r3 逐步变慢，原因见 8.4），ABBA 把它在两侧平均掉了。
+- 迁移到 V 时，收益要打折。VLab 每次 relay `spawn` 约 80–110 ms（CPU 慢，压舱内存有一部分被换到了 swap），V 是 54.6 ms；VLab 后台每分钟 120–150 次 exec，V 当时是 69 次。按 V 的数字，主线程大约省 6%（3.8 s/分钟）。按 2.4 节的处理器共享模型，在主线程 70–80% 忙的时段，聊天「发出→开始跑」大约省 0.3–0.6 s。V 上的实际收益按 6.2 再抓一次 profile 去量。
+
+### 8.4 VLab 上的漂移
+
+11-19 上午 prof1：最后一个 /vds 窗口每次后台工具调用的主线程成本，比第一个高 323 ms，增量全是 SQLite 读（`readRecentSessionTranscriptMessageEvents` 41→162 ms，`withCurrentProjectionSnapshot` 73→278 ms）。V 上同类读便宜得多，这个漂移主要是候选环境冷缓存的问题，优先级下调。
