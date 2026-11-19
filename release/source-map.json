@@ -2124,6 +2124,13 @@
       "sha256": "e4690957affecbac32d049d778152850a0d69dca4d593145803a4b1e4e583a16",
       "source": "versa:629bd9638ed",
       "note": "egress-proxy-tls-reuse (2026-11-19, Gateway): the secret egress proxy builds its upstream SecureContext once instead of per forwarded request, and mints TLS leaves once per hostname for all run registrations (re-minted on CA file change, under 1 h left, or after a failed mint); versa/port-egress-proxy-tls-reuse-20261119 on e27869be125 (leaf cache in leaf-cache.ts on the fork, inline in the dist patch); PR #627; needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "ca-DsWeiCkK.js",
+      "sha256": "f8aa4896b6f7a4ee607bfd510c0ec03bb3ed77b7df3cb559b3dd0e537600a0fa",
+      "source": "versa:2743be41ed2",
+      "note": "egress-proxy-ca-30d (2026-11-19, Gateway): the secret egress proxy CA (one per Gateway start, never re-signed in place) is valid for 30 days instead of 1, so proxied exec HTTPS no longer fails once the Gateway has been up a day; debug CA (7 d) and leaves (1 d) unchanged; versa/port-egress-proxy-tls-reuse-20261119 on 629bd9638ed; PR #627; needs a Gateway restart; not on V until promoted"
     }
   ]
 }
