@@ -33,6 +33,19 @@ setInterval(() => {
   lastElu = performance.eventLoopUtilization();
 }, 1000).unref();
 
+// LT_BALLAST_GB: hold this much touched anonymous memory in the Gateway, so costs that scale with the
+// process's memory (fork in child_process.spawn: page tables + a reference per page) look like V's
+// ~6 GB Gateway instead of a fresh candidate's ~1 GB.
+if (Number(process.env.LT_BALLAST_GB) > 0) {
+  const keep = [];
+  for (let i = 0; i < Number(process.env.LT_BALLAST_GB) * 4; i++) {
+    const b = Buffer.allocUnsafeSlow(256 * 1024 * 1024);
+    for (let j = 0; j < b.length; j += 4096) b[j] = 1;
+    keep.push(b);
+  }
+  globalThis[Symbol.for("lt.ballast")] = keep;
+}
+
 // LT_AB_FILE: the runner writes "off" or "on" there; "off" sets each switch in LT_AB_ENVS to 0, "on" clears
 // it. The code under test reads process.env per call, so one process compares both sides.
 if (process.env.LT_AB_FILE) {
