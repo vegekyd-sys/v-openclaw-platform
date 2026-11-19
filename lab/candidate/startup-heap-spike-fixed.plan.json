@@ -1,0 +1,30 @@
+{
+  "support": [
+    "lab/candidate/startup-heap-spike.mjs",
+    "lab/candidate/v-scale-session-fixture.mjs"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/lifecycle-cleanup-bounded/session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+      "target": "openclaw/dist/session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+      "before": "ea381f9d45af70ff7bd47d2613e0b70974421ab375e273b77c870212a1666f07"
+    },
+    {
+      "source": "lab/release-files/lifecycle-cleanup-bounded/session-accessor.sqlite-lifecycle-dtL0ZEAl.js",
+      "target": "openclaw/dist/session-accessor.sqlite-lifecycle-dtL0ZEAl.js",
+      "before": "f3f6fdfa5fb552658072ed8d4bf0a17583c3f8dfe5bed70a9d7d82b802fc9eb2"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/startup-heap-spike.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity",
+  "env": {
+    "LABEL": "fixed",
+    "WORKERS": "2",
+    "WINDOW_SECONDS": "540",
+    "HEAP_MB": "7168"
+  }
+}

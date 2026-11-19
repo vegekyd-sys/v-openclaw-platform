@@ -15,7 +15,8 @@
 // inter-session turn must make none), `failRoute()` makes an endpoint fail
 // (e.g. AI card creation 403, so the proactive fallback runs), and `sendRaw()`
 // delivers an arbitrary robot callback (e.g. the robot's own message, which
-// the bridge must drop).
+// the bridge must drop). `holdUpgrades()` / `answerHeld()` / `dropSockets()`
+// reproduce a reconnect stuck in its handshake (dingtalk-socket-guard).
 import http from "node:http";
 
 // With `strictGroupIds`, robot group messages are accepted only for a group id
@@ -131,8 +132,20 @@ export function createFakeDingTalkOpenApi({ WebSocketServer, strictGroupIds = fa
   });
 
   const wss = new WebSocketServer({ noServer: true });
+  // holdUpgrades(): Stream handshakes wait unanswered (a reconnect stuck in its
+  // handshake) until answerHeld() refuses them, e.g. with 400 for a used ticket.
+  let holding = false;
+  const held = []; // {at, url, socket, clientGone, answered}
   server.on("upgrade", (req, socket, head) => {
     if (!req.url.startsWith("/connect")) { socket.destroy(); return; }
+    if (holding) {
+      const h = { at: Date.now(), url: req.url, socket, clientGone: false, answered: undefined };
+      // Server sockets are half-open: a client that aborts shows up as "end".
+      for (const event of ["end", "close"]) socket.on(event, () => { if (h.answered === undefined) h.clientGone = true; });
+      socket.on("error", () => {});
+      held.push(h);
+      return;
+    }
     wss.handleUpgrade(req, socket, head, (ws) => {
       sockets.add(ws);
       ws.on("close", () => sockets.delete(ws));
@@ -144,8 +157,22 @@ export function createFakeDingTalkOpenApi({ WebSocketServer, strictGroupIds = fa
 
   return {
     listen: () => new Promise((resolve) => server.listen(0, "127.0.0.1", () => { port = server.address().port; resolve(port); })),
-    close: () => new Promise((resolve) => { for (const ws of sockets) ws.terminate(); wss.close(); server.closeAllConnections?.(); server.close(() => resolve()); }),
+    close: () => new Promise((resolve) => { for (const ws of sockets) ws.terminate(); for (const h of held) h.socket.destroy(); wss.close(); server.closeAllConnections?.(); server.close(() => resolve()); }),
     connected: () => sockets.size > 0,
+    /** Server-side drop of every Stream connection (the connector reconnects on "close"). */
+    dropSockets() { for (const ws of sockets) ws.terminate(); },
+    holdUpgrades(on = true) { holding = on; },
+    /** Handshakes held so far: when, whether the client gave up, what it was answered. */
+    held: () => held.map(({ at, clientGone, answered }) => ({ at, clientGone, answered })),
+    /** Answers every held handshake whose client is still waiting with `status`. */
+    answerHeld(status = 400) {
+      for (const h of held) {
+        if (h.clientGone || h.answered !== undefined) continue;
+        h.answered = status;
+        h.socket.end(`HTTP/1.1 ${status} ${http.STATUS_CODES[status] ?? ""}\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}`);
+      }
+      return this.held();
+    },
     calls,
     cards: () => [...cards.values()],
     webhookMessages,

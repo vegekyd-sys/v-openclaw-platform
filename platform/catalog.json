@@ -162,12 +162,14 @@
         "tests/patch-feishu-task-status.test.mjs",
         "tests/patch-memory-search-vector-budget.test.mjs",
         "tests/patch-feishu-inter-session-bridge.test.mjs",
+        "tests/dingtalk-socket-guard.test.mjs",
         "tests/patch-openclaw-media-completion-relay.test.mjs",
         "tests/media-completion-worker-relay-91.test.mjs",
         "tests/patch-openclaw91-sessions-send-owner.test.mjs",
         "tests/sessions-send-reply-once.test.mjs",
         "tests/sessions-send-relay.test.mjs",
         "tests/v-session-relay.test.mjs",
+        "tests/v-meeting-bridge.test.mjs",
         "tests/v-agent-shell-cgroup.test.mjs",
         "tests/inter-session-v-bytes.test.mjs",
         "tests/inter-session-admission.test.mjs",
@@ -195,7 +197,8 @@
         "scripts/configure-v-deepseek-output-budget.test.mjs",
         "scripts/configure-v-luna-context.test.mjs",
         "scripts/align-vlab-model-config.test.mjs",
-        "scripts/configure-v-announce-timeout.test.mjs"
+        "scripts/configure-v-announce-timeout.test.mjs",
+        "scripts/gpt62-aliases.test.mjs"
       ]
     },
     {
@@ -234,6 +237,7 @@
         "lab/session-task-lifecycle.test.mjs",
         "lab/codex-suppressed-prompt-finalization.test.mjs",
         "scripts/configure-v-session-relay.test.mjs",
+        "scripts/configure-v-meeting-bridge.test.mjs",
         "tests/inter-session-plan.test.mjs",
         "lab/desktop-handback-progress.test.mjs"
       ]
@@ -243,6 +247,7 @@
       "purpose": "各条线在 lab/、scripts/、tests/、worker 实验目录下的离线回归；2026-09-24 从未登记状态收拢，全部离线通过",
       "files": [
         "tests/v-memory-indexer.test.mjs",
+        "tests/v-relay.test.mjs",
         "tests/v-storage-governance.test.mjs",
         "tests/check-source-map.test.mjs",
         "tests/captured-store.test.mjs",
@@ -512,9 +517,17 @@
         "lab/subagent-settle-wake-missing-task.test.mjs",
         "lab/loopback-exec-run-instance.test.mjs",
         "lab/compaction-image-skip.test.mjs",
+        "lab/remote-node-stable.test.mjs",
         "lab/codex-turn-end-terminals.test.mjs",
         "lab/workboard-full-context.test.mjs",
         "lab/cli-readonly-live.test.mjs",
+        "lab/lifecycle-cleanup-bounded.test.mjs",
+        "lab/usage-offload.test.mjs",
+        "lab/sessions-visibility-columns.test.mjs",
+        "lab/sessions-search-stall.test.mjs",
+        "lab/session-reference-index.test.mjs",
+        "lab/infer-latency.test.mjs",
+        "lab/workboard-full-sweep.test.mjs",
         "lab/skill-review-bounded.test.mjs",
         "lab/codex-skill-usage.test.mjs"
       ]

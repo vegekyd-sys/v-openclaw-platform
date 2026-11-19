@@ -1,0 +1,51 @@
+{
+  "support": [
+    "lab/candidate/usage-offload-setup.mjs",
+    "lab/candidate/usage-offload-harness.mjs",
+    "lab/candidate/usage-offload-repro.mjs"
+  ],
+  "databases": [
+    "agents/makaron/agent/openclaw-agent.sqlite"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/usage-offload-repro.mjs"
+  ],
+  "user": "lab-db91-parity",
+  "files": [
+    {
+      "source": "lab/release-files/usage-offload/session-cost-usage-C_mE_GAE.js",
+      "target": "openclaw/dist/session-cost-usage-C_mE_GAE.js",
+      "before": "0514592d3436c5c2b86792024d640f09b6c6b70ae90acf18943b736fd0e1ade3"
+    },
+    {
+      "source": "lab/release-files/usage-offload/usage-C3nh9kcO.js",
+      "target": "openclaw/dist/usage-C3nh9kcO.js",
+      "before": "5b614d0a7245a859c76c281bff2d7e1507f8ed621a4ec36b42002cccb6c1ff0f"
+    },
+    {
+      "source": "lab/release-files/usage-offload/commands-session-cost.runtime-C4rqe689.js",
+      "target": "openclaw/dist/commands-session-cost.runtime-C4rqe689.js",
+      "before": "ad93673131d8070c771e06170be6e5a993fd409345ceab89ae6413707761e46c"
+    },
+    {
+      "source": "lab/release-files/usage-offload/usage-offload-v1.js",
+      "target": "openclaw/dist/usage-offload-v1.js"
+    },
+    {
+      "source": "lab/release-files/usage-offload/usage-offload-child-v1.js",
+      "target": "openclaw/dist/usage-offload-child-v1.js"
+    }
+  ],
+  "env": {
+    "ARM": "new",
+    "UO_TOTAL_SESSIONS": "4500",
+    "UO_HUGE_BYTES": "20000000",
+    "UO_BIG_BYTES": "5000000",
+    "UO_ROLLUP_BYTES": "30000000",
+    "UO_WATCH_MS": "15000",
+    "UO_POLL_MS": "3000",
+    "UO_MAX_WAIT_MS": "600000"
+  },
+  "timeoutSeconds": 1800
+}

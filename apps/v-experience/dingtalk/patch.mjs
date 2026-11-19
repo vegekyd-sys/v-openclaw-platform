@@ -10,6 +10,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { patchSocketGuard } from "./patch-socket-guard.mjs";
 
 export const MARKER = "v-experience-dingtalk-v1";
 export const EXPERIENCE_FILE = "v-experience.mjs";
@@ -635,7 +636,9 @@ export function patchDingtalkConnector(distDir, { experienceSource }) {
   const tokenChunk = /^import "\.\/(token-[\w-]+\.mjs)";$/mu.exec(fs.readFileSync(path.join(distDir, findRuntimeChunk(distDir)), "utf8"))?.[1];
   assert(tokenChunk, "runtime chunk does not import the token chunk");
   assert.match(fs.readFileSync(path.join(distDir, tokenChunk), "utf8"), /export \{ getOapiAccessToken as i, DINGTALK_OAPI as n, getAccessToken as r, DINGTALK_API as t \};/u, "token chunk exports changed");
-  for (const [file, fn] of [[chunk, patchReplyChunk], [findConnectionChunk(distDir), patchConnectionChunk], [findRuntimeChunk(distDir), patchRuntimeChunk]]) {
+  // The socket guard (patch-socket-guard.mjs) rides on every build of the connection chunk.
+  const connectionChunk = (source) => patchSocketGuard(patchConnectionChunk(source));
+  for (const [file, fn] of [[chunk, patchReplyChunk], [findConnectionChunk(distDir), connectionChunk], [findRuntimeChunk(distDir), patchRuntimeChunk]]) {
     const p = path.join(distDir, file);
     const before = fs.readFileSync(p, "utf8");
     const after = fn(before);

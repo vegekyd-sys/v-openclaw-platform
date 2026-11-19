@@ -1,0 +1,27 @@
+{
+  "support": [
+    "lab/candidate/modelrun-session-ab.mjs",
+    "lab/candidate/v-scale-session-fixture.mjs",
+    "lab/candidate/modelrun-session-gateway.plan.json",
+    "lab/release-files/infer-latency/session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+    "lab/release-files/infer-latency/session-accessor-K0XuW6ln.js",
+    "lab/release-files/infer-latency/internal-session-effects-C8FWqbuL.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "--expose-gc",
+    "--max-old-space-size=7168",
+    "lab/candidate/modelrun-session-ab.mjs"
+  ],
+  "timeoutSeconds": 5400,
+  "user": "lab-db91-parity",
+  "env": {
+    "ARMS": "A,B",
+    "ITERATIONS": "8",
+    "PROFILE_ARM": "B",
+    "PROFILE_OPS": "3",
+    "EXPECT_SHA": "{\"session-accessor.sqlite-entry-store-VfW3gyuj.js\":\"6aa9f48818633ba024354e5bf1c838dd37e0690916cb6ae5dade5ce064c45ffd\"}",
+    "TAIL_MS": "3000",
+    "PLAN": "lab/candidate/modelrun-session-gateway.plan.json"
+  }
+}

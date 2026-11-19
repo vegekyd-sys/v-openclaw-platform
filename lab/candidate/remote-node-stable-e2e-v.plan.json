@@ -1,0 +1,7 @@
+{
+  "support": ["lab/candidate/remote-node-stable-e2e.mjs"],
+  "command": ["/opt/vlab/node-v22.23.1-linux-x64/bin/node", "lab/candidate/remote-node-stable-e2e.mjs"],
+  "env": { "ARM": "v" },
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity"
+}

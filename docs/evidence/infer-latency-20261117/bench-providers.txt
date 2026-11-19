@@ -1,0 +1,10 @@
+arm=A mode=providers start=12:53:37.518 rc=0 elapsed_ms=11718 out=31 providers stderr_lines=1
+arm=B mode=providers start=12:53:52.841 rc=0 elapsed_ms=3261 out=31 providers stderr_lines=0
+arm=A mode=providers start=12:53:58.793 rc=0 elapsed_ms=11612 out=31 providers stderr_lines=1
+arm=B mode=providers start=12:54:13.067 rc=0 elapsed_ms=3221 out=31 providers stderr_lines=0
+arm=A mode=providers start=12:54:18.943 rc=0 elapsed_ms=11348 out=31 providers stderr_lines=1
+arm=B mode=providers start=12:54:32.987 rc=0 elapsed_ms=3312 out=31 providers stderr_lines=0
+arm=A mode=providers start=12:54:38.964 rc=0 elapsed_ms=11490 out=31 providers stderr_lines=1
+arm=B mode=providers start=12:54:54.158 rc=0 elapsed_ms=3204 out=31 providers stderr_lines=0
+arm=A mode=providers start=12:55:00.056 rc=0 elapsed_ms=11684 out=31 providers stderr_lines=1
+arm=B mode=providers start=12:55:14.491 rc=0 elapsed_ms=3196 out=31 providers stderr_lines=0

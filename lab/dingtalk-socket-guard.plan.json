@@ -1,0 +1,11 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/dingtalk-socket-guard/dist/connection-DCvu-l09.mjs",
+      "target": "npm/projects/dingtalk-real-ai-dingtalk-connector-aa54111b45__openclaw-generation__g-7ae9583359ddbec0/node_modules/@dingtalk-real-ai/dingtalk-connector/dist/connection-DCvu-l09.mjs",
+      "before": "397c42c3f66d0cd7898168de21be1607303723cd797d9174ad4b1d6694d44520",
+      "after": "78cf6f8540437d42d724c71b357365f3fba6422900be01ce3dcff04a13eb2ea2"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+# Gateway file log (/tmp/openclaw/openclaw-2026-11-17.log), key lines only, CST
+
+## Tianyi's 47.9 s --gateway run (CLI exit 11:25:51.4, so CLI start ~11:25:03.5)
+11:25:14.918 {"subsystem":"gateway/ws"} ⇄ res ✓ agent 77ms runId=d1c322cd-d1cc-4ac7-88aa-5f610cd27835 conn=ac366f85…248d id=2:8a87c0ec-d…e2b2
+11:25:44.859 {"subsystem":"sqlite/transaction"} {"async": false, "database": "/home/openclaw/.openclaw/agents/makaron/agent/openclaw-agent.sqlite", "elapsedMs": 29899, "operation": "agent.write", "pid": 3616468, "thresholdMs": 1000, "callers": ["dist/session-accessor-K0XuW6ln.js:2082:3", "runCriticalSection (dist/session-accessor.sqlite-scope-BwPKGcgm.js:28:17)", "fn (dist/session-accessor.sqlite-scope-BwPKGcgm.js:40:18)", "Async
+11:25:44.863 {"subsystem":"session-sqlite"} slow SQLite session write {"agentId": "makaron", "criticalSectionMs": 29903, "elapsedMs": 29903, "localQueueWaitMs": 0, "storePath": "/home/openclaw/.openclaw/agents/makaron/agent/openclaw-agent.sqlite"}
+11:25:46.181 {"subsystem":"diagnostic"} liveness heartbeat delayed: overdue=22344ms elapsed=52344ms; deferring recovery decisions
+11:25:47.872 [prompt-prep-observer.1] {"runId":"d1c322cd-d1cc-4ac7-88aa-5f610cd27835","pid":3616468,"stage":"start","atMs":1794885947872,"elapsedMs":0.11327699944376945,"outcome":"start"}
+11:25:47.910 [prompt-prep-observer.1] {"runId":"d1c322cd-d1cc-4ac7-88aa-5f610cd27835","pid":3616468,"stage":"total","atMs":1794885947910,"elapsedMs":38.0506759993732,"outcome":"ok"}
+11:25:48.214 {"subsystem":"provider-transport-fetch"} [model-fetch] start provider=deepseek api=openai-completions model=deepseek-flash method=POST url=https://api.deepseek.com/v1/chat/completions timeoutMs=90000 proxy=none policy=custom
+11:25:48.445 {"subsystem":"provider-transport-fetch"} [model-fetch] response provider=deepseek api=openai-completions model=deepseek-flash status=200 elapsedMs=231 dispatcher=new contentType=text/event-stream; charset=utf-8
+11:25:51.375 model.run via gateway
+provider: deepseek
+model: deepseek-flash
+outputs: 1
+收到
+11:25:49.162 [firsttext-metrics] {"runId":"d1c322cd-d1cc-4ac7-88aa-5f610cd27835","callId":"d1c322cd-d1cc-4ac7-88aa-5f610cd27835:model:1","provider":"deepseek","model":"deepseek-flash","at":1794885949162,"pid":3616468,"stage":"first-nonempty-text","chars":2}
+11:25:49.405 {"subsystem":"agents/agent-command"} [agent] run d1c322cd-d1cc-4ac7-88aa-5f610cd27835 ended with stopReason=stop
+11:25:51.058 {"subsystem":"session-sqlite"} slow SQLite session write {"agentId": "makaron", "criticalSectionMs": 1341, "elapsedMs": 1341, "localQueueWaitMs": 0, "storePath": "/home/openclaw/.openclaw/agents/makaron/agent/openclaw-agent.sqlite"}
+
+## 10 benchmark --gateway runs 12:57-12:59: run end -> hidden model-run session hard delete (Gateway main thread)
+12:57:34.543 agents/agent-command         [agent] run 511112eb-db9b-483a-8a8d-558409fea836 ended with stopReason=stop
+12:57:36.133 session-sqlite               slow SQLite session write {"agentId": "makaron", "criticalSectionMs": 1303, "elapsedMs": 1304, "localQueueWaitMs": 1, "storePath": "/home/openclaw/.openclaw/a
+12:57:44.327 agents/agent-command         [agent] run 170e346f-2ddc-4a49-8225-8b0f9f49e592 ended with stopReason=stop
+12:57:45.653 session-sqlite               slow SQLite session write {"agentId": "makaron", "criticalSectionMs": 1305, "elapsedMs": 1305, "localQueueWaitMs": 0, "storePath": "/home/openclaw/.openclaw/a
+12:58:01.504 agents/agent-command         [agent] run 5330da51-d4bf-4877-8bc4-ac28c3d08ecb ended with stopReason=stop
+12:58:02.851 session-sqlite               slow SQLite session write {"agentId": "makaron", "criticalSectionMs": 1328, "elapsedMs": 1328, "localQueueWaitMs": 0, "storePath": "/home/openclaw/.openclaw/a
+12:58:11.215 agents/agent-command         [agent] run 03b24fc5-d352-4a88-8ea9-368ab85fcae3 ended with stopReason=stop
+12:58:12.676 session-sqlite               slow SQLite session write {"agentId": "makaron", "criticalSectionMs": 1439, "elapsedMs": 1439, "localQueueWaitMs": 0, "storePath": "/home/openclaw/.openclaw/a
+12:58:29.087 agents/agent-command         [agent] run 32905b7d-5331-4460-bbb2-69decfdfde86 ended with stopReason=stop
+12:58:31.066 session-sqlite               slow SQLite session write {"agentId": "makaron", "criticalSectionMs": 1954, "elapsedMs": 1954, "localQueueWaitMs": 0, "storePath": "/home/openclaw/.openclaw/a
+12:58:39.892 agents/agent-command         [agent] run 2dbb1fe5-de4e-4a33-a230-cd5d393ab891 ended with stopReason=stop
+12:58:41.271 session-sqlite               slow SQLite session write {"agentId": "makaron", "criticalSectionMs": 1360, "elapsedMs": 1360, "localQueueWaitMs": 0, "storePath": "/home/openclaw/.openclaw/a
+12:58:57.460 agents/agent-command         [agent] run 42fac3b7-57ed-4eeb-9bc1-a710dd644c5f ended with stopReason=stop
+12:58:58.898 session-sqlite               slow SQLite session write {"agentId": "makaron", "criticalSectionMs": 1418, "elapsedMs": 1418, "localQueueWaitMs": 0, "storePath": "/home/openclaw/.openclaw/a
+12:59:07.189 agents/agent-command         [agent] run d73f6715-47b2-403c-8b51-3e5becf14a99 ended with stopReason=stop
+12:59:08.838 session-sqlite               slow SQLite session write {"agentId": "makaron", "criticalSectionMs": 1629, "elapsedMs": 1629, "localQueueWaitMs": 0, "storePath": "/home/openclaw/.openclaw/a
+12:59:25.459 agents/agent-command         [agent] run 80ac61d2-f77b-4d61-8cb1-62f118443060 ended with stopReason=stop
+12:59:26.872 session-sqlite               slow SQLite session write {"agentId": "makaron", "criticalSectionMs": 1394, "elapsedMs": 1394, "localQueueWaitMs": 0, "storePath": "/home/openclaw/.openclaw/a
+12:59:36.545 agents/agent-command         [agent] run 590e77e7-4afe-4a0e-b4f9-874fb2fceaaf ended with stopReason=stop
+12:59:37.918 session-sqlite               slow SQLite session write {"agentId": "makaron", "criticalSectionMs": 1351, "elapsedMs": 1351, "localQueueWaitMs": 0, "storePath": "/home/openclaw/.openclaw/a

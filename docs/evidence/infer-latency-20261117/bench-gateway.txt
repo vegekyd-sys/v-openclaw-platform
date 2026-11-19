@@ -1,0 +1,10 @@
+arm=A mode=gateway start=12:57:23.232 rc=0 elapsed_ms=13259 out=['收到'] stderr_lines=1
+arm=B mode=gateway start=12:57:40.845 rc=0 elapsed_ms=5091 out=['收到'] stderr_lines=0
+arm=A mode=gateway start=12:57:50.260 rc=0 elapsed_ms=12840 out=['收到'] stderr_lines=1
+arm=B mode=gateway start=12:58:07.440 rc=0 elapsed_ms=5526 out=['收到'] stderr_lines=0
+arm=A mode=gateway start=12:58:17.290 rc=0 elapsed_ms=14136 out=['收到'] stderr_lines=1
+arm=B mode=gateway start=12:58:35.751 rc=0 elapsed_ms=5800 out=['收到'] stderr_lines=0
+arm=A mode=gateway start=12:58:45.873 rc=0 elapsed_ms=13322 out=['收到'] stderr_lines=1
+arm=B mode=gateway start=12:59:03.528 rc=0 elapsed_ms=5578 out=['收到'] stderr_lines=0
+arm=A mode=gateway start=12:59:13.444 rc=0 elapsed_ms=13700 out=['收到'] stderr_lines=1
+arm=B mode=gateway start=12:59:31.486 rc=0 elapsed_ms=6786 out=['收到'] stderr_lines=0

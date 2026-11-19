@@ -1,0 +1,10 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/remote-node-stable/remote-CiV-Qx_e.js",
+      "target": "openclaw/dist/remote-CiV-Qx_e.js",
+      "before": "86731e90ab432a05e0549c112430e0675a60dc32592ecef2a8a3b2956e5bd10d"
+    }
+  ]
+}
