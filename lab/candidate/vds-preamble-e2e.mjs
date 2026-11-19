@@ -690,6 +690,7 @@ try {
 } finally {
   await stopGateway().catch(() => {});
   server.close();
+  fs.rmSync(shortTmp, { recursive: true, force: true });
 }
 evidence.unknownFeishuCalls = Object.fromEntries(fake.unknown);
 evidence.turnErrorLog = logMatches(/outcome=error|FailoverError|No API key|401|403|rate limit|harness failed|codex app-server.*(error|failed)/iu).filter((l) => !/card-phase/u.test(l)).slice(0, 15).map((l) => redact(l.slice(14)).slice(0, 600));
