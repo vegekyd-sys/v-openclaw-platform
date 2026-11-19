@@ -527,7 +527,9 @@
         "lab/sessions-search-stall.test.mjs",
         "lab/session-reference-index.test.mjs",
         "lab/infer-latency.test.mjs",
-        "lab/workboard-full-sweep.test.mjs"
+        "lab/workboard-full-sweep.test.mjs",
+        "lab/skill-review-bounded.test.mjs",
+        "lab/codex-skill-usage.test.mjs"
       ]
     }
   ],
