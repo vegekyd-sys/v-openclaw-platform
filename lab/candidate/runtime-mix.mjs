@@ -1579,7 +1579,10 @@ async function runMix() {
   })();
   const bgTurns = [];
   let bgStopAt = 0;
-  const bgMessage = (label) => `（自动化后台任务 ${label}）按顺序做 ${MIX_STEPS} 步，每一步都单独用 shell 执行一次 \`sleep 1; date +%s%N | sha256sum | cut -c1-8\`（每步一条命令，不要合并，也不要并行），步骤之间不用说明。全部做完后只回复最后一步输出的 8 个字符。`;
+  // MIX_BG_TOOL=exec: name OpenClaw's exec tool, which runs the command through the Gateway's process
+  // supervisor (as Night Shift cards on V do); otherwise Codex may use its own shell inside app-server.
+  const bgTool = process.env.MIX_BG_TOOL === "exec" ? "OpenClaw 的 exec 工具（不要用内置 shell）" : "shell";
+  const bgMessage = (label) => `（自动化后台任务 ${label}）按顺序做 ${MIX_STEPS} 步，每一步都单独用 ${bgTool} 执行一次 \`sleep 1; date +%s%N | sha256sum | cut -c1-8\`（每步一条命令，不要合并，也不要并行），步骤之间不用说明。全部做完后只回复最后一步输出的 8 个字符。`;
   const slotArm = [];
   const bgLoop = async (i) => {
     let n = 0;
@@ -1648,6 +1651,7 @@ async function runMix() {
         runToTextP50: pct(ps.map((r) => ms(r.firstTextAt, r.firstAgentAt)).filter((x) => x != null), 0.5),
         doneP50: pct(ps.filter((r) => r.terminal === "final").map((r) => r.endAt - r.sentAt), 0.5) },
       background: { toolStartsPerMin: Math.round(spans.length / minutes * 10) / 10, toolSpanP50: pct(spans.filter((s) => s.endAt).map((s) => s.endAt - s.startAt), 0.5),
+        toolNames: spans.reduce((acc, sp) => ({ ...acc, [sp.name]: (acc[sp.name] ?? 0) + 1 }), {}),
         turnsEnded: bgEnded.length, turnsOk: bgEnded.filter((r) => r.terminal === "final").length, turnP50: pct(bgEnded.map((r) => r.endAt - r.sentAt), 0.5) },
       gateway: { eluAvg: w.metrics.eluAvg, stallMaxMs: w.metrics.stallMaxMs, stallsOver1s: w.metrics.stallsOver1s, gwCpuAvgPct: w.metrics.gwCpuAvgPct, mainThreadCpuS: w.threadCpu.byComm?.main ?? null, liveness: w.metrics.liveness },
       gate: gate.at(-1) ?? null,

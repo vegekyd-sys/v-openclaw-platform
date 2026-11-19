@@ -40,13 +40,14 @@
     "SEED_CHILD_ENTRY_KB": "0",
     "SEED_STAT1_FROM_V": "/var/tmp/vdsdeep-20261108/v-agent-stat1.json",
     "SUBSCRIBE_SESSIONS": "1",
-    "OUT_DIR": "/var/tmp/conc40-20261119/sb1",
+    "OUT_DIR": "/var/tmp/conc40-20261119/sb2",
     "AB_PROFILE": "1",
     "PROFILE_RAW": "1",
     "MIX_PROFILE_S": "60",
     "AB_ENVS": "OPENCLAW_V_SPAWN_BROKER",
     "CORE_PATCHES": "lab/patch-spawn-broker.mjs",
     "OPENCLAW_SERVICE_MARKER": "openclaw",
-    "LT_BALLAST_GB": "3"
+    "LT_BALLAST_GB": "3",
+    "MIX_BG_TOOL": "exec"
   }
 }
