@@ -25,6 +25,10 @@
     "session-relay": {
       "exempt": true,
       "note": "our own plugin; source is this repo"
+    },
+    "meeting-bridge": {
+      "exempt": true,
+      "note": "our own plugin; source is apps/v-meeting-bridge/plugin in this repo"
     }
   },
   "entries": [
