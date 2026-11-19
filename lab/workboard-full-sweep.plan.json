@@ -1,0 +1,47 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/workboard-full-sweep/session-accessor.sqlite-transcript-state-Cz9g7S9v.js",
+      "target": "openclaw/dist/session-accessor.sqlite-transcript-state-Cz9g7S9v.js",
+      "before": "2583a789782d3f1282e2fe4670f79ec463356950d1240237437b7537778c7b75",
+      "after": "42478a61582fa3749538dfd64fb16f3c1888ec95661467559398a37d0b28dbff"
+    },
+    {
+      "source": "lab/release-files/workboard-full-sweep/combined-store-gateway-BwDhjbIt.js",
+      "target": "openclaw/dist/combined-store-gateway-BwDhjbIt.js",
+      "before": "0cbe8b81f9c38f945b2e6e84c301083ee66106caf50a5bba547c64d098db2a13",
+      "after": "a2c37612e90669ee979eae0b55c0e44d5679a1af6a295cfc566dd2a4f80cfc9e"
+    },
+    {
+      "source": "lab/release-files/workboard-full-sweep/sessions-read-C6mAMxyQ.js",
+      "target": "openclaw/dist/sessions-read-C6mAMxyQ.js",
+      "before": "5044b9b06adf4590aaefc182d697dc964532a4894f91aa1a80191349d84efa21",
+      "after": "153342c9b727b2f8727a2208f54048b55e81905583f22c6372d86f1af6e0f2e8"
+    },
+    {
+      "source": "lab/release-files/workboard-full-sweep/subagent-registry.store.sqlite-hzGu4QSk.js",
+      "target": "openclaw/dist/subagent-registry.store.sqlite-hzGu4QSk.js",
+      "before": "23154eac039ed5f2c73388ac92db900e120262d65522d00b131af802d1d62542",
+      "after": "27cf50a04416aeb7bbe4a1a3910389538cca8969fb7cd18b305a3933d01ef277"
+    },
+    {
+      "source": "lab/release-files/workboard-full-sweep/subagent-registry-read-UaDFTyfW.js",
+      "target": "openclaw/dist/subagent-registry-read-UaDFTyfW.js",
+      "before": "142bb5158e21a3b68c3cd80fd6cd52beeb8904f632ca39ba9b08e4d1fb2db5c0",
+      "after": "4c88db9ca42dc14f7a45ed557722de1e5e02f63a740d4d9f032c5325c4a9d21b"
+    },
+    {
+      "source": "lab/release-files/workboard-full-sweep/session-utils-list-BUP03AzS.js",
+      "target": "openclaw/dist/session-utils-list-BUP03AzS.js",
+      "before": "5392dd6581423d3a86d49f08db79c20941dcc24d663343605ad473a584c3054c",
+      "after": "bbceee57c653d13b79d934d1bc3093954298374eba2983adbc6a84f8022aea2e"
+    },
+    {
+      "source": "lab/release-files/workboard-full-sweep/v-session-lifecycle-snapshot-worker.mjs",
+      "target": "openclaw/dist/v-session-lifecycle-snapshot-worker.mjs",
+      "before": null,
+      "after": "ab84850dba95cf1bd54c3751eccc52869b22d91913d027c1dd0b46c46a1cf059"
+    }
+  ]
+}

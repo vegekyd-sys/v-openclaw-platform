@@ -25,6 +25,10 @@
     "session-relay": {
       "exempt": true,
       "note": "our own plugin; source is this repo"
+    },
+    "meeting-bridge": {
+      "exempt": true,
+      "note": "our own plugin; source is apps/v-meeting-bridge/plugin in this repo"
     }
   },
   "entries": [
@@ -2019,6 +2023,153 @@
       "sha256": "acaa53092a7a4fb58eb1cd08db1fe3726d0969eb5f8f47c09f95134545ec2074",
       "source": "versa:1a9308eec02",
       "note": "session-reference-index (2026-11-17): session deletions resolve surviving references from a per-connection index (fingerprint + TEMP dirty keys + epoch) instead of parsing every entry inside the write transaction; OPENCLAW_V_SESSION_REFERENCE_INDEX=0 restores the full read (versa/port-session-reference-index-20261117, on ca32fca3e29); not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "config-guard--4cC6uJU.js",
+      "sha256": "62e6c438cb3b2dfcca47faad52ca6fa7b306596c01fe14cbaf4fd66da75576b9",
+      "source": "versa:9168f454254",
+      "note": "infer-latency (2026-11-17, CLI): `openclaw infer` skips the state migration preflight (state-database backup + integrity check), `--gateway` reads core-only config and bypasses the operator proxy, `--local` loads only the provider's plugins (pluginScope \"provider\"); versa/port-infer-latency-20261117 on 1a9308eec02; CLI processes only, no Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "command-path-policy-qUeic05b.js",
+      "sha256": "8a9bd264a26c2ffc961eaf1db8a2bd308839e13d14577f8de933e484d27e2637",
+      "source": "versa:9168f454254",
+      "note": "infer-latency (2026-11-17, CLI): `openclaw infer` skips the state migration preflight (state-database backup + integrity check), `--gateway` reads core-only config and bypasses the operator proxy, `--local` loads only the provider's plugins (pluginScope \"provider\"); versa/port-infer-latency-20261117 on 1a9308eec02; CLI processes only, no Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "runtime-plugin-load-plan-Bm46qisR.js",
+      "sha256": "8cc6c598b989143fbfb2743c63489c3398f0c954edf43432489d90690a342930",
+      "source": "versa:9168f454254",
+      "note": "infer-latency (2026-11-17, CLI): `openclaw infer` skips the state migration preflight (state-database backup + integrity check), `--gateway` reads core-only config and bypasses the operator proxy, `--local` loads only the provider's plugins (pluginScope \"provider\"); versa/port-infer-latency-20261117 on 1a9308eec02; CLI processes only, no Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "simple-completion-runtime-D9F09LT6.js",
+      "sha256": "ed3c4e2ac0540ff2d95702bcdfdcf0cf313e31b2ddf25a4b4892cbf07ba7c11f",
+      "source": "versa:9168f454254",
+      "note": "infer-latency (2026-11-17, CLI): `openclaw infer` skips the state migration preflight (state-database backup + integrity check), `--gateway` reads core-only config and bypasses the operator proxy, `--local` loads only the provider's plugins (pluginScope \"provider\"); versa/port-infer-latency-20261117 on 1a9308eec02; CLI processes only, no Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "model-fXXfAcf8.js",
+      "sha256": "154ad5bbb40a3830a4d70968f5e5798ac3845a2b91833e8569d6efd586ed3ac2",
+      "source": "versa:9168f454254",
+      "note": "infer-latency (2026-11-17, CLI): `openclaw infer` skips the state migration preflight (state-database backup + integrity check), `--gateway` reads core-only config and bypasses the operator proxy, `--local` loads only the provider's plugins (pluginScope \"provider\"); versa/port-infer-latency-20261117 on 1a9308eec02; CLI processes only, no Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "prepared-model-runtime.facts-CEW6RO02.js",
+      "sha256": "a2ea22ff6dc30e3a4efb1c20c45c512b53a019a0bdc831da1bcdd21c253db5ec",
+      "source": "versa:9168f454254",
+      "note": "infer-latency (2026-11-17, CLI): `openclaw infer` skips the state migration preflight (state-database backup + integrity check), `--gateway` reads core-only config and bypasses the operator proxy, `--local` loads only the provider's plugins (pluginScope \"provider\"); versa/port-infer-latency-20261117 on 1a9308eec02; CLI processes only, no Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-lifecycle-state-CrB_K2kA.js",
+      "sha256": "c06721d55b53d7fb2d6ba25a02b2b1a81faa326420e12f4c368942b9947ffe4b",
+      "source": "versa:3dfc7c4c4fb",
+      "note": "infer-latency (2026-11-17, Gateway): a model run's hidden internal-session-effects session is created without kicking store maintenance and removed without store-wide reference reads or entry counts (runOwnedInternalSession); versa/port-infer-latency-20261117 on 1a9308eec02; needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor-K0XuW6ln.js",
+      "sha256": "13af5e83e8dd4140a4d90340dcb0ebacc62699643ecb00817b23897872131b38",
+      "source": "versa:3dfc7c4c4fb",
+      "note": "infer-latency (2026-11-17, Gateway): a model run's hidden internal-session-effects session is created without kicking store maintenance and removed without store-wide reference reads or entry counts (runOwnedInternalSession); versa/port-infer-latency-20261117 on 1a9308eec02 + #559 (cherry-picked d6f01a5e06e = b0cbe1db060, already in V's bytes); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "internal-session-effects-C8FWqbuL.js",
+      "sha256": "bfa6377051360fad7649dd1a4e9d6baa7b2c25d259a7a751bc5b5574ee8395f5",
+      "source": "versa:3dfc7c4c4fb",
+      "note": "infer-latency (2026-11-17, Gateway): a model run's hidden internal-session-effects session is created without kicking store maintenance and removed without store-wide reference reads or entry counts (runOwnedInternalSession); versa/port-infer-latency-20261117 on 1a9308eec02; needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor.sqlite-transcript-state-Cz9g7S9v.js",
+      "sha256": "42478a61582fa3749538dfd64fb16f3c1888ec95661467559398a37d0b28dbff",
+      "source": "versa:1d013cb6c39",
+      "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "combined-store-gateway-BwDhjbIt.js",
+      "sha256": "a2c37612e90669ee979eae0b55c0e44d5679a1af6a295cfc566dd2a4f80cfc9e",
+      "source": "versa:1d013cb6c39",
+      "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "sessions-read-C6mAMxyQ.js",
+      "sha256": "153342c9b727b2f8727a2208f54048b55e81905583f22c6372d86f1af6e0f2e8",
+      "source": "versa:1d013cb6c39",
+      "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-registry.store.sqlite-hzGu4QSk.js",
+      "sha256": "27cf50a04416aeb7bbe4a1a3910389538cca8969fb7cd18b305a3933d01ef277",
+      "source": "versa:1d013cb6c39",
+      "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-registry-read-UaDFTyfW.js",
+      "sha256": "4c88db9ca42dc14f7a45ed557722de1e5e02f63a740d4d9f032c5325c4a9d21b",
+      "source": "versa:1d013cb6c39",
+      "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "session-utils-list-BUP03AzS.js",
+      "sha256": "bbceee57c653d13b79d934d1bc3093954298374eba2983adbc6a84f8022aea2e",
+      "source": "versa:1d013cb6c39",
+      "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "v-session-lifecycle-snapshot-worker.mjs",
+      "sha256": "ab84850dba95cf1bd54c3751eccc52869b22d91913d027c1dd0b46c46a1cf059",
+      "source": "versa:1d013cb6c39",
+      "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "supervisor-BuLJGQyc.js",
+      "sha256": "3fca1a79be535e4558f56f9d3e2efc364b62f405a07d2e1a19da8661b9d943e5",
+      "source": "versa:4b3ec9b69c8",
+      "note": "spawn-broker (2026-11-19, Gateway): service-child relays (every exec) are forked by a small long-lived helper (dist/v-spawn-broker.mjs, started lazily by the Gateway on first exec, exits with the Gateway's IPC) instead of the ~6 GB Gateway; a slow spawn falls back to a direct spawn without killing the helper; OPENCLAW_V_SPAWN_BROKER=0 turns it off per call; versa/spawn-broker-workboard-index on aea2dae23b4 (vegekyd-sys/openclaw-versa#1, unmerged); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "v-spawn-broker.mjs",
+      "sha256": "4d365d79b8b526dfd388cf49b10e05a8b56bc6eacc6f606adcfb91b4d90e3a21",
+      "source": "versa:4b3ec9b69c8",
+      "note": "spawn-broker (2026-11-19, Gateway): service-child relays (every exec) are forked by a small long-lived helper (dist/v-spawn-broker.mjs, started lazily by the Gateway on first exec, exits with the Gateway's IPC) instead of the ~6 GB Gateway; a slow spawn falls back to a direct spawn without killing the helper; OPENCLAW_V_SPAWN_BROKER=0 turns it off per call; versa/spawn-broker-workboard-index on aea2dae23b4 (vegekyd-sys/openclaw-versa#1, unmerged); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "sqlite-store-CH-caj1l.js",
+      "sha256": "9ff2826f52d522b5122e1542a3adb3b306d20bc13d673d4988050d5bef1e4168",
+      "source": "versa:5fed775dabf",
+      "note": "workboard-hotpath-index (2026-11-19, Gateway): ensureWorkboardSchema creates two covering indexes, (board_id, status, archived_at, updated_at) for listBoardAggregates and (created_at, id, archived_at, link columns) for the lifecycle match read; queries unchanged; built once at the first store open after the restart; versa/spawn-broker-workboard-index on aea2dae23b4 (vegekyd-sys/openclaw-versa#1, unmerged); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "runtime-Cy2RRq4n.js",
+      "sha256": "e4690957affecbac32d049d778152850a0d69dca4d593145803a4b1e4e583a16",
+      "source": "versa:629bd9638ed",
+      "note": "egress-proxy-tls-reuse (2026-11-19, Gateway): the secret egress proxy builds its upstream SecureContext once instead of per forwarded request, and mints TLS leaves once per hostname for all run registrations (re-minted on CA file change, under 1 h left, or after a failed mint); versa/port-egress-proxy-tls-reuse-20261119 on e27869be125 (leaf cache in leaf-cache.ts on the fork, inline in the dist patch); PR #627; needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "ca-DsWeiCkK.js",
+      "sha256": "f8aa4896b6f7a4ee607bfd510c0ec03bb3ed77b7df3cb559b3dd0e537600a0fa",
+      "source": "versa:2743be41ed2",
+      "note": "egress-proxy-ca-30d (2026-11-19, Gateway): the secret egress proxy CA (one per Gateway start, never re-signed in place) is valid for 30 days instead of 1, so proxied exec HTTPS no longer fails once the Gateway has been up a day; debug CA (7 d) and leaves (1 d) unchanged; versa/port-egress-proxy-tls-reuse-20261119 on 629bd9638ed; PR #627; needs a Gateway restart; not on V until promoted"
     }
   ]
 }

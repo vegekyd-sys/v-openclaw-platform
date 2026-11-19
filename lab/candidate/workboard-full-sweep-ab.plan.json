@@ -1,0 +1,29 @@
+{
+  "support": [
+    "lab/candidate/workboard-full-sweep-ab.mjs",
+    "lab/candidate/v-scale-session-fixture.mjs",
+    "lab/workboard-full-sweep.plan.json",
+    "lab/release-files/workboard-full-sweep/session-accessor.sqlite-transcript-state-Cz9g7S9v.js",
+    "lab/release-files/workboard-full-sweep/combined-store-gateway-BwDhjbIt.js",
+    "lab/release-files/workboard-full-sweep/sessions-read-C6mAMxyQ.js",
+    "lab/release-files/workboard-full-sweep/v-session-lifecycle-snapshot-worker.mjs",
+    "lab/release-files/workboard-full-sweep/subagent-registry.store.sqlite-hzGu4QSk.js",
+    "lab/release-files/workboard-full-sweep/subagent-registry-read-UaDFTyfW.js",
+    "lab/release-files/workboard-full-sweep/session-utils-list-BUP03AzS.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "--expose-gc",
+    "--max-old-space-size=7168",
+    "lab/candidate/workboard-full-sweep-ab.mjs"
+  ],
+  "timeoutSeconds": 5400,
+  "user": "lab-db91-parity",
+  "env": {
+    "ARMS": "A,B",
+    "ITERATIONS": "4",
+    "PLAN": "lab/workboard-full-sweep.plan.json",
+    "PROFILE_ARM": "B",
+    "PROFILE_OPS": "5"
+  }
+}
