@@ -1,0 +1,50 @@
+{
+  "support": [
+    "lab/candidate/runtime-mix.mjs",
+    "lab/candidate/runtime-mix-lag.mjs",
+    "lab/patch-interactive-priority.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/runtime-mix.mjs"
+  ],
+  "timeoutSeconds": 9000,
+  "user": "lab-db91-parity",
+  "env": {
+    "MIX": "1",
+    "MIX_BG": "10",
+    "MIX_BG_TURNS": "2",
+    "MIX_STEPS": "8",
+    "MIX_WINDOW_S": "180",
+    "MIX_ROUNDS": "4",
+    "MIX_PROBE_EVERY_S": "12",
+    "MIX_PROBES": "6",
+    "MIX_BASE_S": "180",
+    "MIX_WARM_S": "120",
+    "AB_ENVS": "OPENCLAW_V_INTERACTIVE_PRIORITY",
+    "OPENCLAW_V_INTERACTIVE_PRIORITY_BACKGROUND": ":lt-bg-",
+    "OPENCLAW_V_INTERACTIVE_PRIORITY_MAX_WAIT_MS": "3000",
+    "OPENCLAW_V_INTERACTIVE_PRIORITY_TTL_MS": "15000",
+    "CORE_PATCHES": "lab/patch-interactive-priority.mjs",
+    "CODEX_PATCHES": "lab/patch-interactive-priority.mjs",
+    "ARMS": "vds:small",
+    "CANARY": "0",
+    "BIG_COUNT": "0",
+    "WORKER_MIN": "1",
+    "WORKER_MAX": "2",
+    "STEADY_MIN": "10",
+    "STEADY_SAMPLE_MS": "30000",
+    "TURN_TIMEOUT_MS": "300000",
+    "CODEX_VERSION": "0.169.1",
+    "V_CODEX_DIST_SHA": "a864aa8ffd263a97b57c03abf890c2fff6c63e2a33bc422804d824f3ae47b4d2",
+    "MODEL_PROXY": "1",
+    "FAULT_PORT": "29913",
+    "PROVIDER_TIMEOUT_S": "90",
+    "SEED_REGISTRY": "1",
+    "SEED_TOPOLOGY": "/var/tmp/vdsdeep-20261108/topo.json.gz",
+    "SEED_CHILD_ENTRY_KB": "0",
+    "SEED_STAT1_FROM_V": "/var/tmp/vdsdeep-20261108/v-agent-stat1.json",
+    "SUBSCRIBE_SESSIONS": "1",
+    "OUT_DIR": "/var/tmp/conc40-20261118/mix2"
+  }
+}

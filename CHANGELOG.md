@@ -10,6 +10,36 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## spawnbroker-egress-20261119
+
+上线：2026-11-19 21:41 CST（21:0x 文件装到 V；v-self-restart 21:30 提交，等 cron 跑完后停机，111 s 就绪，workers 5，postChecks 全 0、无告警）  ·  tag `spawnbroker-egress-20261119`
+
+**摘要**：两件事一次上线。
+- **#625 exec 子进程交给常驻 spawn broker + Workboard 两个索引**：服务模式下 exec/relay 子进程不再由 Gateway 主线程同步 fork，改由常驻的 `v-spawn-broker.mjs` 代为启动，省掉主线程上每次 fork 的停顿；Workboard 建表时补 `workboard_cards_board_agg_idx`、`workboard_cards_lifecycle_link_idx`，看板聚合和生命周期链接不再全表扫。关闭：drop-in `Environment=OPENCLAW_V_SPAWN_BROKER=0` 后重启。说明见 `lab/spawn-broker-workboard-index.md`。
+- **#627 secret egress 代理复用 TLS + 根证书 30 天**：代理的叶子证书按主机缓存，剩不到 1 小时才重签；根 CA 有效期从 1 天改为 30 天，子进程信任包不再每天过期（V 工作区里的续期脚本随之变成空操作）。
+
+相对上一版 `meeting-bridge-20261118-e`：5 个文件变化（`meeting-bridge-20261118-e` 的捕获还没进 dev，以下按发版计划列出，前后哈希已由 promote-to-v 在 V 上核对）。
+
+**经 VLab 发版 `spawnbroker-egress-20261119`**（release-20261119，dev `fc0ca1ac`）
+> 验收：共享 VLab 上新字节加载正常，exec 输出/错误输出/退出码、HTTPS 请求正常，日志无新增错误。共享 VLab 没有 `OPENCLAW_SERVICE_MARKER`、没开 egressProxy，走不到 broker 和代理两条路径；这两条的证据来自 candidate：exec 对照 3021 次全部经 broker，HTTPS 代理真实文件 240 次全部成功，新 CA 30 天。
+- `core` supervisor-BuLJGQyc.js  3dcf2b54 → 3fca1a79
+- `core` sqlite-store-CH-caj1l.js  d06ee044 → 9ff2826f
+- `core` v-spawn-broker.mjs  （新增）→ 4d365d79
+- `core` runtime-Cy2RRq4n.js  f39ed2a4 → e4690957
+- `core` ca-DsWeiCkK.js  e8b1b1ed → f8aa4896
+
+**这期间合入 dev 的 PR**（V 上实际变化以上面的文件为准）：
+- #625 exec 子进程走常驻 spawn broker + Workboard 两个索引
+- #627 secret egress 代理复用 TLS 证书、根 CA 30 天
+
+V 上验收（21:41–22:00，只看真实流量，未在业务群发测试消息）：
+- broker：`[v-spawn-broker.1] {"event":"start","pid":2567683,"starts":1}`；`service-child-relay.js` 子进程的父进程是 broker，不再是 Gateway。
+- 索引：`workboard_cards_board_agg_idx`、`workboard_cards_lifecycle_link_idx` 都在（只读查询）。重启前已只读预热 workboard 库。
+- 证书：新 `secret-egress-proxy/gateway-*/root-ca.pem` notBefore 11-19 13:39 GMT，notAfter 12-19 13:39 GMT（30 天）。
+- 重启：Codex 旧登记被 v-self-restart 自动清理，cannotReap=0；夜班 holding → resuming 自动接上。
+- 冷启动停顿：21:41:45 一次 event loop 最大 14.4 s（active=0，启动期，上一次 11-18 重启同期 9.5 s）。
+- 稳态（21:43–22:00）：liveness 告警 0 次（重启前一小时 4 次）；经新代理的 secret egress 请求 148 次，证书/TLS 类错误 0；broker 只启动 1 次、RSS 58 MB；Cannot reap 0。这段时间没有用户消息，首字前后对比留待真实流量。
+
 ## workboard-full-sweep-20261117
 
 上线：2026-11-18 00:09 CST 生效（00:06 promote-to-v，漂移哨兵 0 发现，VLab 已 align；00:06:39 v-self-restart 等空闲 2 s，00:07:43 停机并清掉 1 条 Codex 孤儿登记，90 s 后就绪，00:09:16 settle：stream 4/4、worker 5/5，postChecks 全 0，NRestarts 0）  ·  tag `workboard-full-sweep-20261117`
