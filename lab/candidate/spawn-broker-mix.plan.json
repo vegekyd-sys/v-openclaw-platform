@@ -47,6 +47,6 @@
     "AB_ENVS": "OPENCLAW_V_SPAWN_BROKER",
     "CORE_PATCHES": "lab/patch-spawn-broker.mjs",
     "OPENCLAW_SERVICE_MARKER": "openclaw",
-    "LT_BALLAST_GB": "4"
+    "LT_BALLAST_GB": "3"
   }
 }

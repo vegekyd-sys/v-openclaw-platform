@@ -36,7 +36,8 @@ setInterval(() => {
 // LT_BALLAST_GB: hold this much touched anonymous memory in the Gateway, so costs that scale with the
 // process's memory (fork in child_process.spawn: page tables + a reference per page) look like V's
 // ~6 GB Gateway instead of a fresh candidate's ~1 GB.
-if (Number(process.env.LT_BALLAST_GB) > 0) {
+// Only the Gateway: Workers are forked with the same --import and must not each take a copy.
+if (Number(process.env.LT_BALLAST_GB) > 0 && process.argv.slice(2).includes("gateway")) {
   const keep = [];
   for (let i = 0; i < Number(process.env.LT_BALLAST_GB) * 4; i++) {
     const b = Buffer.allocUnsafeSlow(256 * 1024 * 1024);
