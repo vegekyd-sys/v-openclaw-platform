@@ -386,6 +386,7 @@
         "lab/patch-spawn-broker.test.mjs",
         "lab/spawn-broker/v-spawn-broker.test.mjs",
         "lab/patch-workboard-hotpath-index.test.mjs",
+        "lab/spawn-broker-workboard-index.test.mjs",
         "lab/restart-recovery-claim-release.test.mjs",
         "lab/history-image-resize-skip.test.mjs",
         "lab/no-reply-after-tool.test.mjs",

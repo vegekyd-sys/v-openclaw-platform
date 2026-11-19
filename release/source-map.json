@@ -2096,6 +2096,27 @@
       "sha256": "ab84850dba95cf1bd54c3751eccc52869b22d91913d027c1dd0b46c46a1cf059",
       "source": "versa:1d013cb6c39",
       "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "supervisor-BuLJGQyc.js",
+      "sha256": "3fca1a79be535e4558f56f9d3e2efc364b62f405a07d2e1a19da8661b9d943e5",
+      "source": "versa:4b3ec9b69c8",
+      "note": "spawn-broker (2026-11-19, Gateway): service-child relays (every exec) are forked by a small long-lived helper (dist/v-spawn-broker.mjs, started lazily by the Gateway on first exec, exits with the Gateway's IPC) instead of the ~6 GB Gateway; a slow spawn falls back to a direct spawn without killing the helper; OPENCLAW_V_SPAWN_BROKER=0 turns it off per call; versa/spawn-broker-workboard-index on aea2dae23b4 (vegekyd-sys/openclaw-versa#1, unmerged); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "v-spawn-broker.mjs",
+      "sha256": "4d365d79b8b526dfd388cf49b10e05a8b56bc6eacc6f606adcfb91b4d90e3a21",
+      "source": "versa:4b3ec9b69c8",
+      "note": "spawn-broker (2026-11-19, Gateway): service-child relays (every exec) are forked by a small long-lived helper (dist/v-spawn-broker.mjs, started lazily by the Gateway on first exec, exits with the Gateway's IPC) instead of the ~6 GB Gateway; a slow spawn falls back to a direct spawn without killing the helper; OPENCLAW_V_SPAWN_BROKER=0 turns it off per call; versa/spawn-broker-workboard-index on aea2dae23b4 (vegekyd-sys/openclaw-versa#1, unmerged); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "sqlite-store-CH-caj1l.js",
+      "sha256": "9ff2826f52d522b5122e1542a3adb3b306d20bc13d673d4988050d5bef1e4168",
+      "source": "versa:5fed775dabf",
+      "note": "workboard-hotpath-index (2026-11-19, Gateway): ensureWorkboardSchema creates two covering indexes, (board_id, status, archived_at, updated_at) for listBoardAggregates and (created_at, id, archived_at, link columns) for the lifecycle match read; queries unchanged; built once at the first store open after the restart; versa/spawn-broker-workboard-index on aea2dae23b4 (vegekyd-sys/openclaw-versa#1, unmerged); needs a Gateway restart; not on V until promoted"
     }
   ]
 }
