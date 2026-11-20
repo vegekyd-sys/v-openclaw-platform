@@ -1,0 +1,34 @@
+[Unit]
+Description=Gemini account bridge (Gemini API surface over the Antigravity account login) for OpenClaw /neon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Same Unix user as scene-gemini-relay: the official agy CLI keeps the login
+# (and refreshes it) in this home; the bridge only reads it.
+User=scene-gemini
+Group=scene-gemini
+WorkingDirectory=/srv/vlab/scene-gemini-relay/work
+Environment=HOME=/srv/vlab/scene-gemini-relay
+Environment=AGY_HOME=/srv/vlab/scene-gemini-relay
+Environment=AGY_BIN=/srv/vlab/scene-gemini-relay/bin/agy
+# Only the Gateway/Worker user may spend the account quota (peer uid of the loopback socket).
+Environment=GEMINI_BRIDGE_ALLOW_USERS=openclaw
+Environment=GEMINI_BRIDGE_HOST=127.0.0.1
+Environment=GEMINI_BRIDGE_PORT=25990
+Environment=GEMINI_BRIDGE_MODELS=gemini-4-neon
+Environment=GEMINI_BRIDGE_DEFAULT_EFFORT=medium
+Environment=GEMINI_BRIDGE_CONCURRENCY=4
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/local/bin/node /opt/gemini-account-bridge/current/bridge.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/srv/vlab/scene-gemini-relay
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

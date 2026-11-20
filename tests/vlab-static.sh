@@ -96,4 +96,5 @@ for dir in "${REPO_ROOT}"/release/captured/v*/; do
 done
 "${REPO_ROOT}/scripts/scan-secrets.sh"
 
+bash -n "${REPO_ROOT}/apps/gemini-account-bridge/install.sh"
 echo "vLab static checks passed"
