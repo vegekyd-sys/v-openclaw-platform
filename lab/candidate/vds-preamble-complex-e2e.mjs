@@ -29,6 +29,7 @@ const ARMS = (process.env.PRE_ARMS ?? "base,v2").split(",").filter(Boolean);
 const MODE = process.env.PRE_MODE ?? "new";
 assert(["new", "long"].includes(MODE), "PRE_MODE must be new or long");
 const REPS = Number(process.env.PRE_REPS ?? 1);
+const REP_START = Number(process.env.PRE_REP_START ?? 1); // reps REP_START .. REP_START+REPS-1 (fixture content depends on the rep)
 const ONLY = (process.env.PRE_SCENARIOS ?? "").split(",").filter(Boolean);
 const TURN_TIMEOUT_MS = Number(process.env.PRE_TURN_TIMEOUT_MS ?? 600_000);
 const V_CODEX_DIST_SHA = process.env.V_CODEX_DIST_SHA ?? "a864aa8ffd263a97b57c03abf890c2fff6c63e2a33bc422804d824f3ae47b4d2";
@@ -112,7 +113,7 @@ assert.equal(vdsEntry?.agentRuntime?.id, "codex", "shared config has no /vds cod
 for (const target of [config.agents.defaults, makaron]) target.model = { primary: VDS_REF, fallbacks: [] };
 config.commands ??= {};
 {
-  const dmSenders = ARMS.flatMap((arm) => DM_SCENARIOS.flatMap((sid) => Array.from({ length: REPS }, (_, i) => `feishu:${senderFor(dmChat(arm, sid, i + 1))}`)));
+  const dmSenders = ARMS.flatMap((arm) => DM_SCENARIOS.flatMap((sid) => Array.from({ length: REPS }, (_, i) => `feishu:${senderFor(dmChat(arm, sid, REP_START + i))}`)));
   config.commands.ownerAllowFrom = [...new Set([...(config.commands.ownerAllowFrom ?? []).map(String), `feishu:${ALICE}`, ...dmSenders])];
 }
 // V's plugins.entries.codex (2026-11-20), keeping the candidate's Codex 0.169.1 binary path
@@ -556,7 +557,7 @@ function rng(seed) {
 const ri = (r, a, b) => a + Math.floor(r() * (b - a + 1));
 const pick = (r, xs) => xs[Math.floor(r() * xs.length)];
 const norm = (s) => String(s ?? "").replace(/(\d),(?=\d{3})/gu, "$1").replace(/[¥￥\s]/gu, "");
-const hasNum = (t, n) => new RegExp(`(^|[^0-9.])${String(n).replace(".", "\\.")}(?![0-9]|\\.[0-9])`, "u").test(norm(t));
+const hasNum = (t, n) => new RegExp(`(^|[^0-9.])${String(n).replace(".", "\\.")}(?:\\.0+)?(?![0-9]|\\.[0-9])`, "u").test(norm(t)); // 88120 also matches "88,120.00"
 const readIf = (f) => (fs.existsSync(f) ? fs.readFileSync(f, "utf8") : null);
 const write = (f, s, mode) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, s, mode ? { mode } : undefined); };
 const runNode = (dir, file) => spawnSync(process.execPath, [file], { cwd: dir, encoding: "utf8", timeout: 20_000 });
@@ -693,7 +694,7 @@ console.log("all tests passed");
     const under = x.diff >= 0;
     const parts = {
       decision: Boolean(decision) && decision.includes(x.supplier) && money(decision, x.total) && money(decision, Math.abs(x.diff)),
-      text: money(text, Math.abs(x.diff)) && (under ? /(未|没有?|不)超|低于|结余|剩余|富余|还剩|节省|省下/u : /超(支|出|了)/u).test(text ?? ""),
+      text: money(text, Math.abs(x.diff)) && (under ? /(未|没有?|不)超|低于|结余|剩余|富余|还剩|节省|省下|超支\W{0,4}否/u : /超(支|出|了)/u).test(text ?? ""),
     };
     return { ok: parts.decision && parts.text, parts, expect: { total: x.total, diff: x.diff } };
   } },
@@ -840,7 +841,7 @@ try {
     fixtures.set(`${arm}/${rep}/${task.id}`, { dir, fixture, k });
     return { dir, fixture, k };
   };
-  for (let rep = 1; rep <= REPS; rep++) {
+  for (let rep = REP_START; rep < REP_START + REPS; rep++) {
     if (MODE === "new") {
       for (const [ti, task] of TASKS.entries()) {
         const order = (rep + ti) % 2 === 0 ? ARMS : [...ARMS].reverse();
