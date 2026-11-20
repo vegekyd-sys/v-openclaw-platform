@@ -10,6 +10,33 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## usage-workboard-20261120
+
+上线：2026-11-20 23:30 CST（23:06 文件装到 V；等 /vcc 的曲库长任务跑完后，v-self-restart 23:28 提交，2 s 判定空闲后停机，121 s 就绪，workers 5、4 个渠道流全在）  ·  tag `usage-workboard-20261120`
+
+**摘要**：两件事一次上线。
+- **#631 sessions.usage 只读需要的会话行**：11/20 17:51 V 两次 `openclaw gateway call sessions.usage` 把主线程卡了 29.8 s 和 65.9 s。原因是 CLI 调用只带 operator.read，没走 #604 的子进程，在主线程上整表读了 makaron 的 25,866 行会话（2.4 GB）。现在按 key 只读匹配的行，列表只取投影加上下文权重；没有 operator 角色的只读调用也进 usage 子进程。
+- **#617 Workboard 全量巡检重新完整**：V 的会话超过 1 万后，每 10 分钟一次的全量列表其实一直不完整。现在请求整个会话目录，以 `hasMore=false` 判定完整；prepared 状态的启动要超过 30 分钟没有接收会话才判失败。关闭：`OPENCLAW_V_WORKBOARD_SWEEP_COMPLETE=0`。
+
+相对上一版 `spawnbroker-egress-20261119`：2 个文件变化。
+
+**经 VLab 发版 `usage-workboard-20261120`**（monitor-v-production-70a57a，dev `a119dd51`）
+> 验收：共享 VLab 21:19 部署后文件已就位。用 `openclaw gateway call sessions.usage`（operator.read，与 V 17:51 同一路径）实测：按 key 4.4 s，key+当天 0.24 s，makaron 30 天 5.2 s 返回 490 个会话，期间没有 liveness 延迟。一次真实回合（先说明、exec 两次）输出正确；12 分钟内没有 lifecycle sync failed。缺口：VLab 上没有看到巡检完成的正向日志。
+- `core` extensions/workboard/index.js  448d3ae8 → 62a0a1b5
+- `core` usage-C3nh9kcO.js  44c5f048 → a39d4ef6
+
+**这期间合入 dev 的 PR**（V 上实际变化以上面的文件为准）：
+- #617 fix(workboard): 全量巡检在会话超过 1 万后重新完整（含 prepared 宽限）
+- #631 fix(usage): sessions.usage 只读需要的会话行，CLI 只读调用也进 usage 子进程
+
+V 上验收（23:31–23:43，只看真实流量，没有在业务群发测试消息，也没有在 V 上调用 sessions.usage）：
+- 文件：两个文件的 sha 都等于发版后的值（a39d4ef6 / 62a0a1b5）。
+- 冷启动停顿：23:31:42 一次 18.4 s，在启动期内（上一次 11-19 21:39 重启同期 15.5 s）。之后稳态只有一次 1.8 s。
+- 真实回复：23:33–23:37 飞书 4 张卡片都流式出字并正常收尾，sendMs 530–690 ms。
+- Workboard：重启后只有 4 张卡片状态变化（2 张完成进入 review，2 张 running），都是正常进展，没有成批判失败，也没有 `lifecycle sync failed`。
+- 重启时 v-self-restart 自动清理了 3 条 Codex 旧登记。
+
+---
 ## spawnbroker-egress-20261119
 
 上线：2026-11-19 21:41 CST（21:0x 文件装到 V；v-self-restart 21:30 提交，等 cron 跑完后停机，111 s 就绪，workers 5，postChecks 全 0、无告警）  ·  tag `spawnbroker-egress-20261119`
