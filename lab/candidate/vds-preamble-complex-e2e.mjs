@@ -666,7 +666,7 @@ console.log("all tests passed");
     const parts = {
       count: hasNum(text, x.count),
       pct: hasNum(text, x.pct),
-      hour: new RegExp(`(^|[^0-9])0?${h}(\\s*(点|时|:|：)|\\s*-\\s*${h + 1})`, "u").test(String(text ?? "")),
+      hour: new RegExp(`(^|[^0-9])0?${h}(\\s*(点|时|:|：|Z\\b|\\s*UTC)|\\s*-\\s*${h + 1})`, "u").test(String(text ?? "")),
     };
     return { ok: Object.values(parts).every(Boolean), parts, expect: { count: x.count, pct: x.pct, hour: h } };
   } },
