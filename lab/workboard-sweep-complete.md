@@ -101,6 +101,19 @@ candidate-e64239aa（vlab91，2026-11-18 01:02–01:06 CST，baseRelease `workbo
   V 比 VLab 快约 1.5–2 倍，按此估计 V 上全量那轮主线程阻塞从约 0.4 s 到约 0.5 s，仍低于 1 s liveness 告警阈值；随会话数线性增长（每 1 万行约 +0.15 s，VLab 口径）。
 - 原始数字见 receipt（本机 `tmp/candidate/candidate-e64239aa-03ea-479e-840f-8dcb5312258d.json`，不进仓库）。VLab 工作目录已自动删除；这次新建的基线 `8c879da1…` 就是当前 VLab runtime 的基线，按清理规则保留。
 
+### 2026-11-20 复跑（上线前，rebase 到 dev c6dfffd6 之后）
+
+- V 上 `extensions/workboard/index.js` 仍是 `448d3ae8…`（11-20 21:04 CST 只读核对），按线上字节重建的 release 与之前逐字节相同（`62a0a1b5…`）。
+- candidate-4a90559b（baseRelease `spawnbroker-egress-20261119`，commit 7780d638、tree 干净，测试 211 s），同一夹具与断言，全部通过：
+
+| 臂 | 列出行数 / hasMore | 首轮改动 | 首轮 / 稳态主线程最长阻塞 | 全量 wall |
+|---|---|---|---|---|
+| A | 10,000 / true | 30 | 641 / 622–649 ms | 7.2–7.4 s |
+| B | 19,449 / false | 62 | 888 / 760–776 ms | 7.4–7.8 s |
+| B0 | 10,000 / true | 30 | 635 / 627–639 ms | 7.3–7.4 s |
+
+  卡片结果与 11-18 相同（B：窗口外 30 张 → review、孤儿 2 张 → blocked/failed、正在启动 2 张仍 prepared；B0 指纹 = A）。稳态代价约 +130–150 ms。
+
 ## 上线
 
 - 换 1 个 core dist 文件 `extensions/workboard/index.js`，需要重启 Gateway。before = V 当前字节（#487 release，448d3ae8…）。部署前按线上字节再核对一次。
