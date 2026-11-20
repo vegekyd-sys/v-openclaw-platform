@@ -133,7 +133,9 @@ const privateHome = path.join(scratch, "home");
 const workspace = path.join(privateHome, "makaron-openclaw", ".openclaw-local", "workspace");
 makaron.workspace = workspace;
 // V's skills settings (2026-11-20); shared VLab has none, so its catalog is cut at the 18k default
-const V_SKILLS = (home) => ({ limits: { maxSkillsInPrompt: 500, maxSkillsPromptChars: 70000, maxSkillsLoadedPerSource: 400 }, load: { allowSymlinkTargets: [path.join(home, ".agents", "skills"), path.join(home, ".agents", "skills", "makaron")] } });
+// VDD_SKILLS_PROMPT_CHARS overrides the 70000 budget (the "descriptions back" variant of the fix)
+const SKILLS_PROMPT_CHARS = Number(process.env.VDD_SKILLS_PROMPT_CHARS ?? 70000);
+const V_SKILLS = (home) => ({ limits: { maxSkillsInPrompt: 500, maxSkillsPromptChars: SKILLS_PROMPT_CHARS, maxSkillsLoadedPerSource: 400 }, load: { allowSymlinkTargets: [path.join(home, ".agents", "skills"), path.join(home, ".agents", "skills", "makaron")] } });
 config.skills = { ...(config.skills ?? {}), ...V_SKILLS(privateHome) };
 assert(workspace.startsWith(scratch), `workspace ${workspace} is not private to this candidate`);
 assert(makaron.agentDir.startsWith(stateDir), "agentDir is not private");

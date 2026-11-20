@@ -11,6 +11,10 @@
 // skill read was under a root OpenClaw's list covers. The key only drops the listing: skills stay
 // enabled, so explicit skill inputs (skills/list) still resolve.
 //
+// Trade-off (same report, candidate A/B): no measurable first-token or accuracy change, but the
+// listing carried descriptions OpenClaw's compact list lacks, so skills with look-alike names were
+// picked less reliably without it; the report recommends cleaning those up (and the v2 rule 4) first.
+//
 // Takes effect for threads started after the write: Codex app-server reads config.toml at
 // thread/start (candidate-verified, no Gateway restart). Existing threads keep the lists already in
 // their history until they are replaced or compacted.

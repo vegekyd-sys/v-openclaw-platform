@@ -28,7 +28,8 @@ import path from "node:path";
 import { createRequire } from "node:module";
 
 const ARMS = (process.env.PRE_ARMS ?? "base,dedup").split(",").filter(Boolean);
-const CONFIG_ARMS = { dedup: { nativeSkillsOff: true } }; // arms that change codex-home config.toml, not AGENTS.md
+// arms that change codex-home config.toml; "agents" also swaps AGENTS.md for AGENTS.<agents>.md
+const CONFIG_ARMS = { dedup: { nativeSkillsOff: true }, dedupv2: { nativeSkillsOff: true, agents: "v2" } };
 const REPS = Number(process.env.PRE_REPS ?? 1);
 const ONLY = (process.env.PRE_SCENARIOS ?? "").split(",").filter(Boolean);
 const TURN_TIMEOUT_MS = Number(process.env.PRE_TURN_TIMEOUT_MS ?? 300_000);
@@ -72,10 +73,10 @@ const inputFiles = new Map(); // basename -> absolute path
 }
 const input = (name) => { const f = inputFiles.get(name); assert(f, `support file ${name} missing`); return f; };
 const V_FILES = ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "MEMORY.md", "TOOLS.md", "HEARTBEAT.md", "PROJECTS.md", "REDLINES.md"];
-const agentArm = (arm) => (arm === "base" || CONFIG_ARMS[arm] ? null : arm);
-for (const arm of ARMS) if (agentArm(arm)) input(`AGENTS.${arm}.md`);
-const agentsFor = (arm) => fs.readFileSync(agentArm(arm) ? input(`AGENTS.${arm}.md`) : input("AGENTS.md"));
-evidence.inputs = Object.fromEntries([...V_FILES, "v-skills-md.tgz", ...ARMS.filter(agentArm).map((a) => `AGENTS.${a}.md`)].map((n) => [n, sha256(fs.readFileSync(input(n))).slice(0, 16)]));
+const agentArm = (arm) => CONFIG_ARMS[arm]?.agents ?? (arm === "base" || CONFIG_ARMS[arm] ? null : arm);
+for (const arm of ARMS) if (agentArm(arm)) input(`AGENTS.${agentArm(arm)}.md`);
+const agentsFor = (arm) => fs.readFileSync(agentArm(arm) ? input(`AGENTS.${agentArm(arm)}.md`) : input("AGENTS.md"));
+evidence.inputs = Object.fromEntries([...V_FILES, "v-skills-md.tgz", ...new Set(ARMS.filter(agentArm).map((a) => `AGENTS.${agentArm(a)}.md`))].map((n) => [n, sha256(fs.readFileSync(input(n))).slice(0, 16)]));
 
 // ---------------------------------------------------------------- Codex plugin = V's bytes (as runtime-mix.mjs)
 const dist = path.join(runtime, "openclaw", "dist");
@@ -127,7 +128,9 @@ const privateHome = path.join(scratch, "home");
 const workspace = path.join(privateHome, "makaron-openclaw", ".openclaw-local", "workspace");
 makaron.workspace = workspace;
 // V's skills settings (2026-11-20); shared VLab has none, so its catalog is cut at the 18k default
-const V_SKILLS = (home) => ({ limits: { maxSkillsInPrompt: 500, maxSkillsPromptChars: 70000, maxSkillsLoadedPerSource: 400 }, load: { allowSymlinkTargets: [path.join(home, ".agents", "skills"), path.join(home, ".agents", "skills", "makaron")] } });
+// VDD_SKILLS_PROMPT_CHARS overrides the 70000 budget (the "descriptions back" variant of the fix)
+const SKILLS_PROMPT_CHARS = Number(process.env.VDD_SKILLS_PROMPT_CHARS ?? 70000);
+const V_SKILLS = (home) => ({ limits: { maxSkillsInPrompt: 500, maxSkillsPromptChars: SKILLS_PROMPT_CHARS, maxSkillsLoadedPerSource: 400 }, load: { allowSymlinkTargets: [path.join(home, ".agents", "skills"), path.join(home, ".agents", "skills", "makaron")] } });
 config.skills = { ...(config.skills ?? {}), ...V_SKILLS(privateHome) };
 assert(workspace.startsWith(scratch), `workspace ${workspace} is not private to this candidate`);
 assert(makaron.agentDir.startsWith(stateDir), "agentDir is not private");
