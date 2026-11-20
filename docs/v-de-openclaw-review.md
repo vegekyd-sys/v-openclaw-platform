@@ -204,7 +204,7 @@ V 自己的文件里，功能性 57 处、纯语境 47 处（W 系列）。核�
 | C2、C10、C13、C14 | `Deferred searchable OpenClaw dynamic tools…` / `## OpenClaw Skills` / `This is an OpenClaw cron automation turn…` / `openclaw: Tools in the openclaw namespace.` | Codex | 去掉品牌；给命名空间填一句非空描述（名字不改） | dist |
 | S14 | Runtime 行 `host=openclaw` | cli | `host=V` | transform |
 | W7 / W20 | `OpenClaw 自有能力优先官方 CLI，Skill Workshop 使用 \`openclaw skills workshop ...\`` | 全部（AGENTS、TOOLS 各一份） | 「V 平台自带的能力优先用官方命令行（命令名是 `openclaw`）」，两份只留一份 | 工作区 |
-| W19–W35 | TOOLS.md 里「OpenClaw runtime」「Gateway host」「OpenClaw 凭据库」，以及重启、改配置两大节（约 1.5k token） | 全部每轮 | 两大节迁到 `v-self-update`、`v-openclaw-config` 技能，TOOLS 只留一行指针；叙述里改成「V 主服务 / V 主机 / V 的凭据库」 | 工作区 + 技能 |
+| W19–W35 | TOOLS.md 里「OpenClaw runtime」「Gateway host」「OpenClaw 凭据库」，以及重启、改配置两大节（约 1.5k token） | 按需读取（AGENTS.md 要求工具操作前读；抓包确认**不在**每轮注入） | 两大节迁到 `v-self-update`、`v-openclaw-config` 技能，TOOLS 只留一行指针；叙述里改成「V 主服务 / V 主机 / V 的凭据库」 | 工作区 + 技能 |
 
 ### 3.3 工具描述和工具返回
 
@@ -309,7 +309,7 @@ DeepSeek 路径（/vds、/deepseek）和 /vcc **每次请求都带全量工具�
 | 6 | **PI 和 /vcc 的文本替换小插件**：S1、S7、S9、S10–S15、I12、I14、I20 | /deepseek、/vcc 和子 agent 的全部身份句和文档指向；不用打核心 dist | 低：精确整句匹配 | 新的 V 插件（`registerTextTransforms`），Gateway 配置和 worker 配置都启用 | candidate 验证替换命中 |
 | 7 | **`/status` 和 `session_status` 首行「🦞 OpenClaw <版本>」改成「⚡ V <版本>」**（T23/U1） | 模型高频调用后会原样复述；用户也直接看到 | 低 | dist + versa | — |
 | 8 | **技能清单去重和瘦身**：关掉 codex-home 的 openai-curated 插件；去掉 S8「Run `openclaw skills check`」；评估去掉 Codex 原生和 OpenClaw 清单中的一份；location 改成相对路径 | 每次请求省约 1–2 万 token，顺带去掉约 700 处路径里的 openclaw | 中：清单是模型找技能的唯一入口，去重要确认模型还找得到 | 配置（codex-home）+ dist | candidate 跑技能命中测试（PR #480 那套） |
-| 9 | **TOOLS.md 两大运维节迁到技能**（W25、W35），其余叙述改成「V 主服务 / V 主机」 | 每轮省约 1.5k token；去掉大部分 Gateway 叙述；顺带解决 v-core 里不适用的运维说明（C2） | 低到中：按需读取依赖模型记得去读，一行指针要留 | 工作区 + 技能 | 确认技能里内容完整（含 10/12 停机的教训） |
+| 9 | **TOOLS.md 两大运维节迁到技能**（W25、W35），其余叙述改成「V 主服务 / V 主机」 | 去掉大部分 Gateway 叙述（TOOLS.md 不是每轮注入，模型读它时才省 token）；顺带解决 v-core 里不适用的运维说明（C2） | 低到中：按需读取依赖模型记得去读，一行指针要留 | 工作区 + 技能 | 确认技能里内容完整（含 10/12 停机的教训） |
 | 10 | **用户可见文案**：飞书审批卡（P1）、任务卡（P2–P4，生成方和匹配方一起改）、语音页（P5，换文件名）、钉钉和企微兜底（P11） | 用户真正看到「OpenClaw」的地方 | 低（P4 中） | 都是 V 自己的代码或补丁 | 各渠道 candidate 冒烟 |
 
 ### 5.2 第二批（价值有，但要 dist + versa 或量大）
@@ -368,6 +368,8 @@ DeepSeek 路径（/vds、/deepseek）和 /vcc **每次请求都带全量工具�
 - **升级**：所有 dist 补丁在 9.4、9.5 升级时都要 rebase（记忆 release-artifact-rebase-trap）。
 
 ---
+
+**更正（2026-11-20 下午）**：TOOLS.md、HEARTBEAT.md、PROJECTS.md、REDLINES.md 都**不会**每轮自动注入。抓到的 PI 系统提示里，Project Context 只有 AGENTS、SOUL、IDENTITY、USER、MEMORY 五个文件；Codex 路径的 workspace context 只有 SOUL、IDENTITY、USER、MEMORY 加技能，AGENTS.md 走 Codex 原生 project doc。TOOLS.md 是 AGENTS.md 要求模型「工具操作前按需读取」的。附录 inventory-v-owned 里说它们「每轮注入」的地方以这里为准。第 1 步的 A/B 见 [v-de-openclaw-step1.md](v-de-openclaw-step1.md)。
 
 ## 8. 没覆盖的
 

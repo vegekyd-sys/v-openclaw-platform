@@ -75,7 +75,9 @@ fs.mkdirSync(capDir, { recursive: true, mode: 0o700 });
 let currentArm = "boot";
 let currentTurn = "boot";
 let capSeq = 0;
-const capWrite = (name, data) => fs.writeFileSync(path.join(capDir, name), typeof data === "string" ? redact(data) : redact(JSON.stringify(data, null, 1)));
+// request bodies stay valid JSON: only the known secret values are replaced (the regex redact() would eat escapes)
+const redactSecrets = (s) => { let out = s; for (const v of Object.values(secrets)) if (v && v.length >= 12) out = out.replaceAll(v, "[redacted]"); return out; };
+const capWrite = (name, data) => fs.writeFileSync(path.join(capDir, name), typeof data === "string" ? redact(data) : redactSecrets(JSON.stringify(data, null, 1)));
 
 // DeepSeek recording reverse proxy (plain http on loopback; forwards to the real API unchanged)
 const proxy = http.createServer(async (req, res) => {
