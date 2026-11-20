@@ -1,0 +1,10 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/memory-close-passive/manager-vector-warning-BHH19jrh.js",
+      "target": "openclaw/dist/manager-vector-warning-BHH19jrh.js",
+      "before": "8e51348880034b62c568fcb651c3b2f6e59e0ebaff6536965d936ab1b0351e28"
+    }
+  ]
+}
