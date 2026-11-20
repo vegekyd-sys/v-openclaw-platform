@@ -2177,6 +2177,20 @@
       "sha256": "62a0a1b558563fc481bd7231fe2366feb6be1ea56a59b14e4afb4215c2c75590",
       "source": "versa:e27869be125",
       "note": "workboard-sweep-complete (2026-11-18, Gateway): the Workboard lifecycle sweep's 10-minute full listing requests the whole session catalog and is complete when sessions.list says hasMore=false (V lists ~22,900 sessions, so the fixed 10,000 page never was); a complete snapshot fails a prepared launch only when it was prepared before this process started or has had no accepted session for 30 minutes; OPENCLAW_V_WORKBOARD_SWEEP_COMPLETE=0 restores V's behavior; versa/port-workboard-sweep-complete-20261118 on 1d013cb6c39; needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "usage-C3nh9kcO.js",
+      "sha256": "a39d4ef674cb8b0f03f04962b55b1f49a4f5d94b698fb9cabfd74773bafdfff3",
+      "source": "versa:13747d7e018",
+      "note": "usage-session-select-v1 (2026-11-20, Gateway): sessions.usage reads only the session rows it needs (key match, list projection + loadUsageContextWeights) instead of the whole agent session table (25,866 rows / 2.4 GB on V), and read-scope callers without an operator role (openclaw gateway call) also run in the usage child process; PR #631; on V since usage-workboard-20261120"
+    },
+    {
+      "layer": "core",
+      "path": "manager-vector-warning-BHH19jrh.js",
+      "sha256": "505706a143843ddfbd13564dca7d04aa1fd4b501669c58f5b313b8a0c51a342f",
+      "source": "versa:b09039594d8",
+      "note": "memory-close-passive-v1 (2026-11-21, Gateway): a memory_search connection closes with a PASSIVE WAL checkpoint instead of TRUNCATE, so closing no longer holds the agent database writer lock and busy-waits 5 s on the Gateway thread while another connection has a read transaction open (V 2026-11-20 22:30-23:07: every tools.invoke memory_search +5.0 s); versa/memory-close-passive-checkpoint-20261120; PR #633; on V since memory-close-passive-20261121"
     }
   ]
 }
