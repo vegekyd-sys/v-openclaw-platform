@@ -819,7 +819,7 @@ async function turn({ arm, rep, chat, text, task, dir, fixture, index }) {
     preambleBeforeTool: roll?.preambleBeforeTool ?? null, preamble: roll?.preamble ?? null,
     preToolMsgs: roll?.preToolMsgs?.length ?? null, preToolTexts: roll?.preToolMsgs ?? null,
     assistantMessages: roll?.assistantMessages ?? null, assistantChars: roll?.assistantChars ?? null, nonFinalChars: roll?.nonFinalChars ?? null,
-    finalChars: roll?.finalText?.length ?? null, cardFinalChars: lastFinal ? cardText(lastFinal).length : null, cardWrites: writes.length,
+    finalChars: roll?.finalText?.length ?? null, cardFinalChars: finalWrites.length ? Math.max(...finalWrites.map((w) => cardText(w).length)) : null, cardWrites: writes.length,
     correct: verdict ? verdict.ok : null, checkParts: verdict?.parts ?? null, expect: verdict?.expect ?? null,
     finalText: roll?.finalText?.slice(0, 600) ?? null, fidelity: roll?.fidelity ?? null, rolloutEnd: roll?.end ?? null,
   };
