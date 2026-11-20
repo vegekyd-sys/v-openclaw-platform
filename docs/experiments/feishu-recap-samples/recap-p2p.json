@@ -1,0 +1,131 @@
+{
+  "schema": "2.0",
+  "config": {
+    "update_multi": true,
+    "width_mode": "default",
+    "summary": {
+      "content": "回顾：交付页换大陆 CDN，等你选一家"
+    }
+  },
+  "header": {
+    "title": {
+      "tag": "plain_text",
+      "content": "回顾"
+    },
+    "subtitle": {
+      "tag": "plain_text",
+      "content": "私聊 · 截至 10月28日 14:32"
+    },
+    "text_tag_list": [
+      {
+        "tag": "text_tag",
+        "text": {
+          "tag": "plain_text",
+          "content": "样例"
+        },
+        "color": "neutral"
+      }
+    ],
+    "template": "default"
+  },
+  "body": {
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "**在给夜班交付页换大陆 CDN。测速做完了，等你选一家。**"
+      },
+      {
+        "tag": "markdown",
+        "content": "**进展**\n<font color='grey'>☑️ 找到慢的原因：Cloudflare 在大陆没有节点，视频码率 11–27 Mbps</font>\n<font color='grey'>☑️ 腾讯云 COS、七牛各测 3 次，COS 快 2.3 倍，七牛快 1.9 倍</font>\n▶️ 正在把样片压到 6 Mbps，看画质能不能接受"
+      },
+      {
+        "tag": "markdown",
+        "content": "**需要你**\n选 CDN：**腾讯云 COS**（月约 ¥40）还是 **七牛**（有免费额度）"
+      },
+      {
+        "tag": "markdown",
+        "content": "**V 接下来**\n你选定后，改 cdn-upload 技能的上传目标，重传最近 3 个交付页"
+      },
+      {
+        "tag": "markdown",
+        "content": "<font color='orange'>⚠️ 七牛免费额度每月 10 GB，夜班跑一晚就会用完</font>"
+      },
+      {
+        "tag": "collapsible_panel",
+        "expanded": false,
+        "header": {
+          "title": {
+            "tag": "markdown",
+            "content": "<font color='grey'>更早的事（2 件）</font>"
+          }
+        },
+        "elements": [
+          {
+            "tag": "markdown",
+            "content": "<font color='grey'>☑️ 10/27 修好交付页在 iOS 上不能播放\n☑️ 10/27 清掉 3 个重复的交付清单</font>"
+          }
+        ]
+      },
+      {
+        "tag": "column_set",
+        "flex_mode": "flow",
+        "horizontal_spacing": "8px",
+        "columns": [
+          {
+            "tag": "column",
+            "width": "auto",
+            "elements": [
+              {
+                "tag": "button",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "继续"
+                },
+                "type": "primary_filled",
+                "size": "small",
+                "behaviors": [
+                  {
+                    "type": "callback",
+                    "value": {
+                      "a": "v.recap.continue",
+                      "s": "SAMPLE"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "tag": "column",
+            "width": "auto",
+            "elements": [
+              {
+                "tag": "button",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "刷新"
+                },
+                "type": "default",
+                "size": "small",
+                "behaviors": [
+                  {
+                    "type": "callback",
+                    "value": {
+                      "a": "v.recap.refresh",
+                      "s": "SAMPLE"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "markdown",
+        "content": "<font color='grey'>基于最近 42 条消息 · 2 分钟前生成 · 不会写进对话记录</font>",
+        "text_size": "notation"
+      }
+    ]
+  }
+}
