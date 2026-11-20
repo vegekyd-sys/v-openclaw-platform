@@ -534,7 +534,8 @@
         "lab/infer-latency.test.mjs",
         "lab/workboard-full-sweep.test.mjs",
         "lab/egress-proxy-tls-reuse.test.mjs",
-        "lab/usage-session-select.test.mjs"
+        "lab/usage-session-select.test.mjs",
+        "lab/workboard-sweep-complete.test.mjs"
       ]
     }
   ],
