@@ -10,6 +10,28 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## memory-close-passive-20261121
+
+上线：2026-11-21 02:02 CST（01:5x 文件装到 V；v-self-restart 01:59 提交，等一个 cron 回合 36 s 后 02:00:48 停机，106 s 就绪，workers 5、4 个渠道流全在）  ·  tag `memory-close-passive-20261121`
+
+**摘要**：#633 memory_search 关闭时不再同步等 5 s。11/20 22:30–23:07，V 上每次 `tools.invoke` memory_search 都要 6.1–7.5 s（平时 1.0–1.3 s）。原因是 memory_search 每次调用都临时开一个连接，关闭时在 Gateway 主线程上同步做 `wal_checkpoint(TRUNCATE)`，busy_timeout 5000。只要别的连接开着读事务，它就拿着写锁等满 5 s：期间主线程卡住，其他进程写 agent 库被拒，而且不打日志。现在关闭时改用 PASSIVE，不等读者；WAL 仍由 Gateway 的 agent 库连接定期维护。语音和所有走 memory_search 的回合都不会再无故多 5 s。
+
+相对上一版 `usage-workboard-20261120`：1 个文件变化。
+
+**经 VLab 发版 `memory-close-passive-20261121`**（monitor-v-production-70a57a，dev `0382a84c`）
+> 验收：共享 VLab 01:49 部署后，文件含 `memory-close-passive-v1`。故障路径实测：另一进程持有读事务，之后有一次不改数据的写入（WAL 16512 字节）。此时对照的 TRUNCATE 等满 2000 ms、返回 busy=1；同一状态下 Gateway 内 `tools.invoke` memory_search 只要 61–68 ms，没有 liveness 延迟。candidate 对照（7.1 GB makaron 库副本）：原版关闭 5006–5011 ms、事件循环卡约 5 s、他进程写入 4/4 被拒；补丁关闭 1 ms、写入 4/4 成功。
+- `core` manager-vector-warning-BHH19jrh.js  8e513488 → 505706a1
+
+**这期间合入 dev 的 PR**：
+- #633 fix(memory): memory_search 关闭连接时不再同步等 5 s（TRUNCATE→PASSIVE checkpoint）
+
+V 上验收（02:03–02:05，凌晨无真实流量）：
+- 文件：sha 等于发版后的值 505706a1，含 marker。
+- 实测：以 openclaw 用户经 Gateway 调用两次 `tools.invoke` memory_search（只读），都 ok。Gateway 内分别 1392 ms 和 2139 ms（重启后冷缓存），没有 5 s 平台，没有 liveness 延迟。
+- 冷启动停顿：02:03:17 一次 17.7 s，在启动期内（与前两次重启的 15.5 s、18.4 s 同级）。
+- 重启时自动清理了 3 条 Codex 旧登记。
+
+---
 ## usage-workboard-20261120
 
 上线：2026-11-20 23:30 CST（23:06 文件装到 V；等 /vcc 的曲库长任务跑完后，v-self-restart 23:28 提交，2 s 判定空闲后停机，121 s 就绪，workers 5、4 个渠道流全在）  ·  tag `usage-workboard-20261120`

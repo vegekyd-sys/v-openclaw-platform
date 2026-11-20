@@ -2184,6 +2184,13 @@
       "sha256": "a39d4ef674cb8b0f03f04962b55b1f49a4f5d94b698fb9cabfd74773bafdfff3",
       "source": "versa:13747d7e018",
       "note": "usage-session-select-v1 (2026-11-20, Gateway): sessions.usage reads only the session rows it needs (key match, list projection + loadUsageContextWeights) instead of the whole agent session table (25,866 rows / 2.4 GB on V), and read-scope callers without an operator role (openclaw gateway call) also run in the usage child process; PR #631; on V since usage-workboard-20261120"
+    },
+    {
+      "layer": "core",
+      "path": "manager-vector-warning-BHH19jrh.js",
+      "sha256": "505706a143843ddfbd13564dca7d04aa1fd4b501669c58f5b313b8a0c51a342f",
+      "source": "versa:b09039594d8",
+      "note": "memory-close-passive-v1 (2026-11-21, Gateway): a memory_search connection closes with a PASSIVE WAL checkpoint instead of TRUNCATE, so closing no longer holds the agent database writer lock and busy-waits 5 s on the Gateway thread while another connection has a read transaction open (V 2026-11-20 22:30-23:07: every tools.invoke memory_search +5.0 s); versa/memory-close-passive-checkpoint-20261120; PR #633; on V since memory-close-passive-20261121"
     }
   ]
 }
