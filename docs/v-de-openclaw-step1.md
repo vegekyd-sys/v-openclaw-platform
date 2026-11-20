@@ -1,23 +1,30 @@
-# 去 OpenClaw 化第 1 步：MEMORY.md + TOOLS.md 的 diff 与 A/B（2026-11-20）
+# 去 OpenClaw 化第 1 步：AGENTS.md + MEMORY.md + TOOLS.md 的 diff 与 A/B（2026-11-20）
 
-接 [v-de-openclaw-review.md](v-de-openclaw-review.md)。Tianyi 已确认先做第 1 步，原话：「好的，先做第1步，准备好diff给我看。agent.md不用这样改，没有openclaw不要加进去openclaw」。
+接 [v-de-openclaw-review.md](v-de-openclaw-review.md)。Tianyi 已确认先做第 1 步，原话：「好的，先做第1步，准备好diff给我看。agent.md不用这样改，没有openclaw不要加进去openclaw」。之后追加：「这5处改成V，一起放进diff」，指的是 AGENTS.md 里 5 处 agent 自称 Makaron。
 
 **本文只是给 Tianyi 看的 diff，没有写入 V。** Tianyi 确认后，由主会话执行写入。
 
 ## 0. 结论
 
-- **改三个文件**：
+- **改四个文件**：
+  - `AGENTS.md`：5 行 agent 自称，Makaron 换成 V（第 1、3、11、14、79 行）。指产品的 Makaron 全部保留，第 169 行不动，不新增句子；
   - `MEMORY.md`：4 行身份语境；
   - `TOOLS.md`：把重启、改配置两大节迁出，原位置留指针，开头加一条热指针，另外 9 处叙述换成 V 的说法；
   - 新增 `skills/v-restart-config/SKILL.md`：迁出的两节**逐字搬入**，没有删减。
-- **只删改现有的 OpenClaw 语境，不往任何文件里新加「OpenClaw」字样，也不加「我是 V 不是 OpenClaw」这类反向声明。** 三个文件合计：
+- **只删改现有的 OpenClaw 语境，不往任何文件里新加「OpenClaw」字样，也不加「我是 V 不是 OpenClaw」这类反向声明。** AGENTS.md 里的 openclaw 字样数没变（5 处）。MEMORY、TOOLS、新 skill 三个文件合计：
   - 「OpenClaw」16 处 → 5 处；
   - 不分大小写的 openclaw 64 处 → 53 处（剩下的是命令、路径、用户名，属于功能性字样）；
   - 「Gateway」16 处 → 新 skill 里 12 处（运维手册里保留原词），TOOLS.md 和 MEMORY.md 里 0 处。
-- **AGENTS.md 这一步不动。**里面现有 4 处可以改，单独列在第 4 节，待 Tianyi 决定。
-- **A/B（私有 candidate，V 的字节、V 的提示文件、V 的技能和技能上限配置，真实 DeepSeek，/vds 和 /deepseek，三臂交替，每臂 24 个回合）**：
+- **AGENTS.md 只改那 5 行。**另有 3 处 Gateway 叙述可以换成 V 的说法，列在第 4 节，待 Tianyi 决定。
+- **最终版 A/B（第 4 轮，candidate-166fbd13，现状 vs 四个文件全改，/vds 和 /deepseek，每组 24 个回合）**：
+  - 自称和 Makaron 混同（「在 Makaron 这套服务里…」「makaron 这个 agent」）：现状 2/8，改后 0/8；
+  - 群聊自我介绍提 OpenClaw：现状 2/4，改后 1/4；
+  - 运维题：现状 6/12，改后 5/12，在噪声范围内；
+  - 首字 p50：/vds 2.6 → 2.5 s，/deepseek 3.5 → 3.0 s，没有变慢。
+  - 详见 5.3 节。
+- **第 3 轮 A/B（只改 MEMORY + TOOLS，三组：现状 / 只迁移 / 迁移 + 热指针，每组 24 个回合）**：
   - **身份**：群聊自我介绍里主动提 OpenClaw 的次数，现状 5/8，改后 1/8（两轮合计）。私聊问「跑在什么系统上」时三臂都会如实说 OpenClaw（4/4），这一句要等改核心身份句的那一步才会变。自称 V 三臂都是 100%。
-  - **运维题正确率**：现状 5/12，只迁移 5/12，迁移加热指针（推荐）7/12。重启题 2/4 → 4/4，Worker 配置题 3/4 → 3/4。**「restart 类配置该怎么写」三臂都是 0/12**：模型都建议 `openclaw config set` 再重启，这正是 TOOLS.md 明令禁止的做法。这是现状就有的问题，这一步解决不了，见第 6 节。
+  - **运维题正确率**：现状 5/12，只迁移 5/12，迁移加热指针（推荐）7/12。重启题 2/4 → 4/4，Worker 配置题 3/4 → 3/4。**「restart 类配置该怎么写」第 3 轮三组都是 0/12（四轮合计 20 次只对 1 次）**：模型都建议 `openclaw config set` 再重启，这正是 TOOLS.md 明令禁止的做法。这是现状就有的问题，这一步解决不了，见第 6 节。
   - **首字**（发出消息 → 飞书卡片第一次出字）p50：/vds 2.9 → 2.1 s，/deepseek 3.5 → 3.1 s；运维题总耗时 p50：/vds 33 → 30 s，/deepseek 29 → 19 s。**没有变慢。**
 - **更正前一份报告**：TOOLS.md **不是**每轮注入的。抓包里的 PI 系统提示只带 AGENTS、SOUL、IDENTITY、USER、MEMORY 五个文件，TOOLS.md 是模型按 AGENTS.md 的要求按需去读的，所以迁移不省每轮 token。它的价值是去掉 TOOLS.md 里的 Gateway 和 OpenClaw 叙述，并且让重启和改配置的规则集中到一处。
 
@@ -27,6 +34,7 @@ V 工作区 `/home/openclaw/makaron-openclaw/.openclaw-local/workspace` 当前�
 
 | 文件 | sha256 | 说明 |
 |---|---|---|
+| `AGENTS.md` | `8d2c17b593042aa9ac55a005d484c29bf9bec41eee9bd2d246c43f7bea3d4133` | 提交 de5c0f99（2026-11-20 10:54，换了第 4 条） |
 | `MEMORY.md` | `cafdbc995954f643198c07849acd69d551c54e32db7af80a75c78bda1edf5cb0` | 有 V 自己未提交的改动（`git status` 显示 M），以当前字节为准 |
 | `TOOLS.md` | `bb4e69c4ad186e9eb199833a68fdde50022b6eef3a1779c18182683e417f6981` | 最后提交 62a25108（2026-11-16） |
 | `skills/v-restart-config/` | 不存在 | 新建 |
@@ -34,13 +42,51 @@ V 工作区 `/home/openclaw/makaron-openclaw/.openclaw-local/workspace` 当前�
 写入前请先核对这两个 sha。不一致说明 V 在这之后又改过，diff 需要重做。
 
 改后的 sha256：
+- `AGENTS.md`：`2eb6037002a5871fb671b2fae7d5ff8ee637ceb9dc47879cebe0b6840f7319b3`
 - `MEMORY.md`：`2bce2c7f6b58aa5fd86aacd13777dd27f132597c0ebc7d92c64ecb3c9e910f74`
 - `TOOLS.md`：`2f6bfe25d9d9e31f5608c458271ee607f4fce2307600073d5948d662e2567da0`
 - `skills/v-restart-config/SKILL.md`：`fca0a9e396cd7550e0b8c43d463ac702234c3d034a8ccea80021bff38bde4e45`（6,176 字节）
 
-两个 diff 已在基线副本上用 `patch -p1` 验证过，能逐字节还原出改后文件。上下文只留 1 行，避免把 MEMORY.md 里的个人信息带进仓库。
+三个 diff 合起来（AGENTS + MEMORY + TOOLS）已在基线副本上用 `patch -p1` 验证过，能逐字节还原出改后文件。上下文只留 1 行，避免把 MEMORY.md 里的个人信息带进仓库。
 
-## 2. MEMORY.md
+## 2. AGENTS.md 和 MEMORY.md
+
+### 2.1 AGENTS.md
+
+只改 5 行 agent 自称（Makaron 换成 V）。第 79 行按「只换词」处理，改成「When V agents create…」，不改句式。
+
+```diff
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -1,4 +1,4 @@
+-# AGENTS.md — Makaron Workspace Entry Point
++# AGENTS.md — V Workspace Entry Point
+ 
+-> This is the first file Makaron reads when a session starts.
++> This is the first file V reads when a session starts.
+ 
+@@ -10,6 +10,6 @@
+ | REDLINES.md | Absolute safety boundaries — never violate |
+-| SOUL.md | Makaron's identity, personality, and working style |
++| SOUL.md | V's identity, personality, and working style |
+ | MEMORY.md | Long-term memory index and quick-reference |
+ | memory/user-patterns.md | Observed user behavior patterns |
+-| memory/ai-patterns.md | Makaron's learned behavior rules |
++| memory/ai-patterns.md | V's learned behavior rules |
+ | PROJECTS.md | Active project index |
+@@ -78,3 +78,3 @@
+ - When creating, revising, reviewing, or promoting reusable skills/workflows/procedures, use the `skill-creation-coach` skill as a proactive coach.
+-- When Makaron agents create, revise, review, or promote skills/workflows/procedures, they must run through `skill-creation-coach` guidance before drafting or submitting durable changes.
++- When V agents create, revise, review, or promote skills/workflows/procedures, they must run through `skill-creation-coach` guidance before drafting or submitting durable changes.
+ - Prefer heuristic guidance, judgment delegation, boundaries, failure modes, and validation gates over rigid step-by-step SOPs.
+```
+
+保留不动的：
+- 第 121 行「addresses V / 小V / Makaron as the actor」：这是群里叫人的触发词，用户可能就是这么叫的；
+- 所有指产品的 Makaron：群服务触发、`skills/makaron/SKILL.md`、Scene→Makaron、飞书生图走 Makaron、makaron-cli 等；
+- 第 169 行。
+
+### 2.2 MEMORY.md
 
 只改身份热区 4 行（W9、W10、W11、W16）：
 
@@ -250,16 +296,16 @@ openclaw gateway call config.schema.lookup --params '{"path":"browser.ssrfPolicy
 仍需要重启 Gateway 的：上面查出 `reloadKind` 为 `restart` 的配置，核心代码补丁、环境变量，以及**跑在 Gateway 进程里的插件代码更新**（例如 `/opt/v-desktop-handoff/plugin`；`vlab.workers.roll` 只换 Worker，不会重新加载 Gateway 里的插件）。重启一律用 `sudo v-self-restart`，见上面第一节。任何回复、日志和操作手册都不得显示 API Key。
 ````
 
-## 4. AGENTS.md：待 Tianyi 决定（不在这次 diff 里）
+## 4. AGENTS.md 里其余的 Gateway 叙述：待 Tianyi 决定（不在这次 diff 里）
 
-AGENTS.md 当前（sha256 前 16 位 `8d2c17b593042aa9`）有 4 处现成的 OpenClaw 或 Gateway 叙述可以换成 V 的说法。Makaron 自称、文件头都不动，也不加反向声明：
+除了这次改的 5 行，AGENTS.md 里还有 3 处 Gateway 叙述可以换成 V 的说法。第 169 行按 Tianyi 的要求不动，这里列出只是为了完整：
 
 | 行 | 现文 | 可改成 |
 |---|---|---|
 | 26 | `…one unfiltered grep -r there saturates disk I/O and stalls the Gateway for every session.` | `…stalls V's main service for every session.`（路径照旧） |
 | 98 | `…must not run on this Gateway host: dispatch it to an available paired compute node…` | `…must not run on V's own host…` |
 | 158 | `…the separately sent card does not count as the Gateway turn reply.` | `…does not count as this turn's reply.` |
-| 169 | `工具操作前查阅 TOOLS.md 对应章节；OpenClaw 自有能力优先官方 CLI，Skill Workshop 使用 `openclaw skills workshop ...`…` | `…；V 平台自带能力优先官方 CLI，Skill Workshop 使用 `openclaw skills workshop ...`…`，和本次 TOOLS.md 的同一条保持一致 |
+| 169（不动） | `工具操作前查阅 TOOLS.md 对应章节；OpenClaw 自有能力优先官方 CLI，Skill Workshop 使用 `openclaw skills workshop ...`…` | `…；V 平台自带能力优先官方 CLI，Skill Workshop 使用 `openclaw skills workshop ...`…`，和本次 TOOLS.md 的同一条保持一致 |
 
 第 171 行「不要把 V 的产品使用问题默认回答成 OpenClaw 部署或节点配对」本身就是在去 OpenClaw 化，建议保留。
 
@@ -290,10 +336,11 @@ AGENTS.md 当前（sha256 前 16 位 `8d2c17b593042aa9`）有 4 处现成的 Ope
 | tool-lark | 「skills 目录下名字里带 lark 的子目录有几个？」 | 数字正确 |
 
 - 运行编号：
+  - `candidate-166fbd13`：**最终版**（第 4 轮），现状 vs 四个文件全改（AGENTS 5 行 + MEMORY + TOOLS 热指针版 + 新 skill），两组，48 个回合，V 的技能配置；
   - `candidate-2ef0a6a4`：V 的技能配置，**主结果**，72 个回合，保真度检查全部通过（技能目录里只有改后两臂有新 skill）；
   - `candidate-1520f784`：共享 VLab 的技能配置，技能目录截断在 71/247，三臂都看不到新 skill，只作补充；
   - `candidate-92083f50`：测量台 bug（录制时的脱敏弄坏了 JSON），作废。
-- 三次运行的目录都已删除。
+- 各次运行的目录都已删除。
 
 ### 5.2 结果（主结果 candidate-2ef0a6a4）
 
@@ -321,7 +368,35 @@ AGENTS.md 当前（sha256 前 16 位 `8d2c17b593042aa9`）有 4 处现成的 Ope
 - **运维题**：只迁移不加热指针时，/deepseek 一次都没去读 skill（PI 本来就很少按 AGENTS.md 去读 TOOLS.md：主结果里 base 6 题只读了 1 次），重启题反而 2/4 → 1/4。加上开头热指针后，两个 runtime 的重启题都是 2/2。样本小（每格 2 次），只能说热指针让新 skill 能被找到，而且没有变差。
 - **首字和耗时**：三臂相近，改后两臂都不比现状慢。运维题总耗时的 p50 反而更短，因为模型不用去读 23 KB 的 TOOLS.md 整份。
 
-### 5.3 保真度差距
+### 5.3 最终版：现状 vs 四个文件全改（第 4 轮，candidate-166fbd13）
+
+改后组 = AGENTS.md 5 行 + MEMORY.md + TOOLS.md（热指针版）+ 新 skill，也就是第 2、3 节给出的 diff。技能目录检查通过，48 个回合全部跑完。
+
+| | /vds 现状 | /vds 改后 | /deepseek 现状 | /deepseek 改后 |
+|---|---|---|---|---|
+| 自称和 Makaron 混同 | 0/4 | 0/4 | 2/4 | 0/4 |
+| 群聊自我介绍提 OpenClaw | 1/2 | 1/2 | 1/2 | 0/2 |
+| 私聊「跑在什么系统上」提 OpenClaw | 2/2 | 2/2 | 2/2 | 2/2 |
+| 自称 V | 4/4 | 4/4 | 4/4 | 4/4 |
+| ops-restart | 2/2 | 2/2 | 0/2 | 0/2 |
+| ops-config | 1/2 | 0/2 | 0/2 | 0/2 |
+| ops-worker | 2/2 | 2/2 | 1/2 | 1/2 |
+| tool-lark | 2/2 | 2/2 | 2/2 | 2/2 |
+| 运维题里读了新 skill | — | 3/6 | — | 0/6 |
+| 首字 p50 / p90 | 2.6 / 3.1 s | 2.5 / 3.2 s | 3.5 / 3.9 s | 3.0 / 4.3 s |
+| 运维题总耗时 p50 / p90 | 23 / 57 s | 27 / 38 s | 21 / 26 s | 20 / 34 s |
+
+- 「自称和 Makaron 混同」：/deepseek 现状有 2 次，「我是 V，在 Makaron 这套服务里负责给你干活的 AI 搭档」「运行在 OpenClaw 上，具体是 makaron 这个 agent」；改后 0 次。这就是 AGENTS.md 那 5 行要解决的问题。
+- **第 3、4 两轮都用了 V 的技能配置，合并起来比**（现状 vs 迁移 + 热指针）：
+  - 群聊提 OpenClaw：4/8 → 1/8；
+  - 运维题：11/24 → 12/24；
+  - ops-restart：4/8 → 6/8；
+  - ops-config：1/8 → 0/8（模型第一次答对是在现状组）；
+  - ops-worker：6/8 → 6/8。
+- 这一轮 /deepseek 的改后组一次都没去读新 skill，重启题 0/2，和现状一样。第 3 轮同一组读了 2 次、重启题 2/2。PI 会不会顺着指针去读，波动很大。
+- **结论**：四个文件一起改，身份语境变干净；运维和工具正确率在噪声范围内持平；首字不变慢。restart 类配置的问题仍然是现状就有的（第 6 节）。
+
+### 5.4 保真度差距
 
 - VLab 主机上没有 `v-self-restart` 命令。会去核实环境的模型（/vds 常这样）查不到这个命令，可能因此不推荐它；V 上有这个命令。三臂受影响相同。
 - candidate 只保留了 feishu、deepseek、codex、moonshot、worker、anthropic、memory-core 这几个插件，工具比 V 少。
@@ -329,19 +404,20 @@ AGENTS.md 当前（sha256 前 16 位 `8d2c17b593042aa9`）有 4 处现成的 Ope
 - 每格样本只有 2 次。身份题和重启题方向一致，但不显著。
 - 没测 /vcodex、/vcc、钉钉、企微、Telegram。它们读的是同一批工作区文件。
 
-## 6. 这一步解决不了的：restart 类配置怎么写，12 次全错
+## 6. 这一步解决不了的：restart 类配置怎么写，20 次只对 1 次
 
-三臂、两个 runtime 一共 12 次 ops-config 全错。模型会先查 `reloadKind`（大多数都查了），查到 `restart` 之后，仍然建议 `openclaw config set …` 再 `openclaw gateway restart`，没有一次提到 `sudo v-self-restart --set`。2026-10-12 那次停机就是这样发生的。现状下这条规则写在 TOOLS.md 里，但模型基本不去读；迁到 skill 并加热指针以后，模型还是答「config set」。
+第 3 轮三组、两个 runtime 一共 12 次 ops-config 全错；第 4 轮现状组答对 1 次，改后组 0/4。合计 20 次只对 1 次（第 3 轮 0/12，第 4 轮 1/8），而且答对的那次在现状组。模型会先查 `reloadKind`（大多数都查了），查到 `restart` 之后，仍然建议 `openclaw config set …` 再 `openclaw gateway restart`，没有一次提到 `sudo v-self-restart --set`。2026-10-12 那次停机就是这样发生的。现状下这条规则写在 TOOLS.md 里，但模型基本不去读；迁到 skill 并加热指针以后，模型还是答「config set」。
 
-建议另立一项，不放进这一步：
+建议另立一项，不放进这一步（是否立项等 Tianyi 决定）：
 - 改 `skills/v-openclaw-config/SKILL.md` 的 description。它现在写的是「one controlled restart remains only for…」，模型可能据此判断「改完重启一次」就行；
 - 或者在运行时层面拦住 restart 类路径的 `config set`（工具或 hook），而不是靠提示词。
 
 ## 7. 写入步骤（给主会话，Tianyi 确认之后）
 
-1. 用 `sudo -n -u openclaw sha256sum MEMORY.md TOOLS.md` 核对第 1 节的两个 sha；不一致就停下，重新出 diff。
-2. 以 `openclaw` 用户写入三个文件：用本文的 diff 打补丁，或直接写改后内容，写完核对改后的 sha。新 skill 目录权限和同级 skill 一致。
+1. 用 `sudo -n -u openclaw sha256sum AGENTS.md MEMORY.md TOOLS.md` 核对第 1 节的三个 sha；不一致就停下，重新出 diff。
+2. 以 `openclaw` 用户写入四个文件（AGENTS.md、MEMORY.md、TOOLS.md、新 skill）：用本文的 diff 打补丁，或直接写改后内容，写完核对改后的 sha。新 skill 目录权限和同级 skill 一致。
 3. 不需要重启。工作区文件下一轮就生效；技能目录由 watcher 刷新，新会话里 `<available_skills>` 应该出现 `v-restart-config`。
 4. 验收：在一个测试私聊里问一次「插件代码更新了，要重启你自己，先别执行，告诉我命令」，回答里应该是 `sudo v-self-restart`，并且调用记录里读过 `skills/v-restart-config/SKILL.md`。
 5. v-core：TOOLS.md 在 v-core 的同步范围里，第二天的同步 PR 会带上新 TOOLS.md。新 skill 只在 V 服务器上有用，建议不进 v-core 的 scope；如果进，其他 harness 会看到一份它们用不上的运维手册。
-6. 回滚：把三个文件恢复成第 1 节 sha 对应的内容，删掉 `skills/v-restart-config/`。
+6. AGENTS.md 是核心文档。按 AGENTS.md 自己的规则，写入后在当天的日报里记一笔。AGENTS.md 也在 v-core 的同步范围里，其他 harness 第二天会跟着变成「V Workspace Entry Point」。
+7. 回滚：把三个文件恢复成第 1 节 sha 对应的内容，删掉 `skills/v-restart-config/`。

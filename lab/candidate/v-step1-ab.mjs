@@ -5,7 +5,7 @@
 // real DeepSeek through a recording proxy, fake Feishu, V's 9 prompt files and skills). The new skill
 // (skills/v-restart-config) exists only in the edited arms, as on V today base has none; MEMORY.md and
 // TOOLS.md differ. Support files: the 9 V files, MEMORY.<arm>.md and TOOLS.<arm>.md for each AB_VARIANTS arm other
-// than base (default base,new), v-skills.tar (with v-restart-config).
+// than base (default base,new), optional AGENTS.<arm>.md, v-skills.tar (with v-restart-config).
 // Per runtime (AB_RUNTIMES, default vds,deepseek) and rep (AB_REPS): identity in DM and group, three ops
 // questions answered from TOOLS.md/the skill (never executed), one plain tool question. Arms alternate.
 // Scored: mentions OpenClaw / calls itself V / owner name; ops answers name the right command and path;
@@ -63,7 +63,7 @@ const inputFiles = new Map(); // basename -> absolute path
 }
 const input = (name) => { const f = inputFiles.get(name); assert(f, `support file ${name} missing`); return f; };
 const V_FILES = ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "MEMORY.md", "TOOLS.md", "HEARTBEAT.md", "PROJECTS.md", "REDLINES.md"];
-evidence.inputs = Object.fromEntries([...V_FILES, ...VARIANTS.filter((v) => v !== "base").flatMap((v) => [`MEMORY.${v}.md`, `TOOLS.${v}.md`]), "v-skills.tar"].map((n) => [n, sha256(fs.readFileSync(input(n))).slice(0, 16)]));
+evidence.inputs = Object.fromEntries([...V_FILES, ...VARIANTS.filter((v) => v !== "base").flatMap((v) => [`MEMORY.${v}.md`, `TOOLS.${v}.md`, ...(inputFiles.has(`AGENTS.${v}.md`) ? [`AGENTS.${v}.md`] : [])]), "v-skills.tar"].map((n) => [n, sha256(fs.readFileSync(input(n))).slice(0, 16)]));
 
 // ---------------------------------------------------------------- capture store
 const capDir = path.join(scratch, "capture");
@@ -626,6 +626,9 @@ async function setVariant(variant) {
   for (const n of ["MEMORY.md", "TOOLS.md"]) {
     fs.copyFileSync(variant === "base" ? input(n) : input(n.replace(".md", `.${variant}.md`)), path.join(workspace, n));
   }
+  // AGENTS.md changes only in arms that ship an AGENTS.<arm>.md
+  const agentsVariant = `AGENTS.${variant}.md`;
+  fs.copyFileSync(variant !== "base" && inputFiles.has(agentsVariant) ? input(agentsVariant) : input("AGENTS.md"), path.join(workspace, "AGENTS.md"));
 }
 let seq = 0;
 async function turn(rt, variant, s, rep) {
