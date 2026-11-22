@@ -3,71 +3,92 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Token 用量 · V Platform</title>
+    <title>用户用量 · V Platform</title>
     <link rel="stylesheet" href="/style.css" />
     <script defer src="/ui.js"></script>
   </head>
   <body>
-    <header><strong>V</strong><span>/</span> Platform</header>
     <main>
-      <div class="heading">
-        <h1>Token 用量</h1>
-        <div class="actions">
-          <label
-            >北京时间
-            <select id="range">
-              <option value="all">采集窗口</option>
-              <option value="today">今天</option>
-              <option value="yesterday">昨天</option>
-              <option value="custom">自选日期</option>
-            </select></label
-          ><span id="dates" hidden
-            ><input aria-label="开始日期" type="date" id="from" /> 至
-            <input aria-label="结束日期" type="date" id="to" /></span
-          ><button id="refresh">刷新数据</button>
+      <header>
+        <div class="wordmark"><b>V</b><span>Platform</span></div>
+        <div class="date">
+          <label for="range" class="sr">统计时间</label
+          ><select id="range">
+            <option value="all">整个采集窗口</option>
+            <option value="today">今天</option>
+            <option value="yesterday">昨天</option>
+            <option value="custom">自选日期</option>
+          </select>
+          <button id="refresh">刷新</button>
         </div>
+      </header>
+      <div id="dates" hidden>
+        <input type="date" id="from" aria-label="开始日期" /> 至
+        <input type="date" id="to" aria-label="结束日期" />
       </div>
-      <p id="status" role="status">正在读取采集状态…</p>
-      <section id="content" hidden>
-        <div id="summary" class="panel"></div>
-        <div id="filters" class="panel"></div>
-        <section id="breakdown" class="panel">
-          <nav aria-label="分组维度" id="tabs"></nav>
-          <div id="context"></div>
-          <div class="scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th id="axis">渠道</th>
-                  <th>普通输入</th>
-                  <th>缓存读</th>
-                  <th>缓存写</th>
-                  <th>输出</th>
-                  <th>总 Token</th>
-                  <th>占比</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <footer>
-            <span id="pagination"></span>
+      <section class="hero">
+        <div>
+          <h1>用户用量</h1>
+          <p id="status" role="status">正在载入数据…</p>
+        </div>
+      </section>
+      <div id="content" hidden>
+        <section
+          class="metrics"
+          aria-label="用户用量摘要"
+          id="metrics"
+        ></section>
+        <section class="sheet" id="people">
+          <div class="sectionHead">
             <div>
-              <button id="prev">上一页</button>
-              <button id="next">下一页</button>
+              <button class="back" id="back" hidden>‹ 返回用户榜</button>
+              <h2 id="heading">用户排行</h2>
+              <p class="note" id="subtitle"></p>
             </div>
-          </footer>
+            <div class="controls">
+              <input
+                type="search"
+                id="search"
+                placeholder="搜索用户"
+                aria-label="搜索用户"
+              />
+              <details id="refine">
+                <summary>筛选</summary>
+                <div id="selectors"></div>
+              </details>
+            </div>
+          </div>
+          <div id="listhead" class="grid listhead"></div>
+          <div id="list"></div>
+          <div class="pager">
+            <span id="count"></span>
+            <div>
+              <button id="prev" aria-label="上一页">‹</button
+              ><button id="next" aria-label="下一页">›</button>
+            </div>
+          </div>
         </section>
-        <details>
-          <summary>采集范围与核对口径</summary>
-          <p id="quality"></p>
+        <details class="sheet fold" id="attribution">
+          <summary>用量归属 <span id="personal-share"></span></summary>
+          <div id="coverage"></div>
           <p>
-            范围为 V 的 OpenClaw 会话库及各 Agent 的 Codex
-            原生记录。未归属用量计入总数。主机独立
-            CLI及已清理记录不在当前窗口采集范围内。缓存读写已包含在总输入，推理已包含在输出。模型以响应标识为先，缺失时使用该次调用记录的模型。
+            群聊按触发本次模型调用的发送人归属，沿消息父链或同一运行记录核对。一条响应只计一次。同一个群会话可出现在多人的列表中，每个人只看到自己贡献的用量。
           </p>
         </details>
-      </section>
+        <details class="sheet fold" id="analysis">
+          <summary>渠道、模型与 Token 明细</summary>
+          <div class="switch">
+            <label for="groupby">分组</label
+            ><select id="groupby">
+              <option value="channel">渠道</option>
+              <option value="model">模型</option>
+              <option value="workload">任务类型</option>
+              <option value="session">会话</option>
+            </select>
+          </div>
+          <div id="technical"></div>
+        </details>
+      </div>
     </main>
   </body>
 </html>

@@ -4,6 +4,7 @@ import datetime as dt
 import gzip
 import json
 import os
+import shlex
 import subprocess
 import tempfile
 import threading
@@ -41,11 +42,22 @@ class Snapshot:
             with (HERE / "collect.py").open("rb") as source:
                 result = subprocess.run(["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "v", command],
                                         stdin=source, capture_output=True, check=True, timeout=1800)
-            data = json.loads(gzip.decompress(result.stdout))
+            program = (HERE / "people.py").read_text()
+            enriched = subprocess.run(["ssh", "-T", "-o", "BatchMode=yes", "v",
+                                       "cd /tmp && sudo -n -H -u openclaw python3 -c " + shlex.quote(program)],
+                                      input=result.stdout, capture_output=True, check=True, timeout=900)
+            data = json.loads(gzip.decompress(enriched.stdout))
             if data["start"] != start or data["end"] != end or not isinstance(data["rows"], list):
                 raise ValueError("snapshot failed validation")
+            if self.file.exists():
+                previous = json.loads(gzip.decompress(self.file.read_bytes()))
+                for identity in {row[2] for row in data["rows"]}:
+                    source = previous.get("nameSources", {}).get(identity)
+                    if source in ("飞书通讯录", "飞书群成员") and identity not in data["names"]:
+                        data["names"][identity] = previous["names"][identity]
+                        data["nameSources"][identity] = source
             with tempfile.NamedTemporaryFile(dir=self.file.parent, delete=False) as out:
-                out.write(result.stdout)
+                out.write(gzip.compress(json.dumps(data, ensure_ascii=False).encode()))
             os.replace(out.name, self.file)
             self.error = None
         except (OSError, ValueError, subprocess.SubprocessError, KeyError) as exc:
@@ -86,6 +98,8 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(200, state.file.read_bytes(), gzip_encoded=True)
         elif self.path == "/favicon.ico":
             self.reply(204, b"", "image/x-icon")
+        elif self.path == "/v-brand.webp" and (state.file.parent / "v-brand.webp").is_file():
+            self.reply(200, (state.file.parent / "v-brand.webp").read_bytes(), "image/webp")
         elif self.path in FILES:
             name, mime = FILES[self.path]
             self.reply(200, (HERE / name).read_bytes(), mime)

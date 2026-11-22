@@ -1,20 +1,14 @@
 "use strict";
 const el = (id) => document.getElementById(id);
-const dimensions = {
-  channel: "渠道",
-  user: "用户",
-  model: "模型",
-  session: "会话",
-  workload: "任务类型",
-};
-const nextAxis = {
-  channel: "user",
-  user: "session",
-  session: "model",
-  model: "session",
-  workload: "channel",
-};
-const numbers = new Intl.NumberFormat("zh-CN");
+const full = (n) => new Intl.NumberFormat("zh-CN").format(n);
+const compact = (n) =>
+  n >= 1e8
+    ? (n / 1e8).toFixed(2) + " 亿"
+    : n >= 1e4
+      ? (n / 1e4).toFixed(1) + " 万"
+      : full(n);
+const day = (seconds) =>
+  new Date((seconds + 28800) * 1000).toISOString().slice(0, 10);
 const clock = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
   month: "2-digit",
@@ -23,178 +17,376 @@ const clock = new Intl.DateTimeFormat("zh-CN", {
   minute: "2-digit",
   hourCycle: "h23",
 });
-const day = (seconds) =>
-  new Date((seconds + 28800) * 1000).toISOString().slice(0, 10);
-const pageSize = 25;
+const channels = {
+  feishu: "飞书",
+  telegram: "Telegram",
+  dashboard: "控制台",
+  wecom: "企业微信",
+  "dingtalk-connector": "钉钉",
+};
+const human = (id) => !["系统任务", "未归属"].includes(id);
 let snapshot,
   rows = [],
-  axis = "channel",
+  user = "",
+  session = "",
   page = 0,
-  filters = {},
-  busy = false;
+  busy = false,
+  filters = {};
+const pageSize = 15;
 
-function tag(name, text) {
-  const node = document.createElement(name);
-  if (text !== undefined) node.textContent = text;
-  return node;
+function node(tag, text, cls) {
+  const n = document.createElement(tag);
+  if (text !== undefined) n.textContent = text;
+  if (cls) n.className = cls;
+  return n;
 }
-function label(key, value) {
-  if (key === "model") return JSON.parse(value).join(" / ");
-  if (key === "user" && snapshot.names[value]) {
-    const [channel, account, id] = JSON.parse(value);
-    return [snapshot.names[value], channel, account, id]
-      .filter((v, i, a) => v && a.indexOf(v) === i)
-      .join(" · ");
-  }
-  return value;
-}
-function dateRows() {
-  const mode = el("range").value;
-  if (mode === "custom")
-    return rows.filter(
-      (r) => r.date >= el("from").value && r.date <= el("to").value,
-    );
-  const selected =
-    mode === "today"
-      ? day(Date.now() / 1000)
-      : mode === "yesterday"
-        ? day(Date.now() / 1000 - 86400)
-        : mode;
-  return mode === "all" ? rows : rows.filter((r) => r.date === selected);
-}
-function matches(row, except) {
-  return Object.entries(filters).every(
-    ([k, v]) => k === except || !v || row[k] === v,
+function periodText(data) {
+  return (
+    day(data.start).slice(5).replace("-", ".") +
+    " — " +
+    clock.format(data.end * 1000).replace("/", ".") +
+    " · 北京时间"
   );
 }
-function refreshFilters(base) {
-  const strip = el("filters");
-  strip.replaceChildren();
-  for (const [key, name] of Object.entries(dimensions)) {
-    const field = tag("label", name),
-      select = tag("select");
-    select.add(new Option("全部", ""));
-    const values = new Set(
-      base.filter((r) => matches(r, key)).map((r) => r[key]),
-    );
-    if (filters[key]) values.add(filters[key]);
-    for (const [value, title] of [...values]
-      .map((v) => [v, label(key, v)])
-      .sort((a, b) => a[1].localeCompare(b[1]))) {
-      select.add(new Option(title, value));
-    }
-    select.value = filters[key] || "";
-    select.onchange = () => {
-      filters[key] = select.value;
-      page = 0;
-      render();
-    };
-    field.append(select);
-    strip.append(field);
+function cname(id) {
+  return channels[id] || id;
+}
+function uname(key) {
+  const saved = snapshot.names[key];
+  if (saved && !/^(ou_|oc_)/.test(saved)) return saved;
+  const [channel, , actor] = JSON.parse(key);
+  return cname(channel) + "用户 · " + actor.slice(-6);
+}
+function sessionName(id, owner) {
+  const meta = snapshot.sessions?.[id] || {};
+  if (meta.title && !/^(ou_|oc_)/.test(meta.title)) return meta.title;
+  if (meta.kind === "direct")
+    return (owner ? uname(owner) + "的" : "") + "私聊";
+  if (meta.kind === "group" || meta.kind === "channel") return "群聊";
+  return snapshot.workloads?.[id] || "对话";
+}
+function dateScope() {
+  const value = el("range").value;
+  if (value === "custom") return [el("from").value, el("to").value];
+  const date =
+    value === "today"
+      ? day(Date.now() / 1000)
+      : value === "yesterday"
+        ? day(Date.now() / 1000 - 86400)
+        : value;
+  return value === "all"
+    ? [day(snapshot.start), day(snapshot.end - 1)]
+    : [date, date];
+}
+function sum(items) {
+  return items.reduce((n, r) => n + r.total, 0);
+}
+function group(items, field) {
+  const groups = new Map();
+  for (const r of items) {
+    if (!groups.has(r[field])) groups.set(r[field], []);
+    groups.get(r[field]).push(r);
   }
-  const reset = tag("button", "重置筛选");
+  return [...groups]
+    .map(([id, rs]) => ({ id, rs, total: sum(rs) }))
+    .sort((a, b) => b.total - a.total || a.id.localeCompare(b.id));
+}
+function resetView() {
+  user = "";
+  session = "";
+  page = 0;
+  el("search").value = "";
+  render();
+}
+function selectFilters() {
+  const host = el("selectors");
+  host.replaceChildren();
+  for (const [field, name] of Object.entries({
+    channel: "渠道",
+    model: "模型",
+    workload: "任务类型",
+  })) {
+    const label = node("label", name),
+      control = node("select");
+    control.add(new Option("全部", ""));
+    for (const v of [...new Set(rows.map((r) => r[field]))].sort())
+      control.add(new Option(field === "channel" ? cname(v) : v, v));
+    control.value = filters[field] || "";
+    control.onchange = () => {
+      filters[field] = control.value;
+      resetView();
+    };
+    label.append(control);
+    host.append(label);
+  }
+  const reset = node("button", "清除筛选");
   reset.onclick = () => {
     filters = {};
-    axis = "channel";
-    page = 0;
-    render();
+    selectFilters();
+    resetView();
   };
-  strip.append(reset);
+  host.append(reset);
 }
-
+function mini(host, title, amount, cls = "") {
+  const line = node("div", undefined, "mini " + cls);
+  line.append(node("span", title), node("b", amount));
+  host.append(line);
+}
+function rowView(item, title, sub, mid, action, avatar, i) {
+  const line = node(action ? "button" : "div", undefined, "grid item"),
+    name = node("span", undefined, "nameblock");
+  if (avatar) {
+    const first = [...title][0] || "·";
+    name.append(node("span", first, "avatar tone" + (i % 5)));
+  }
+  const text = node("span", undefined, "identity");
+  text.append(node("strong", title), node("small", sub));
+  name.append(text);
+  line.append(
+    name,
+    node("span", mid),
+    node("span", compact(item.total), "amount"),
+    node("span", action ? "›" : "", "chevron"),
+  );
+  line.title = title + " · " + full(item.total) + " Token";
+  if (action) line.onclick = action;
+  return line;
+}
+function metrics(items) {
+  const people = items.filter((r) => human(r.user)),
+    host = el("metrics");
+  host.replaceChildren();
+  const sessions = full(new Set(people.map((r) => r.session)).size);
+  const values = user
+    ? [
+        session
+          ? ["用量记录", full(people.reduce((n, r) => n + r.counts[5], 0))]
+          : ["相关会话", sessions],
+        ["使用模型", full(new Set(people.map((r) => r.model)).size)],
+        [
+          session ? "会话内 Token" : "个人 Token",
+          compact(sum(people)),
+          sum(people),
+        ],
+      ]
+    : [
+        ["活跃用户", full(new Set(people.map((r) => r.user)).size)],
+        ["用户会话", sessions],
+        ["用户 Token", compact(sum(people)), sum(people)],
+      ];
+  for (const [title, value, exact] of values) {
+    const cell = node("div");
+    cell.append(node("span", title), node("strong", value));
+    if (exact !== undefined) cell.title = full(exact) + " Token";
+    host.append(cell);
+  }
+}
+function coverage(all, from, to) {
+  const host = el("coverage");
+  host.replaceChildren();
+  const total = sum(all),
+    people = sum(all.filter((r) => human(r.user))),
+    unknown = sum(all.filter((r) => r.user === "未归属"));
+  el("personal-share").textContent = total
+    ? ((people / total) * 100).toFixed(1) + "% 归到个人"
+    : "";
+  mini(
+    host,
+    "全部会话（按 Session ID 去重）",
+    full(new Set(all.map((r) => r.session)).size),
+  );
+  for (const [label, n] of [
+    ["V 总用量", total],
+    ["已归属用户", people],
+    ["系统任务", sum(all.filter((r) => r.user === "系统任务"))],
+    ["未归属", unknown],
+  ]) {
+    mini(host, label, full(n));
+  }
+  const reasons = new Map();
+  for (const [
+    date,
+    ch,
+    sid,
+    provider,
+    model,
+    reason,
+    n,
+  ] of snapshot.unknownReasons || []) {
+    if (
+      date < from ||
+      date > to ||
+      (filters.channel && ch !== filters.channel) ||
+      (filters.model && provider + " / " + model !== filters.model) ||
+      (filters.workload && snapshot.workloads?.[sid] !== filters.workload)
+    )
+      continue;
+    reasons.set(reason, (reasons.get(reason) || 0) + n);
+  }
+  for (const [reason, n] of [...reasons].sort((a, b) => b[1] - a[1]))
+    mini(host, reason, compact(n), "indent");
+}
+function technical(items) {
+  const host = el("technical");
+  host.replaceChildren();
+  for (const [i, label] of [
+    "普通输入",
+    "缓存读取",
+    "缓存写入",
+    "输出",
+    "合计",
+  ].entries())
+    mini(host, label, full(items.reduce((n, r) => n + r.counts[i], 0)));
+  const axis = el("groupby").value,
+    groups = group(items, axis);
+  for (const g of groups.slice(0, 20))
+    mini(
+      host,
+      axis === "channel"
+        ? cname(g.id)
+        : axis === "session"
+          ? sessionName(g.id, user) + " · " + g.id.slice(-8)
+          : g.id,
+      full(g.total),
+    );
+  const stat = snapshot.stats || {};
+  host.append(
+    node(
+      "p",
+      "快照核对了 " +
+        (stat.agentDatabases || 0) +
+        " 个 Agent 库，替换 " +
+        full(stat.replacedMirrors || 0) +
+        " 条镜像。缺失原生日志 " +
+        full(stat.missingRollouts || 0) +
+        " 个，零值或缺用量消息 " +
+        full(stat.zeroOrMissing || 0) +
+        " 条，分项与上报总量不一致 " +
+        full(stat.componentMismatch || 0) +
+        " 条。",
+    ),
+  );
+  if (groups.length > 20)
+    host.append(
+      node("p", "显示用量最高的 20 项，共 " + full(groups.length) + " 项。"),
+    );
+}
 function render() {
   if (!snapshot) return;
-  const base = dateRows(),
-    selected = base.filter((r) => matches(r));
-  const totals = [0, 0, 0, 0, 0, 0],
-    groups = new Map(),
-    sessions = new Set();
-  const users = new Set(),
-    models = new Set();
-  let unknown = 0,
-    system = 0;
-  for (const row of selected) {
-    sessions.add(row.session);
-    models.add(row.model);
-    if (!["未归属", "系统任务"].includes(row.user)) users.add(row.user);
-    const values = groups.get(row[axis]) || [0, 0, 0, 0, 0, 0];
-    row.counts.forEach((v, i) => {
-      totals[i] += v;
-      values[i] += v;
-    });
-    groups.set(row[axis], values);
-    if (row.user === "未归属") unknown += row.counts[4];
-    if (row.user === "系统任务") system += row.counts[4];
-  }
-  refreshFilters(base);
-  const summary = el("summary");
-  summary.replaceChildren();
-  for (const [title, value] of [
-    ["总 Token 用量", totals[4]],
-    ["普通输入", totals[0]],
-    ["缓存读取", totals[1]],
-    ["缓存写入", totals[2]],
-    ["输出", totals[3]],
-  ]) {
-    const box = tag("div");
-    box.append(tag("span", title), tag("strong", numbers.format(value)));
-    summary.append(box);
-  }
-  el("axis").textContent = dimensions[axis];
-  for (const button of el("tabs").children)
-    button.setAttribute("aria-pressed", String(button.dataset.axis === axis));
-  const personalShare = totals[4]
-    ? ((100 * (totals[4] - unknown - system)) / totals[4]).toFixed(2) + "%"
-    : "—";
-  el("context").textContent =
-    `${numbers.format(totals[5])} 条用量记录 · ${numbers.format(sessions.size)} 个会话 · ${users.size} 位可识别用户（占用量 ${personalShare}） · ${models.size} 个模型 · 未归属用户 ${numbers.format(unknown)} Token · 系统任务 ${numbers.format(system)} Token`;
-  const sorted = [...groups].sort(
-    (a, b) => b[1][4] - a[1][4] || a[0].localeCompare(b[0]),
+  const [from, to] = dateScope();
+  const scope = rows.filter(
+    (r) =>
+      r.date >= from &&
+      r.date <= to &&
+      Object.entries(filters).every(([k, v]) => !v || r[k] === v),
   );
-  const pages = Math.max(1, Math.ceil(sorted.length / pageSize));
-  page = Math.min(page, pages - 1);
-  const body = document.querySelector("tbody");
-  body.replaceChildren();
-  for (const [key, counts] of sorted.slice(
-    page * pageSize,
-    (page + 1) * pageSize,
-  )) {
-    const row = tag("tr"),
-      name = tag("td"),
-      link = tag("button", label(axis, key));
-    link.title = label(axis, key);
-    link.onclick = () => {
-      filters[axis] = key;
-      axis = nextAxis[axis];
-      page = 0;
-      render();
-    };
-    name.append(link);
-    row.append(name);
-    counts.slice(0, 5).forEach((n) => row.append(tag("td", numbers.format(n))));
-    const share = totals[4] ? counts[4] / totals[4] : 0,
-      meter = tag("progress");
-    meter.value = share;
-    meter.setAttribute("aria-label", "用量占比");
-    const cell = tag("td");
-    cell.append(
-      meter,
-      share > 0 && share < 0.001 ? "<0.1%" : (100 * share).toFixed(1) + "%",
+  const personal = scope.filter((r) => human(r.user)),
+    owned = user ? personal.filter((r) => r.user === user) : personal;
+  const items = session ? owned.filter((r) => r.session === session) : owned;
+  metrics(user ? items : scope);
+  coverage(scope, from, to);
+  if (el("analysis").open) technical(user ? items : scope);
+  el("back").hidden = !user;
+  el("back").textContent = session ? "‹ 返回相关会话" : "‹ 返回用户榜";
+  el("heading").textContent = session
+    ? sessionName(session, user)
+    : user
+      ? uname(user)
+      : "用户排行";
+  const sessionCount = new Set(owned.map((r) => r.session)).size;
+  el("subtitle").textContent = session
+    ? "该用户在此会话的模型用量 · " + session.split("/").pop().slice(-8)
+    : user
+      ? sessionCount + " 个相关会话 · " + full(sum(owned)) + " Token"
+      : "按 Token 用量排序";
+  const search = el("search"),
+    query = search.value.trim().toLocaleLowerCase();
+  search.placeholder = session ? "搜索模型" : user ? "搜索会话" : "搜索用户";
+  search.setAttribute("aria-label", search.placeholder);
+  const head = el("listhead");
+  head.replaceChildren(
+    ...[
+      session ? "模型" : user ? "相关会话" : "用户",
+      session ? "记录" : user ? "模型" : "会话数",
+      "Token",
+      "",
+    ].map((x) => node("span", x)),
+  );
+  const axis = session ? "model" : user ? "session" : "user";
+  let groups = group(items, axis);
+  const titleOf = (g) =>
+    session
+      ? g.id.split(" / ").at(-1)
+      : user
+        ? sessionName(g.id, user)
+        : uname(g.id);
+  if (query)
+    groups = groups.filter((g) =>
+      (titleOf(g) + " " + g.id).toLowerCase().includes(query),
     );
-    row.append(cell);
-    body.append(row);
+  const pages = Math.max(1, Math.ceil(groups.length / pageSize));
+  page = Math.min(page, pages - 1);
+  const list = el("list");
+  list.replaceChildren();
+  for (const [idx, g] of groups
+    .slice(page * pageSize, (page + 1) * pageSize)
+    .entries()) {
+    let sub, mid, action;
+    if (session) {
+      sub = g.id.split(" / ")[0];
+      mid = full(g.rs.reduce((n, r) => n + r.counts[5], 0));
+    } else if (user) {
+      const kind = snapshot.sessions?.[g.id]?.kind;
+      const desc =
+        kind === "direct"
+          ? "私聊"
+          : ["group", "channel"].includes(kind)
+            ? "群聊"
+            : g.rs[0].workload;
+      sub =
+        desc +
+        " · " +
+        g.rs
+          .map((r) => r.date)
+          .sort()
+          .at(-1)
+          .slice(5) +
+        " · " +
+        g.id.split("/").pop().slice(-8);
+      mid = full(new Set(g.rs.map((r) => r.model)).size);
+      action = () => {
+        session = g.id;
+        page = 0;
+        search.value = "";
+        render();
+      };
+    } else {
+      sub = cname(g.rs[0].channel);
+      if (!snapshot.names[g.id] || /^(ou_|oc_)/.test(snapshot.names[g.id]))
+        sub += " · 姓名待核实";
+      mid = full(new Set(g.rs.map((r) => r.session)).size);
+      action = () => {
+        user = g.id;
+        page = 0;
+        search.value = "";
+        render();
+      };
+    }
+    list.append(
+      rowView(g, titleOf(g), sub, mid, action, !user, idx + page * pageSize),
+    );
   }
-  if (!sorted.length) {
-    const row = tag("tr"),
-      cell = tag("td", "当前筛选范围内没有用量记录");
-    cell.colSpan = 7;
-    row.append(cell);
-    body.append(row);
-  }
+  if (!groups.length) list.append(node("p", "当前条件下没有匹配记录", "empty"));
+  el("count").textContent =
+    "共 " +
+    full(groups.length) +
+    (session ? " 个模型" : user ? " 个会话" : " 位用户") +
+    " · " +
+    (page + 1) +
+    " / " +
+    pages;
   el("prev").disabled = page === 0;
   el("next").disabled = page + 1 >= pages;
-  el("pagination").textContent =
-    `共 ${sorted.length} 项 · 第 ${page + 1} / ${pages} 页`;
 }
 function install(data) {
   snapshot = data;
@@ -204,13 +396,16 @@ function install(data) {
       channel,
       user,
       session,
+      model: provider + " / " + model,
       workload: data.workloads?.[session] || "未知",
-      model: JSON.stringify([provider, model]),
+      total: counts[4],
       counts,
     }),
   );
-  const range = el("range"),
-    current = range.value;
+  const range = el("range");
+  while (range.options.length > 4) range.remove(4);
+  for (let t = data.end - 1; day(t) >= day(data.start); t -= 86400)
+    range.add(new Option(day(t), day(t)));
   for (const id of ["from", "to"]) {
     const input = el(id);
     input.min = day(data.start);
@@ -218,55 +413,37 @@ function install(data) {
     if (!input.value || input.value < input.min || input.value > input.max)
       input.value = id === "from" ? input.min : input.max;
   }
-  while (range.options.length > 4) range.remove(4);
-  for (let t = data.end - 1; day(t) >= day(data.start); t -= 86400)
-    range.add(new Option(day(t), day(t)));
-  if ([...range.options].some((o) => o.value === current))
-    range.value = current;
-  const s = data.stats;
-  el("quality").textContent =
-    `扫描 ${s.agentDatabases} 个 Agent 库、${s.rollouts || 0} 个原生文件。原生响应 ${s.nativeResponses || 0} 条、旧格式增量 ${s.nativeLegacy || 0} 条、会话用量 ${s.transcriptResponses || 0} 条；替换镜像 ${s.replacedMirrors || 0} 条。通过启动事件追溯 ${s.attributedChildren || 0} 个子会话。零值或缺用量消息 ${s.zeroOrMissing || 0} 条，索引指向缺失文件 ${s.missingRollouts || 0} 个，已核对的归档版本 ${s.archiveVersions || 0} 个，未完成日志行 ${s.partialLines || 0} 条。分项与报告总数不一致 ${s.componentMismatch || 0} 条，以报告总数为准。`;
+  selectFilters();
   el("content").hidden = false;
   render();
 }
 async function status() {
   try {
-    const resp = await fetch("/api/status");
-    if (!resp.ok) throw Error();
-    const state = await resp.json();
-    if (state.ready && (!snapshot || (busy && !state.busy))) {
-      const response = await fetch("/api/usage");
-      if (!response.ok) throw Error();
-      install(await response.json());
-    }
+    const state = await (await fetch("/api/status")).json();
+    if (state.ready && (!snapshot || (busy && !state.busy)))
+      install(await (await fetch("/api/usage")).json());
     busy = state.busy;
     el("refresh").disabled = busy;
-    const scope = snapshot
-      ? `${day(snapshot.start)} 至 ${clock.format(snapshot.end * 1000)}（北京时间）`
-      : "";
-    el("status").textContent = [
-      scope,
-      busy ? "正在从 V 采集…" : "",
-      state.error,
-    ]
+    const scope = snapshot ? periodText(snapshot) : "";
+    el("status").textContent = [scope, busy ? "采集中…" : "", state.error]
       .filter(Boolean)
       .join(" · ");
     if (busy) setTimeout(status, 2000);
   } catch {
-    el("status").textContent = "无法读取看板数据，请刷新页面重试。";
+    el("status").textContent = "读取失败，请刷新重试。";
     el("refresh").disabled = false;
   }
 }
-for (const [key, name] of Object.entries(dimensions)) {
-  const button = tag("button", name);
-  button.dataset.axis = key;
-  button.onclick = () => {
-    axis = key;
-    page = 0;
-    render();
+el("range").onchange = () => {
+  el("dates").hidden = el("range").value !== "custom";
+  resetView();
+};
+for (const id of ["from", "to"])
+  el(id).onchange = () => {
+    if (el("from").value > el("to").value)
+      el(id === "from" ? "to" : "from").value = el(id).value;
+    resetView();
   };
-  el("tabs").append(button);
-}
 el("prev").onclick = () => {
   page--;
   render();
@@ -275,27 +452,28 @@ el("next").onclick = () => {
   page++;
   render();
 };
-el("range").onchange = () => {
-  el("dates").hidden = el("range").value !== "custom";
+el("search").oninput = () => {
   page = 0;
   render();
 };
-for (const id of ["from", "to"])
-  el(id).onchange = () => {
-    if (el("from").value > el("to").value)
-      el(id === "from" ? "to" : "from").value = el(id).value;
-    page = 0;
-    render();
-  };
+el("back").onclick = () => {
+  if (session) session = "";
+  else user = "";
+  page = 0;
+  el("search").value = "";
+  render();
+};
+el("groupby").onchange = render;
+el("analysis").ontoggle = render;
 el("refresh").onclick = async () => {
-  el("refresh").disabled = true;
   try {
-    const response = await fetch("/api/refresh", { method: "POST" });
-    if (!response.ok) throw Error();
+    el("refresh").disabled = true;
+    const res = await fetch("/api/refresh", { method: "POST" });
+    if (!res.ok) throw Error();
     busy = true;
     await status();
   } catch {
-    el("status").textContent = "刷新请求失败，请稍后重试。";
+    el("status").textContent = "刷新失败，请重试。";
     el("refresh").disabled = false;
   }
 };

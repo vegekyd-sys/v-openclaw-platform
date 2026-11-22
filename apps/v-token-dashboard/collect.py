@@ -52,6 +52,7 @@ class Ledger:
         self.routes = collections.defaultdict(set)
         self.names = {}
         self.session_keys = {}
+        self.session_kinds = {}
         self.launches = collections.defaultdict(set)
         self.stats = collections.Counter()
 
@@ -99,14 +100,16 @@ class Ledger:
         base = ch or cch or (kind_key if kind_key in known_routes else UNKNOWN)
         session = agent + "/" + sid
         self.session_keys[session] = key
+        if kind:
+            self.session_kinds[session] = kind
         default = self.route(base, account or caccount, peer if kind == "direct" else None, None, session)
-        parents, active, runs = {}, default, {}
+        parents, runs = {}, {}
         for seq, raw in events:
             event = json.loads(raw)
             m = event.get("message") or {}
             meta = m.get("__openclaw") or {}
             parent = event.get("parentId")
-            route = parents.get(parent, default) if parent else active
+            route = parents.get(parent, default)
             role = m.get("role")
             mirror = meta.get("mirrorOrigin") == "codex-app-server"
             turn = (meta.get("mirrorIdentity") or "").partition(":")[0] if mirror else ""
@@ -122,7 +125,7 @@ class Ledger:
                 else:
                     route = default
                 if run:
-                    runs[run] = route
+                    runs[run] = route if runs.get(run, route) == route else (base, UNKNOWN, session)
             elif run:
                 route = runs.get(run, route)
             if role == "assistant" and m.get("openclawAutomation"):
@@ -134,7 +137,6 @@ class Ledger:
                     self.launches[child].add((details.get("runId"), route))
             if event.get("id"):
                 parents[event["id"]] = route
-            active = route
             if turn:
                 self.routes[turn].add(route)
             if role != "assistant" or m.get("api") == "openclaw-transcript":
@@ -228,7 +230,9 @@ class Ledger:
         groups = collections.defaultdict(lambda: [0] * 6)
         workloads = {}
         inherited = set()
-        def add(ts, route, provider, model, counts):
+        why = collections.defaultdict(int)
+
+        def add(ts, route, provider, model, counts, reason=None):
             channel, user, session = route
             key = self.session_keys.get(session, "")
             kind = (key.split(":") + ["", "", ""])[2]
@@ -244,6 +248,13 @@ class Ledger:
                 channel = "内部任务"
             route = channel, user, session
             day = dt.datetime.fromtimestamp(ts, BEIJING).date().isoformat()
+            if user == UNKNOWN:
+                if kind == "subagent":
+                    reason = "子代理缺少唯一可追溯的发起人"
+                elif self.session_kinds.get(session) in ("group","channel"):
+                    reason = "群聊回合缺少唯一发送人"
+                reason = reason or "会话缺少可核实的发送人"
+                why[(day, channel, session, provider, model, reason)] += counts[-1]
             group = groups[(day, *route, provider, model)]
             for i, value in enumerate((*counts, 1)):
                 group[i] += value
@@ -266,7 +277,12 @@ class Ledger:
                     route = next(iter(routes))
                 else:
                     route = (UNKNOWN, UNKNOWN, session)
-                add(ts, route, provider, model, counts)
+                reason = None
+                if not routes:
+                    reason = "原生回合找不到对应的 V 会话"
+                elif len(routes) > 1 and route[1] == UNKNOWN:
+                    reason = "同一原生回合有多个来源"
+                add(ts, route, provider, model, counts, reason)
                 self.stats["nativeLegacy" if legacy else "nativeResponses"] += 1
                 covered.add(turn)
         for identity, (ts, route, provider, model, counts, turn) in self.openclaw.items():
@@ -277,6 +293,7 @@ class Ledger:
             self.stats["transcriptResponses"] += 1
         self.stats["attributedChildren"] = len(inherited)
         return dict(start=self.start, end=self.end, stats=self.stats, names=self.names, workloads=workloads,
+                    unknownReasons=[[*key, total] for key, total in sorted(why.items())],
                     rows=[[*key, *values] for key, values in sorted(groups.items())])
 
 

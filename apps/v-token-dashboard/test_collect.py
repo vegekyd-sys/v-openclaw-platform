@@ -88,6 +88,18 @@ class UsageTest(unittest.TestCase):
         ledger.launches["agent:a:subagent:child"].add(("other",("wecom","other","b/parent")))
         self.assertEqual(ledger.report()["rows"][0][1:4],["内部任务","未归属","a/sid"])
 
+    def test_group_message_without_parent_or_run_cannot_inherit_previous_sender(self):
+        ledger = Ledger(1,100)
+        window=("s","feishu","tenant","agent:a:feishu:group:x",None,None,"group",None)
+        events = [
+            {"id":"u","message":{"role":"user","__openclaw":{"senderId":"one"}}},
+            {"id":"r","timestamp":5,"message":{"role":"assistant","usage":{"input":7}}}
+        ]
+        ledger.read_events("a",window,enumerate(map(json.dumps,events)))
+        result=ledger.report()
+        self.assertEqual(result["rows"][0][2],"未归属")
+        self.assertEqual(result["unknownReasons"][0][-2:],["群聊回合缺少唯一发送人",7])
+
     def test_unmatched_native_and_ambiguous_attribution(self):
         ledger = Ledger(1,100)
         ledger.routes["turn"].update({("feishu","A","a/1"),("wecom","B","b/1")})
