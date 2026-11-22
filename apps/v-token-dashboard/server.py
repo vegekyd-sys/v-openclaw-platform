@@ -84,6 +84,8 @@ class Handler(BaseHTTPRequestHandler):
                                            ready=state.file.is_file())).encode())
         elif self.path == "/api/usage" and state.file.is_file():
             self.reply(200, state.file.read_bytes(), gzip_encoded=True)
+        elif self.path == "/favicon.ico":
+            self.reply(204, b"", "image/x-icon")
         elif self.path in FILES:
             name, mime = FILES[self.path]
             self.reply(200, (HERE / name).read_bytes(), mime)
