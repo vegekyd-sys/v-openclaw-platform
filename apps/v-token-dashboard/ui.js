@@ -32,7 +32,10 @@ let snapshot,
   page = 0,
   busy = false,
   filters = {};
-const pageSize = 15;
+const pageSize = 10;
+let distPage = 0,
+  trendDay = "",
+  periodDays = 0;
 
 function node(tag, text, cls) {
   const n = document.createElement(tag);
@@ -66,17 +69,7 @@ function sessionName(id, owner) {
   return snapshot.workloads?.[id] || "对话";
 }
 function dateScope() {
-  const value = el("range").value;
-  if (value === "custom") return [el("from").value, el("to").value];
-  const date =
-    value === "today"
-      ? day(Date.now() / 1000)
-      : value === "yesterday"
-        ? day(Date.now() / 1000 - 86400)
-        : value;
-  return value === "all"
-    ? [day(snapshot.start), day(snapshot.end - 1)]
-    : [date, date];
+  return [el("from").value, el("to").value];
 }
 function sum(items) {
   return items.reduce((n, r) => n + r.total, 0);
@@ -94,6 +87,8 @@ function group(items, field) {
 function resetView() {
   user = "";
   session = "";
+  distPage = 0;
+  trendDay = "";
   page = 0;
   el("search").value = "";
   render();
@@ -127,12 +122,7 @@ function selectFilters() {
   };
   host.append(reset);
 }
-function mini(host, title, amount, cls = "") {
-  const line = node("div", undefined, "mini " + cls);
-  line.append(node("span", title), node("b", amount));
-  host.append(line);
-}
-function rowView(item, title, sub, mid, action, avatar, i) {
+function rowView(item, title, sub, mid, action, avatar, i, denominator) {
   const line = node(action ? "button" : "div", undefined, "grid item"),
     name = node("span", undefined, "nameblock");
   if (avatar) {
@@ -142,10 +132,12 @@ function rowView(item, title, sub, mid, action, avatar, i) {
   const text = node("span", undefined, "identity");
   text.append(node("strong", title), node("small", sub));
   name.append(text);
+  const amount = node("span", compact(item.total), "amount");
+  amount.append(node("small", percent(item.total, denominator), "row-share"));
   line.append(
     name,
     node("span", mid),
-    node("span", compact(item.total), "amount"),
+    amount,
     node("span", action ? "›" : "", "chevron"),
   );
   line.title = title + " · " + full(item.total) + " Token";
@@ -181,28 +173,58 @@ function metrics(items) {
     host.append(cell);
   }
 }
+function percent(value, total) {
+  if (!total) return "—";
+  if (value === 0) return "0%";
+  if (value === total) return "100%";
+  const p = (100 * value) / total;
+  if (p < 0.1) return "<0.1%";
+  if (p > 99.9) return ">99.9%";
+  return p.toFixed(1) + "%";
+}
+function rankBar(host, label, value, total) {
+  const row = node("div", undefined, "bar-row");
+  const name = node("span", label, "bar-label");
+  name.title = label;
+  const amount = node("span", compact(value), "bar-amount");
+  amount.title = full(value) + " Token";
+  const track = node("div", undefined, "bar-track");
+  const fill = node("div", undefined, "bar-fill");
+  fill.style.width = (total ? (100 * value) / total : 0) + "%";
+  track.append(fill);
+  row.append(name, amount, node("b", percent(value, total)), track);
+  host.append(row);
+}
 function coverage(all, from, to) {
-  const host = el("coverage");
-  host.replaceChildren();
   const total = sum(all),
-    people = sum(all.filter((r) => human(r.user))),
-    unknown = sum(all.filter((r) => r.user === "未归属"));
-  el("personal-share").textContent = total
-    ? ((people / total) * 100).toFixed(1) + "% 归到个人"
-    : "";
-  mini(
-    host,
-    "全部会话（按 Session ID 去重）",
-    full(new Set(all.map((r) => r.session)).size),
-  );
-  for (const [label, n] of [
-    ["V 总用量", total],
-    ["已归属用户", people],
-    ["系统任务", sum(all.filter((r) => r.user === "系统任务"))],
+    people = sum(all.filter((r) => human(r.user)));
+  const unknown = sum(all.filter((r) => r.user === "未归属"));
+  const parts = [
+    ["个人", people],
+    ["系统任务", total - people - unknown],
     ["未归属", unknown],
-  ]) {
-    mini(host, label, full(n));
-  }
+  ];
+  const host = el("coverage"),
+    stack = node("div", undefined, "stack"),
+    legend = node("div", undefined, "legend");
+  stack.setAttribute("aria-hidden", "true");
+  parts.forEach(([label, value], index) => {
+    const slice = node("span", undefined, "category-" + index);
+    slice.style.width = (total ? (100 * value) / total : 0) + "%";
+    stack.append(slice);
+    const line = node("div", undefined, "legend-row");
+    line.append(
+      node("i", undefined, "dot category-" + index),
+      node("span", label),
+      node("span", compact(value), "bar-amount"),
+      node("b", percent(value, total)),
+    );
+    line.title = full(value) + " Token";
+    legend.append(line);
+  });
+  const headline = node("div", undefined, "chart-total");
+  headline.append(node("strong", compact(total)), node("span", "Token 总量"));
+  host.replaceChildren(headline, stack, legend);
   const reasons = new Map();
   for (const [
     date,
@@ -223,54 +245,102 @@ function coverage(all, from, to) {
       continue;
     reasons.set(reason, (reasons.get(reason) || 0) + n);
   }
-  for (const [reason, n] of [...reasons].sort((a, b) => b[1] - a[1]))
-    mini(host, reason, compact(n), "indent");
+  el("why").hidden = !unknown;
+  const reasonsHost = el("reasons");
+  reasonsHost.replaceChildren();
+  reasonsHost.append(node("p", "占所选范围未归属 Token 的比例", "scope"));
+  if (!reasons.size) reasonsHost.append(node("p", "此快照未记录原因。"));
+  for (const [name, value] of [...reasons].sort((a, b) => b[1] - a[1]))
+    rankBar(reasonsHost, name, value, unknown);
 }
 function technical(items) {
   const host = el("technical");
   host.replaceChildren();
-  for (const [i, label] of [
-    "普通输入",
-    "缓存读取",
-    "缓存写入",
-    "输出",
-    "合计",
-  ].entries())
-    mini(host, label, full(items.reduce((n, r) => n + r.counts[i], 0)));
-  const axis = el("groupby").value,
+  const total = sum(items),
+    axis = el("groupby").value;
+  let groups;
+  if (axis === "token") {
+    groups = ["普通输入", "缓存读取", "缓存写入", "输出"]
+      .map((id, i) => ({
+        id,
+        total: items.reduce((n, r) => n + r.counts[i], 0),
+      }))
+      .sort((a, b) => b.total - a.total);
+  } else {
     groups = group(items, axis);
-  for (const g of groups.slice(0, 20))
-    mini(
-      host,
+  }
+  el("dist-scope").textContent =
+    (session ? "该用户在本会话" : user ? "该用户" : "全平台") +
+    " · " +
+    compact(total) +
+    " Token";
+  const size = 5,
+    pages = Math.max(1, Math.ceil(groups.length / size));
+  distPage = Math.min(distPage, pages - 1);
+  for (const g of groups.slice(distPage * size, (distPage + 1) * size)) {
+    const label =
       axis === "channel"
         ? cname(g.id)
         : axis === "session"
           ? sessionName(g.id, user) + " · " + g.id.slice(-8)
-          : g.id,
-      full(g.total),
-    );
-  const stat = snapshot.stats || {};
-  host.append(
-    node(
-      "p",
-      "快照核对了 " +
-        (stat.agentDatabases || 0) +
-        " 个 Agent 库，替换 " +
-        full(stat.replacedMirrors || 0) +
-        " 条镜像。缺失原生日志 " +
-        full(stat.missingRollouts || 0) +
-        " 个，零值或缺用量消息 " +
-        full(stat.zeroOrMissing || 0) +
-        " 条，分项与上报总量不一致 " +
-        full(stat.componentMismatch || 0) +
-        " 条。",
-    ),
-  );
-  if (groups.length > 20)
-    host.append(
-      node("p", "显示用量最高的 20 项，共 " + full(groups.length) + " 项。"),
-    );
+          : g.id;
+    rankBar(host, label, g.total, total);
+  }
+  if (!total) host.replaceChildren(node("p", "所选范围暂无用量", "empty"));
+  el("dist-pages").hidden = !total || pages === 1;
+  el("dist-count").textContent =
+    groups.length + " 项 · " + (distPage + 1) + " / " + pages;
+  el("dist-prev").disabled = distPage === 0;
+  el("dist-next").disabled = distPage + 1 >= pages;
 }
+function trend(items, from, to) {
+  const totals = new Map();
+  for (const r of items)
+    totals.set(r.date, (totals.get(r.date) || 0) + r.total);
+  const host = el("trend");
+  host.replaceChildren();
+  el("trend-scope").textContent = session
+    ? "该用户在本会话"
+    : user
+      ? "该用户"
+      : "已归属用户";
+  const points = [];
+  for (
+    let ms = Date.parse(from + "T00:00:00Z");
+    ms <= Date.parse(to + "T00:00:00Z");
+    ms += 86400000
+  ) {
+    const date = new Date(ms).toISOString().slice(0, 10);
+    points.push([date, totals.get(date) || 0]);
+  }
+  if (!points.length) return;
+  const max = points.reduce((n, p) => Math.max(n, p[1]), 0);
+  const peak = points.find((p) => p[1] === max)[0];
+  if (!points.some((p) => p[0] === trendDay)) trendDay = peak;
+  function highlight(date, value) {
+    trendDay = date;
+    for (const b of host.children)
+      b.setAttribute("aria-pressed", String(b.dataset.day === date));
+    el("trend-value").textContent = date + "　" + full(value) + " Token";
+  }
+  for (const [date, value] of points) {
+    const button = node("button", undefined, "day-bar");
+    button.dataset.day = date;
+    button.setAttribute("aria-label", date + "，" + full(value) + " Token");
+    const plot = node("span", undefined, "plot"),
+      bar = node("i");
+    bar.style.height = (max ? (100 * value) / max : 0) + "%";
+    plot.append(bar);
+    button.append(
+      plot,
+      node("span", date.slice(5).replace("-", "/"), "day-label"),
+    );
+    button.onclick = () => highlight(date, value);
+    host.append(button);
+  }
+  highlight(trendDay, totals.get(trendDay) || 0);
+}
+
 function render() {
   if (!snapshot) return;
   const [from, to] = dateScope();
@@ -285,7 +355,14 @@ function render() {
   const items = session ? owned.filter((r) => r.session === session) : owned;
   metrics(user ? items : scope);
   coverage(scope, from, to);
-  if (el("analysis").open) technical(user ? items : scope);
+  technical(user ? items : scope);
+  trend(items, from, to);
+  const denominator = sum(items);
+  for (const button of el("periods").children)
+    button.setAttribute(
+      "aria-pressed",
+      String(Number(button.dataset.days) === periodDays),
+    );
   el("back").hidden = !user;
   el("back").textContent = session ? "‹ 返回相关会话" : "‹ 返回用户榜";
   el("heading").textContent = session
@@ -295,10 +372,13 @@ function render() {
       : "用户排行";
   const sessionCount = new Set(owned.map((r) => r.session)).size;
   el("subtitle").textContent = session
-    ? "该用户在此会话的模型用量 · " + session.split("/").pop().slice(-8)
+    ? "占该用户在本会话的 Token · " + session.split("/").pop().slice(-8)
     : user
-      ? sessionCount + " 个相关会话 · " + full(sum(owned)) + " Token"
-      : "按 Token 用量排序";
+      ? sessionCount +
+        " 个相关会话 · " +
+        full(sum(owned)) +
+        " Token · 占个人用量"
+      : "占已归属用户的 Token";
   const search = el("search"),
     query = search.value.trim().toLocaleLowerCase();
   search.placeholder = session ? "搜索模型" : user ? "搜索会话" : "搜索用户";
@@ -308,7 +388,7 @@ function render() {
     ...[
       session ? "模型" : user ? "相关会话" : "用户",
       session ? "记录" : user ? "模型" : "会话数",
-      "Token",
+      "Token / 占比",
       "",
     ].map((x) => node("span", x)),
   );
@@ -355,6 +435,8 @@ function render() {
         g.id.split("/").pop().slice(-8);
       mid = full(new Set(g.rs.map((r) => r.model)).size);
       action = () => {
+        distPage = 0;
+        trendDay = "";
         session = g.id;
         page = 0;
         search.value = "";
@@ -366,6 +448,8 @@ function render() {
         sub += " · 姓名待核实";
       mid = full(new Set(g.rs.map((r) => r.session)).size);
       action = () => {
+        distPage = 0;
+        trendDay = "";
         user = g.id;
         page = 0;
         search.value = "";
@@ -373,7 +457,16 @@ function render() {
       };
     }
     list.append(
-      rowView(g, titleOf(g), sub, mid, action, !user, idx + page * pageSize),
+      rowView(
+        g,
+        titleOf(g),
+        sub,
+        mid,
+        action,
+        !user,
+        idx + page * pageSize,
+        denominator,
+      ),
     );
   }
   if (!groups.length) list.append(node("p", "当前条件下没有匹配记录", "empty"));
@@ -402,17 +495,29 @@ function install(data) {
       counts,
     }),
   );
-  const range = el("range");
-  while (range.options.length > 4) range.remove(4);
-  for (let t = data.end - 1; day(t) >= day(data.start); t -= 86400)
-    range.add(new Option(day(t), day(t)));
+  const first = day(data.start),
+    last = day(data.end - 1);
   for (const id of ["from", "to"]) {
     const input = el(id);
-    input.min = day(data.start);
-    input.max = day(data.end - 1);
-    if (!input.value || input.value < input.min || input.value > input.max)
-      input.value = id === "from" ? input.min : input.max;
+    input.min = first;
+    input.max = last;
+    if (!input.value || input.value < first || input.value > last)
+      input.value = id === "from" ? first : last;
   }
+  if (periodDays !== null) applyPeriod(periodDays);
+  const stat = data.stats || {};
+  el("audit").textContent =
+    "快照核对 " +
+    (stat.agentDatabases || 0) +
+    " 个 Agent 库、替换 " +
+    full(stat.replacedMirrors || 0) +
+    " 条镜像；缺失日志 " +
+    full(stat.missingRollouts || 0) +
+    " 个，零值或缺用量消息 " +
+    full(stat.zeroOrMissing || 0) +
+    " 条，分项与上报总量不一致 " +
+    full(stat.componentMismatch || 0) +
+    " 条。";
   selectFilters();
   el("content").hidden = false;
   render();
@@ -434,15 +539,43 @@ async function status() {
     el("refresh").disabled = false;
   }
 }
-el("range").onchange = () => {
-  el("dates").hidden = el("range").value !== "custom";
-  resetView();
-};
+function applyPeriod(days) {
+  const start = el("from"),
+    end = el("to");
+  end.value = end.max;
+  const first = days
+    ? new Date(Date.parse(end.max + "T00:00:00Z") - (days - 1) * 86400000)
+        .toISOString()
+        .slice(0, 10)
+    : start.min;
+  start.value = first < start.min ? start.min : first;
+  periodDays = days;
+}
+function changedScope() {
+  page = 0;
+  distPage = 0;
+  trendDay = "";
+  render();
+}
+for (const button of el("periods").children)
+  button.onclick = () => {
+    applyPeriod(Number(button.dataset.days));
+    changedScope();
+  };
 for (const id of ["from", "to"])
   el(id).onchange = () => {
+    const input = el(id);
+    if (!input.value) input.value = id === "from" ? input.min : input.max;
+    input.value =
+      input.value < input.min
+        ? input.min
+        : input.value > input.max
+          ? input.max
+          : input.value;
     if (el("from").value > el("to").value)
-      el(id === "from" ? "to" : "from").value = el(id).value;
-    resetView();
+      el(id === "from" ? "to" : "from").value = input.value;
+    periodDays = null;
+    changedScope();
   };
 el("prev").onclick = () => {
   page--;
@@ -463,8 +596,18 @@ el("back").onclick = () => {
   el("search").value = "";
   render();
 };
-el("groupby").onchange = render;
-el("analysis").ontoggle = render;
+el("groupby").onchange = () => {
+  distPage = 0;
+  render();
+};
+el("dist-prev").onclick = () => {
+  distPage--;
+  render();
+};
+el("dist-next").onclick = () => {
+  distPage++;
+  render();
+};
 el("refresh").onclick = async () => {
   try {
     el("refresh").disabled = true;

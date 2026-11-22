@@ -232,10 +232,9 @@ h1 {
 }
 .grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(56px, 0.27fr) minmax(
-      110px,
-      0.42fr
-    ) 12px;
+  grid-template-columns:
+    minmax(0, 1fr) minmax(56px, 0.27fr) minmax(110px, 0.42fr)
+    12px;
   align-items: center;
   gap: 10px;
   text-align: left;
@@ -340,48 +339,238 @@ h1 {
   padding: 0;
   font-size: 18px;
 }
-.fold {
-  margin-top: 12px;
-  padding: 0 22px;
-}
-.fold > summary {
-  padding: 16px 0;
-  font-size: 14px;
-  font-weight: 600;
-}
-.fold > summary span {
-  font-weight: 400;
-  color: #746a7f;
-  margin-left: 5px;
-}
-.fold p {
-  font-size: 13px;
-  color: #72697d;
-  line-height: 1.65;
-  padding: 10px 0 15px;
-}
-.mini {
+/* Date range and charts */
+.window {
   display: flex;
-  gap: 12px;
-  justify-content: space-between;
   align-items: center;
-  padding: 9px 0;
-  border-top: 1px solid #efedf2;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 18px 0 10px;
+}
+.window-heading,
+.periods,
+#dates,
+#dates label,
+.chart-heading,
+.chart-total,
+.legend-row {
+  display: flex;
+  align-items: center;
+}
+.window-heading {
+  gap: 14px;
+}
+.window h2,
+.chart-heading h2 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.04em;
+}
+.periods {
+  background: #edeaf1;
+  border-radius: 9px;
+  padding: 3px;
+  gap: 2px;
+}
+.periods button {
+  border: 0;
+  background: none;
+  min-height: 28px;
+  font-size: 12px;
+  padding: 4px 8px;
+  color: #6e6678;
+}
+.periods button[aria-pressed="true"] {
+  background: #fff;
+  color: #502873;
+  box-shadow: 0 1px 3px #33284018;
+}
+#dates {
+  gap: 8px;
+  margin: 0;
+  color: #726a7b;
+}
+#dates label {
+  gap: 6px;
+  font-size: 12px;
+}
+#dates input {
+  min-width: 0;
+  width: 131px;
+  font-size: 13px;
+  min-height: 34px;
+}
+.row-share {
+  display: block;
+  color: #716478;
+  font-size: 11px;
+  font-weight: 500;
+  margin-top: 3px;
+}
+.chart-card {
+  padding: 20px 22px;
+  margin-top: 14px;
+  min-width: 0;
+}
+.chart-heading {
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.chart-heading select {
+  font-size: 12px;
+  min-height: 30px;
+}
+.scope,
+.chart-total span,
+#trend-value {
+  font-size: 12px;
+  color: #756d80;
+}
+.chart-total {
+  gap: 7px;
+  align-items: baseline;
+  margin: 8px 0 12px;
+}
+.chart-total strong {
+  font-size: 24px;
+  letter-spacing: -0.04em;
+}
+.chart-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+  gap: 14px;
+}
+.stack {
+  display: flex;
+  height: 14px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #edeaf1;
+}
+.category-0 {
+  background: #7753a4;
+}
+.category-1 {
+  background: #45938b;
+}
+.category-2 {
+  background: #c1adc9;
+}
+.legend {
+  margin: 12px 0 6px;
+}
+.legend-row {
+  gap: 8px;
+  font-size: 13px;
+  padding: 6px 0;
+}
+.legend-row .bar-amount {
+  margin-left: auto;
+}
+.legend-row b,
+.bar-row b {
+  font-size: 12px;
+  text-align: right;
+  min-width: 46px;
+}
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+.bar-amount {
+  color: #6f647a;
+  font-size: 12px;
+}
+.bar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 4px 9px;
+  margin: 12px 0;
+  align-items: baseline;
   font-size: 13px;
 }
-.mini span:first-child {
-  min-width: 0;
+.bar-label {
   overflow-wrap: anywhere;
 }
-.mini b {
-  white-space: nowrap;
+.bar-track {
+  grid-column: 1/-1;
+  height: 5px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #f0edf3;
 }
-.indent {
-  padding-left: 15px;
-  color: #776e81;
+.bar-fill {
+  height: 100%;
+  background: #916cb3;
+  border-radius: 4px;
 }
-.switch {
-  margin: 0 0 10px;
+.more {
+  font-size: 13px;
+  color: #665a73;
+}
+.more summary {
+  padding: 10px 0 0;
+}
+.more p {
+  margin-top: 8px;
+  line-height: 1.6;
+}
+#why {
+  border-top: 1px solid #eeeaf1;
+  margin-top: 9px;
+}
+#dist-pages {
+  padding: 8px 0 0;
+  border-top: 1px solid #eeeaf1;
+}
+#trend {
+  display: flex;
+  overflow-x: auto;
+  gap: 4px;
+  margin: 10px 0 2px;
+  padding: 4px 1px;
+}
+.day-bar {
+  flex: 1 0 38px;
+  border: 0;
+  padding: 1px 0;
+  border-radius: 5px;
+  background: none;
+  color: #84798e;
+}
+.plot {
+  height: 68px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-bottom: 1px solid #ddd6e4;
+}
+.plot i {
+  width: min(52%, 40px);
+  background: #c9b4dc;
+  border-radius: 4px 4px 0 0;
+}
+.day-bar[aria-pressed="true"] .plot i {
+  background: #79509d;
+}
+.day-bar[aria-pressed="true"] {
+  color: #54336e;
+}
+.day-label {
+  font-size: 11px;
+}
+.audit {
+  margin: 14px 4px 0;
+}
+.audit p {
+  font-size: 12px;
+}
+.audit summary {
+  padding: 0;
 }
 .empty {
   padding: 24px;
@@ -476,7 +665,41 @@ h1 {
   .pager {
     padding: 9px 12px;
   }
-  .fold {
-    padding: 0 13px;
+  .window {
+    display: block;
+    margin: 14px 2px 10px;
+  }
+  .window-heading {
+    justify-content: space-between;
+  }
+  #dates {
+    margin-top: 9px;
+  }
+  #dates label {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  #dates input {
+    flex: 1;
+    width: 0;
+    min-width: 0;
+    padding: 4px;
+    font-size: 12px;
+  }
+  .chart-pair {
+    display: block;
+  }
+  .chart-card {
+    padding: 15px 14px;
+  }
+  .chart-heading h2,
+  .window h2 {
+    font-size: 16px;
+  }
+  .plot {
+    height: 58px;
+  }
+  .day-bar {
+    flex-basis: 34px;
   }
 }
