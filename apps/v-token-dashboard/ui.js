@@ -356,7 +356,7 @@ function trend(items, from, to, platform) {
   }
   if (!points.length) return;
   const max = points.reduce((n, p) => Math.max(n, p[2]), 0);
-  const peak = points.reduce((best, p) => p[1] > best[1] ? p : best)[0];
+  const peak = points.reduce((best, p) => (p[1] > best[1] ? p : best))[0];
   if (!points.some((p) => p[0] === trendDay)) trendDay = peak;
   function highlight(index) {
     const [date, value, platformValue] = points[index];
@@ -367,7 +367,10 @@ function trend(items, from, to, platform) {
     if (compare) {
       output.replaceChildren(
         node("strong", date + " · 夜班占比 " + percent(value, platformValue)),
-        node("span", "夜班 " + full(value) + " / 平台 " + full(platformValue) + " Token"),
+        node(
+          "span",
+          "夜班 " + full(value) + " / 平台 " + full(platformValue) + " Token",
+        ),
       );
       el("day-prev").disabled = index === 0;
       el("day-next").disabled = index === points.length - 1;
@@ -381,15 +384,24 @@ function trend(items, from, to, platform) {
   for (const [idx, [date, value, platformValue]] of points.entries()) {
     const button = node("button", undefined, "day-bar");
     button.dataset.day = date;
-    button.setAttribute("aria-label", compare
-      ? date + "，夜班 " + full(value) + "，平台 " + full(platformValue) + " Token"
-      : date + "，" + full(value) + " Token");
+    button.setAttribute(
+      "aria-label",
+      compare
+        ? date +
+            "，夜班 " +
+            full(value) +
+            "，平台 " +
+            full(platformValue) +
+            " Token"
+        : date + "，" + full(value) + " Token",
+    );
     const plot = node("span", undefined, "plot"),
       bar = node("i");
     bar.style.height = (max ? (100 * value) / max : 0) + "%";
     if (compare) {
       const rest = node("i", undefined, "other-usage");
-      rest.style.height = (max ? (100 * (platformValue - value)) / max : 0) + "%";
+      rest.style.height =
+        (max ? (100 * (platformValue - value)) / max : 0) + "%";
       plot.append(rest);
     }
     plot.append(bar);
@@ -418,6 +430,11 @@ function trend(items, from, to, platform) {
 
 function render() {
   if (!snapshot) return;
+  const waiting = Boolean(snapshot.peopleOnly);
+  el("metrics").hidden = waiting && nightView;
+  el("dashboard-body").hidden = waiting && nightView;
+  el("supplement").hidden = !waiting || !nightView;
+  if (waiting && nightView) return;
   const [from, to] = dateScope();
   const scope = rows.filter(
     (r) =>
@@ -432,8 +449,10 @@ function render() {
   const nights = nightView ? scope.filter((r) => r.card) : [];
   const selected = nightView ? nights : items;
   metrics(nightView ? nights : user ? items : scope);
-  if (!nightView) coverage(scope, from, to);
-  technical(nightView ? nights : user ? items : scope);
+  if (!nightView && !waiting) coverage(scope, from, to);
+  el("analysis").hidden = waiting && !user;
+  if (!el("analysis").hidden)
+    technical(nightView ? nights : user ? items : scope);
   trend(selected, from, to, scope);
   el("range-caption").textContent =
     from.slice(5).replace("-", ".") + " – " + to.slice(5).replace("-", ".");
@@ -447,7 +466,7 @@ function render() {
       String(Number(button.dataset.days) === periodDays),
     );
   el("people").hidden = nightView;
-  el("attribution").hidden = nightView;
+  el("attribution").hidden = nightView || waiting;
   el("night-note").hidden = !nightView;
   el("content").classList.toggle("night", nightView);
   if (nightView) {
@@ -632,6 +651,7 @@ function install(data) {
   render();
 }
 async function status() {
+  if (document.documentElement.dataset.feed === "published") return;
   try {
     const state = await (await fetch("/api/status")).json();
     if (state.ready && (!snapshot || (busy && !state.busy)))

@@ -27,10 +27,13 @@ class Snapshot:
         self.lock = threading.Lock()
         self.error = None
 
-    def refresh(self):
+    def refresh(self, *, background=True):
         if not self.lock.acquire(blocking=False):
             return
-        threading.Thread(target=self.collect, daemon=True).start()
+        if background:
+            threading.Thread(target=self.collect, daemon=True).start()
+        else:
+            self.collect()
 
     def collect(self):
         try:

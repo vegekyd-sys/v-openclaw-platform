@@ -35,3 +35,21 @@
 python3 -m unittest discover -s apps/v-token-dashboard -v
 node --check apps/v-token-dashboard/ui.js
 ```
+
+## 正式版更新
+
+正式入口为 `v-usage.tianyi.live`。Cloudflare Worker 提供静态页面，私有 R2 桶仅保存 AES-256-GCM 加密后的数据。访问密钥位于专用链接的 URL 片段，在浏览器解密。发布到边缘的文件采用白名单，明文快照、人员资料、密钥及品牌原图均不提交到 Git。
+
+采集机的 launchd 每 30 分钟检查一次，数据截止时间超过约 6 小时即通过 SSH 对 V 只读核算最近 30 个北京时间自然日。关机或网络中断期间，线上继续提供上一次成功版本，采集机恢复后补采。先上传带版本的全量数据，最后替换首页加密文件；两次上传均成功后写本机发布回执。采集或上传失败，下一次检查重试。打开、切回页面或点「检查更新」会检查已发布版本，前台停留时每 5 分钟检查。用户排行和会话先载入，全平台与夜班明细在后台补齐。
+
+采集端需要 Python 3、Node、可用的 `ssh v` 和有该桶写权限的 Wrangler 4。状态目录以 0700 保存，包含 `snapshot.json.gz`、`v-brand.webp` 及仅管理员可读的 `key`（32 个随机字节的 base64url 编码）。在应用目录执行以下命令；`STATE` 指向该目录。
+
+```sh
+node edge/publish.mjs assets "$STATE"
+wrangler deploy --config edge/wrangler.toml
+python3 sync.py --data "$STATE"
+```
+
+发布目标是独立 Worker 和采集机定时任务。页面发版及数据刷新都不需要重启 V Gateway。线上可从页面「数据截至」核对最新版本；本机 `published.json` 另记上传完成时间。手工立即刷新使用 `python3 sync.py --force --data "$STATE"`。
+
+将已合并的应用放在独立发布目录后，用 `python3 edge/install-agent.py --app /absolute/app --data "$STATE" --wrangler /absolute/wrangler` 安装采集任务，日志位于 `$STATE/sync.log`。首次安装前通过 Wrangler 为正式域创建独立的私有 R2 桶 `v-token-usage-private`。网页静态资源的部署与快照发布可独立进行。
