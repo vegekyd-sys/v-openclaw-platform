@@ -9,6 +9,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import sqlite3
 import sys
 import tempfile
@@ -128,6 +129,14 @@ def test_refresh_locks_the_new_mapping_before_dropping_the_old():
         assert libc.calls[old_unmap][1:] == first and p.mapping != first
         assert out[0]["cachedPct"] == 100.0, out
         writer.close()
+
+
+def test_unit_memlock_holds_two_full_mappings():
+    # 2026-11-18: the tables reached 800 MB and a refresh could not lock the rest, because
+    # the limit only had room for one mapping of MAX_PIN_MB.
+    unit = open(os.path.join(HERE, "..", "systemd", "v-memory-vector-pin.service")).read()
+    limit_mb = int(re.search(r"^LimitMEMLOCK=(\d+)M$", unit, re.M).group(1))
+    assert limit_mb >= 2 * pin.MAX_PIN_MB, f"LimitMEMLOCK={limit_mb}M < 2 x {pin.MAX_PIN_MB}M"
 
 
 def test_low_memory_releases_and_resumes_only_with_headroom():

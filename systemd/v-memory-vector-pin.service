@@ -9,8 +9,10 @@ Documentation=file:/opt/v-sentinel/v-memory-vector-pin.py
 Type=simple
 User=openclaw
 Nice=10
-# The script refuses to lock more than MAX_PIN_MB (1536); the limit sits just above it.
-LimitMEMLOCK=1600M
+# A refresh locks the new mapping before it drops the old one, so both count against this
+# limit (the physical pages are shared). It must hold twice MAX_PIN_MB (1536): at 1600M only
+# 800 MB could stay locked.
+LimitMEMLOCK=3200M
 ExecStart=/usr/bin/python3 /opt/v-sentinel/v-memory-vector-pin.py makaron
 Restart=on-failure
 RestartSec=60
