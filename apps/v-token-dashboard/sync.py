@@ -18,7 +18,7 @@ def sync(directory, force=False):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return
-        receipt = directory / "published.json"
+        receipt = directory / "published-public.json"
         # A previous upload may have failed after a successful collection.
         # Publish that current snapshot on retry without collecting a second time.
         def snapshot_end():

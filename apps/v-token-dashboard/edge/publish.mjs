@@ -1,4 +1,4 @@
-import { createHash, createCipheriv, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import {
   readFileSync,
   writeFileSync,
@@ -68,15 +68,76 @@ export function partition(data, version) {
   return { home, full };
 }
 
-function encrypt(data, key) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  return Buffer.concat([
-    iv,
-    cipher.update(gzipSync(JSON.stringify(data))),
-    cipher.final(),
-    cipher.getAuthTag(),
-  ]);
+// Keep joins stable across refreshes without publishing transport IDs or free-text titles.
+export function publicUsage(data, salt) {
+  const users = new Map(),
+    sessions = new Map();
+  const alias = (kind, id) =>
+    createHmac("sha256", salt)
+      .update(kind)
+      .update("\0")
+      .update(id)
+      .digest("hex")
+      .slice(0, 24);
+  const names = {},
+    labels = {},
+    workloads = {},
+    nightshift = {};
+  for (const row of data.rows) {
+    const [, , user, session] = row;
+    if (user !== "系统任务" && user !== "未归属" && !users.has(user)) {
+      const [channel] = JSON.parse(user);
+      const key = JSON.stringify([channel, "", alias("user", user)]);
+      users.set(user, key);
+      const name = data.names[user];
+      if (name && !/(?:ou_|oc_|om_)|@|^\+?[\d -]{7,}$/i.test(name))
+        names[key] = name;
+    }
+    if (!sessions.has(session)) {
+      const id = alias("session", session);
+      sessions.set(session, id);
+      if (data.sessions?.[session])
+        labels[id] = { kind: data.sessions[session].kind };
+      workloads[id] = data.workloads?.[session] || "";
+      if (data.nightshift?.[session]) nightshift[id] = data.nightshift[session];
+    }
+  }
+  return {
+    start: data.start,
+    end: data.end,
+    stats: data.stats,
+    names,
+    sessions: labels,
+    workloads,
+    nightshift: data.nightshift == null ? null : nightshift,
+    rows: data.rows.map(([day, channel, user, session, ...usage]) => [
+      day,
+      channel,
+      users.get(user) || user,
+      sessions.get(session),
+      ...usage,
+    ]),
+    unknownReasons: (data.unknownReasons || []).map(
+      ([day, channel, session, ...rest]) => [
+        day,
+        channel,
+        sessions.get(session),
+        ...rest,
+      ],
+    ),
+  };
+}
+
+function readSalt(state) {
+  const path = join(state, "public-ids.key");
+  try {
+    writeFileSync(path, randomBytes(32), { flag: "wx", mode: 0o600 });
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+  }
+  const salt = readFileSync(path);
+  if (salt.length !== 32) throw Error("Invalid public ID salt");
+  return salt;
 }
 
 function assets(state) {
@@ -89,34 +150,31 @@ function assets(state) {
     .replace('<html lang="zh-CN">', '<html lang="zh-CN" data-feed="published">')
     .replace(
       "</head>",
-      '<link rel="preload" href="/home.bin" as="fetch" crossorigin="anonymous"><script defer src="/public.js"></script></head>',
+      '<link rel="preload" href="/usage/home.gz" as="fetch" crossorigin="anonymous"><script defer src="/public.js"></script></head>',
     );
   writeFileSync(join(dir, "index.html"), html);
 }
 
 function publish(state) {
   const raw = readFileSync(join(state, "snapshot.json.gz"));
-  const key = Buffer.from(
-    readFileSync(join(state, "key"), "utf8").trim(),
-    "base64url",
-  );
+  const salt = readSalt(state);
   const data = JSON.parse(gunzipSync(raw));
   if (!data.rows?.length || !Number.isInteger(data.end) || !data.nightshift)
     throw Error("Incomplete source snapshot");
   const version =
     data.end +
     "-" +
-    createHash("sha256").update(raw).digest("hex").slice(0, 16);
-  const { home, full } = partition(data, version);
+    createHash("sha256").update(salt).update(raw).digest("hex").slice(0, 16);
+  const { home, full } = partition(publicUsage(data, salt), version);
   const tmp = mkdtempSync(join(tmpdir(), "v-usage-publish-"));
   try {
     // The small entry point is the commit marker. Readers keep the previous pair if upload fails.
     for (const [name, payload] of [
-      ["datasets/" + version + ".bin", full],
-      ["home.bin", home],
+      ["usage/datasets/" + version + ".gz", full],
+      ["usage/home.gz", home],
     ]) {
-      const file = join(tmp, "sealed");
-      writeFileSync(file, encrypt(payload, key), { mode: 0o600 });
+      const file = join(tmp, "public.gz");
+      writeFileSync(file, gzipSync(JSON.stringify(payload)), { mode: 0o600 });
       execFileSync(
         process.env.WRANGLER || "wrangler",
         [

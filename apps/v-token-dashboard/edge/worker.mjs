@@ -21,8 +21,8 @@ export default {
     if (!["GET", "HEAD"].includes(request.method))
       return new Response(null, { status: 405, headers });
     if (
-      path === "/home.bin" ||
-      /^\/datasets\/[0-9]+-[0-9a-f]{16}\.bin$/.test(path)
+      path === "/usage/home.gz" ||
+      /^\/usage\/datasets\/[0-9]+-[0-9a-f]{16}\.gz$/.test(path)
     ) {
       const key = path.slice(1);
       const object =
@@ -33,7 +33,7 @@ export default {
       headers.set("Content-Type", "application/octet-stream");
       headers.set(
         "Cache-Control",
-        path === "/home.bin"
+        path === "/usage/home.gz"
           ? "private, no-cache"
           : "private, max-age=86400, immutable",
       );
