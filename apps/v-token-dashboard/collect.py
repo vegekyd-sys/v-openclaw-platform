@@ -5,6 +5,7 @@ import datetime as dt
 import gzip
 import json
 import sqlite3
+import subprocess
 import sys
 from contextlib import closing
 from pathlib import Path
@@ -66,9 +67,6 @@ class Ledger:
         agent = path.parent.parent.name
         with database(path) as db:
             self.stats["agentDatabases"] += 1
-            self.stats["archiveVersions"] += db.execute(
-                "SELECT count(*) FROM session_transcript_archives WHERE created_at>=? AND created_at<?",
-                (self.start * 1000, self.end * 1000)).fetchone()[0]
             windows = db.execute("""
                 SELECT w.session_id,w.channel,w.account_id,w.session_key,c.channel,c.account_id,
                        c.kind,c.native_direct_user_id
@@ -76,65 +74,85 @@ class Ledger:
                     ON c.conversation_id=w.primary_conversation_id
                  WHERE coalesce(w.transcript_updated_at,w.updated_at)>=?
             """, (self.start * 1000,)).fetchall()
-            for sid, ch, account, key, cch, caccount, kind, peer in windows:
-                kind_key = (key.split(":") + ["", "", ""])[2]
-                known_routes = ("cron", "subagent", "dashboard", "feishu", "wecom", "msteams", "telegram", "dingtalk-connector")
-                base = ch or cch or (kind_key if kind_key in known_routes else UNKNOWN)
-                session = agent + "/" + sid
-                self.session_keys[session] = key
-                default = self.route(base, account or caccount, peer if kind == "direct" else None, None, session)
-                parents, active, runs = {}, default, {}
-                for seq, raw in db.execute("SELECT seq,event_json FROM transcript_events WHERE session_id=? ORDER BY seq", (sid,)):
-                    event = json.loads(raw)
-                    m = event.get("message") or {}
-                    meta = m.get("__openclaw") or {}
-                    parent = event.get("parentId")
-                    route = parents.get(parent, default) if parent else active
-                    role = m.get("role")
-                    mirror = meta.get("mirrorOrigin") == "codex-app-server"
-                    turn = (meta.get("mirrorIdentity") or "").partition(":")[0] if mirror else ""
-                    run = meta.get("runId")
-                    if role == "user":
-                        ident = meta.get("senderIdentity") or {}
-                        transport = meta.get("transport") or {}
-                        actor = meta.get("senderId") if ident.get("senderKind") in (None, "human") else None
-                        if actor:
-                            route = self.route(transport.get("channel") or ident.get("pluginId") or base,
-                                               ident.get("accountId") or account or caccount,
-                                               actor, meta.get("senderName"), session)
-                        else:
-                            route = default
-                        if run:
-                            runs[run] = route
-                    elif run:
-                        route = runs.get(run, route)
-                    if role == "assistant" and m.get("openclawAutomation"):
-                        route = (base, SYSTEM, session)
-                    if role == "toolResult" and m.get("toolName") == "sessions_spawn" and not m.get("isError"):
-                        details = m.get("details") or {}
-                        child = details.get("childSessionKey")
-                        if child and details.get("status") == "accepted" and details.get("mode") == "run":
-                            self.launches[child].add((details.get("runId"), route))
-                    if event.get("id"):
-                        parents[event["id"]] = route
-                    active = route
-                    if turn:
-                        self.routes[turn].add(route)
-                    if role != "assistant" or m.get("api") == "openclaw-transcript":
-                        continue
-                    ts = timestamp(event.get("timestamp") or m["timestamp"])
-                    if not self.start <= ts < self.end:
-                        continue
-                    counts = token_counts(m.get("usage") or {})
-                    if not any(counts):
-                        self.stats["zeroOrMissing"] += 1
-                        continue
-                    provider = m.get("provider") or "未知"
-                    model = m.get("responseModel") or m.get("model") or "未知"
-                    response = m.get("responseId")
-                    identity = (provider, response) if response else (("mirror", meta["mirrorIdentity"], provider)
-                               if turn else (agent, event.get("id") or (sid, seq), ts))
-                    self.openclaw.setdefault(identity, (ts, route, provider, model, counts, turn))
+            metadata = {row[0]: row for row in windows}
+            for window in windows:
+                events = db.execute("SELECT seq,event_json FROM transcript_events WHERE session_id=? ORDER BY seq", (window[0],))
+                self.read_events(agent, window, events)
+            for sid, key, encoding, blob in db.execute("""
+                    SELECT session_id,session_key,encoding,archive_blob FROM session_transcript_archives
+                    WHERE created_at>=? ORDER BY created_at DESC
+                    """, (self.start * 1000,)):
+                if encoding == "zstd":
+                    raw = subprocess.run(["zstd", "-qd", "--stdout"], input=blob, stdout=subprocess.PIPE, check=True).stdout
+                elif encoding == "gzip":
+                    raw = gzip.decompress(blob)
+                else:
+                    raise ValueError("unsupported transcript archive encoding")
+                window = metadata.get(sid, (sid, None, None, key, None, None, None, None))
+                self.read_events(agent, window, enumerate(raw.splitlines()))
+                self.stats["archiveVersions"] += 1
+
+    def read_events(self, agent, window, events):
+        sid, ch, account, key, cch, caccount, kind, peer = window
+        kind_key = (key.split(":") + ["", "", ""])[2]
+        known_routes = ("cron", "subagent", "dashboard", "feishu", "wecom", "msteams", "telegram", "dingtalk-connector")
+        base = ch or cch or (kind_key if kind_key in known_routes else UNKNOWN)
+        session = agent + "/" + sid
+        self.session_keys[session] = key
+        default = self.route(base, account or caccount, peer if kind == "direct" else None, None, session)
+        parents, active, runs = {}, default, {}
+        for seq, raw in events:
+            event = json.loads(raw)
+            m = event.get("message") or {}
+            meta = m.get("__openclaw") or {}
+            parent = event.get("parentId")
+            route = parents.get(parent, default) if parent else active
+            role = m.get("role")
+            mirror = meta.get("mirrorOrigin") == "codex-app-server"
+            turn = (meta.get("mirrorIdentity") or "").partition(":")[0] if mirror else ""
+            run = meta.get("runId")
+            if role == "user":
+                ident = meta.get("senderIdentity") or {}
+                transport = meta.get("transport") or {}
+                actor = meta.get("senderId") if ident.get("senderKind") in (None, "human") else None
+                if actor:
+                    route = self.route(transport.get("channel") or ident.get("pluginId") or base,
+                                       ident.get("accountId") or account or caccount,
+                                       actor, meta.get("senderName"), session)
+                else:
+                    route = default
+                if run:
+                    runs[run] = route
+            elif run:
+                route = runs.get(run, route)
+            if role == "assistant" and m.get("openclawAutomation"):
+                route = (base, SYSTEM, session)
+            if role == "toolResult" and m.get("toolName") == "sessions_spawn" and not m.get("isError"):
+                details = m.get("details") or {}
+                child = details.get("childSessionKey")
+                if child and details.get("status") == "accepted" and details.get("mode") == "run":
+                    self.launches[child].add((details.get("runId"), route))
+            if event.get("id"):
+                parents[event["id"]] = route
+            active = route
+            if turn:
+                self.routes[turn].add(route)
+            if role != "assistant" or m.get("api") == "openclaw-transcript":
+                continue
+            ts = timestamp(event.get("timestamp") or m["timestamp"])
+            if not self.start <= ts < self.end:
+                continue
+            counts = token_counts(m.get("usage") or {})
+            if not any(counts):
+                self.stats["zeroOrMissing"] += 1
+                continue
+            provider = m.get("provider") or "未知"
+            model = m.get("responseModel") or m.get("model") or "未知"
+            response = m.get("responseId")
+            identity = (provider, response) if response else (("mirror", meta["mirrorIdentity"], provider)
+                       if turn else (agent, event.get("id") or (sid, seq), ts))
+            self.openclaw.setdefault(identity, (ts, route, provider, model, counts, turn))
+
 
     def read_rollout(self, path, agent):
         state = {}

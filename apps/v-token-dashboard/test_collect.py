@@ -1,3 +1,4 @@
+import gzip
 import json
 import sqlite3
 import tempfile
@@ -25,7 +26,7 @@ class UsageTest(unittest.TestCase):
                 CREATE TABLE session_windows(session_id,channel,account_id,session_key,primary_conversation_id,transcript_updated_at,updated_at);
                 CREATE TABLE conversations(conversation_id,channel,account_id,kind,native_direct_user_id);
                 CREATE TABLE transcript_events(session_id,seq,event_json);
-                CREATE TABLE session_transcript_archives(created_at);
+                CREATE TABLE session_transcript_archives(created_at,session_id,session_key,encoding,archive_blob);
                 INSERT INTO session_windows VALUES('sid','feishu','tenant','agent:a:group',NULL,50000,50000);
             """)
             def emit(seq, role, meta, parent=None, **kwargs):
@@ -42,6 +43,13 @@ class UsageTest(unittest.TestCase):
             emit(7,"assistant",{},6,usage=dict(input=6))
             emit(8,"assistant",{},3,usage=dict(input=4))  # Branch remains tied to u2.
             emit(9,"assistant",{},3,api="openclaw-transcript",usage=dict(input=99))
+            # Archived generations can repeat live and older archived events.
+            archived = conn.execute("SELECT event_json FROM transcript_events WHERE seq=4").fetchone()[0]
+            archive_only = dict(id="archived", timestamp=50, message=dict(role="assistant", provider="p",
+                                model="archive-model", usage=dict(input=9)))
+            blob = gzip.compress((archived+"\n"+json.dumps(archive_only)).encode())
+            conn.executemany("INSERT INTO session_transcript_archives VALUES(51000,'sid','agent:a:group','gzip',?)",
+                             [(blob,), (blob,)])
             conn.commit()
             conn.close()
 
@@ -58,10 +66,11 @@ class UsageTest(unittest.TestCase):
             report = collect(root,30,60)
             self.assertEqual(report["stats"]["replacedMirrors"],1)
             self.assertEqual(report["stats"]["nativeResponses"],1)
+            self.assertEqual(report["stats"]["archiveVersions"],2)
             self.assertEqual(report["stats"]["nativeLegacy"],0)
-            self.assertEqual(sum(r[-2] for r in report["rows"]),108)
+            self.assertEqual(sum(r[-2] for r in report["rows"]),117)
             totals = {uid:sum(r[-2] for r in report["rows"] if r[2]==uid) for uid in {r[2] for r in report["rows"]}}
-            self.assertEqual(sorted(totals.values()), [6,29,73])
+            self.assertEqual(sorted(totals.values()), [15,29,73])
             self.assertTrue(any(r[5:11]==["actual",20,0,0,5,25] for r in report["rows"]))
             self.assertTrue(all(r[3]=="a/sid" for r in report["rows"]))
             self.assertIn("未归属",totals)

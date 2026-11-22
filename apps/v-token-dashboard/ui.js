@@ -143,8 +143,11 @@ function render() {
   el("axis").textContent = dimensions[axis];
   for (const button of el("tabs").children)
     button.setAttribute("aria-pressed", String(button.dataset.axis === axis));
+  const personalShare = totals[4]
+    ? ((100 * (totals[4] - unknown - system)) / totals[4]).toFixed(2) + "%"
+    : "—";
   el("context").textContent =
-    `${numbers.format(totals[5])} 条用量记录 · ${numbers.format(sessions.size)} 个会话 · ${users.size} 位可识别用户 · ${models.size} 个模型 · 未归属用户 ${numbers.format(unknown)} Token · 系统任务 ${numbers.format(system)} Token`;
+    `${numbers.format(totals[5])} 条用量记录 · ${numbers.format(sessions.size)} 个会话 · ${users.size} 位可识别用户（占用量 ${personalShare}） · ${models.size} 个模型 · 未归属用户 ${numbers.format(unknown)} Token · 系统任务 ${numbers.format(system)} Token`;
   const sorted = [...groups].sort(
     (a, b) => b[1][4] - a[1][4] || a[0].localeCompare(b[0]),
   );
@@ -222,7 +225,7 @@ function install(data) {
     range.value = current;
   const s = data.stats;
   el("quality").textContent =
-    `扫描 ${s.agentDatabases} 个 Agent 库、${s.rollouts || 0} 个原生文件。原生响应 ${s.nativeResponses || 0} 条、旧格式增量 ${s.nativeLegacy || 0} 条、会话用量 ${s.transcriptResponses || 0} 条；替换镜像 ${s.replacedMirrors || 0} 条。通过启动事件追溯 ${s.attributedChildren || 0} 个子会话。零值或缺用量消息 ${s.zeroOrMissing || 0} 条，索引指向缺失文件 ${s.missingRollouts || 0} 个，窗口内未读取的归档版本 ${s.archiveVersions || 0} 个，未完成日志行 ${s.partialLines || 0} 条。分项与报告总数不一致 ${s.componentMismatch || 0} 条，以报告总数为准。`;
+    `扫描 ${s.agentDatabases} 个 Agent 库、${s.rollouts || 0} 个原生文件。原生响应 ${s.nativeResponses || 0} 条、旧格式增量 ${s.nativeLegacy || 0} 条、会话用量 ${s.transcriptResponses || 0} 条；替换镜像 ${s.replacedMirrors || 0} 条。通过启动事件追溯 ${s.attributedChildren || 0} 个子会话。零值或缺用量消息 ${s.zeroOrMissing || 0} 条，索引指向缺失文件 ${s.missingRollouts || 0} 个，已核对的归档版本 ${s.archiveVersions || 0} 个，未完成日志行 ${s.partialLines || 0} 条。分项与报告总数不一致 ${s.componentMismatch || 0} 条，以报告总数为准。`;
   el("content").hidden = false;
   render();
 }
