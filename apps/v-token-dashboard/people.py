@@ -77,7 +77,57 @@ def api(path, token=None, payload=None):
     return result
 
 
+def nightshift_sessions(snapshot, root):
+    """Join dedicated workboard execution sessions to cards recorded by Night Shift."""
+    source = root / "nightshift/nightshift.sqlite"
+    if not source.exists():
+        return None
+    keys = defaultdict(set)
+    with closing(sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)) as db:
+        cards = {card for (card,) in db.execute("""
+            SELECT card_id FROM stage_runs UNION SELECT card_id FROM content_item_runs
+            UNION SELECT json_extract(payload_json,'$.cardId') FROM audit_events
+            WHERE type='workboard.card.created'
+        """) if card}
+        for card, key in db.execute("""
+            SELECT json_extract(payload_json,'$.cardId'),json_extract(payload_json,'$.evidence.sessionKey')
+            FROM audit_events WHERE type='stage.completion.validated'
+        """):
+            if card and key and ":subagent:" in key:
+                cards.add(card)
+                keys[key].add(card)
+    with closing(sqlite3.connect((root / "state/openclaw.sqlite").as_uri() + "?mode=ro", uri=True)) as db:
+        for run, key in db.execute("""
+            SELECT run_id,child_session_key FROM subagent_runs WHERE run_id LIKE 'workboard:%'
+            UNION ALL SELECT run_id,child_session_key FROM task_runs WHERE run_id LIKE 'workboard:%'
+        """):
+            parts = run.split(":")
+            if len(parts) == 3 and key and ":subagent:" in key:
+                keys[key].add(parts[1])
+    wanted = {r[3] for r in snapshot["rows"]}
+    refs = defaultdict(set)
+    for path in (root / "agents").glob("*/agent/openclaw-agent.sqlite"):
+        agent = path.parent.parent.name
+        with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as db:
+            for sid, key in db.execute("""
+                SELECT session_id,session_key FROM session_windows WHERE session_key LIKE '%:subagent:%'
+                UNION ALL SELECT session_id,session_key FROM session_transcript_archives
+                WHERE session_key LIKE '%:subagent:%'
+            """):
+                ref = agent + "/" + sid
+                if ref not in wanted:
+                    continue
+                matches = set(keys.get(key, ()))
+                prefix = f"agent:{agent}:subagent:workboard-nightshift-"
+                if key.startswith(prefix) and key[len(prefix):] in cards:
+                    matches.add(key[len(prefix):])
+                refs[ref].update(matches)
+    return {ref: next(iter(matches)) for ref, matches in refs.items()
+            if len(matches) == 1 and next(iter(matches)) in cards}
+
+
 def enrich(snapshot, root=ROOT):
+    snapshot["nightshift"] = nightshift_sessions(snapshot, root)
     sessions, chats = session_labels(snapshot, root)
     snapshot["sessions"] = sessions
     people = {row[2] for row in snapshot["rows"] if row[2] not in NO_PERSON}

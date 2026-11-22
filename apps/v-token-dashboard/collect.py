@@ -85,6 +85,8 @@ class Ledger:
                     """, (self.start * 1000,)):
                 if encoding == "zstd":
                     raw = subprocess.run(["zstd", "-qd", "--stdout"], input=blob, stdout=subprocess.PIPE, check=True).stdout
+                elif encoding == "identity":
+                    raw = blob
                 elif encoding == "gzip":
                     raw = gzip.decompress(blob)
                 else:

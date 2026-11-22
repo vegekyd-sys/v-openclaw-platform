@@ -119,7 +119,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=4386)
-    parser.add_argument("--days", type=int, default=7)
+    parser.add_argument("--days", type=int, default=30)
     parser.add_argument("--data", type=Path, default=Path.home() / ".local/state/v-token-dashboard")
     args = parser.parse_args()
     if args.days < 1:

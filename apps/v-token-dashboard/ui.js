@@ -35,7 +35,8 @@ let snapshot,
 const pageSize = 10;
 let distPage = 0,
   trendDay = "",
-  periodDays = 0;
+  periodDays = 7,
+  nightView = false;
 
 function node(tag, text, cls) {
   const n = document.createElement(tag);
@@ -44,12 +45,7 @@ function node(tag, text, cls) {
   return n;
 }
 function periodText(data) {
-  return (
-    day(data.start).slice(5).replace("-", ".") +
-    " — " +
-    clock.format(data.end * 1000).replace("/", ".") +
-    " · 北京时间"
-  );
+  return "数据截至 " + clock.format(data.end * 1000) + "（北京时间）";
 }
 function cname(id) {
   return channels[id] || id;
@@ -134,6 +130,12 @@ function rowView(item, title, sub, mid, action, avatar, i, denominator) {
   name.append(text);
   const amount = node("span", compact(item.total), "amount");
   amount.append(node("small", percent(item.total, denominator), "row-share"));
+  const track = node("span", undefined, "rank-track");
+  track.setAttribute("aria-hidden", "true");
+  const fill = node("i");
+  fill.style.width = (denominator ? (100 * item.total) / denominator : 0) + "%";
+  track.append(fill);
+  amount.append(track);
   line.append(
     name,
     node("span", mid),
@@ -149,27 +151,46 @@ function metrics(items) {
     host = el("metrics");
   host.replaceChildren();
   const sessions = full(new Set(people.map((r) => r.session)).size);
-  const values = user
+  const values = nightView
     ? [
-        session
-          ? ["用量记录", full(people.reduce((n, r) => n + r.counts[5], 0))]
-          : ["相关会话", sessions],
-        ["使用模型", full(new Set(people.map((r) => r.model)).size)],
         [
-          session ? "会话内 Token" : "个人 Token",
-          compact(sum(people)),
-          sum(people),
+          "夜班 Token",
+          snapshot.nightshift ? compact(sum(items)) : "待核对",
+          sum(items),
         ],
+        ["执行卡", full(new Set(items.map((r) => r.card)).size)],
+        ["执行会话", full(new Set(items.map((r) => r.session)).size)],
       ]
-    : [
-        ["活跃用户", full(new Set(people.map((r) => r.user)).size)],
-        ["用户会话", sessions],
-        ["用户 Token", compact(sum(people)), sum(people)],
-      ];
+    : user
+      ? [
+          session
+            ? ["用量记录", full(people.reduce((n, r) => n + r.counts[5], 0))]
+            : ["相关会话", sessions],
+          ["使用模型", full(new Set(people.map((r) => r.model)).size)],
+          [
+            session ? "会话内 Token" : "个人 Token",
+            compact(sum(people)),
+            sum(people),
+          ],
+        ]
+      : [
+          ["活跃用户", full(new Set(people.map((r) => r.user)).size)],
+          ["用户会话", sessions],
+          ["用户 Token", compact(sum(people)), sum(people)],
+        ];
   for (const [title, value, exact] of values) {
     const cell = node("div");
-    cell.append(node("span", title), node("strong", value));
-    if (exact !== undefined) cell.title = full(exact) + " Token";
+    if (exact !== undefined) {
+      cell.title = full(exact) + " Token";
+      const detail = node("details", undefined, "exact-total");
+      const label = node("summary");
+      label.append(node("span", title), node("strong", value));
+      label.setAttribute("aria-label", title + "，查看精确值");
+      detail.append(label, node("output", cell.title));
+      cell.append(detail);
+    } else {
+      cell.append(node("span", title), node("strong", value));
+    }
     host.append(cell);
   }
 }
@@ -198,7 +219,7 @@ function rankBar(host, label, value, total) {
 function coverage(all, from, to) {
   const total = sum(all),
     people = sum(all.filter((r) => human(r.user)));
-  const unknown = sum(all.filter((r) => r.user === "未归属"));
+  const unknown = sum(all.filter((r) => r.user === "未归属" && !r.card));
   const parts = [
     ["个人", people],
     ["系统任务", total - people - unknown],
@@ -236,6 +257,7 @@ function coverage(all, from, to) {
     n,
   ] of snapshot.unknownReasons || []) {
     if (
+      snapshot.nightshift?.[sid] ||
       date < from ||
       date > to ||
       (filters.channel && ch !== filters.channel) ||
@@ -270,7 +292,13 @@ function technical(items) {
     groups = group(items, axis);
   }
   el("dist-scope").textContent =
-    (session ? "该用户在本会话" : user ? "该用户" : "全平台") +
+    (nightView
+      ? "夜班执行"
+      : session
+        ? "该用户在本会话"
+        : user
+          ? "该用户"
+          : "全平台") +
     " · " +
     compact(total) +
     " Token";
@@ -282,7 +310,9 @@ function technical(items) {
       axis === "channel"
         ? cname(g.id)
         : axis === "session"
-          ? sessionName(g.id, user) + " · " + g.id.slice(-8)
+          ? (nightView ? "执行会话" : sessionName(g.id, user)) +
+            " · " +
+            g.id.slice(-8)
           : g.id;
     rankBar(host, label, g.total, total);
   }
@@ -299,11 +329,13 @@ function trend(items, from, to) {
     totals.set(r.date, (totals.get(r.date) || 0) + r.total);
   const host = el("trend");
   host.replaceChildren();
-  el("trend-scope").textContent = session
-    ? "该用户在本会话"
-    : user
-      ? "该用户"
-      : "已归属用户";
+  el("trend-scope").textContent = nightView
+    ? "夜班执行"
+    : session
+      ? "该用户在本会话"
+      : user
+        ? "该用户"
+        : "已归属用户";
   const points = [];
   for (
     let ms = Date.parse(from + "T00:00:00Z");
@@ -323,7 +355,8 @@ function trend(items, from, to) {
       b.setAttribute("aria-pressed", String(b.dataset.day === date));
     el("trend-value").textContent = date + "　" + full(value) + " Token";
   }
-  for (const [date, value] of points) {
+  host.classList.toggle("monthly", points.length > 12);
+  for (const [idx, [date, value]] of points.entries()) {
     const button = node("button", undefined, "day-bar");
     button.dataset.day = date;
     button.setAttribute("aria-label", date + "，" + full(value) + " Token");
@@ -335,6 +368,19 @@ function trend(items, from, to) {
       plot,
       node("span", date.slice(5).replace("-", "/"), "day-label"),
     );
+    if (
+      points.length > 12 &&
+      idx !== 0 &&
+      idx !== points.length - 1 &&
+      idx % 7 !== 0
+    )
+      button.lastElementChild.style.visibility = "hidden";
+    if (
+      points.length > 12 &&
+      idx > points.length - 4 &&
+      idx !== points.length - 1
+    )
+      button.lastElementChild.style.visibility = "hidden";
     button.onclick = () => highlight(date, value);
     host.append(button);
   }
@@ -348,21 +394,48 @@ function render() {
     (r) =>
       r.date >= from &&
       r.date <= to &&
-      Object.entries(filters).every(([k, v]) => !v || r[k] === v),
+      (nightView ||
+        Object.entries(filters).every(([k, v]) => !v || r[k] === v)),
   );
   const personal = scope.filter((r) => human(r.user)),
     owned = user ? personal.filter((r) => r.user === user) : personal;
   const items = session ? owned.filter((r) => r.session === session) : owned;
-  metrics(user ? items : scope);
-  coverage(scope, from, to);
-  technical(user ? items : scope);
-  trend(items, from, to);
+  const nights = nightView ? scope.filter((r) => r.card) : [];
+  const selected = nightView ? nights : items;
+  metrics(nightView ? nights : user ? items : scope);
+  if (!nightView) coverage(scope, from, to);
+  technical(nightView ? nights : user ? items : scope);
+  trend(selected, from, to);
+  el("range-caption").textContent =
+    from.slice(5).replace("-", ".") + " – " + to.slice(5).replace("-", ".");
+  el("calendar")
+    .querySelector("summary")
+    .setAttribute("aria-current", String(periodDays === null));
   const denominator = sum(items);
   for (const button of el("periods").children)
     button.setAttribute(
       "aria-pressed",
       String(Number(button.dataset.days) === periodDays),
     );
+  el("people").hidden = nightView;
+  el("attribution").hidden = nightView;
+  el("night-note").hidden = !nightView;
+  el("content").classList.toggle("night", nightView);
+  if (nightView) {
+    if (snapshot.nightshift) {
+      const share = percent(sum(nights), sum(scope));
+      el("metrics").firstChild.append(node("small", "占平台 Token " + share));
+    } else {
+      el("metrics").replaceChildren(
+        node("p", "快照缺少夜班派工数据，请刷新后查看。"),
+      );
+      el("trend").replaceChildren();
+      el("trend-value").textContent = "";
+      el("technical").replaceChildren();
+      el("dist-scope").textContent = "等待派工数据";
+    }
+    return;
+  }
   el("back").hidden = !user;
   el("back").textContent = session ? "‹ 返回相关会话" : "‹ 返回用户榜";
   el("heading").textContent = session
@@ -490,6 +563,7 @@ function install(data) {
       user,
       session,
       model: provider + " / " + model,
+      card: data.nightshift?.[session],
       workload: data.workloads?.[session] || "未知",
       total: counts[4],
       counts,
@@ -504,7 +578,13 @@ function install(data) {
     if (!input.value || input.value < first || input.value > last)
       input.value = id === "from" ? first : last;
   }
-  if (periodDays !== null) applyPeriod(periodDays);
+  const available = 1 + (Date.parse(last) - Date.parse(first)) / 86400000;
+  for (const button of el("periods").children)
+    button.disabled = Number(button.dataset.days) > available;
+  if (periodDays !== null) {
+    if (periodDays > available) periodDays = available >= 7 ? 7 : 1;
+    applyPeriod(periodDays);
+  }
   const stat = data.stats || {};
   el("audit").textContent =
     "快照核对 " +
@@ -557,8 +637,22 @@ function changedScope() {
   trendDay = "";
   render();
 }
+const distributionByView = { people: "channel", night: "model" };
+for (const tab of el("views").children) {
+  tab.onclick = () => {
+    const nextNight = tab.dataset.view === "night";
+    if (nextNight === nightView) return;
+    distributionByView[nightView ? "night" : "people"] = el("groupby").value;
+    nightView = nextNight;
+    el("groupby").value = distributionByView[tab.dataset.view];
+    for (const sibling of el("views").children)
+      sibling.setAttribute("aria-pressed", String(tab === sibling));
+    changedScope();
+  };
+}
 for (const button of el("periods").children)
   button.onclick = () => {
+    el("calendar").open = false;
     applyPeriod(Number(button.dataset.days));
     changedScope();
   };

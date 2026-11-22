@@ -47,9 +47,10 @@ class UsageTest(unittest.TestCase):
             archived = conn.execute("SELECT event_json FROM transcript_events WHERE seq=4").fetchone()[0]
             archive_only = dict(id="archived", timestamp=50, message=dict(role="assistant", provider="p",
                                 model="archive-model", usage=dict(input=9)))
-            blob = gzip.compress((archived+"\n"+json.dumps(archive_only)).encode())
-            conn.executemany("INSERT INTO session_transcript_archives VALUES(51000,'sid','agent:a:group','gzip',?)",
-                             [(blob,), (blob,)])
+            raw = (archived+"\n"+json.dumps(archive_only)).encode()
+            blob = gzip.compress(raw)
+            conn.executemany("INSERT INTO session_transcript_archives VALUES(51000,'sid','agent:a:group',?,?)",
+                             [("gzip", blob), ("identity", raw)])
             conn.commit()
             conn.close()
 
