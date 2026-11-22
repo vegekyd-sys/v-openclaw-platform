@@ -85,8 +85,17 @@
                 <h2 id="trend-title">每日用量</h2>
                 <span class="scope" id="trend-scope"></span>
               </div>
+              <div id="trend-key" class="trend-key" hidden>
+                <span>已识别夜班</span><span>其余平台用量</span>
+              </div>
               <figure id="trend"></figure>
-              <output id="trend-value"></output>
+              <div class="trend-readout">
+                <output id="trend-value"></output>
+                <div class="step-day" hidden id="step-day">
+                  <button id="day-prev" aria-label="前一天">‹</button>
+                  <button id="day-next" aria-label="后一天">›</button>
+                </div>
+              </div>
             </section>
             <div class="chart-pair">
               <section class="sheet chart-card" id="analysis">

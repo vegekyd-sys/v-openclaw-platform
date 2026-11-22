@@ -323,11 +323,20 @@ function technical(items) {
   el("dist-prev").disabled = distPage === 0;
   el("dist-next").disabled = distPage + 1 >= pages;
 }
-function trend(items, from, to) {
+function dailyTotals(items) {
   const totals = new Map();
   for (const r of items)
     totals.set(r.date, (totals.get(r.date) || 0) + r.total);
+  return totals;
+}
+function trend(items, from, to, platform) {
+  const totals = dailyTotals(items);
+  const compare = nightView && Boolean(snapshot.nightshift);
+  const platformTotals = compare ? dailyTotals(platform) : totals;
   const host = el("trend");
+  el("trend-key").hidden = !compare;
+  el("trend-title").textContent = compare ? "每日夜班占比" : "每日用量";
+  el("step-day").hidden = !compare || from === to;
   host.replaceChildren();
   el("trend-scope").textContent = nightView
     ? "夜班执行"
@@ -343,26 +352,46 @@ function trend(items, from, to) {
     ms += 86400000
   ) {
     const date = new Date(ms).toISOString().slice(0, 10);
-    points.push([date, totals.get(date) || 0]);
+    points.push([date, totals.get(date) || 0, platformTotals.get(date) || 0]);
   }
   if (!points.length) return;
-  const max = points.reduce((n, p) => Math.max(n, p[1]), 0);
-  const peak = points.find((p) => p[1] === max)[0];
+  const max = points.reduce((n, p) => Math.max(n, p[2]), 0);
+  const peak = points.reduce((best, p) => p[1] > best[1] ? p : best)[0];
   if (!points.some((p) => p[0] === trendDay)) trendDay = peak;
-  function highlight(date, value) {
+  function highlight(index) {
+    const [date, value, platformValue] = points[index];
     trendDay = date;
     for (const b of host.children)
       b.setAttribute("aria-pressed", String(b.dataset.day === date));
-    el("trend-value").textContent = date + "　" + full(value) + " Token";
+    const output = el("trend-value");
+    if (compare) {
+      output.replaceChildren(
+        node("strong", date + " · 夜班占比 " + percent(value, platformValue)),
+        node("span", "夜班 " + full(value) + " / 平台 " + full(platformValue) + " Token"),
+      );
+      el("day-prev").disabled = index === 0;
+      el("day-next").disabled = index === points.length - 1;
+      el("day-prev").onclick = () => highlight(index - 1);
+      el("day-next").onclick = () => highlight(index + 1);
+    } else {
+      output.textContent = date + "　" + full(value) + " Token";
+    }
   }
   host.classList.toggle("monthly", points.length > 12);
-  for (const [idx, [date, value]] of points.entries()) {
+  for (const [idx, [date, value, platformValue]] of points.entries()) {
     const button = node("button", undefined, "day-bar");
     button.dataset.day = date;
-    button.setAttribute("aria-label", date + "，" + full(value) + " Token");
+    button.setAttribute("aria-label", compare
+      ? date + "，夜班 " + full(value) + "，平台 " + full(platformValue) + " Token"
+      : date + "，" + full(value) + " Token");
     const plot = node("span", undefined, "plot"),
       bar = node("i");
     bar.style.height = (max ? (100 * value) / max : 0) + "%";
+    if (compare) {
+      const rest = node("i", undefined, "other-usage");
+      rest.style.height = (max ? (100 * (platformValue - value)) / max : 0) + "%";
+      plot.append(rest);
+    }
     plot.append(bar);
     button.append(
       plot,
@@ -381,10 +410,10 @@ function trend(items, from, to) {
       idx !== points.length - 1
     )
       button.lastElementChild.style.visibility = "hidden";
-    button.onclick = () => highlight(date, value);
+    button.onclick = () => highlight(idx);
     host.append(button);
   }
-  highlight(trendDay, totals.get(trendDay) || 0);
+  highlight(points.findIndex(([date]) => date === trendDay));
 }
 
 function render() {
@@ -405,7 +434,7 @@ function render() {
   metrics(nightView ? nights : user ? items : scope);
   if (!nightView) coverage(scope, from, to);
   technical(nightView ? nights : user ? items : scope);
-  trend(selected, from, to);
+  trend(selected, from, to, scope);
   el("range-caption").textContent =
     from.slice(5).replace("-", ".") + " – " + to.slice(5).replace("-", ".");
   el("calendar")

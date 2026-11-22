@@ -784,3 +784,68 @@ button.item:hover {
   right: auto;
   left: 0;
 }
+
+.trend-key,
+.trend-readout,
+.step-day {
+  display: flex;
+  align-items: center;
+}
+.trend-key {
+  gap: 14px;
+  margin-top: 9px;
+  font-size: 12px;
+  color: #e5dcec;
+}
+.trend-key span::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #d9b2f5;
+  margin-right: 5px;
+}
+.trend-key span:last-child::before,
+.night .plot .other-usage {
+  background: #70657f;
+}
+.night .plot {
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+.night .plot i {
+  background: #d9b2f5;
+  border-radius: 0;
+}
+.night .day-bar[aria-pressed="true"] .plot {
+  outline: 1px solid #d9b2f5;
+  outline-offset: -1px;
+}
+.night .day-bar[aria-pressed="true"] .plot .other-usage {
+  background: #8f809f;
+}
+.trend-readout {
+  justify-content: space-between;
+  gap: 8px;
+}
+.trend-readout strong,
+.trend-readout span {
+  display: block;
+}
+.trend-readout span {
+  font-size: 11px;
+  margin-top: 3px;
+}
+.step-day {
+  gap: 4px;
+}
+.step-day button {
+  width: 36px;
+  height: 40px;
+  background: transparent;
+  color: #eadcf2;
+  border-color: #766182;
+  font-size: 20px;
+}
