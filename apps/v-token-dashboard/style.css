@@ -637,11 +637,11 @@ button.item:hover {
   grid-template-columns: 1fr 1fr;
   align-items: start;
 }
-.night .chart-card:first-child {
+.night .insights > .chart-card:first-child {
   color: #f4edf9;
   background: #31233e;
 }
-.night .chart-card:first-child .scope,
+.night .insights > .chart-card:first-child .scope,
 .night #trend-value,
 .night .day-label {
   color: #d5c8df;
