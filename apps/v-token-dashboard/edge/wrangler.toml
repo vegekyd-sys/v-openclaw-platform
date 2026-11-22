@@ -1,0 +1,15 @@
+name = "v-token-usage"
+main = "worker.mjs"
+compatibility_date = "2026-11-01"
+workers_dev = false
+preview_urls = false
+routes = [{ pattern = "v-usage.tianyi.live", custom_domain = true }]
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
+[[r2_buckets]]
+binding = "USAGE"
+bucket_name = "v-token-usage-private"
