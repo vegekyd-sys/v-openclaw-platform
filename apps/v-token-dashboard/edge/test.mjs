@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
-import { partition } from "./publish.mjs";
+import { partition, publicUsage } from "./publish.mjs";
 import worker from "./worker.mjs";
 
 test("ranking bootstrap keeps all individual rows, detail preserves every reported amount and card grouping", () => {
@@ -36,7 +36,7 @@ test("ranking bootstrap keeps all individual rows, detail preserves every report
   assert.equal(unpacked.nightshift["a/1"], unpacked.nightshift["a/2"]);
   assert.ok(unpacked.nightshift["a/1"]);
 });
-test("public worker exposes only static assets and encrypted object routes", async () => {
+test("public worker exposes only static assets and public usage routes", async () => {
   const request = (path, method) =>
     worker.fetch(new Request("https://example.test" + path, { method }), {});
   for (const path of [
@@ -44,8 +44,40 @@ test("public worker exposes only static assets and encrypted object routes", asy
     "/api/usage",
     "/api/status",
     "/snapshot.json.gz",
-    "/datasets/junk.bin",
+    "/home.bin",
+    "/datasets/1795348375-7133c1752aa6023e.bin",
+    "/usage/datasets/junk.gz",
   ])
     assert.equal((await request(path, "GET")).status, 404);
-  assert.equal((await request("/home.bin", "POST")).status, 405);
+  assert.equal((await request("/usage/home.gz", "POST")).status, 405);
+});
+
+test("public feed preserves user totals and distinct sessions without internal references or titles", () => {
+  const user = '["feishu","tenant123","ou_secret"]',
+    session = "agent/private-session";
+  const raw = {
+    rows: [
+      ["d", "feishu", user, session, "p", "m", 1, 2, 3, 4, 10, 1],
+      ["d", "内部任务", "未归属", session, "p", "m", 1, 2, 3, 4, 10, 1],
+    ],
+    names: { [user]: "小王" },
+    sessions: { [session]: { kind: "group", title: "保密项目" } },
+    workloads: { [session]: "子代理" },
+    nightshift: { [session]: "private-card" },
+    unknownReasons: [["d", "内部任务", session, "p", "m", "缺失", 10]],
+  };
+  const salt = Buffer.alloc(32, 7),
+    view = publicUsage(raw, salt);
+  const [homeId, sid] = view.rows[0].slice(2, 4);
+  assert.equal(view.names[homeId], "小王");
+  assert.equal(view.rows[1][3], sid);
+  assert.equal(view.unknownReasons[0][2], sid);
+  assert.equal(publicUsage(raw, salt).rows[0][2], homeId);
+  const wire = partition(view, "v");
+  assert.equal(wire.home.rows[0][10], 10);
+  assert.equal(wire.full.rows.length, 2);
+  assert.doesNotMatch(
+    JSON.stringify(wire),
+    /tenant123|ou_secret|private-session|private-card|保密项目/,
+  );
 });

@@ -17,30 +17,13 @@ async function openPublishedFeed() {
   const message = el("status"),
     button = el("refresh");
   button.textContent = "检查更新";
-  const secret = location.hash.slice(1);
-  if (!/^[A-Za-z0-9_-]{43}$/.test(secret)) {
-    button.hidden = true;
-    message.textContent = "请使用包含访问密钥的完整链接打开看板。";
-    return;
-  }
-  const raw = Uint8Array.from(
-    atob(secret.replaceAll("-", "+").replaceAll("_", "/")),
-    (c) => c.charCodeAt(0),
-  );
-  const key = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, [
-    "decrypt",
-  ]);
+  if (location.hash)
+    history.replaceState(null, "", location.pathname + location.search);
   async function read(path) {
     const res = await fetch(path);
     if (!res.ok) throw Error("Snapshot unavailable");
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    const plain = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: bytes.subarray(0, 12) },
-      key,
-      bytes.subarray(12),
-    );
     return new Response(
-      new Blob([plain]).stream().pipeThrough(new DecompressionStream("gzip")),
+      res.body.pipeThrough(new DecompressionStream("gzip")),
     ).json();
   }
   let active = false,
@@ -52,14 +35,14 @@ async function openPublishedFeed() {
     lastCheck = Date.now();
     button.disabled = true;
     try {
-      const home = await read("/home.bin");
+      const home = await read("/usage/home.gz");
       if (!/^[0-9]+-[0-9a-f]{16}$/.test(home.version))
         throw Error("Invalid version");
       if (complete !== home.version) {
         install(home);
         message.textContent = periodText(home);
         await new Promise((done) => setTimeout(done, 0));
-        const full = await read("/datasets/" + home.version + ".bin");
+        const full = await read("/usage/datasets/" + home.version + ".gz");
         if (full.version !== home.version || full.end !== home.end)
           throw Error("Snapshot changed");
         install(unpackUsage(full));
@@ -69,7 +52,7 @@ async function openPublishedFeed() {
     } catch {
       message.textContent = snapshot
         ? periodText(snapshot) + " · 更新未完成，可点击重试"
-        : "读取失败，请检查完整链接后重试。";
+        : "读取失败，请点击检查更新重试。";
     } finally {
       active = false;
       button.disabled = false;
@@ -85,6 +68,5 @@ async function openPublishedFeed() {
   await check();
 }
 openPublishedFeed().catch(() => {
-  el("status").textContent =
-    "无法解密，请用支持 HTTPS 和 Web Crypto 的浏览器打开完整链接。";
+  el("status").textContent = "无法载入用量数据，请刷新页面重试。";
 });

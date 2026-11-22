@@ -16,7 +16,7 @@ class SyncTest(unittest.TestCase):
             state = Path(folder)
             now = int(time.time())
             (state / "snapshot.json.gz").write_bytes(gzip.compress(json.dumps({"end": now}).encode()))
-            receipt = state / "published.json"
+            receipt = state / "published-public.json"
             receipt.write_text(json.dumps({"end": now - 3600}))
             with patch("sync.Snapshot.refresh") as collect, patch("sync.subprocess.run") as publish:
                 publish.side_effect = subprocess.CalledProcessError(1, "publish")
