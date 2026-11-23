@@ -1,5 +1,5 @@
 // run-start-phases-v1: where a chat turn's time goes between the reply resolver starting and the agent run
-// starting (onAgentRunStart, i.e. the Codex app-server accepting the turn). One structured log line per run
+// starting (onAgentRunStart, the run's first agent event). One structured log line per run
 // ([run-start-phases.1]). Logging only; no behaviour changes.
 //
 // V 2026-11-20..23: /vds dispatcherAtMs -> runStartAtMs ([firsttext-e2e.1]) is p50 1.27 s, p90 3.8 s. The only
@@ -11,9 +11,9 @@
 //                reply.resolve_directives, reply.handle_inline_actions, ...). agent-runner: run-reply-agent,
 //                every traceAgentPhase (reply.memory_flush, reply.preflight_compaction, reply.run_agent_turn),
 //                agent-turn, turn-media, fallback-start, embedded-call. Codex plugin (run-attempt): codex-enter,
-//                codex-connection, codex-runtime, codex-tools, codex-context, codex-prompt, codex-start-runtime,
-//                codex-route, codex-turn-request, codex-llm-input, codex-turn-start. The last step, run-start, is
-//                the time from the previous mark to onAgentRunStart.
+//                codex-connection, codex-runtime, codex-tools, codex-context, codex-prompt. The last step, run-start,
+//                is the time from the previous mark to onAgentRunStart: the run's first agent event, which for Codex
+//                is the app-server startup event at the top of startCodexAttemptRuntime (not turn/started).
 //   lagMaxMs / lagOver50Ms   event-loop lag sampled every 100 ms while this head is open: the largest, and the
 //                sum of lags >= 50 ms (main thread blocked by this or any other work in the process).
 // Heads that never reach a run start (commands, silent replies, errors) expire without logging. One

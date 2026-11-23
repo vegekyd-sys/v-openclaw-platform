@@ -174,7 +174,9 @@ const PROMPTS = [
   "Without using any tools, answer in two sentences: how do glaciers move? Start with ECHO.",
   "Without using any tools, answer in two sentences: why do cats purr? Start with FOXTROT.",
 ];
-const EXPECTED_HEAD = ["run-reply-agent", "reply.memory_flush", "reply.preflight_compaction", "agent-turn", "turn-media", "fallback-start", "embedded-call", "codex-enter", "codex-connection", "codex-runtime", "codex-tools", "codex-context", "codex-prompt", "codex-start-runtime", "codex-route", "codex-turn-request", "codex-llm-input", "run-start"];
+const EXPECTED_HEAD = ["run-reply-agent", "reply.memory_flush", "reply.preflight_compaction", "agent-turn", "turn-media", "fallback-start", "embedded-call", "codex-enter", "codex-connection", "codex-runtime", "codex-tools", "codex-context", "codex-prompt", "run-start"];
+// log lines carry ANSI colour codes after the JSON
+const parseHead = (l) => { const t = l.replace(/\x1b\[[0-9;]*m/gu, ""); const at = t.indexOf("[run-start-phases.1] ") + 21; return JSON.parse(t.slice(at, t.lastIndexOf("}") + 1)); };
 
 async function runPhase(label) {
   const runs = new Map();
@@ -204,7 +206,7 @@ async function runPhase(label) {
     const markLine = lines.length;
     const r = await send(prompt);
     await sleep(300);
-    const heads = lines.slice(markLine).filter((l) => l.includes("[run-start-phases.1] ")).map((l) => JSON.parse(l.slice(l.indexOf("[run-start-phases.1] ") + 21)));
+    const heads = lines.slice(markLine).filter((l) => l.includes("[run-start-phases.1] ")).map(parseHead);
     const row = { phase: label, terminal: r.terminal, error: r.error, firstBodyMs: r.firstBodyAt ? r.firstBodyAt - r.sentAt : null, heads: heads.length };
     if (heads.length) {
       const h = heads[0];
@@ -251,3 +253,5 @@ try {
 } finally {
   await stopGateway();
 }
+// the Gateway client keeps the event loop alive
+process.exit(process.exitCode ?? 0);

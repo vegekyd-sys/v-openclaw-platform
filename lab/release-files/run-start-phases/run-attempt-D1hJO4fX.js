@@ -7312,7 +7312,6 @@ async function startCodexAttemptTurn(resources, turnRuntime, notifications, requ
 			ctx: hookContext,
 			hookRunner
 		});
-		__vRunHead().markRun(params.runId, "codex-llm-input"); // V run-start-phases-v1
 		turn = await startCodexTurn();
 	} catch (error) {
 		let turnStartError = error;
@@ -7876,17 +7875,13 @@ async function runCodexAppServerAttempt(params, options) {
 	__vRunHead().markRun(vHeadRunId, "codex-prompt");
 	attemptTools.runtimeYieldCompletionClaim.current = () => resources.state.nativeHookRelay?.hasClaimedDirectChild() ?? false;
 	await startCodexAttemptRuntime(resources);
-	__vRunHead().markRun(vHeadRunId, "codex-start-runtime");
 	const turnRuntime = createCodexAttemptTurnState(resources);
 	try {
 		const lifecycle = createCodexAttemptLifecycleController(resources, turnRuntime);
 		const notifications = createCodexAttemptNotificationController(resources, turnRuntime, lifecycle);
 		const { ensureCurrentThreadRoute } = await prepareCodexAttemptRoute(resources, turnRuntime, notifications, createCodexAttemptServerRequestController(resources, turnRuntime, lifecycle).handleServerRequest);
-		__vRunHead().markRun(vHeadRunId, "codex-route"); // V run-start-phases-v1
 		const turnRequest = await prepareCodexAttemptTurnRequest(resources, turnRuntime, ensureCurrentThreadRoute, notifications.waitForActiveNativeTurnCompletion);
-		__vRunHead().markRun(vHeadRunId, "codex-turn-request");
 		const turnStart = await startCodexAttemptTurn(resources, turnRuntime, notifications, turnRequest);
-		__vRunHead().markRun(vHeadRunId, "codex-turn-start"); // V run-start-phases-v1
 		if ("result" in turnStart) return turnStart.result;
 		const activeTurn = activateCodexAttemptTurn(resources, turnRuntime, lifecycle, notifications, turnStart.turn);
 		let finalizedResult;

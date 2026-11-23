@@ -115,18 +115,22 @@ test('agent-runner: bound at the run id, marks the pre-run stages, logs one line
   assert.match(between(out, '\tconst traceAgentPhase = ', '\tconst vExclusive'), /__vRunHead\(\)\.mark\(opts\?\.vRunHead, ">" \+ name\)/);
 });
 
-test('codex run-attempt: every stage up to turn/start is marked with the run id, behaviour unchanged', () => {
+test('codex run-attempt: every stage before the run start is marked with the run id, behaviour unchanged', () => {
   const original = read(HEAD_FILES[2].from);
   const out = patchCodexRunAttempt(original);
   const fn = between(out, 'async function runCodexAppServerAttempt(params, options) {', '//#endregion');
-  const order = ['codex-enter', 'codex-connection', 'codex-runtime', 'codex-tools', 'codex-context', 'codex-prompt', 'codex-start-runtime', 'codex-route', 'codex-turn-request', 'codex-turn-start'];
+  const order = ['codex-enter', 'codex-connection', 'codex-runtime', 'codex-tools', 'codex-context', 'codex-prompt'];
   let at = -1;
   for (const step of order) {
     const i = fn.indexOf(`"${step}"`);
     assert(i > at, `${step} in order`);
     at = i;
   }
-  assert(out.includes('__vRunHead().markRun(params.runId, "codex-llm-input")'));
+  // the run start (any agent event) is the startup event at the top of startCodexAttemptRuntime, so marks past it
+  // would never be recorded; this pins that assumption to V's bytes
+  assert.match(between(original, 'async function startCodexAttemptRuntime(resources) {', '\t\tconst startupResult = '),
+    /\ttry \{\n\t\temitCodexAppServerEvent\(params, \{\n\t\t\tstream: "codex_app_server\.lifecycle",\n\t\t\tdata: \{ phase: "startup" \}\n\t\t\}\);\n$/);
+  assert.equal((fn.match(/__vRunHead\(\)\.markRun\(/g) ?? []).length, order.length);
   // removing the marks gives back the original stage calls
   const stripped = fn.replace(/\t+__vRunHead\(\)\.markRun\([^\n]*\n/g, '').replace(/\t+const vHeadRunId = [^\n]*\n/, '')
     .replace('\tconst vHeadContext = await prepareCodexAttemptContext(runtime, attemptTools);\n\tconst resources = prepareCodexAttemptResources(await prepareCodexAttemptPrompt(vHeadContext));\n',

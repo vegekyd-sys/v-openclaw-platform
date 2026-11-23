@@ -7,7 +7,9 @@ import { HEAD_HELPER, HEAD_MARKER } from './run-start-phases.mjs';
 //   core agent-runner   runReplyAgent entry, every traceAgentPhase, the run id bound to the head, turn media,
 //                       the model-fallback start, the embedded run call; onAgentRunStart closes the head and logs
 //                       the [run-start-phases.1] line
-//   codex run-attempt   every stage of runCodexAppServerAttempt up to turn/start, and the llm_input hook
+//   codex run-attempt   every stage of runCodexAppServerAttempt before startCodexAttemptRuntime. That function first
+//                       emits the codex_app_server.lifecycle startup event, and agent-runner takes any agent event as
+//                       the run start (onAgentRunStart), so the later stages fall outside dispatch -> run start
 // A run without a head (heartbeats, follow-up drains, workboard and cron runs) marks nothing and logs nothing.
 
 function replaceExactlyOnce(source, before, after, label) {
@@ -122,23 +124,6 @@ export function patchCodexRunAttempt(source) {
 \t__vRunHead().markRun(vHeadRunId, "codex-prompt");
 \tattemptTools.runtimeYieldCompletionClaim.current = () => resources.state.nativeHookRelay?.hasClaimedDirectChild() ?? false;
 \tawait startCodexAttemptRuntime(resources);
-\t__vRunHead().markRun(vHeadRunId, "codex-start-runtime");
 `, 'codex attempt head');
-  out = replaceExactlyOnce(out, '\t\tconst turnRequest = await prepareCodexAttemptTurnRequest(resources, turnRuntime, ensureCurrentThreadRoute, notifications.waitForActiveNativeTurnCompletion);\n',
-    `\t\t__vRunHead().markRun(vHeadRunId, "codex-route"); // V ${HEAD_MARKER}
-\t\tconst turnRequest = await prepareCodexAttemptTurnRequest(resources, turnRuntime, ensureCurrentThreadRoute, notifications.waitForActiveNativeTurnCompletion);
-\t\t__vRunHead().markRun(vHeadRunId, "codex-turn-request");
-`, 'codex turn request');
-  out = replaceExactlyOnce(out, '\t\tconst turnStart = await startCodexAttemptTurn(resources, turnRuntime, notifications, turnRequest);\n',
-    `\t\tconst turnStart = await startCodexAttemptTurn(resources, turnRuntime, notifications, turnRequest);\n\t\t__vRunHead().markRun(vHeadRunId, "codex-turn-start"); // V ${HEAD_MARKER}\n`, 'codex turn start');
-  out = replaceExactlyOnce(out, '\t\trunAgentHarnessLlmInputHook({\n\t\t\tevent: buildLlmInputEvent(),\n\t\t\tctx: hookContext,\n\t\t\thookRunner\n\t\t});\n\t\tturn = await startCodexTurn();\n',
-    `\t\trunAgentHarnessLlmInputHook({
-\t\t\tevent: buildLlmInputEvent(),
-\t\t\tctx: hookContext,
-\t\t\thookRunner
-\t\t});
-\t\t__vRunHead().markRun(params.runId, "codex-llm-input"); // V ${HEAD_MARKER}
-\t\tturn = await startCodexTurn();
-`, 'codex llm input hook');
   return out;
 }
