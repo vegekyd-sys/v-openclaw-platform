@@ -57,13 +57,13 @@ const env = {
 
 // ---- files: the runtime core and the Codex plugin ----
 const dist = path.join(runtime, "openclaw", "dist");
+// Codex plugin: the shared VLab install (V's bytes), as lab/candidate/codex-turn-end-terminals.mjs does.
 const npmProjects = path.join(stateDir, "npm", "projects");
-let codexProject = fs.existsSync(npmProjects) && fs.readdirSync(npmProjects).find((d) => d.startsWith("openclaw-codex-"));
-if (!codexProject) {
-  const install = spawnSync(process.execPath, [`${dist}/index.js`, "plugins", "install", "@openclaw/codex@2026.9.1", "--pin", "--force", "--accept-capabilities", "--acknowledge-install-policy-warning"], { env, encoding: "utf8", timeout: 300_000, maxBuffer: 16 * 1024 * 1024 });
-  console.log(JSON.stringify({ codexInstall: install.status }));
-  codexProject = fs.readdirSync(npmProjects).find((d) => d.startsWith("openclaw-codex-"));
+if (!fs.existsSync(path.join(stateDir, "npm"))) {
+  assert.equal(spawnSync("cp", ["-a", "--reflink=auto", path.join(process.env.VLAB_SHARED_STATE_DIR, "npm"), path.join(stateDir, "npm")]).status, 0, "copy managed npm plugins");
 }
+const codexProject = fs.readdirSync(npmProjects).filter((d) => d.startsWith("openclaw-codex-"))
+  .find((d) => fs.existsSync(path.join(npmProjects, d, "node_modules", "@openclaw", "codex", "dist", "run-attempt-D1hJO4fX.js")));
 assert(codexProject, "codex plugin not found");
 const codexDist = path.join(npmProjects, codexProject, "node_modules", "@openclaw", "codex", "dist");
 const target = (name) => path.join(name.startsWith("run-attempt") ? codexDist : dist, name);
@@ -98,6 +98,9 @@ config.agents.defaults.models[VDS_REF] = vdsEntry;
 config.agents.entries.makaron.models = { ...(config.agents.entries.makaron.models ?? {}), [VDS_REF]: vdsEntry };
 const allow = config.agents.defaults.modelPolicy?.allow;
 if (Array.isArray(allow) && !allow.includes(VDS_REF)) allow.push(VDS_REF);
+// /vds is the session's model from the first turn (as on V's /vds groups); the copied OpenAI OAuth order is not usable here.
+for (const t of [config.agents.defaults, config.agents.entries.makaron]) t.model = { primary: VDS_REF, fallbacks: [] };
+if (config.auth?.order?.openai) delete config.auth.order.openai;
 config.plugins.entries.codex = { ...(config.plugins.entries.codex ?? {}), enabled: true, config: { ...(config.plugins.entries.codex?.config ?? {}), appServer: { mode: "yolo", serviceTier: "priority", approvalPolicy: "never", sandbox: "danger-full-access" } } };
 const workerPlugin = config.plugins.entries["vlab-agent-worker-isolation"]?.config;
 if (workerPlugin) {
@@ -196,8 +199,7 @@ async function runPhase(label) {
     while (!r.terminal && Date.now() < deadline) await sleep(100);
     return r;
   };
-  const sw = await send("/vds");
-  console.log(JSON.stringify({ phase: label, switch: sw.terminal }));
+  await call("sessions.patch", { key, agentId: "makaron", model: VDS_REF });
   for (const prompt of PROMPTS.slice(0, TURNS)) {
     const markLine = lines.length;
     const r = await send(prompt);
