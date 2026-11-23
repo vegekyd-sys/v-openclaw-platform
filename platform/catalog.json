@@ -377,6 +377,7 @@
         "lab/patch-subagent-lazy-session-store.test.mjs",
         "lab/codex-bounded-history.test.mjs",
         "lab/codex-turn-tail.test.mjs",
+        "lab/run-start-phases.test.mjs",
         "lab/worker-prewarm2-v.test.mjs",
         "lab/feishu-firsttext-e2e.test.mjs",
         "lab/feishu-codex-early-card.test.mjs",
