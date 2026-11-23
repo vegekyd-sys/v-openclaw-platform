@@ -52,7 +52,7 @@ test("public worker exposes only static assets and public usage routes", async (
   assert.equal((await request("/usage/home.gz", "POST")).status, 405);
 });
 
-test("public feed preserves user totals and distinct sessions without internal references or titles", () => {
+test("public feed preserves user totals and distinct sessions and display labels without internal references", () => {
   const user = '["feishu","tenant123","ou_secret"]',
     session = "agent/private-session";
   const raw = {
@@ -76,8 +76,12 @@ test("public feed preserves user totals and distinct sessions without internal r
   const wire = partition(view, "v");
   assert.equal(wire.home.rows[0][10], 10);
   assert.equal(wire.full.rows.length, 2);
+  for (const part of [wire.home, wire.full]) {
+    assert.deepEqual(part.sessions[sid], raw.sessions[session]);
+    assert.equal(part.names[homeId], raw.names[user]);
+  }
   assert.doesNotMatch(
     JSON.stringify(wire),
-    /tenant123|ou_secret|private-session|private-card|保密项目/,
+    /tenant123|ou_secret|private-session|private-card/,
   );
 });
