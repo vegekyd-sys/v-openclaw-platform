@@ -68,7 +68,7 @@ export function partition(data, version) {
   return { home, full };
 }
 
-// Keep joins stable across refreshes without publishing transport IDs or free-text titles.
+// Replace transport identifiers while retaining the display metadata used by the dashboard.
 export function publicUsage(data, salt) {
   const users = new Map(),
     sessions = new Map();
@@ -90,14 +90,13 @@ export function publicUsage(data, salt) {
       const key = JSON.stringify([channel, "", alias("user", user)]);
       users.set(user, key);
       const name = data.names[user];
-      if (name && !/(?:ou_|oc_|om_)|@|^\+?[\d -]{7,}$/i.test(name))
-        names[key] = name;
+      if (name) names[key] = name;
     }
     if (!sessions.has(session)) {
       const id = alias("session", session);
       sessions.set(session, id);
-      if (data.sessions?.[session])
-        labels[id] = { kind: data.sessions[session].kind };
+      const meta = data.sessions?.[session];
+      if (meta) labels[id] = { kind: meta.kind, title: meta.title };
       workloads[id] = data.workloads?.[session] || "";
       if (data.nightshift?.[session]) nightshift[id] = data.nightshift[session];
     }
@@ -161,11 +160,15 @@ function publish(state) {
   const data = JSON.parse(gunzipSync(raw));
   if (!data.rows?.length || !Number.isInteger(data.end) || !data.nightshift)
     throw Error("Incomplete source snapshot");
-  const version =
-    data.end +
-    "-" +
-    createHash("sha256").update(salt).update(raw).digest("hex").slice(0, 16);
-  const { home, full } = partition(publicUsage(data, salt), version);
+  const { home, full } = partition(publicUsage(data, salt));
+  // Version the published bytes so correcting labels for the same collection also
+  // invalidates the browser's immutable detail cache.
+  const hash = createHash("sha256")
+    .update(JSON.stringify(full))
+    .update(JSON.stringify(home))
+    .digest("hex");
+  const version = data.end + "-" + hash.slice(0, 16);
+  home.version = full.version = version;
   const tmp = mkdtempSync(join(tmpdir(), "v-usage-publish-"));
   try {
     // The small entry point is the commit marker. Readers keep the previous pair if upload fails.
