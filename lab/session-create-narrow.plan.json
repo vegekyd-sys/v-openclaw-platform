@@ -1,0 +1,20 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/session-create-narrow/session-accessor-K0XuW6ln.js",
+      "target": "openclaw/dist/session-accessor-K0XuW6ln.js",
+      "before": "13af5e83e8dd4140a4d90340dcb0ebacc62699643ecb00817b23897872131b38"
+    },
+    {
+      "source": "lab/release-files/session-create-narrow/session-create-service--hv2vsLh.js",
+      "target": "openclaw/dist/session-create-service--hv2vsLh.js",
+      "before": "83b8f923a0b8d7c7e76bdfcf8f049d54f1d4526eeb3d8b04ba31da8ce166bbd5"
+    },
+    {
+      "source": "lab/release-files/session-create-narrow/session-utils-store-Dlphca2N.js",
+      "target": "openclaw/dist/session-utils-store-Dlphca2N.js",
+      "before": "b566c7e93e3cab8ecc2242ae241597d0ee9890cd8455b99c22a0262eb84dad6c"
+    }
+  ]
+}
