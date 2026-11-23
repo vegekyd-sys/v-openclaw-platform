@@ -10,7 +10,7 @@ Joins [run-start-phases.1] (lab/run-start-phases.mjs) with [firsttext-e2e.1] by 
   journalctl -u openclaw-gateway --since ... -o cat | grep -a -E 'run-start-phases.1|firsttext-e2e.1' > lines.txt
   python3 lab/run-start-phases-report.py lines.txt [--model vds-deepseek-flash] [--exclude-busy]
 """
-import argparse, collections, json, sys
+import argparse, collections, json, re, sys
 
 ap = argparse.ArgumentParser()
 ap.add_argument("path")
@@ -19,7 +19,10 @@ ap.add_argument("--exclude-busy", action="store_true", help="drop messages sent 
 args = ap.parse_args()
 
 heads, e2e = {}, []
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
 for line in open(args.path, errors="replace"):
+    line = ANSI.sub("", line)
+    line = line[: line.rfind("}") + 1]
     for tag, sink in (("[run-start-phases.1] ", "h"), ("[firsttext-e2e.1] ", "e")):
         i = line.find(tag)
         if i < 0:
@@ -68,9 +71,9 @@ for s in rows:
         if k not in order:
             order.append(k)
 total_p50 = q([s["TOTAL dispatch->run"] for s in rows], 0.5)
-print(f"{'step':34s} {'n':>5s} {'p50':>7s} {'p90':>7s} {'mean':>7s} {'share':>6s}")
+print(f"{'step':40s} {'n':>5s} {'p50':>7s} {'p90':>7s} {'mean':>7s} {'share':>6s}")
 for k in order:
     xs = [s[k] for s in rows if k in s]
     mean = sum(xs) / len(xs)
     share = sum(xs) / sum(s["TOTAL dispatch->run"] for s in rows if k in s) if not k.startswith(("TOTAL", "lag")) else float("nan")
-    print(f"{k:34s} {len(xs):5d} {q(xs, .5):7.0f} {q(xs, .9):7.0f} {mean:7.0f} {share:6.1%}")
+    print(f"{k:40s} {len(xs):5d} {q(xs, .5):7.0f} {q(xs, .9):7.0f} {mean:7.0f} {share:6.1%}")
