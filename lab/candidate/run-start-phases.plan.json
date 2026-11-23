@@ -1,0 +1,17 @@
+{
+  "support": [
+    "lab/candidate/run-start-phases.mjs",
+    "lab/release-files/run-start-phases/get-reply-CqW1y05D.js",
+    "lab/release-files/run-start-phases/agent-runner.runtime-CAdsMsQt.js",
+    "lab/release-files/run-start-phases/run-attempt-D1hJO4fX.js",
+    "lab/release-files/unified-session-presentation/core/get-reply-CqW1y05D.js",
+    "lab/release-files/early-tool-status/agent-runner.runtime-CAdsMsQt.js",
+    "lab/release-files/codex-turn-end-terminals/run-attempt-D1hJO4fX.js"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/run-start-phases.mjs"
+  ],
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity"
+}
