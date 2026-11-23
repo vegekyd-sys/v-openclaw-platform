@@ -1,12 +1,14 @@
-// run-start-phases-v1: the head timer and where it is wired (core get-reply, agent-runner, Codex run-attempt).
+// run-start-phases-v1: the head timer and where it is wired (core get-reply, agent-runner, embedded-agent, Codex
+// run-attempt).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { HEAD_HELPER, HEAD_MARKER } from './run-start-phases.mjs';
-import { patchAgentRunner, patchCodexRunAttempt, patchGetReply } from './patch-run-start-phases.mjs';
+import { patchAgentRunner, patchCodexRunAttempt, patchEmbeddedAgent, patchGetReply } from './patch-run-start-phases.mjs';
 import { HEAD_FILES } from './build-run-start-phases.mjs';
 
+const file = (name) => HEAD_FILES.find((f) => f.name.startsWith(name)).from;
 const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const sha = (v) => createHash('sha256').update(v).digest('hex');
 const KEY = Symbol.for('openclaw.v.runStartPhases.v1');
@@ -88,7 +90,7 @@ test('build inputs are V live bytes and outputs match the committed release file
 const between = (src, a, b) => src.slice(src.indexOf(a), src.indexOf(b, src.indexOf(a)));
 
 test('get-reply: head starts at entry on the reply options and every traced phase is marked', async () => {
-  const out = patchGetReply(read(HEAD_FILES[0].from));
+  const out = patchGetReply(read(file('get-reply')));
   assert.match(out, /async function getReplyFromConfig\(ctx, opts, configOverride\) \{\n\tconst vRunHead = opts && typeof opts === "object" && opts.isHeartbeat !== true \? __vRunHead\(\)\.begin\(\) : void 0;/);
   // the traced phase still returns the phase result and rethrows its error, and marks both ends
   const head = freshHead();
@@ -105,7 +107,7 @@ test('get-reply: head starts at entry on the reply options and every traced phas
 });
 
 test('agent-runner: bound at the run id, marks the pre-run stages, logs one line at run start', () => {
-  const out = patchAgentRunner(read(HEAD_FILES[1].from));
+  const out = patchAgentRunner(read(file('agent-runner')));
   for (const step of ['run-reply-agent', 'agent-turn', 'turn-media', 'fallback-start', 'embedded-call']) assert(out.includes(`"${step}"`), step);
   assert.match(out, /const runId = params\.opts\?\.runId \?\? crypto\.randomUUID\(\);\n\t__vRunHead\(\)\.bind\(params\.opts\?\.vRunHead, runId\);/);
   const notify = between(out, '\tconst notifyAgentRunStart = () => {', '\tconst signalExecutionPhaseForTyping');
@@ -115,8 +117,27 @@ test('agent-runner: bound at the run id, marks the pre-run stages, logs one line
   assert.match(between(out, '\tconst traceAgentPhase = ', '\tconst vExclusive'), /__vRunHead\(\)\.mark\(opts\?\.vRunHead, ">" \+ name\)/);
 });
 
+test('embedded-agent: lanes, maintenance wait, harness selection, prepared runtime and the hook are marked in order', () => {
+  const original = read(file('embedded-agent'));
+  const out = patchEmbeddedAgent(original);
+  const fn = between(out, 'async function runEmbeddedAgentInternal(paramsInput) {', '//#endregion');
+  const order = ['embedded-session-lane', 'embedded-maintenance-wait', 'embedded-global-lane', 'embedded-harness-selection', 'embedded-prepared-runtime', 'embedded-before-reply-hook'];
+  let at = -1;
+  for (const step of order) {
+    const i = fn.indexOf(`__vRunHead().markRun(params.runId, "${step}")`);
+    assert(i > at, `${step} in order`);
+    at = i;
+  }
+  assert(fn.indexOf('"embedded-session-lane"') > fn.indexOf('return enqueueSession(async () => {'));
+  assert(fn.indexOf('"embedded-global-lane"') > fn.indexOf('return enqueueGlobal(async () => {'));
+  assert(fn.indexOf('"embedded-before-reply-hook"') > fn.indexOf('await runBeforeAgentReplyForTurn('));
+  assert(fn.indexOf('"embedded-before-reply-hook"') < fn.indexOf('return await executePreparedEmbeddedRun({'));
+  const stripped = out.replace(HEAD_HELPER, '').replace(/\t+__vRunHead\(\)\.markRun\([^\n]*\n/g, '');
+  assert.equal(stripped, original);
+});
+
 test('codex run-attempt: every stage before the run start is marked with the run id, behaviour unchanged', () => {
-  const original = read(HEAD_FILES[2].from);
+  const original = read(file('run-attempt'));
   const out = patchCodexRunAttempt(original);
   const fn = between(out, 'async function runCodexAppServerAttempt(params, options) {', '//#endregion');
   const order = ['codex-enter', 'codex-connection', 'codex-runtime', 'codex-tools', 'codex-context', 'codex-prompt'];

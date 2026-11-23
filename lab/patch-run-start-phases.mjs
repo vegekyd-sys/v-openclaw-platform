@@ -92,7 +92,33 @@ export function patchAgentRunner(source) {
   return out;
 }
 
-const CODEX_HEAD_BEFORE = `async function runCodexAppServerAttempt(params, options) {
+// core embedded-agent: runEmbeddedAgent between the agent runner's call and the harness attempt. Session lane
+// entered, deferred turn maintenance waited for, global lane entered, harness selected, prepared model runtime
+// acquired, before_agent_reply hook done (the harness attempt follows).
+export function patchEmbeddedAgent(source) {
+  let out = withHeadHelper(source);
+  out = replaceExactlyOnce(out, '\treturn enqueueSession(async () => {\n\t\tthrowIfAborted();\n\t\tif (!params.sessionManager',
+    `\treturn enqueueSession(async () => {
+\t\t__vRunHead().markRun(params.runId, "embedded-session-lane"); // V ${HEAD_MARKER}
+\t\tthrowIfAborted();
+\t\tif (!params.sessionManager`, 'session lane entry');
+  out = replaceExactlyOnce(out, '\t\tthrowIfAborted();\n\t\treturn enqueueGlobal(async () => {\n\t\t\tthrowIfAborted();\n\t\t\tconst cliDispatched',
+    `\t\t__vRunHead().markRun(params.runId, "embedded-maintenance-wait"); // V ${HEAD_MARKER}
+\t\tthrowIfAborted();
+\t\treturn enqueueGlobal(async () => {
+\t\t\t__vRunHead().markRun(params.runId, "embedded-global-lane");
+\t\t\tthrowIfAborted();
+\t\t\tconst cliDispatched`, 'global lane entry');
+  out = replaceExactlyOnce(out, '\t\t\tstartupStages.mark("harness-selection");\n',
+    `\t\t\tstartupStages.mark("harness-selection");\n\t\t\t__vRunHead().markRun(params.runId, "embedded-harness-selection"); // V ${HEAD_MARKER}\n`, 'harness selection');
+  out = replaceExactlyOnce(out, '\t\t\tstartupStages.mark("prepared-runtime");\n',
+    `\t\t\tstartupStages.mark("prepared-runtime");\n\t\t\t__vRunHead().markRun(params.runId, "embedded-prepared-runtime"); // V ${HEAD_MARKER}\n`, 'prepared runtime');
+  out = replaceExactlyOnce(out, '\t\t\t\t\treturn await executePreparedEmbeddedRun({\n\t\t\t\t\t\trunParams: params,\n',
+    `\t\t\t\t\t__vRunHead().markRun(params.runId, "embedded-before-reply-hook"); // V ${HEAD_MARKER}\n\t\t\t\t\treturn await executePreparedEmbeddedRun({\n\t\t\t\t\t\trunParams: params,\n`, 'prepared run call');
+  return out;
+}
+
+const CODEX_HEAD_BEFORE =`async function runCodexAppServerAttempt(params, options) {
 \tconst connection = await prepareCodexAttemptConnection({
 \t\tparams,
 \t\toptions

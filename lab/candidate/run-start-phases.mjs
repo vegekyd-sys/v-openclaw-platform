@@ -1,6 +1,6 @@
 // Candidate: run-start-phases-v1 on V's bytes. Isolated Gateway on the candidate config copy; never touches shared
 // VLab. /vds configured as on V (as lab/candidate/codex-firsttext.mjs does).
-//   base     V's three files as they are (get-reply, agent-runner, Codex run-attempt): first body per turn
+//   base     V's four files as they are (get-reply, agent-runner, embedded-agent, Codex run-attempt): first body per turn
 //   patched  lab/release-files/run-start-phases/: the same turns, first body, and every [run-start-phases.1] line
 // Checks: each turn of the patched phase logs exactly one line, with its run id, the expected steps in order,
 // and steps summing to totalMs; no new warnings; first body not slower than base beyond noise.
@@ -27,11 +27,13 @@ const sha = (f) => createHash("sha256").update(fs.readFileSync(f)).digest("hex")
 const V_SHA = {
   "get-reply-CqW1y05D.js": "a22a84a9b832d0aed7a0ab00354dde35a332cff377a9eeca6df3130292a4f974",
   "agent-runner.runtime-CAdsMsQt.js": "ec866319e0125f124acd499d42a76bc49672b92618a8f358a1b7afc343e4a2d3",
+  "embedded-agent-DaSvA-Yk.js": "182c175cc3fb8a2d73014def89413e0b8f709b5494af8b81a5d2ab5d0484340a",
   "run-attempt-D1hJO4fX.js": "23705af0ceb5a879284ed04206cfba97be80bc872bfaf8cab21f601b3551d5cb",
 };
 const V_SOURCE = {
   "get-reply-CqW1y05D.js": "lab/release-files/unified-session-presentation/core/get-reply-CqW1y05D.js",
   "agent-runner.runtime-CAdsMsQt.js": "lab/release-files/early-tool-status/agent-runner.runtime-CAdsMsQt.js",
+  "embedded-agent-DaSvA-Yk.js": "lab/release-files/settled-tool-handoff/embedded-agent-DaSvA-Yk.js",
   "run-attempt-D1hJO4fX.js": "lab/release-files/codex-turn-end-terminals/run-attempt-D1hJO4fX.js",
 };
 
@@ -174,7 +176,7 @@ const PROMPTS = [
   "Without using any tools, answer in two sentences: how do glaciers move? Start with ECHO.",
   "Without using any tools, answer in two sentences: why do cats purr? Start with FOXTROT.",
 ];
-const EXPECTED_HEAD = ["run-reply-agent", "reply.memory_flush", "reply.preflight_compaction", "agent-turn", "turn-media", "fallback-start", "embedded-call", "codex-enter", "codex-connection", "codex-runtime", "codex-tools", "codex-context", "codex-prompt", "run-start"];
+const EXPECTED_HEAD = ["run-reply-agent", "reply.memory_flush", "reply.preflight_compaction", "agent-turn", "turn-media", "fallback-start", "embedded-call", "embedded-session-lane", "embedded-maintenance-wait", "embedded-global-lane", "embedded-harness-selection", "embedded-prepared-runtime", "embedded-before-reply-hook", "codex-enter", "codex-connection", "codex-runtime", "codex-tools", "codex-context", "codex-prompt", "run-start"];
 // log lines carry ANSI colour codes after the JSON
 const parseHead = (l) => { const t = l.replace(/\x1b\[[0-9;]*m/gu, ""); const at = t.indexOf("[run-start-phases.1] ") + 21; return JSON.parse(t.slice(at, t.lastIndexOf("}") + 1)); };
 
