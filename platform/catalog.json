@@ -538,7 +538,8 @@
         "lab/usage-session-select.test.mjs",
         "lab/workboard-sweep-complete.test.mjs",
         "lab/memory-close-passive.test.mjs",
-        "lab/session-create-narrow.test.mjs"
+        "lab/session-create-narrow.test.mjs",
+        "lab/subagent-tree-read.test.mjs"
       ]
     }
   ],
