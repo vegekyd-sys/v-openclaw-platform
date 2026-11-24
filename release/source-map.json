@@ -2191,6 +2191,55 @@
       "sha256": "505706a143843ddfbd13564dca7d04aa1fd4b501669c58f5b313b8a0c51a342f",
       "source": "versa:b09039594d8",
       "note": "memory-close-passive-v1 (2026-11-21, Gateway): a memory_search connection closes with a PASSIVE WAL checkpoint instead of TRUNCATE, so closing no longer holds the agent database writer lock and busy-waits 5 s on the Gateway thread while another connection has a read transaction open (V 2026-11-20 22:30-23:07: every tools.invoke memory_search +5.0 s); versa/memory-close-passive-checkpoint-20261120; PR #633; on V since memory-close-passive-20261121"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor-K0XuW6ln.js",
+      "sha256": "64b40f9cd7366e00f03ed726ec4f6eea92fc21f08921c214451497804773821a",
+      "source": "versa:ffd654e6b17",
+      "note": "session-create-narrow-v1 (2026-11-23, Gateway): sessions.create and visible sessions_spawn read only the session rows the new key resolves to (label check from the label column, lifecycle skips entry counts, store target reads seeds exactly) instead of JSON-parsing the whole agent session table (26,779 rows / 2.64 GB on V: +4.6 GiB heap and a 40-60 s Gateway freeze per visible spawn, 2026-11-23 14:52/15:08/15:25); versa/port-session-create-narrow-20261123 on 3dfc7c4c4fb; OPENCLAW_V_SESSION_CREATE_NARROW=0 turns it off; PR #640; on V since spawn-narrow-runstart-20261123"
+    },
+    {
+      "layer": "core",
+      "path": "session-create-service--hv2vsLh.js",
+      "sha256": "4587339aad56fb35c89684b97099b461001f887ee9a7266228c90baf40e0be3b",
+      "source": "versa:ffd654e6b17",
+      "note": "session-create-narrow-v1 (2026-11-23, Gateway): sessions.create and visible sessions_spawn read only the session rows the new key resolves to (label check from the label column, lifecycle skips entry counts, store target reads seeds exactly) instead of JSON-parsing the whole agent session table (26,779 rows / 2.64 GB on V: +4.6 GiB heap and a 40-60 s Gateway freeze per visible spawn, 2026-11-23 14:52/15:08/15:25); versa/port-session-create-narrow-20261123 on 3dfc7c4c4fb; OPENCLAW_V_SESSION_CREATE_NARROW=0 turns it off; PR #640; on V since spawn-narrow-runstart-20261123"
+    },
+    {
+      "layer": "core",
+      "path": "session-utils-store-Dlphca2N.js",
+      "sha256": "d3380fa54ce03530d4e8ead60e4bfcd82497474950feeca16ae02ed793ac730b",
+      "source": "versa:ffd654e6b17",
+      "note": "session-create-narrow-v1 (2026-11-23, Gateway): sessions.create and visible sessions_spawn read only the session rows the new key resolves to (label check from the label column, lifecycle skips entry counts, store target reads seeds exactly) instead of JSON-parsing the whole agent session table (26,779 rows / 2.64 GB on V: +4.6 GiB heap and a 40-60 s Gateway freeze per visible spawn, 2026-11-23 14:52/15:08/15:25); versa/port-session-create-narrow-20261123 on 3dfc7c4c4fb; OPENCLAW_V_SESSION_CREATE_NARROW=0 turns it off; PR #640; on V since spawn-narrow-runstart-20261123"
+    },
+    {
+      "layer": "core",
+      "path": "agent-runner.runtime-CAdsMsQt.js",
+      "sha256": "94b1522e19098deddd841ce1816b8ce63e45e50c38cddf5b40615aa976d2f0ab",
+      "source": "versa:a319451cdd5",
+      "note": "run-start-phases-v1 (2026-11-23): logs [run-start-phases.1] with the dispatch -> run start steps of each chat turn; logging only; versa/port-run-start-phases-20261123; PR #641; on V since spawn-narrow-runstart-20261123"
+    },
+    {
+      "layer": "core",
+      "path": "embedded-agent-DaSvA-Yk.js",
+      "sha256": "ca29ec5956491d7656dd296cdcd60b719acf4ca520652d4d69bf389302959769",
+      "source": "versa:a319451cdd5",
+      "note": "run-start-phases-v1 (2026-11-23): logs [run-start-phases.1] with the dispatch -> run start steps of each chat turn; logging only; versa/port-run-start-phases-20261123; PR #641; on V since spawn-narrow-runstart-20261123"
+    },
+    {
+      "layer": "core",
+      "path": "get-reply-CqW1y05D.js",
+      "sha256": "d7f3d744b1185133f2dd9bc3c9402b16a0f0b6e62dafc5623651bb66a12f6492",
+      "source": "versa:a319451cdd5",
+      "note": "run-start-phases-v1 (2026-11-23): logs [run-start-phases.1] with the dispatch -> run start steps of each chat turn; logging only; versa/port-run-start-phases-20261123; PR #641; on V since spawn-narrow-runstart-20261123; the earlier backlog-20261029 changes in this file are carried on the same port branch"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/run-attempt-D1hJO4fX.js",
+      "sha256": "84513c81c6f7e248afc6a39cb06608c4c636e490365e381dd76a5e296ac25761",
+      "source": "versa:a319451cdd5",
+      "note": "run-start-phases-v1 (2026-11-23): logs [run-start-phases.1] with the dispatch -> run start steps of each chat turn; logging only; versa/port-run-start-phases-20261123; PR #641; on V since spawn-narrow-runstart-20261123"
     }
   ]
 }
