@@ -10,6 +10,46 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## spawn-narrow-runstart-20261123
+
+上线：2026-11-23 22:00 CST（20:3x 文件经 vrelay 装到 V；v-self-restart 21:50 提交，等空闲到 21:56:18 停机，166 s 就绪，workers 5、5 条渠道流全在）  ·  tag `spawn-narrow-runstart-20261123`
+
+**摘要**：#640 修掉 11/23 14:52、15:08、15:25 三次 40–60 s 的 Gateway 冻结。原因是 `sessions_spawn(visible=true)` → `sessions.create` 在主线程上把整张会话表（V 上 26,779 行 / 2.64 GB）读出来逐行 JSON 解析，堆一次涨 4.6 GiB；11/16 起每次可见子会话之后都跟着 17 s 以上的停顿。现在只读新 key 解析到的那几行，candidate 对照 sessions.create 22.9 s → 0.44 s、分配 6.9 GB → 40 MB；`OPENCLAW_V_SESSION_CREATE_NARROW=0` 可关。#641 只加日志：每个对话回合打一行 `[run-start-phases.1]`，把派发到开跑之间的 1.2 s（/vds p50）拆成各步耗时，过几天用 `lab/run-start-phases-report.py` 出分步表。
+
+相对上一版 `memory-close-passive-20261121`：7 个文件变化。
+
+**经 VLab 发版 `spawn-narrow-runstart-20261123`**（monitor-v-production-70a57a，dev `98248401`）
+> 验收：Shared VLab after deploy (pid 1284125), session agent:makaron:explicit:vlab-dev-spawn-narrow-runstart-accept-1795429442554 on vds-deepseek-flash (codex harness): (1) run vlab-dev-1795429457671 real model -> exec tool (date/uname) -> tool result VM-0-4-ubuntu read back -> reply; journal [run-start-phases.1] line for that runId with ordered steps, totalMs 2031. (2) run vlab-dev-1795429499923: model …
+- `core` agent-runner.runtime-CAdsMsQt.js  ec866319 → 94b1522e
+- `core` embedded-agent-DaSvA-Yk.js  182c175c → ca29ec59
+- `core` get-reply-CqW1y05D.js  a22a84a9 → d7f3d744
+- `core` session-accessor-K0XuW6ln.js  13af5e83 → 64b40f9c
+- `core` session-create-service--hv2vsLh.js  83b8f923 → 4587339a
+- `core` session-utils-store-Dlphca2N.js  b566c7e9 → d3380fa5
+- `codex` dist/run-attempt-D1hJO4fX.js  23705af0 → 84513c81
+
+**这期间合入 dev 的 PR**（10 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #641 lab: run-start-phases, time /vds dispatch -> run start per turn
+- #640 fix(sessions): visible 子会话创建不再在主线程整读会话表（11/23 三次 40–60 s 停顿 + 堆 +4.6 GiB）
+- #639 恢复公开用量看板的真实群聊名称
+- #638 开放 V 用量看板的直接访问链接
+- #637 上线 V 用户与夜班 Token 用量看板
+- #636 docs: let agents merge record-only PRs of approved V changes
+- #635 ci: raise the offline suite timeout to 240 s
+- #634 fix(memory): raise v-memory-vector-pin LimitMEMLOCK to 3200M
+- #632 release: capture usage-workboard-20261120 (#631 #617) and memory-close-passive-20261121 (#633)
+- #633 fix(memory): memory_search 关闭连接时不再同步等 5 s（TRUNCATE→PASSIVE checkpoint）
+
+V 上验收（22:00–22:03）：
+- 文件：7 个文件的 sha 等于发版后的值；`session-create-service`、`session-accessor` 含 `session-create-narrow-v1`。
+- 重启：NRestarts 0，没有 `Main process exited`；`restart recovery claim changed` 和 `ended during restart recovery` 都是 0；自动清理了 6 条 Codex 旧登记。
+- #641：22:02 起真实回合打出 `[run-start-phases.1]`。重启后第一回合 totalMs 30232（冷启动：ensure_workspace 8.2 s、codex-connection 6.0 s、codex-context 7.9 s），第二回合 8032。
+- 冷启动停顿：11.1 s、20.0 s，都在启动期内。
+- #640 的生产正向路径要等下一次真实的可见子会话；VLab 实测可见 spawn 1.78 s 内受理，子会话正常回复。
+- 传输：这晚 Mac→V 上行约 5 KB/s，ssh 长连接会断（255）。promote-to-v 用一个临时 ssh 包装，把大于 64 KB 的输入输出改走 vrelay；脚本本身没改。
+
+
+---
 ## memory-close-passive-20261121
 
 上线：2026-11-21 02:02 CST（01:5x 文件装到 V；v-self-restart 01:59 提交，等一个 cron 回合 36 s 后 02:00:48 停机，106 s 就绪，workers 5、4 个渠道流全在）  ·  tag `memory-close-passive-20261121`
