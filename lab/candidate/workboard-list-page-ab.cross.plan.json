@@ -1,0 +1,26 @@
+{
+  "support": [
+    "lab/candidate/workboard-list-page-ab.mjs",
+    "lab/workboard-list-page.plan.json",
+    "lab/release-files/workboard-list-page/sqlite-store-CH-caj1l.js",
+    "lab/release-files/workboard-list-page/runtime-api-1CCazqtv.js",
+    "lab/release-files/workboard-list-page/extensions/workboard/index.js",
+    "lab/release-files/spawn-broker-workboard-index/sqlite-store-CH-caj1l.js",
+    "lab/release-files/workboard-full-context/runtime-api-1CCazqtv.js",
+    "lab/release-files/workboard-sweep-complete/extensions/workboard/index.js"
+  ],
+  "databases": [],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/workboard-list-page-ab.mjs"
+  ],
+  "timeoutSeconds": 0,
+  "user": "lab-db91-parity",
+  "env": {
+    "FIXTURE": "/var/tmp/wblist/workboard.sql.zst",
+    "HEAP_MB": "5632",
+    "ARMS": "A,B,A,B",
+    "CHILD_TIMEOUT_MS": "3600000",
+    "CROSS_ONLY": "1"
+  }
+}
