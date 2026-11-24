@@ -3,6 +3,10 @@
 // V 2026-11-24 01:12:26.0-01:12:59.7 CST: /vcc in group 十二家 called the subagents tool
 // {action: "list", recentMinutes: 180}; the Gateway's main thread stopped for 33.7 s and RSS rose 5.2 -> 10.3 GB.
 //
+// Scale: a candidate unit is capped near 7 GiB, and arm A at V's full session table (20,900 rows, 1.6 GB of
+// entries) does not fit beside 27,776 runs (the 2026-11-24 run thrashed for 6 h). TARGET_ROWS sets a smaller
+// makaron table; arm A's cost grows with it, arm B's does not.
+//
 // Data (outside the repository, FIXTURE on the VLab host): V's subagent_runs table, read-only `.dump` streamed
 // from V on 2026-11-24 02:52 CST (27,776 runs). It replaces the private state database's subagent_runs rows.
 // The makaron session store is the V-scale fixture (v-scale-session-fixture.mjs), so the token-usage lookups
@@ -34,7 +38,13 @@ const MAKARON_DB = path.join("agents", "makaron", "agent", "openclaw-agent.sqlit
 const FIXTURE = process.env.FIXTURE ?? "/var/tmp/subscope/subagent_runs.sql.zst";
 const INCIDENT_MS = Date.parse("2026-11-24T01:12:26.000+08:00");
 const role = process.argv[2] ?? "parent";
-const log = (key, value) => console.log(`[${new Date().toISOString()}] ${key}: ${JSON.stringify(value)}`);
+// Progress also goes to a file next to the state directory: the runner returns output only at the end.
+const progressFile = path.join(path.dirname(stateDir), "str-progress.log");
+const log = (key, value) => {
+  const line = `[${new Date().toISOString()}] ${key}: ${JSON.stringify(value)}`;
+  console.log(line);
+  try { fs.appendFileSync(progressFile, `${line}\n`); } catch {}
+};
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 for (const [name, dir] of [["TMPDIR", "str-tmp"], ["XDG_CACHE_HOME", "str-cache"]]) {
   const target = path.join(path.dirname(stateDir), dir);
@@ -159,8 +169,10 @@ function pickKeys() {
   return { incident, requesters, controllers, children };
 }
 
+// The candidate unit is capped near 7 GiB: a heap limit below it makes an oversized arm fail instead of thrashing.
 function run(args) {
-  const r = spawnSync(process.execPath, ["--expose-gc", `--max-old-space-size=${process.env.HEAP_MB ?? 12288}`, process.argv[1], "child", JSON.stringify(args)], { encoding: "utf8", env: process.env, maxBuffer: 256 * 1024 * 1024 });
+  log("child.start", { ...args, keys: undefined });
+  const r = spawnSync(process.execPath, ["--expose-gc", `--max-old-space-size=${process.env.HEAP_MB ?? 5632}`, process.argv[1], "child", JSON.stringify(args)], { encoding: "utf8", env: process.env, maxBuffer: 256 * 1024 * 1024, timeout: Number(process.env.CHILD_TIMEOUT_MS ?? 45 * 60 * 1000), killSignal: "SIGKILL" });
   process.stdout.write(r.stdout.split("\n").filter((l) => !l.startsWith("RESULT ")).join("\n"));
   const result = `${r.stdout}`.split("\n").filter((l) => l.startsWith("RESULT ")).map((l) => JSON.parse(l.slice(7))).at(-1);
   if (r.status !== 0 || !result) {

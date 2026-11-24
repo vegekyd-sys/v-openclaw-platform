@@ -19,7 +19,8 @@
   "user": "lab-db91-parity",
   "env": {
     "FIXTURE": "/var/tmp/subscope/subagent_runs.sql.zst",
-    "TARGET_ROWS": "20900",
+    "TARGET_ROWS": "8000",
+    "HEAP_MB": "5632",
     "ARMS": "A,B,A,B"
   }
 }
