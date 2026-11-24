@@ -101,6 +101,73 @@ class UsageTest(unittest.TestCase):
         self.assertEqual(result["rows"][0][2],"未归属")
         self.assertEqual(result["unknownReasons"][0][-2:],["群聊回合缺少唯一发送人",7])
 
+    def test_claude_native_turns_streaming_children_and_summary_fallback(self):
+        ledger = Ledger(10, 60)
+        window = ("s", "feishu", "tenant", "agent:a:group", None, None, "group", None)
+        events = []
+        def emit(event_id, ts, role, parent=None, **message):
+            events.append(json.dumps(dict(id=event_id, timestamp=ts, parentId=parent,
+                                          message=dict(role=role, **message))))
+        emit("user", 11, "user", __openclaw={"senderId": "one"})
+        emit("mirror", 20, "assistant", "user", provider="claude-cli", model="opus",
+             content=[{"type":"text", "text":"Confirmed answer to the request"}], usage={"input":9})
+        emit("other", 25, "user", __openclaw={"senderId": "two"})
+        emit("fallback", 52, "assistant", "other", provider="claude-cli", model="opus",
+             content=[{"type":"text", "text":"A missing CLI log"}], usage={"input":31})
+        ledger.read_events("a", window, enumerate(events))
+        def response(ts, mid, content, output, cid="cli"):
+            return dict(type="assistant", sessionId=cid, timestamp=ts, message=dict(
+                id=mid, model="opus", content=content, usage=dict(input_tokens=5,
+                    cache_read_input_tokens=20, cache_creation_input_tokens=2, output_tokens=output)))
+        def write(path, records):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("".join(json.dumps(r)+"\n" for r in records))
+        with tempfile.TemporaryDirectory() as tmp:
+            projects = Path(tmp)
+            final = [{"type":"text", "text":"Confirmed answer to the request"}]
+            write(projects/"workspace/cli.jsonl", [
+                response(14, "inner", [{"type":"tool_use","id":"launch"}], 2),
+                response(15, "inner", [], 4), response(19, "final", final, 3),
+                {"type":"user","sessionId":"cli","message":{"content":"Another request"}},
+                response(59, "unfinished", [], 1), response(60, "later", [], 1)])
+            child = projects/"workspace/cli/subagents/agent-a.jsonl"
+            write(child, [response(16, "child", [], 2), response(16, "inner", [], 4)])
+            child.with_suffix(".meta.json").write_text('{"toolUseId":"launch"}')
+            write(projects/"workspace/manual.jsonl", [response(40, "outside", [], 500, "manual")])
+            ledger.read_claude(projects)
+        result = ledger.report()
+        self.assertEqual(result["stats"]["claudeMainResponses"], 3)
+        self.assertEqual(result["stats"]["claudeChildResponses"], 1)
+        self.assertEqual(result["stats"]["claudeReplacedSummaries"], 1)
+        self.assertEqual(result["stats"]["claudeFallbackSummaries"], 1)
+        by_user = {row[2]:row[-2] for row in result["rows"]}
+        self.assertEqual(by_user, {'["feishu","tenant","one"]':90, '["feishu","tenant","two"]':31,
+                                   "未归属":28})
+
+    def test_claude_repeated_short_replies_after_cli_binding_rotated(self):
+        ledger = Ledger(0, 200)
+        window = ("s", "feishu", "tenant", "agent:a:group", None, None, "group", None)
+        content = [{"type": "text", "text": "OK"}]
+        events = [dict(id=str(n), timestamp=ts, message=dict(role="assistant", provider="claude-cli",
+                  model="opus", usage=dict(input=5, cacheRead=cache, output=1), content=content))
+                  for n, (ts, cache) in enumerate([(50, 12345), (53, 12890)])]
+        ledger.read_events("a", window, enumerate(map(json.dumps, events)))
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)/"workspace"
+            project.mkdir()
+            def event(cid, ts, mid, cache):
+                return dict(type="assistant", sessionId=cid, timestamp=ts, message=dict(
+                    id=mid, content=content, model="opus", usage=dict(input_tokens=5,
+                    cache_read_input_tokens=cache, output_tokens=2)))
+            records = [event("older", 49.8, "first", 12345), event("older", 52.8, "second", 12890)]
+            (project/"older.jsonl").write_text("".join(json.dumps(r)+"\n" for r in records) + "{")
+            (project/"manual.jsonl").write_text(json.dumps(event("manual", 51, "other", 7))+"\n")
+            ledger.read_claude(project.parent)
+        report = ledger.report()
+        self.assertEqual(report["stats"]["claudeReplacedSummaries"], 2)
+        self.assertEqual(report["stats"]["claudeMainResponses"], 2)
+        self.assertEqual(sum(row[-2] for row in report["rows"]), 25249)
+
     def test_unmatched_native_and_ambiguous_attribution(self):
         ledger = Ledger(1,100)
         ledger.routes["turn"].update({("feishu","A","a/1"),("wecom","B","b/1")})
