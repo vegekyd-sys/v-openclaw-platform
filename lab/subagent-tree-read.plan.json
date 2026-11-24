@@ -1,0 +1,25 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/subagent-tree-read/subagent-registry.store.sqlite-hzGu4QSk.js",
+      "target": "openclaw/dist/subagent-registry.store.sqlite-hzGu4QSk.js",
+      "before": "27cf50a04416aeb7bbe4a1a3910389538cca8969fb7cd18b305a3933d01ef277"
+    },
+    {
+      "source": "lab/release-files/subagent-tree-read/subagent-registry-read-UaDFTyfW.js",
+      "target": "openclaw/dist/subagent-registry-read-UaDFTyfW.js",
+      "before": "4c88db9ca42dc14f7a45ed557722de1e5e02f63a740d4d9f032c5325c4a9d21b"
+    },
+    {
+      "source": "lab/release-files/subagent-tree-read/subagent-control-scope-DA4oSvgr.js",
+      "target": "openclaw/dist/subagent-control-scope-DA4oSvgr.js",
+      "before": "feb68aa7963a2a571b22a2b53976957ba293eab009399b9ecb1286e69e3a1c02"
+    },
+    {
+      "source": "lab/release-files/subagent-tree-read/subagent-list-BS8F5xN_.js",
+      "target": "openclaw/dist/subagent-list-BS8F5xN_.js",
+      "before": "41610a02e7ede4076e8b372e89d05f5e09058b8d241f2e1e8eaa0e553128869f"
+    }
+  ]
+}
