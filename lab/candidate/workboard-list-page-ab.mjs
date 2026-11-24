@@ -44,6 +44,8 @@ for (const [name, dir] of [["TMPDIR", "wbl-tmp"], ["XDG_CACHE_HOME", "wbl-cache"
   process.env[name] = target;
 }
 
+const SUBSET = (combos) => combos.filter((_, i) => i % 6 === 0);
+
 if (role === "parent") parent();
 else await child(JSON.parse(process.argv[3]));
 
@@ -94,6 +96,15 @@ function parent() {
   };
 
   const timing = [];
+  // CROSS_ONLY=1: only arm A's and arm B's answers to the subset (the timing and the full comparison ran already)
+  if (process.env.CROSS_ONLY === "1") {
+    const a = run("A", "answers-subset");
+    const b = run("B", "answers-subset");
+    log("summary", { subsetHashA: a.hash, subsetHashB: b.hash, armsAgree: a.hash === b.hash });
+    fs.rmSync(path.dirname(DB), { recursive: true, force: true });
+    assert.equal(a.hash, b.hash, "A and B answer differently");
+    return;
+  }
   for (const arm of (process.env.ARMS ?? "A,B,A,B").split(",")) timing.push({ arm, ...run(arm, "timing") });
   const answersB = run("B", "answers");
   const answersA = run("A", "answers-subset");
@@ -110,8 +121,6 @@ function parent() {
   assert.equal(answersB.mismatches.length, 0, "B differs from the full read");
   assert.equal(answersA.hash, subsetB, "A and B answer differently");
 }
-
-const SUBSET = (combos) => combos.filter((_, i) => i % 6 === 0);
 
 async function child({ arm, mode }) {
   const mod = await import(pathToFileURL(path.join(DIST, "extensions/workboard/__wbl-cand.js")).href);
