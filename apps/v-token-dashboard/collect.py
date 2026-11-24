@@ -1,8 +1,10 @@
 """Read V's usage on the source host. Stdout contains only compressed usage metadata."""
 import argparse
+import bisect
 import collections
 import datetime as dt
 import gzip
+import hashlib
 import json
 import sqlite3
 import subprocess
@@ -45,11 +47,68 @@ def token_counts(usage, native=False):
     return (*parts, total)
 
 
+def text_hashes(message):
+    content = message.get("content") or []
+    blocks = [content] if isinstance(content, str) else [
+        block["text"] for block in content if isinstance(block, dict) and block.get("type") == "text" and block.get("text")]
+    return {(len(text.strip()), hashlib.sha256(text.strip().encode()).digest()) for text in blocks if text.strip()}
+
+
+def claude_turns(path, cli_id):
+    # Keep usage and fingerprints only. Each streamed content block can repeat
+    # the same API message and its usage counters.
+    turns = []
+    current = {}
+    tools = set()
+    with path.open("rb") as stream:
+        for line in stream:
+            if not line.endswith(b"\n"):
+                break
+            event = json.loads(line)
+            if event.get("sessionId") != cli_id:
+                continue
+            message = event.get("message") or {}
+            content = message.get("content") or []
+            if event.get("type") == "user":
+                if current and not event.get("isMeta") and (isinstance(content, str) or
+                        not any(b.get("type") == "tool_result" for b in content)):
+                    turns.append((current, tools))
+                    current, tools = {}, set()
+                continue
+            usage = message.get("usage")
+            mid = message.get("id")
+            if event.get("type") != "assistant" or not mid or not usage or not message.get("model"):
+                continue
+            counts = token_counts(dict(input=usage.get("input_tokens"), output=usage.get("output_tokens"),
+                                       cacheRead=usage.get("cache_read_input_tokens"),
+                                       cacheWrite=usage.get("cache_creation_input_tokens")))
+            if not counts[-1]:
+                continue
+            ts = timestamp(event["timestamp"])
+            old = current.get(mid)
+            hashes = text_hashes(message)
+            if old:
+                ts = min(ts, old[0])
+                parts = tuple(map(max, zip(old[2][:4], counts[:4])))
+                counts = (*parts, sum(parts))
+                hashes.update(old[3])
+            current[mid] = (ts, message["model"], counts, hashes, timestamp(event["timestamp"]))
+            tools.update(b["id"] for b in content if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("id"))
+    if current:
+        turns.append((current, tools))
+    return turns
+
+
 class Ledger:
     def __init__(self, start, end):
         self.start, self.end = start, end
         self.openclaw, self.native, self.legacy = {}, {}, {}
         self.routes = collections.defaultdict(set)
+        self.claude_bindings = collections.defaultdict(set)
+        self.claude_defaults = {}
+        self.claude_summaries = {}
+        self.claude_responses = {}
+        self.claude_replaced = set()
         self.names = {}
         self.session_keys = {}
         self.session_kinds = {}
@@ -68,6 +127,14 @@ class Ledger:
         agent = path.parent.parent.name
         with database(path) as db:
             self.stats["agentDatabases"] += 1
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='session_nodes'").fetchone():
+                for sid, entry in db.execute("""SELECT current_session_id,entry_json FROM session_nodes
+                        WHERE entry_json LIKE '%claude-cli%' OR entry_json LIKE '%claudeCliSessionId%'"""):
+                    node = json.loads(entry)
+                    cid = ((node.get("cliSessionIds") or {}).get("claude-cli") or node.get("claudeCliSessionId")
+                           or ((node.get("cliSessionBindings") or {}).get("claude-cli") or {}).get("sessionId"))
+                    if sid and cid:
+                        self.claude_bindings[cid].add(agent + "/" + sid)
             windows = db.execute("""
                 SELECT w.session_id,w.channel,w.account_id,w.session_key,c.channel,c.account_id,
                        c.kind,c.native_direct_user_id
@@ -105,6 +172,7 @@ class Ledger:
         if kind:
             self.session_kinds[session] = kind
         default = self.route(base, account or caccount, peer if kind == "direct" else None, None, session)
+        self.claude_defaults.setdefault(session, default)
         parents, runs = {}, {}
         for seq, raw in events:
             event = json.loads(raw)
@@ -155,8 +223,83 @@ class Ledger:
             response = m.get("responseId")
             identity = (provider, response) if response else (("mirror", meta["mirrorIdentity"], provider)
                        if turn else (agent, event.get("id") or (sid, seq), ts))
+            if provider == "claude-cli":
+                self.claude_summaries[identity] = text_hashes(m)
             self.openclaw.setdefault(identity, (ts, route, provider, model, counts, turn))
 
+
+    def match_claude_summary(self, near, ts, hashes, counts, bindings):
+        corroborated, timely, direct, metered = set(), set(), set(), set()
+        for summary_ts, key in near:
+            _, route, _, _, summary_counts, _ = self.openclaw[key]
+            common = hashes & self.claude_summaries[key]
+            bound = route[2] in bindings
+            close = abs(summary_ts - ts) <= 5
+            same_input = summary_counts[:3] == counts[:3] and any(counts[:3])
+            if common and close and same_input:
+                corroborated.add(key)
+            elif common and close and (bound or any(length >= 16 for length, _ in common)):
+                timely.add(key)
+            elif common and bound:
+                direct.add(key)
+            elif close and bound and same_input:
+                metered.add(key)
+        candidates = corroborated or timely or metered or direct
+        return candidates if len(candidates) == 1 else set()
+
+    def read_claude(self, projects):
+        # Index transcript summaries by time and model. A fingerprint match also
+        # recovers an older CLI binding after OpenClaw has rotated the session.
+        by_model = collections.defaultdict(list)
+        for key in self.claude_summaries:
+            ts, route, _, model, _, _ = self.openclaw[key]
+            by_model[model].append((ts, key))
+        for entries in by_model.values():
+            entries.sort(key=lambda item: item[0])
+        times = {model: [ts for ts, _ in entries] for model, entries in by_model.items()}
+
+        for path in sorted(projects.glob("*/*.jsonl")):
+            cid = path.stem
+            children = sorted((path.with_suffix("") / "subagents").rglob("*.jsonl"))
+            if max(p.stat().st_mtime for p in [path, *children]) < self.start:
+                continue
+            turns = claude_turns(path, cid)
+            bindings = self.claude_bindings.get(cid, set())
+            matches = []
+            owners = set()
+            for responses, _ in turns:
+                matched = set()
+                # The gateway CLI summary describes the final model response.
+                for _, model, counts, hashes, ts in responses.values():
+                    clock = times.get(model, [])
+                    near = by_model[model][bisect.bisect_left(clock, ts-120):bisect.bisect_right(clock, ts+120)]
+                    matched.update(self.match_claude_summary(near, ts, hashes, counts, bindings))
+                matches.append(matched)
+                owners.update(self.openclaw[key][1][2] for key in matched)
+            sessions = owners | bindings
+            if not sessions:
+                continue  # Standalone Claude Code runs on the host are outside V.
+            session = next(iter(sessions)) if len(sessions) == 1 else None
+            default = self.claude_defaults.get(session, (UNKNOWN, UNKNOWN, session or "claude-cli/"+cid))
+            tool_routes = {}
+            for (responses, tools), matched in zip(turns, matches):
+                routes = {self.openclaw[key][1] for key in matched}
+                route = next(iter(routes)) if len(routes) == 1 else default
+                self.claude_replaced.update(matched)
+                self.add_claude_responses(responses, route)
+                for tool in tools:
+                    tool_routes[tool] = route
+            for child in children:
+                meta = child.with_suffix(".meta.json")
+                tool = json.loads(meta.read_bytes()).get("toolUseId") if meta.is_file() else None
+                route = tool_routes.get(tool, default)
+                for responses, _ in claude_turns(child, cid):
+                    self.add_claude_responses(responses, route, child=True)
+
+    def add_claude_responses(self, responses, route, child=False):
+        for mid, (ts, model, counts, _, _) in responses.items():
+            if self.start <= ts < self.end:
+                self.claude_responses.setdefault(mid, (ts, route, model, counts, child))
 
     def read_rollout(self, path, agent):
         state = {}
@@ -287,7 +430,15 @@ class Ledger:
                 add(ts, route, provider, model, counts, reason)
                 self.stats["nativeLegacy" if legacy else "nativeResponses"] += 1
                 covered.add(turn)
+        for ts, route, model, counts, child in self.claude_responses.values():
+            add(ts, route, "claude-cli", model, counts)
+            self.stats["claudeChildResponses" if child else "claudeMainResponses"] += 1
+        self.stats["claudeReplacedSummaries"] = len(self.claude_replaced)
         for identity, (ts, route, provider, model, counts, turn) in self.openclaw.items():
+            if identity in self.claude_replaced:
+                continue
+            if provider == "claude-cli":
+                self.stats["claudeFallbackSummaries"] += 1
             if (turn and turn in covered) or identity in self.native:
                 self.stats["replacedMirrors"] += 1
                 continue
@@ -308,6 +459,7 @@ def collect(root, start, end):
         ledger.read_agent(p)
     for home in sorted((root / "agents").glob("*/agent/codex-home")):
         ledger.read_home(home, home.parent.parent.name)
+    ledger.read_claude(root.parent / ".claude" / "projects")
     return ledger.report()
 
 
