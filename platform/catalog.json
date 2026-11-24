@@ -540,6 +540,7 @@
         "lab/memory-close-passive.test.mjs",
         "lab/session-create-narrow.test.mjs",
         "lab/subagent-tree-read.test.mjs",
+        "lab/card-native-shell.test.mjs",
         "lab/workboard-list-page.test.mjs"
       ]
     }
