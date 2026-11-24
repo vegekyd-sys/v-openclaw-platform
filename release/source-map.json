@@ -2240,6 +2240,76 @@
       "sha256": "84513c81c6f7e248afc6a39cb06608c4c636e490365e381dd76a5e296ac25761",
       "source": "versa:a319451cdd5",
       "note": "run-start-phases-v1 (2026-11-23): logs [run-start-phases.1] with the dispatch -> run start steps of each chat turn; logging only; versa/port-run-start-phases-20261123; PR #641; on V since spawn-narrow-runstart-20261123"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-control-scope-DA4oSvgr.js",
+      "sha256": "0a869f4cecdc2646618528fdf16beade62c21494ecbbfa8e7b9ca405e4fa785d",
+      "source": "versa:f565b832b7d",
+      "note": "subagent-tree-read-v1 (2026-11-24, Gateway): the subagents tool, /status, /subagents, the Active Subagents prompt section and descendant counts read only the caller's subagent tree through the requester/controller/child indexes instead of loading the whole subagent_runs table (27,776 runs / 322 MiB) and the agent session table (V 2026-11-24 01:12: a /vcc subagents list froze the Gateway 33.7 s, RSS 5.2 -> 10.3 GB); versa/port-subagents-scoped-read-20261124; OPENCLAW_V_SUBAGENT_TREE_READ=0 turns it off; PR #643; on V since v-batch-20261124"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-list-BS8F5xN_.js",
+      "sha256": "a729c17a033836e40bcfa70a8c8078f034b97105d54e16a312bf869d1f77f048",
+      "source": "versa:f565b832b7d",
+      "note": "subagent-tree-read-v1 (2026-11-24, Gateway): the subagents tool, /status, /subagents, the Active Subagents prompt section and descendant counts read only the caller's subagent tree through the requester/controller/child indexes instead of loading the whole subagent_runs table (27,776 runs / 322 MiB) and the agent session table (V 2026-11-24 01:12: a /vcc subagents list froze the Gateway 33.7 s, RSS 5.2 -> 10.3 GB); versa/port-subagents-scoped-read-20261124; OPENCLAW_V_SUBAGENT_TREE_READ=0 turns it off; PR #643; on V since v-batch-20261124"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-registry-read-UaDFTyfW.js",
+      "sha256": "3aafae432c4b09e6a7f47d674f277cf076df6bb28c79bfedbd174c696cc0795c",
+      "source": "versa:f565b832b7d",
+      "note": "subagent-tree-read-v1 (2026-11-24, Gateway): the subagents tool, /status, /subagents, the Active Subagents prompt section and descendant counts read only the caller's subagent tree through the requester/controller/child indexes instead of loading the whole subagent_runs table (27,776 runs / 322 MiB) and the agent session table (V 2026-11-24 01:12: a /vcc subagents list froze the Gateway 33.7 s, RSS 5.2 -> 10.3 GB); versa/port-subagents-scoped-read-20261124; OPENCLAW_V_SUBAGENT_TREE_READ=0 turns it off; PR #643; on V since v-batch-20261124"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-registry.store.sqlite-hzGu4QSk.js",
+      "sha256": "113a34d2dcd3bce39285797988da183035b8d5b236377932922b483049cbaab9",
+      "source": "versa:f565b832b7d",
+      "note": "subagent-tree-read-v1 (2026-11-24, Gateway): the subagents tool, /status, /subagents, the Active Subagents prompt section and descendant counts read only the caller's subagent tree through the requester/controller/child indexes instead of loading the whole subagent_runs table (27,776 runs / 322 MiB) and the agent session table (V 2026-11-24 01:12: a /vcc subagents list froze the Gateway 33.7 s, RSS 5.2 -> 10.3 GB); versa/port-subagents-scoped-read-20261124; OPENCLAW_V_SUBAGENT_TREE_READ=0 turns it off; PR #643; on V since v-batch-20261124"
+    },
+    {
+      "layer": "core",
+      "path": "extensions/workboard/index.js",
+      "sha256": "c964e7306ad4229f698b452cf950a2da06d73d1c437fbf713b853a6d560b698d",
+      "source": "versa:30fd8f17e5d",
+      "note": "workboard-list-page-v1 (2026-11-24, Gateway): workboard_list reads the sort keys of the cards it can return and reads cards whole only up to limit, instead of store.list of the whole board with all child tables (29,105 cards; Night Shift calls froze the Gateway 19-30 s on 2026-11-23); versa/port-workboard-list-page-20261124; OPENCLAW_V_WORKBOARD_LIST_PAGE=0 restores the full read; PR #644; on V since v-batch-20261124"
+    },
+    {
+      "layer": "core",
+      "path": "runtime-api-1CCazqtv.js",
+      "sha256": "5a7bec4f9cd3b3e258cf4b1dc1845ba03e859cb1deae13119cf64b2f335a7663",
+      "source": "versa:30fd8f17e5d",
+      "note": "workboard-list-page-v1 (2026-11-24, Gateway): workboard_list reads the sort keys of the cards it can return and reads cards whole only up to limit, instead of store.list of the whole board with all child tables (29,105 cards; Night Shift calls froze the Gateway 19-30 s on 2026-11-23); versa/port-workboard-list-page-20261124; OPENCLAW_V_WORKBOARD_LIST_PAGE=0 restores the full read; PR #644; on V since v-batch-20261124"
+    },
+    {
+      "layer": "core",
+      "path": "sqlite-store-CH-caj1l.js",
+      "sha256": "b698bea4752f603c92a6c8ef06fa66e34f15ac34494669ab9ced34d34378f02d",
+      "source": "versa:30fd8f17e5d",
+      "note": "workboard-list-page-v1 (2026-11-24, Gateway): workboard_list reads the sort keys of the cards it can return and reads cards whole only up to limit, instead of store.list of the whole board with all child tables (29,105 cards; Night Shift calls froze the Gateway 19-30 s on 2026-11-23); versa/port-workboard-list-page-20261124; OPENCLAW_V_WORKBOARD_LIST_PAGE=0 restores the full read; PR #644; on V since v-batch-20261124"
+    },
+    {
+      "layer": "core",
+      "path": "runtime-Cy2RRq4n.js",
+      "sha256": "e417663baa8b375d18a6ceb2b48b769b68dc53a9479d8b7173eeb930977844ab",
+      "source": "versa:4e74266bff6",
+      "note": "egress-loopback-v1 (2026-11-24, Gateway): the secret egress proxy run env also sets NO_PROXY/no_proxy=localhost,127.0.0.1,::1, so OpenClaw exec children reach loopback services directly (the proxy only handles HTTPS; nightshiftctl to 127.0.0.1:24879 failed 2,525 of 2,546 times 11/22-24); versa/port-egress-loopback-20261124; PR #645; on V since v-batch-20261124"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/harness-DXVZ5II5.js",
+      "sha256": "dddb90ef9f77120611a78507669378675f7f693470644a7d77acd6fa08bbbcc0",
+      "source": "versa:0c988bb9d47",
+      "note": "card-native-shell-v1 (2026-11-24): OpenClaw-only session/agent tools that subagent and Workboard card runs deny by default join the Codex safe-deny list, so Night Shift cards keep the Codex native shell (exec_command) like chat; a sessions_spawn/subagents deny also turns Codex native delegation off; versa/port-card-native-shell-20261124; PR #645; on V since v-batch-20261124"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/thread-lifecycle-DAcEJ_Om.js",
+      "sha256": "9a85767c5856b64a7252a6cd45a9771d35dfa29f819f4c9e00e362cc12ebc65d",
+      "source": "versa:0c988bb9d47",
+      "note": "card-native-shell-v1 (2026-11-24): OpenClaw-only session/agent tools that subagent and Workboard card runs deny by default join the Codex safe-deny list, so Night Shift cards keep the Codex native shell (exec_command) like chat; a sessions_spawn/subagents deny also turns Codex native delegation off; versa/port-card-native-shell-20261124; PR #645; on V since v-batch-20261124"
     }
   ]
 }
