@@ -10,6 +10,37 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## v-batch-20261124
+
+上线：2026-11-24 21:46 CST（promote-to-v 21:31 装好文件、21:40 对齐 VLab；v-self-restart 21:40 提交，21:41:18 空闲停机，206 s 就绪，清掉 3 个 Codex 孤儿登记，workers 5/5、4 条渠道流全在）  ·  tag `v-batch-20261124`
+
+**摘要**：三处改动一次重启上线。
+- #643：subagents 工具、/status、/subagents 和后代计数只读调用者自己的子 agent 树，不再整表读取 subagent_runs 和会话表。11/24 01:12 一次 /vcc subagents list 曾让 Gateway 冻结 33.7 s。
+- #644：workboard_list 只读它要返回的卡，不再把整个夜班看板连同子表全部读出（11/23 两次 19–30 s 冻结）。上线后 V 上首次调用 0.75 s。
+- #645：夜班卡和普通对话用同一套工具。卡在 /vds 上恢复 Codex 原生 shell；OpenClaw exec 访问本机服务不再走密钥出口代理。V 上重启后 70 分钟：135 个卡线程 `exec_command` 4,541 次、OpenClaw exec 0 次；nightshiftctl 313 次，0 次 fetch failed（11/22–24 失败 2,525/2,546）。
+
+V 验收（重启后到 22:55）：Gateway 心跳延迟除启动窗口外最大 7.2 s，与前几小时同量级；无 Cannot reap；夜班 21:48 自动恢复 18 个实例、1 个转人工；抽查 Codex 两个文件和 core runtime 文件，线上字节与发版一致。
+
+相对上一版 `spawn-narrow-runstart-20261123`：10 个文件变化。
+
+**经 VLab 发版 `v-batch-20261124`**（monitor-v-production-70a57a，dev `e5b75fa7`）
+> 验收：Shared VLab, release v-batch-20261124 (#643 #644 #645, dev e5b75fa7), Gateway pid 2399802 restarted after the two Codex files were also copied into the Gateway copy under state/npm (runtime-components: the release channel writes only runtime/npm). Session agent:makaron:explicit:vlab-dev-batch-accept-1795524800940 on vds-deepseek-flash (codex harness): (1) run vlab-dev-1795524800940: workboard_list…
+- `core` extensions/workboard/index.js  62a0a1b5 → c964e730
+- `core` runtime-Cy2RRq4n.js  e4690957 → e417663b
+- `core` runtime-api-1CCazqtv.js  b1bdba86 → 5a7bec4f
+- `core` sqlite-store-CH-caj1l.js  9ff2826f → b698bea4
+- `core` subagent-control-scope-DA4oSvgr.js  feb68aa7 → 0a869f4c
+- `core` subagent-list-BS8F5xN_.js  41610a02 → a729c17a
+- `core` subagent-registry-read-UaDFTyfW.js  4c88db9c → 3aafae43
+- `core` subagent-registry.store.sqlite-hzGu4QSk.js  27cf50a0 → 113a34d2
+- `codex` dist/harness-DXVZ5II5.js  2903634b → dddb90ef
+- `codex` dist/thread-lifecycle-DAcEJ_Om.js  bdb000d5 → 9a85767c
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #645 fix: 夜班卡拿到和普通对话一样的工具（原生 shell、exec 访问本机）
+- #644 perf(workboard): workboard_list 只读它返回的卡（夜班调用卡 Gateway 19–30 秒）
+- #643 fix(subagents): read only the caller's subagent tree, not whole tables
+
 ## spawn-narrow-runstart-20261123
 
 上线：2026-11-23 22:00 CST（20:3x 文件经 vrelay 装到 V；v-self-restart 21:50 提交，等空闲到 21:56:18 停机，166 s 就绪，workers 5、5 条渠道流全在）  ·  tag `spawn-narrow-runstart-20261123`
