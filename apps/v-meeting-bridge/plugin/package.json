@@ -5,6 +5,7 @@
   "type": "module",
   "files": [
     "core/",
+    "core-loader.js",
     "index.js",
     "openclaw.plugin.json"
   ],
