@@ -10,6 +10,41 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## v-batch-20261125
+
+上线：2026-11-25 22:44 CST（promote-to-v 22:24 装好文件；等 oc_2ab0b5b3 的 V Voice 子 agent 22:22 完成后提交 v-self-restart，22:39:49 空闲停机，206 s 就绪，清掉 2 个 Codex 孤儿登记，workers 5/5、4 条渠道流全在）  ·  tag `v-batch-20261125`
+
+**摘要**：三处改动一次重启上线。
+- #648：附件判断不再把二进制文件当文本内联。11/25 Jessie 群发的几个字体（.otf/.ttf）被判成 UTF-16 TSV / text/plain，乱码每轮随群聊记录重发，会话涨到 700 万 token，10:36–16:40 一条都没回（16:40 已用 sessions.reset 解开）。
+- #649：/vcc（claude-cli）回合在等正在干活的前台 Agent 子 agent 时，子 agent 的活动算作回合进展，不再在 900 s 后被当成卡死中止（11/25 16:29 oc_2ab0b5b3 两路 V Voice 工作被一起杀掉）。VLab 用假 claude 回放：线上字节 916 s 被回收，补丁 1126 s 跑完。
+- #650：会议插件在 `NO_REPLY` 之后、或模型编出 `<system>`/「会议桥接」轮次时不再往会议和群里发字（11/23、11/25 两场会 54 段）；附带 `vmeeting.reload` 热更新 `core/`，以后改插件逻辑不用重启 Gateway。
+
+V 验收（重启后）：9 个文件线上字节与发版一致；`vmeeting.list` 正常、`vmeeting.reload` 存在并返回 core unchanged（新 index.js 已加载）；无 Cannot reap；夜班 22:46:28 自动恢复（1 个实例恢复、0 转人工）；启动窗口心跳延迟 20.3/22.4 s，之后 1.5/3.8 s。共享 VLab 未启用会议插件，#650 的证据是 20/20 单测与 128 条历史回复回放，加上面 V 上的方法核对。
+
+V 线上实测（11/25 23:56–11/26 00:12，Tianyi 授权，在「V 生产发布验收 0910」群，群里只有 Tianyi 和 V）：
+- /vds 普通回合：shell 跑 hostname，16 s 回复 `VB1125_OK VM-8-2-ubuntu`。
+- #648：发一个 .ttf 字体，V 识别为 `font/ttf`、标注「Unsupported document format」并只给文件路径，不再内联乱码，该轮输入 1–6 KB；回复 `VB1125_FONT 收到`。
+- #649：切到 /vcc（Claude Code 2.1.280），前台 `Agent` 子 agent 依次跑三次 `sleep 70`（子 agent 记录 00:07:41/00:08:53/00:10:04），回合 222 s 正常完成并回复 `VB1125_VCC 三步都完成`；期间 Gateway 没有一条 stalled/blocked_tool_call 告警（修复前同类回合 120 s 起每 30 s 告警一次，900 s 被中止）。之后群已切回 /vds。
+
+相对上一版 `v-batch-20261124`：9 个文件变化。
+
+**经 VLab 发版 `v-batch-20261125`**（monitor-v-production-70a57a，dev `c9635591`）
+> 验收：Shared VLab, release v-batch-20261125 (#648 #649 #650, dev c9635591), Gateway pid 3452690. Bytes: attachment-classify f976aa9c, cli-live-session-registry 83fe2b9f, execute.runtime 2cb9b0e9, meeting-bridge core-loader a7d1d62f / index 2706f263 installed. Real turn: session agent:makaron:explicit:vlab-dev-batch1125-accept-1795615857414 on vds-deepseek-flash (codex harness), run vlab-dev-179561585741…
+- `core` attachment-classify-1K-kUuWK.js  60734dc7 → f976aa9c
+- `core` cli-live-session-registry-Bux1JHPe.js  c296fab8 → 83fe2b9f
+- `core` execute.runtime-DRmvah87.js  1c8902ac → 2cb9b0e9
+- `meeting-bridge` core/bridge.js  6dbfca12 → d77cc990
+- `meeting-bridge` core/manager.js  b8e9a32d → 5ed7b13d
+- `meeting-bridge` core/prompts.js  7818e125 → 6822e653
+- `meeting-bridge` index.js  4dcfff6b → 2706f263
+- `meeting-bridge` package.json  121341ce → a599b936
+- `meeting-bridge` core-loader.js  — → a7d1d62f
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #649 fix: /vcc 等待正在干活的 Agent 子 agent 时不再被当成卡死中止
+- #648 fix: 二进制附件不再被当成文本内联（字体被判 UTF-16 TSV）
+- #650 fix(v-meeting-bridge): block text after NO_REPLY / leaked scaffolding; real pacing for V
+
 ## v-batch-20261124
 
 上线：2026-11-24 21:46 CST（promote-to-v 21:31 装好文件、21:40 对齐 VLab；v-self-restart 21:40 提交，21:41:18 空闲停机，206 s 就绪，清掉 3 个 Codex 孤儿登记，workers 5/5、4 条渠道流全在）  ·  tag `v-batch-20261124`

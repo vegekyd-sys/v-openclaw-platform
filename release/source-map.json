@@ -2310,6 +2310,27 @@
       "sha256": "9a85767c5856b64a7252a6cd45a9771d35dfa29f819f4c9e00e362cc12ebc65d",
       "source": "versa:0c988bb9d47",
       "note": "card-native-shell-v1 (2026-11-24): OpenClaw-only session/agent tools that subagent and Workboard card runs deny by default join the Codex safe-deny list, so Night Shift cards keep the Codex native shell (exec_command) like chat; a sessions_spawn/subagents deny also turns Codex native delegation off; versa/port-card-native-shell-20261124; PR #645; on V since v-batch-20261124"
+    },
+    {
+      "layer": "core",
+      "path": "attachment-classify-1K-kUuWK.js",
+      "sha256": "f976aa9c6b11d9addec4ab29e1a4c94222668b9f3f6798ebd2a8f1a94c7c8140",
+      "source": "versa:001dbf28e7a",
+      "note": "binary-attachment-text-v1 (2026-11-25, Gateway): attachment classification no longer treats binary files (fonts and other known binary families, NUL bytes, invalid text past the sniff window) as text, so they are not inlined into the prompt; 2026-11-25 Feishu group V X Jessie: .otf/.ttf fonts were inlined as UTF-16 TSV / text/plain garbage, re-sent every turn via chat history and pushed the session to 7M tokens (no replies 10:36-16:40); versa/port-binary-attachment-text-20261125; PR #648; on V since v-batch-20261125"
+    },
+    {
+      "layer": "core",
+      "path": "cli-live-session-registry-Bux1JHPe.js",
+      "sha256": "83fe2b9f43ec2d5f98e95fe00db477e4f6a22e9f94e2ab5fed12cf2b301c9a98",
+      "source": "versa:bfcb8cbe429",
+      "note": "cli-subagent-progress-v1 (2026-11-25, Gateway): claude-cli turns report foreground Agent subagent activity (parent_tool_use_id records) as turn progress, so a /vcc turn waiting on working subagents is no longer reclaimed as stuck after the 900 s floor (2026-11-25 16:29 group oc_2ab0b5b3: two V Voice subagents killed mid-work); versa/port-cli-subagent-progress-20261125; PR #649; on V since v-batch-20261125"
+    },
+    {
+      "layer": "core",
+      "path": "execute.runtime-DRmvah87.js",
+      "sha256": "2cb9b0e9ba7706db85dd322a3b98e48740cfbe68c2db283a0046778ef6b419d5",
+      "source": "versa:bfcb8cbe429",
+      "note": "cli-subagent-progress-v1 (2026-11-25, Gateway): claude-cli turns report foreground Agent subagent activity (parent_tool_use_id records) as turn progress, so a /vcc turn waiting on working subagents is no longer reclaimed as stuck after the 900 s floor (2026-11-25 16:29 group oc_2ab0b5b3: two V Voice subagents killed mid-work); versa/port-cli-subagent-progress-20261125; PR #649; on V since v-batch-20261125"
     }
   ]
 }
