@@ -79,6 +79,9 @@ export class MeetingBridge {
     this.loopDone = null;
     this.pollFailures = 0;
     this.sleeper = null;
+    // Hot reload: a loop only runs while its generation is current; paused stops new turns.
+    this.gen = 0;
+    this.paused = false;
   }
 
   get id() { return this.r.id; }
@@ -88,8 +91,32 @@ export class MeetingBridge {
   transcriptFile(name) { return this.r.transcriptDir ? path.join(this.r.transcriptDir, name) : null; }
 
   start() {
-    this.loopDone ??= this.#loop().catch((err) => this.log("error", `loop crashed: ${err?.stack ?? err}`));
+    this.loopDone ??= this.#loop(this.gen).catch((err) => this.log("error", `loop crashed: ${err?.stack ?? err}`));
     return this.loopDone;
+  }
+
+  /**
+   * Hot reload, step 1: stop polling and starting turns without ending the meeting, wait for the
+   * running turn, save. The record on disk is then exactly what the next core resumes from.
+   */
+  async quiesce() {
+    if (this.r.status === "ending") throw new Error(`meeting ${this.r.meetingNumber} is wrapping up (brief)`);
+    this.paused = true;
+    this.gen += 1;
+    this.sleeper?.();
+    await this.loopDone;
+    await this.turn?.promise?.catch(() => {});
+    await this.save();
+  }
+
+  /** Hot reload gave up: carry on with this code. */
+  resume() {
+    if (!this.paused) return;
+    this.paused = false;
+    this.gen += 1;
+    this.loopDone = null;
+    void this.start();
+    this.#maybeStartTurn();
   }
 
   async #sleep(ms) {
@@ -101,19 +128,21 @@ export class MeetingBridge {
     this.sleeper = null;
   }
 
-  async #loop() {
-    while (this.r.status === "joining" && !this.stopping) {
+  async #loop(gen) {
+    const live = () => !this.stopping && gen === this.gen;
+    while (this.r.status === "joining" && live()) {
       let joined;
       try { joined = await this.#tryJoin(); } catch { return this.#fail("join_failed"); }
       if (joined) break;
       if (this.now() >= this.r.joinDeadlineAt) return this.#fail("join_timeout");
       await this.#sleep(this.t.joinRetryMs);
     }
-    while (this.r.status === "listening" && !this.stopping) {
+    while (this.r.status === "listening" && live()) {
       if (this.now() >= this.r.deadlineAt) { void this.end("max_duration", { leave: true }); break; }
       await this.poll();
+      if (!live()) break;
       this.#maybeStartTurn();
-      if (this.r.status !== "listening" || this.stopping) break;
+      if (this.r.status !== "listening" || !live()) break;
       await this.#sleep(this.t.pollMs);
     }
   }
@@ -220,7 +249,7 @@ export class MeetingBridge {
   }
 
   #maybeStartTurn() {
-    if (this.turn || !this.r.pending.length || this.r.status !== "listening") return;
+    if (this.turn || this.paused || !this.r.pending.length || this.r.status !== "listening") return;
     const batch = this.r.pending.splice(0);
     const turn = { id: crypto.randomUUID(), startedAt: this.now(), spoke: false, timers: [], batch };
     this.turn = turn;
