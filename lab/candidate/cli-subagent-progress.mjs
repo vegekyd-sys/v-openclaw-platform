@@ -90,8 +90,14 @@ const baseEnv = {
 };
 const version = execFileSync(path.join(cliBin, "claude"), ["--version"], { env: baseEnv, encoding: "utf8" }).trim();
 assert(version.startsWith(claudeVersion), `expected Claude Code ${claudeVersion}, got ${version}`);
-const auth = JSON.parse(execFileSync(path.join(cliBin, "claude"), ["auth", "status", "--json"], { env: baseEnv, encoding: "utf8" }));
-assert.equal(auth.loggedIn, true, `claude is not logged in under HOME=${home}`);
+// Read-only login check. Do not run `claude auth status` here: with an expired access token it refreshes,
+// and two runs refreshing the same OAuth token at once logged shared VLab out (2026-11-25 17:22).
+// Run the two arms one after the other.
+{
+  let oauth = {};
+  try { oauth = JSON.parse(fs.readFileSync(path.join(home, ".claude", ".credentials.json"), "utf8")).claudeAiOauth ?? {}; } catch {}
+  assert(oauth.refreshToken || (oauth.expiresAt ?? 0) > Date.now(), `claude is not logged in under HOME=${home}`);
+}
 
 // ---- private config: no channels, no cron, production /vcc entry ----
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
