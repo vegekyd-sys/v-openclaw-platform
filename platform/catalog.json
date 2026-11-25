@@ -541,11 +541,16 @@
         "lab/session-create-narrow.test.mjs",
         "lab/subagent-tree-read.test.mjs",
         "lab/card-native-shell.test.mjs",
-        "lab/workboard-list-page.test.mjs"
+        "lab/workboard-list-page.test.mjs",
+        "lab/binary-attachment-text.test.mjs"
       ]
     }
   ],
   "deferredTestFiles": [
+    {
+      "file": "lab/candidate/binary-attachment-text.test.mjs",
+      "reason": "Candidate test: imports attachment-classify and V's real mime chunk / file-type from $VLAB_CANDIDATE_RUNTIME; run with lab/binary-attachment-text.candidate.plan.json"
+    },
     {
       "file": "tests/bootstrap-memory-everywhere.test.mjs",
       "reason": "Candidate test: imports the OpenClaw core and Codex plugin from $VLAB_CANDIDATE_RUNTIME; run with lab/release-files/bootstrap-memory-everywhere/candidate.*.plan.json"
