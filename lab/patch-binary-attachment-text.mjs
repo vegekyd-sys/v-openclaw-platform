@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 // Binary attachments stay binary instead of being inlined as text (V 2026-11-25).
 //
 // classifyAttachmentBytes (attachment-classify-1K-kUuWK.js) sniffs bytes of an unrecognized MIME family as
-// text. On 2026-11-25 10:36 a Feishu group member uploaded nine AlibabaPuHuiTi .otf fonts. file-type named
-// them font/otf (class "binary"), so they reached the sniff, and the BOM-less UTF-16 heuristic accepted
-// them: an OpenType table directory is ~30% zero bytes, over its 20% gate, spread over both byte parities.
-// The whole font was decoded as UTF-16BE, its first "line" held U+0009, and it was inlined as
-// <file mime="text/tab-separated-values"> - 200k chars (~370k DeepSeek tokens) of garbage per font in
-// upstreamUserText, re-injected on every later group turn. The session reached 5.9-6.3M tokens against
-// DeepSeek's 1M, compaction failed with invalid_request_error, and V gave 0 replies to 30+ messages over 4 hours.
+// text. On 2026-11-25 10:36-10:37 a Feishu group member uploaded AlibabaPuHuiTi .otf and Alimama ShuHeiTi .ttf
+// fonts. file-type named them font/otf / font/ttf (class "binary"), so they reached the sniff, and the
+// BOM-less UTF-16 heuristic accepted them: a font table directory is ~30% zero bytes, over its 20% gate,
+// spread over both byte parities. Each font was decoded as UTF-16BE and inlined as <file> text
+// (text/tab-separated-values when its first "line" held U+0009, else text/plain), up to the 60k-char
+// per-file cap - about 200k chars of garbage in all, re-sent on every later group turn. The session reached
+// 5.9-6.3M tokens against DeepSeek's 1M, compaction failed with invalid_request_error, and V gave 0 replies
+// to 30+ messages over 4 hours.
 //
 // binary-attachment-text-v1 (source: vegekyd-sys/openclaw-versa versa/port-binary-attachment-text-20261125):
 // - bytes with a signature the sniffer recognizes (font/otf, wasm, sqlite, ...) stay binary;
