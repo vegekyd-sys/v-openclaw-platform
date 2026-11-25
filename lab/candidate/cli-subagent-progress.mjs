@@ -5,19 +5,22 @@
 // ("This turn was interrupted because it stopped making progress"). cli-subagent-progress-v1 turns
 // Claude subagent records (parent_tool_use_id) into progress of the open parent tool.
 //
-// One turn on the production /vcc entry (claude-cli, Claude Code 2.1.280, claude-opus-5-5): the model
-// calls Agent in the foreground; the subagent runs CSP_TICKS Bash calls of CSP_SLEEP seconds each
-// (default 8 x 140 s, past the 900 s floor). Gaps over 120 s keep the stall warnings coming, so their
-// lastProgress shows which signal the heartbeat saw.
+// Shared VLab has no Claude login, so `claude` is lab/candidate/fake-claude-subagent.mjs: it speaks the
+// Agent SDK stream-json protocol and replays one foreground Agent call as Claude Code streams it, the
+// subagent's records carrying parent_tool_use_id, CSP_TICKS Bash calls of CSP_SLEEP seconds each
+// (default 8 x 140 s, past the 900 s floor). Everything else is real: Gateway, the claude-cli harness
+// through the Agent SDK plugin (SDK 0.3.241, as on V), the stream parser, the diagnostic heartbeat and
+// its stuck-session recovery. Gaps over 120 s keep the stall warnings coming, so their lastProgress shows
+// which signal the heartbeat saw.
 //
-// CSP_ARM=baseline  V's bytes: the scenario must hit the failure path (warnings with
-//                   lastProgress=tool:Agent:started, stuck session recovery aborts after >= 900 s).
+// CSP_ARM=baseline  V's bytes: the failure path must be hit (warnings with lastProgress=tool:Agent:started,
+//                   stuck session recovery aborts after >= 900 s, the stand-in is stopped mid-subagent).
 // CSP_ARM=fixed     patched bytes: no recovery, the warnings name tool:Agent:subagent_activity, the
-//                   Agent call returns after > 900 s and the reply is delivered.
+//                   stand-in finishes every tick past the floor and the reply is delivered.
 //
-// Both arms add a log-only probe to this run's private runtime copy: it counts the subagent records
-// (parent_tool_use_id) the stream parser receives, which shows the SDK stream carries them. Channels and
-// cron are cleared so the private Gateway cannot take events from shared VLab.
+// Both arms add a log-only probe to this run's private runtime copy that counts the parent_tool_use_id
+// records the parser receives. Channels and cron are cleared so the private Gateway cannot take events
+// from shared VLab. Run the arms one after the other.
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync, execFileSync } from "node:child_process";
@@ -32,7 +35,6 @@ assert(runtime && configPath && stateDir, "candidate runtime environment is requ
 
 const arm = process.env.CSP_ARM ?? "fixed";
 assert(["baseline", "fixed"].includes(arm));
-const claudeVersion = process.env.CSP_CLAUDE_VERSION ?? "2.1.280"; // production V
 const model = process.env.CSP_MODEL ?? "anthropic/claude-opus-5-5"; // production /vcc
 const ticks = Number(process.env.CSP_TICKS ?? 8);
 const sleepSecs = Number(process.env.CSP_SLEEP ?? 140);
@@ -72,32 +74,31 @@ for (const [name, want] of Object.entries(EXPECTED)) {
   fs.writeFileSync(file, src.replace(anchor, probe));
 }
 
-// ---- the production Claude Code version, private to this run ----
-const cliDir = path.join(scratch, "claude-cli");
-const npm = path.join(path.dirname(process.execPath), "npm");
-const install = spawnSync(npm, ["install", "--prefix", cliDir, "--no-audit", "--no-fund", `@anthropic-ai/claude-code@${claudeVersion}`],
-  { encoding: "utf8", env: { ...process.env, npm_config_cache: path.join(scratch, "cache", "npm") }, timeout: 600_000 });
-assert.equal(install.status, 0, `claude-code install failed: ${redact(install.stderr).slice(-600)}`);
-const cliBin = path.join(cliDir, "node_modules", ".bin");
-const home = process.env.HOME;
+// ---- the stand-in claude, private to this run ----
+const cliBin = path.join(scratch, "fake-claude-bin");
+fs.mkdirSync(cliBin, { recursive: true });
+const fakeScript = path.resolve("lab/candidate/fake-claude-subagent.mjs");
+assert(fs.existsSync(fakeScript), "fake claude script missing");
+const fakeLog = path.join(scratch, "fake-claude.jsonl");
+// The harness may hand the child a filtered environment, so the stand-in's settings live in the wrapper.
+fs.writeFileSync(path.join(cliBin, "claude"), [
+  "#!/bin/sh",
+  `export FAKE_TICKS=${ticks} FAKE_SLEEP=${sleepSecs} FAKE_LOG=${JSON.stringify(fakeLog)}`,
+  `exec ${JSON.stringify(process.execPath)} ${JSON.stringify(fakeScript)} "$@"`,
+  "",
+].join("\n"), { mode: 0o755 });
 const baseEnv = {
   ...process.env,
   PATH: `${cliBin}:${process.env.PATH}`,
   DISABLE_AUTOUPDATER: "1",
   TMPDIR: path.join(scratch, "tmp"),
   XDG_CACHE_HOME: path.join(scratch, "cache"),
-  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1", // as on V (PR #74): Agent calls run in the foreground
+  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1", // as on V (PR #74)
+  FAKE_TICKS: String(ticks),
+  FAKE_SLEEP: String(sleepSecs),
+  FAKE_LOG: fakeLog,
 };
 const version = execFileSync(path.join(cliBin, "claude"), ["--version"], { env: baseEnv, encoding: "utf8" }).trim();
-assert(version.startsWith(claudeVersion), `expected Claude Code ${claudeVersion}, got ${version}`);
-// Read-only login check. Do not run `claude auth status` here: with an expired access token it refreshes,
-// and two runs refreshing the same OAuth token at once logged shared VLab out (2026-11-25 17:22).
-// Run the two arms one after the other.
-{
-  let oauth = {};
-  try { oauth = JSON.parse(fs.readFileSync(path.join(home, ".claude", ".credentials.json"), "utf8")).claudeAiOauth ?? {}; } catch {}
-  assert(oauth.refreshToken || (oauth.expiresAt ?? 0) > Date.now(), `claude is not logged in under HOME=${home}`);
-}
 
 // ---- private config: no channels, no cron, production /vcc entry ----
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
@@ -193,7 +194,7 @@ function claudeChildren() {
       let args = [];
       try { args = fs.readFileSync(`/proc/${k}/cmdline`, "utf8").split("\0"); } catch { continue; }
       if (args.includes("--output-format") && args.some((a) => /claude/u.test(a))) {
-        out.push({ pid: Number(k), exe: args[0], sdk: args.includes("--input-format") && args.includes("stream-json") });
+        out.push({ pid: Number(k), fake: args.some((a) => a.endsWith("fake-claude-subagent.mjs")), sdk: args.includes("--input-format") && args.includes("stream-json") });
       }
       walk(k);
     }
@@ -202,56 +203,14 @@ function claudeChildren() {
   return out;
 }
 
-// ---- Claude Code's own transcripts for this turn (parent + subagents) ----
-function transcriptsFor(marker, since) {
-  const root = path.join(home, ".claude", "projects");
-  const parents = [];
-  for (const dir of fs.existsSync(root) ? fs.readdirSync(root) : []) {
-    const d = path.join(root, dir);
-    let names = [];
-    try { names = fs.readdirSync(d).filter((n) => n.endsWith(".jsonl")); } catch { continue; }
-    for (const f of names) {
-      const p = path.join(d, f);
-      if (fs.statSync(p).mtimeMs >= since && fs.readFileSync(p, "utf8").includes(marker)) parents.push(p);
-    }
-  }
-  const subs = [];
-  for (const p of parents) {
-    const sd = path.join(p.replace(/\.jsonl$/u, ""), "subagents");
-    if (fs.existsSync(sd)) for (const n of fs.readdirSync(sd)) subs.push(path.join(sd, n));
-  }
-  return { parents, subs };
-}
-
-const rows = (file) => fs.readFileSync(file, "utf8").split("\n").filter(Boolean)
-  .map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
-
-function analyse(files, started) {
-  const r = { agentCalls: [], agentResults: [], subagents: [] };
-  for (const row of files.parents.flatMap(rows)) {
-    for (const b of Array.isArray(row.message?.content) ? row.message.content : []) {
-      if (b.type === "tool_use" && b.name === "Agent") r.agentCalls.push({ id: b.id, atSec: Math.round((Date.parse(row.timestamp) - started) / 1000), background: b.input?.run_in_background ?? null });
-      if (b.type === "tool_result" && r.agentCalls.some((c) => c.id === b.tool_use_id)) r.agentResults.push({ atSec: Math.round((Date.parse(row.timestamp) - started) / 1000), text: JSON.stringify(b.content).slice(0, 160) });
-    }
-  }
-  for (const f of files.subs.filter((f) => f.endsWith(".jsonl"))) {
-    const rs = rows(f);
-    const ts = rs.map((x) => Date.parse(x.timestamp ?? "")).filter(Number.isFinite);
-    const bash = rs.flatMap((x) => (Array.isArray(x.message?.content) ? x.message.content : []).filter((b) => b.type === "tool_use" && b.name === "Bash"));
-    let meta = {};
-    try { meta = JSON.parse(fs.readFileSync(f.replace(/\.jsonl$/u, ".meta.json"), "utf8")); } catch {}
-    r.subagents.push({ requestShape: meta.requestShape, bash: bash.length, firstSec: Math.round((Math.min(...ts) - started) / 1000), lastSec: Math.round((Math.max(...ts) - started) / 1000) });
-  }
-  return r;
+function fakeTimeline(since) {
+  let rows = [];
+  try { rows = fs.readFileSync(fakeLog, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)); } catch {}
+  return rows.filter((r) => r.at >= since).map(({ at, sinceStartSec, ...r }) => ({ atSec: Math.round((at - since) / 1000), ...r }));
 }
 
 const marker = `CSP-${arm}-${Date.now()}`;
-const PROMPT = [
-  `这是一次自动化测试（${marker}），请严格照做，不要做别的事。`,
-  `第一步：调用 Agent 工具启动一个 general-purpose 子 agent，不要设置 run_in_background（前台运行，等它返回）。`,
-  `子 agent 的任务：依次执行 ${ticks} 次 Bash 命令 \`python3 -c "import time; time.sleep(${sleepSecs}); print('tick')"\`，每次 Bash 调用都把 timeout 参数设为 ${(sleepSecs + 120) * 1000}，一次只执行一条，不要合并、不要放到后台；全部执行完后只回复 SUB-DONE。`,
-  "第二步：Agent 返回后，你只回复一行：完成 + 子 agent 的回复。",
-].join("");
+const PROMPT = `这是一次自动化测试（${marker}）。stand-in claude 会回放一次前台 Agent 调用。`;
 
 async function runTurn() {
   const sessionKey = `agent:makaron:feishu:direct:ou_csp_${arm}_${Date.now()}`;
@@ -271,7 +230,7 @@ async function runTurn() {
   let meta;
   try { meta = JSON.parse(stdout.slice(stdout.indexOf("{"))); } catch {}
   const agentMeta = meta?.result?.meta?.agentMeta ?? meta?.meta?.agentMeta ?? meta?.agentMeta;
-  const files = transcriptsFor(marker, started);
+  const fake = fakeTimeline(started);
   const sinceStart = (l) => Math.round((l.at - started) / 1000);
   const log = lines.filter((l) => l.at >= started);
   const stalls = log.filter((l) => /stalled session:/u.test(l.line) && l.line.includes(sessionKey)).map((l) => ({
@@ -289,9 +248,9 @@ async function runTurn() {
     ran: agentMeta ? { provider: agentMeta.provider, model: agentMeta.model } : null,
     reply,
     claude: [...seen.values()],
-    transcript: analyse(files, started),
+    fake: fake.filter((r) => !["sub_tool_use", "sub_tool_result"].includes(r.event) || r.n === 1 || r.n === ticks),
+    fakeSubRecords: Math.max(0, ...fake.map((r) => r.subRecords ?? 0)),
     stalls, recoveries, probe,
-    transcriptFiles: [...files.parents, ...files.subs],
     stderr: exit === 0 ? undefined : redact(stderr).slice(-800),
   };
 }
@@ -301,29 +260,32 @@ let result;
 try {
   await connectGateway();
   result = await runTurn();
-  const summary = { arm, claudeVersion: version, model, ticks, sleepSecs, bytes, result: { ...result, transcriptFiles: undefined } };
+  const summary = { arm, claude: version, model, ticks, sleepSecs, bytes, result };
   console.log(JSON.stringify(summary, null, 1));
 
-  assert(result.claude.length > 0, "no claude child was observed under the Gateway");
-  assert(result.claude.every((c) => c.exe.startsWith(cliDir)), `Gateway spawned ${result.claude.map((c) => c.exe).join(", ")}, not Claude Code ${claudeVersion}`);
-  const t = result.transcript;
-  assert(t.agentCalls.length > 0, "model never called the Agent tool; the scenario exercised nothing");
-  assert(t.agentCalls.every((c) => c.background !== true), "Agent ran in the background");
-  assert(t.subagents.length > 0 && t.subagents.every((s) => s.requestShape === "foreground"), `subagent not foreground: ${JSON.stringify(t.subagents)}`);
-  // (1) the SDK stream carries the subagent's records to the parser
+  assert(result.claude.length > 0 && result.claude.every((c) => c.fake && c.sdk), `Gateway did not run the stand-in through the SDK: ${JSON.stringify(result.claude)}`);
+  const ev = (name) => result.fake.filter((r) => r.event === name);
+  assert(ev("control_request").some((r) => r.subtype === "initialize"), "no SDK initialize handshake");
+  assert.equal(ev("agent_tool_use").length, 1, "the Agent call was not replayed");
+  assert(ev("can_use_tool").every((r) => r.behavior === "allow"), `OpenClaw denied Agent: ${JSON.stringify(ev("can_use_tool"))}`);
+  // the SDK stream carries the subagent's records to OpenClaw's parser
   assert(result.probe.length > 0, "the stream parser received no record with parent_tool_use_id");
 
   if (arm === "baseline") {
-    assert(result.stalls.some((s) => s.lastProgress === "tool:Agent:started"), "baseline warnings did not show the frozen tool:Agent:started");
+    assert(result.stalls.some((s) => s.lastProgress === "tool:Agent:started" && Number.parseInt(s.lastProgressAge) >= 300),
+      "baseline warnings did not show the frozen tool:Agent:started");
     const abort = result.recoveries.find((r) => /stuck session recovery:.*aborted=true/u.test(r.line));
     assert(abort, "baseline was not reclaimed: the failure path was not reproduced");
     assert(abort.atSec * 1000 >= FLOOR_MS, `baseline reclaimed before the floor (${abort.atSec}s)`);
+    assert.equal(ev("turn_done").length, 0, "baseline subagent finished although the turn was reclaimed");
+    assert(ev("signal").length + ev("stdin_closed").length + ev("turn_interrupted").length > 0, "the stand-in was not stopped");
   } else {
     assert.equal(result.recoveries.filter((r) => /stuck session recovery:/u.test(r.line)).length, 0, "fixed turn was reclaimed");
     assert(result.stalls.every((s) => s.lastProgress !== "tool:Agent:started" || Number.parseInt(s.lastProgressAge) < 300),
       "the heartbeat still saw only tool:Agent:started");
     assert(result.stalls.some((s) => s.lastProgress === "tool:Agent:subagent_activity"), "no warning named tool:Agent:subagent_activity (hook never fired?)");
-    assert(t.agentResults.length > 0 && t.agentResults[0].atSec * 1000 > FLOOR_MS, `Agent did not return past the floor: ${JSON.stringify(t.agentResults)}`);
+    const done = ev("turn_done")[0];
+    assert(done && done.atSec * 1000 > FLOOR_MS, `subagent did not finish past the floor: ${JSON.stringify(done)}`);
     assert.equal(result.exit, 0, "openclaw agent failed");
     assert(/SUB-DONE/u.test(result.reply), `reply not delivered: ${result.reply}`);
   }
@@ -331,7 +293,6 @@ try {
   console.error(redact(lines.slice(-80).map((l) => l.line).join("\n")));
   throw error;
 } finally {
-  for (const f of result?.transcriptFiles ?? []) { try { fs.rmSync(f, { recursive: true }); } catch {} }
   client?.stop();
   gateway.kill("SIGTERM");
   await sleep(3_000);
