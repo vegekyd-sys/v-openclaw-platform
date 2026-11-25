@@ -541,6 +541,7 @@
         "lab/session-create-narrow.test.mjs",
         "lab/subagent-tree-read.test.mjs",
         "lab/card-native-shell.test.mjs",
+        "lab/cli-subagent-progress.test.mjs",
         "lab/workboard-list-page.test.mjs",
         "lab/binary-attachment-text.test.mjs"
       ]
