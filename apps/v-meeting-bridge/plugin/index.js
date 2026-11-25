@@ -7,12 +7,12 @@ import path from "node:path";
 import { callGatewayFromCli } from "openclaw/plugin-sdk/gateway-runtime";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 
-import { DEFAULT_TIMING } from "./core/bridge.js";
-import { createLarkCli } from "./core/lark.js";
-import { Manager, createTurnRunner } from "./core/manager.js";
-import { Store } from "./core/store.js";
+import { loadCore } from "./core-loader.js";
 
 const HOST_KEY = Symbol.for("openclaw.v.meetingBridge.manager");
+// The Gateway process keeps one reload hook: swap core/ (bridge, prompts, lark, manager) in place.
+const RELOAD_KEY = Symbol.for("openclaw.v.meetingBridge.reload");
+const TIMING_KEYS = ["pollMs", "joinRetryMs", "progressReactMs", "stillWorkingMs", "maxMinutes", "maxPollFailures"];
 const WORKER_CHILD_ENV = "VLAB_WORKER_CHILD";
 
 export const METHODS = Object.freeze({
@@ -21,6 +21,7 @@ export const METHODS = Object.freeze({
   screenshot: "vmeeting.screenshot",
   stop: "vmeeting.stop",
   list: "vmeeting.list",
+  reload: "vmeeting.reload",
 });
 const METHOD_SCOPES = Object.freeze({
   [METHODS.start]: "operator.write",
@@ -28,13 +29,14 @@ const METHOD_SCOPES = Object.freeze({
   [METHODS.screenshot]: "operator.write",
   [METHODS.stop]: "operator.write",
   [METHODS.list]: "operator.read",
+  [METHODS.reload]: "operator.write",
 });
 
 const textResult = (value) => ({ content: [{ type: "text", text: JSON.stringify(value, null, 2) }] });
 
 function resolveConfig(raw = {}) {
   const timing = {};
-  for (const key of Object.keys(DEFAULT_TIMING)) if (Number.isFinite(raw.timing?.[key])) timing[key] = raw.timing[key];
+  for (const key of TIMING_KEYS) if (Number.isFinite(raw.timing?.[key])) timing[key] = raw.timing[key];
   return {
     larkCli: { bin: raw.larkCli?.bin || "lark-cli", profile: raw.larkCli?.profile || undefined },
     timing,
@@ -60,6 +62,11 @@ async function call(method, params, context) {
 
 async function dispatch(manager, method, p) {
   switch (method) {
+    case METHODS.reload: {
+      const reload = globalThis[RELOAD_KEY];
+      if (!reload) throw new Error("hot reload is not available in this process");
+      return reload(p);
+    }
     case METHODS.start: return manager.start(p);
     case METHODS.say: return manager.say(p);
     case METHODS.screenshot: return manager.screenshot(p);
@@ -169,34 +176,70 @@ export default definePluginEntry({
           logger?.error?.("v-meeting-bridge: no state dir; not starting");
           return;
         }
-        const store = await new Store(dir).init();
-        const lark = createLarkCli(config.larkCli);
-        const manager = new Manager({
-          store, logger, timing: config.timing, progressEmoji: config.progressEmoji,
-          lark,
-          runTurn: createTurnRunner(runtime.subagent, { runTimeoutMs: config.runTimeoutMs }),
-          async postGroup(delivery, text) {
-            const adapter = await runtime.channel?.outbound?.loadAdapter?.(delivery.channel).catch(() => null);
-            if (typeof adapter?.sendText === "function") {
-              await adapter.sendText({ cfg: getConfig(), to: delivery.to, text, ...(delivery.accountId ? { accountId: delivery.accountId } : {}), ...(delivery.threadId ? { threadId: delivery.threadId } : {}) });
-              return;
-            }
-            // Shared VLab 2026-11-18: from the service the channel registry had no Feishu adapter
-            // ("feishu has no outbound sendText"). Feishu chats fall back to the same app via lark-cli.
-            if (delivery.channel === "feishu") return lark.imSend({ to: delivery.to, text });
-            throw new Error(`${delivery.channel} has no outbound sendText`);
-          },
-          defaultWorkspaceDir(agentId) {
-            try { return agentId ? runtime.agent?.resolveAgentWorkspaceDir?.(getConfig(), agentId) ?? null : null; } catch { return null; }
-          },
-        });
+        const stateRoot = path.dirname(dir);
+        // Everything that depends on core/ is built here, so a reload can build it again from new code.
+        const build = async (core) => {
+          const store = await new core.store.Store(dir).init();
+          const lark = core.lark.createLarkCli(config.larkCli);
+          return new core.manager.Manager({
+            store, logger, timing: config.timing, progressEmoji: config.progressEmoji,
+            lark,
+            runTurn: core.manager.createTurnRunner(runtime.subagent, { runTimeoutMs: config.runTimeoutMs }),
+            async postGroup(delivery, text) {
+              const adapter = await runtime.channel?.outbound?.loadAdapter?.(delivery.channel).catch(() => null);
+              if (typeof adapter?.sendText === "function") {
+                await adapter.sendText({ cfg: getConfig(), to: delivery.to, text, ...(delivery.accountId ? { accountId: delivery.accountId } : {}), ...(delivery.threadId ? { threadId: delivery.threadId } : {}) });
+                return;
+              }
+              // Shared VLab 2026-11-18: from the service the channel registry had no Feishu adapter
+              // ("feishu has no outbound sendText"). Feishu chats fall back to the same app via lark-cli.
+              if (delivery.channel === "feishu") return lark.imSend({ to: delivery.to, text });
+              throw new Error(`${delivery.channel} has no outbound sendText`);
+            },
+            defaultWorkspaceDir(agentId) {
+              try { return agentId ? runtime.agent?.resolveAgentWorkspaceDir?.(getConfig(), agentId) ?? null : null; } catch { return null; }
+            },
+          });
+        };
+        let core = await loadCore(stateRoot);
+        const manager = await build(core);
         globalThis[HOST_KEY] = manager;
         const resumed = await manager.recover().catch((err) => { logger?.error?.(`v-meeting-bridge: recovery failed: ${err?.stack ?? err}`); return 0; });
-        logger?.info?.(`v-meeting-bridge started (store ${dir}, resumed ${resumed})`);
+
+        // vmeeting.reload: deploy new core/ files, then call this. Meetings keep going: each finishes
+        // its running turn, saves, and the new core resumes it from the same record. No-op when the
+        // files did not change; if anything fails the previous core takes the meetings back.
+        let reloading = null;
+        globalThis[RELOAD_KEY] = (p = {}) => {
+          reloading ??= (async () => {
+            const next = await loadCore(stateRoot);
+            if (next.version === core.version && !p.force) return { reloaded: false, version: core.version, reason: "core unchanged" };
+            const current = globalThis[HOST_KEY];
+            const meetings = current ? await current.handoff({ timeoutMs: Number.isFinite(p.timeoutMs) ? p.timeoutMs : 120_000 }) : 0;
+            try {
+              const fresh = await build(next);
+              globalThis[HOST_KEY] = fresh;
+              const resumedNow = await fresh.recover();
+              logger?.info?.(`v-meeting-bridge: core ${core.version} → ${next.version}, resumed ${resumedNow}/${meetings}`);
+              const from = core.version;
+              core = next;
+              return { reloaded: true, from, to: next.version, meetings, resumed: resumedNow };
+            } catch (err) {
+              logger?.error?.(`v-meeting-bridge: reload to ${next.version} failed, back to ${core.version}: ${err?.stack ?? err}`);
+              const back = await build(core);
+              globalThis[HOST_KEY] = back;
+              await back.recover().catch(() => 0);
+              throw new Error(`reload failed, still on ${core.version}: ${err?.message ?? err}`);
+            }
+          })().finally(() => { reloading = null; });
+          return reloading;
+        };
+        logger?.info?.(`v-meeting-bridge started (core ${core.version}, store ${dir}, resumed ${resumed})`);
       },
       async stop() {
         const manager = globalThis[HOST_KEY];
         globalThis[HOST_KEY] = undefined;
+        globalThis[RELOAD_KEY] = undefined;
         await manager?.shutdown();
       },
     });

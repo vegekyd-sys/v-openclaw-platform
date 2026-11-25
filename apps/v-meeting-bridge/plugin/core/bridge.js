@@ -11,7 +11,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 
 import { LarkCliError } from "./lark.js";
-import { COPY, briefPrompt, isSilent, turnPrompt } from "./prompts.js";
+import { COPY, briefPrompt, cleanReply, turnPrompt } from "./prompts.js";
 import { appendLines, writeFileEnsured } from "./store.js";
 
 export const DEFAULT_TIMING = Object.freeze({
@@ -79,6 +79,9 @@ export class MeetingBridge {
     this.loopDone = null;
     this.pollFailures = 0;
     this.sleeper = null;
+    // Hot reload: a loop only runs while its generation is current; paused stops new turns.
+    this.gen = 0;
+    this.paused = false;
   }
 
   get id() { return this.r.id; }
@@ -88,8 +91,32 @@ export class MeetingBridge {
   transcriptFile(name) { return this.r.transcriptDir ? path.join(this.r.transcriptDir, name) : null; }
 
   start() {
-    this.loopDone ??= this.#loop().catch((err) => this.log("error", `loop crashed: ${err?.stack ?? err}`));
+    this.loopDone ??= this.#loop(this.gen).catch((err) => this.log("error", `loop crashed: ${err?.stack ?? err}`));
     return this.loopDone;
+  }
+
+  /**
+   * Hot reload, step 1: stop polling and starting turns without ending the meeting, wait for the
+   * running turn, save. The record on disk is then exactly what the next core resumes from.
+   */
+  async quiesce() {
+    if (this.r.status === "ending") throw new Error(`meeting ${this.r.meetingNumber} is wrapping up (brief)`);
+    this.paused = true;
+    this.gen += 1;
+    this.sleeper?.();
+    await this.loopDone;
+    await this.turn?.promise?.catch(() => {});
+    await this.save();
+  }
+
+  /** Hot reload gave up: carry on with this code. */
+  resume() {
+    if (!this.paused) return;
+    this.paused = false;
+    this.gen += 1;
+    this.loopDone = null;
+    void this.start();
+    this.#maybeStartTurn();
   }
 
   async #sleep(ms) {
@@ -101,19 +128,21 @@ export class MeetingBridge {
     this.sleeper = null;
   }
 
-  async #loop() {
-    while (this.r.status === "joining" && !this.stopping) {
+  async #loop(gen) {
+    const live = () => !this.stopping && gen === this.gen;
+    while (this.r.status === "joining" && live()) {
       let joined;
       try { joined = await this.#tryJoin(); } catch { return this.#fail("join_failed"); }
       if (joined) break;
       if (this.now() >= this.r.joinDeadlineAt) return this.#fail("join_timeout");
       await this.#sleep(this.t.joinRetryMs);
     }
-    while (this.r.status === "listening" && !this.stopping) {
+    while (this.r.status === "listening" && live()) {
       if (this.now() >= this.r.deadlineAt) { void this.end("max_duration", { leave: true }); break; }
       await this.poll();
+      if (!live()) break;
       this.#maybeStartTurn();
-      if (this.r.status !== "listening" || this.stopping) break;
+      if (this.r.status !== "listening" || !live()) break;
       await this.#sleep(this.t.pollMs);
     }
   }
@@ -220,7 +249,7 @@ export class MeetingBridge {
   }
 
   #maybeStartTurn() {
-    if (this.turn || !this.r.pending.length || this.r.status !== "listening") return;
+    if (this.turn || this.paused || !this.r.pending.length || this.r.status !== "listening") return;
     const batch = this.r.pending.splice(0);
     const turn = { id: crypto.randomUUID(), startedAt: this.now(), spoke: false, timers: [], batch };
     this.turn = turn;
@@ -229,6 +258,13 @@ export class MeetingBridge {
       if (this.turn === turn) this.turn = null;
       if (!this.stopping) this.#maybeStartTurn();
     });
+  }
+
+  #pace() {
+    const times = this.r.replyTimes ?? [];
+    if (!times.length) return null;
+    const now = this.now();
+    return { lastReplyAgoS: Math.max(0, Math.round((now - times[times.length - 1]) / 1000)), recentReplies: times.filter((t) => now - t <= 10 * 60_000).length };
   }
 
   #arm(turn, ms, fn) {
@@ -248,7 +284,7 @@ export class MeetingBridge {
     const maxLag = Math.max(...turn.batch.map((r) => r.lagMs ?? 0));
     let res;
     try {
-      res = await this.d.runTurn({ sessionKey: this.r.sessionKey, agentId: this.r.agentId, message: turnPrompt({ meetingId: this.r.meetingId, lines }), idempotencyKey: `vmb-${this.r.meetingId}-${turn.id}` });
+      res = await this.d.runTurn({ sessionKey: this.r.sessionKey, agentId: this.r.agentId, message: turnPrompt({ meetingId: this.r.meetingId, lines, pace: this.#pace() }), idempotencyKey: `vmb-${this.r.meetingId}-${turn.id}` });
     } catch (err) {
       res = { status: "error", error: String(err?.message ?? err) };
     }
@@ -261,13 +297,23 @@ export class MeetingBridge {
       record.result = "error";
       record.error = String(res?.error ?? "no reply").slice(0, 300);
       this.log("warn", `V turn failed: ${record.error}`);
-    } else if (isSilent(res.text)) {
-      this.r.stats.silent += 1;
-      record.result = "silent";
     } else {
-      this.r.stats.replies += 1;
-      record.result = "reply";
-      await this.say(res.text.trim(), { mirror: true, fromTurn: true });
+      const { text, reason } = cleanReply(res.text);
+      if (reason) {
+        record.cleaned = reason;
+        this.r.stats.cleaned = (this.r.stats.cleaned ?? 0) + 1;
+        this.log("warn", `V reply cleaned (${reason}); ${text ? "sending the part before it" : "sending nothing"}`);
+      }
+      if (!text) {
+        this.r.stats.silent += 1;
+        record.result = "silent";
+      } else {
+        this.r.stats.replies += 1;
+        record.result = "reply";
+        (this.r.replyTimes ??= []).push(this.now());
+        if (this.r.replyTimes.length > 50) this.r.replyTimes.splice(0, this.r.replyTimes.length - 50);
+        await this.say(text, { mirror: true, fromTurn: true });
+      }
     }
     await appendLines(this.transcriptFile("v_turns.jsonl"), [JSON.stringify(record)]).catch(() => {});
     await this.save();
@@ -315,7 +361,7 @@ export class MeetingBridge {
     return {
       meetingId: this.r.meetingId, meetingNumber: this.r.meetingNumber, status: this.r.status, sessionKey: this.r.sessionKey,
       chat: this.r.delivery?.to ?? null, transcriptDir: this.r.transcriptDir, endReason: this.r.endReason, lastJoinError: this.r.lastJoinError ?? null,
-      turns: s.turns, replies: s.replies, silent: s.silent, errors: s.errors, says: s.says, reacts: s.reacts,
+      turns: s.turns, replies: s.replies, silent: s.silent, cleaned: s.cleaned ?? 0, errors: s.errors, says: s.says, reacts: s.reacts,
       turnMsP50: pct(s.turnMs, 50), turnMsP95: pct(s.turnMs, 95),
       subtitleLagMsP50: pct(s.lagMs, 50), subtitleLagMsP95: pct(s.lagMs, 95),
       turnRunning: Boolean(this.turn), pendingLines: this.r.pending.length,
@@ -378,10 +424,11 @@ export class MeetingBridge {
     } catch (err) {
       res = { status: "error", error: String(err?.message ?? err) };
     }
-    if (!res?.text || isSilent(res.text)) { this.r.brief = "failed"; return; }
-    await writeFileEnsured(this.transcriptFile("brief.md"), `# 会后纪要（meeting_id ${this.r.meetingId}）\n\n${res.text.trim()}\n\n逐字：transcript.md\n`).catch(() => {});
+    const brief = cleanReply(res?.text).text;
+    if (!brief) { this.r.brief = "failed"; return; }
+    await writeFileEnsured(this.transcriptFile("brief.md"), `# 会后纪要（meeting_id ${this.r.meetingId}）\n\n${brief}\n\n逐字：transcript.md\n`).catch(() => {});
     if (this.r.delivery?.to) {
-      try { await this.d.postGroup(this.r.delivery, COPY.briefHeader + res.text.trim()); this.r.brief = "sent"; } catch { this.r.brief = "written"; }
+      try { await this.d.postGroup(this.r.delivery, COPY.briefHeader + brief); this.r.brief = "sent"; } catch { this.r.brief = "written"; }
     } else this.r.brief = "written";
   }
 }

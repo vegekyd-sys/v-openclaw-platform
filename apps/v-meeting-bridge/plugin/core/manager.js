@@ -121,6 +121,29 @@ export class Manager {
     return [...this.byId.values()].map((b) => b.summary());
   }
 
+  /**
+   * Hot reload: bring every meeting to a saved, idle state so another core can recover() them.
+   * Refuses while a meeting writes its brief; gives up (and carries on) if a turn outlasts timeoutMs.
+   * Returns how many meetings were handed over; this manager is empty afterwards.
+   */
+  async handoff({ timeoutMs = 120_000 } = {}) {
+    const bridges = [...this.byId.values()];
+    const ending = bridges.find((b) => b.r.status === "ending");
+    if (ending) throw new Error(`meeting ${ending.r.meetingNumber} is wrapping up (brief); reload again in a minute`);
+    let timer;
+    const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("timeout")), timeoutMs); timer.unref?.(); });
+    try {
+      await Promise.race([Promise.all(bridges.map((b) => b.quiesce())), timeout]);
+    } catch (err) {
+      for (const b of bridges) b.resume();
+      throw new Error(`meetings not idle within ${Math.round(timeoutMs / 1000)}s (${err?.message ?? err}); still running the current code`);
+    } finally {
+      clearTimeout(timer);
+    }
+    this.byId.clear();
+    return bridges.length;
+  }
+
   async shutdown() {
     // Gateway stop/restart: keep records as they are (listening/joining) so recover() resumes them.
     for (const b of this.byId.values()) { b.stopping ??= Promise.resolve(); b.sleeper?.(); }
