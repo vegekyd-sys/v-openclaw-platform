@@ -118,8 +118,14 @@ config.agents.entries.makaron.models[model] = { params: { thinking: "high" }, ag
 const allow = config.agents.defaults.modelPolicy?.allow;
 if (Array.isArray(allow) && !allow.includes(model)) allow.push(model);
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+// Managed npm plugins (codex etc.) come from shared VLab; a missing one makes plugin verification try
+// an install through the shared npm cache, which this user cannot write.
+const sharedNpm = path.join(process.env.VLAB_SHARED_STATE_DIR, "npm");
+if (!fs.existsSync(path.join(stateDir, "npm"))) {
+  assert.equal(spawnSync("cp", ["-a", "--reflink=auto", sharedNpm, path.join(stateDir, "npm")]).status, 0, "copy managed npm plugins");
+}
 
-const env = { ...baseEnv, OPENCLAW_GATEWAY_PORT: String(port), OPENCLAW_PATH_BOOTSTRAPPED: "1" };
+const env = { ...baseEnv, OPENCLAW_GATEWAY_PORT: String(port), OPENCLAW_PATH_BOOTSTRAPPED: "1", npm_config_cache: path.join(scratch, "cache", "npm") };
 
 const lines = [];
 let gateway;
