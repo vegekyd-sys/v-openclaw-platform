@@ -1,0 +1,15 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/cli-subagent-progress/cli-live-session-registry-Bux1JHPe.js",
+      "target": "openclaw/dist/cli-live-session-registry-Bux1JHPe.js",
+      "before": "c296fab87b3fad58b39d5f97544f16581c11a4e94d629dcdb8c2b3de795f46d5"
+    },
+    {
+      "source": "lab/release-files/cli-subagent-progress/execute.runtime-DRmvah87.js",
+      "target": "openclaw/dist/execute.runtime-DRmvah87.js",
+      "before": "1c8902ac292d49a7e1d98d335972267c1b0bda5571582783084541bef5a5a836"
+    }
+  ]
+}
