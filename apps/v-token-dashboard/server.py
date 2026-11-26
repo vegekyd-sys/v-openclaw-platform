@@ -4,13 +4,14 @@ import datetime as dt
 import gzip
 import json
 import os
-import shlex
 import subprocess
 import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+from remote_snapshot import capture
 
 HERE = Path(__file__).resolve().parent
 BEIJING = dt.timezone(dt.timedelta(hours=8))
@@ -41,17 +42,7 @@ class Snapshot:
             today = dt.datetime.fromtimestamp(end, BEIJING).date()
             first_day = today - dt.timedelta(days=self.days - 1)
             start = int(dt.datetime.combine(first_day, dt.time(), BEIJING).timestamp())
-            command = f"cd /tmp && sudo -n -H -u openclaw nice -n 12 python3 - {start} {end}"
-            with (HERE / "collect.py").open("rb") as source:
-                result = subprocess.run(["ssh", "-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "v", command],
-                                        stdin=source, capture_output=True, check=True, timeout=1800)
-            program = (HERE / "people.py").read_text()
-            enriched = subprocess.run(["ssh", "-T", "-o", "BatchMode=yes", "v",
-                                       "cd /tmp && sudo -n -H -u openclaw python3 -c " + shlex.quote(program)],
-                                      input=result.stdout, capture_output=True, check=True, timeout=900)
-            data = json.loads(gzip.decompress(enriched.stdout))
-            if data["start"] != start or data["end"] != end or not isinstance(data["rows"], list):
-                raise ValueError("snapshot failed validation")
+            data = capture(start, end, self.file.parent)
             if self.file.exists():
                 previous = json.loads(gzip.decompress(self.file.read_bytes()))
                 for identity in {row[2] for row in data["rows"]}:
@@ -63,7 +54,10 @@ class Snapshot:
                 out.write(gzip.compress(json.dumps(data, ensure_ascii=False).encode()))
             os.replace(out.name, self.file)
             self.error = None
-        except (OSError, ValueError, subprocess.SubprocessError, KeyError) as exc:
+        except RuntimeError as exc:
+            self.error = str(exc)
+            print(self.error, flush=True)
+        except (OSError, EOFError, ValueError, subprocess.SubprocessError, KeyError) as exc:
             self.error = f"采集失败（{type(exc).__name__}）。请检查 ssh v 和只读数据源后刷新。"
             print(self.error, flush=True)
         finally:
