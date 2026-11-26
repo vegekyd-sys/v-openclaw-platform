@@ -509,6 +509,7 @@
         "lab/openclaw-tool-safe-deny.test.mjs",
         "lab/skill-workshop-agent-apply.test.mjs",
         "scripts/v-skills-catalog.test.mjs",
+        "scripts/v-tv-mcp-bridge.test.mjs",
         "lab/model-switch-thinking.test.mjs",
         "lab/luna-fallback-takeover.test.mjs",
         "lab/feishu-card-images.test.mjs",
