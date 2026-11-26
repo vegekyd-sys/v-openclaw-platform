@@ -17,7 +17,7 @@ User=openclaw
 Group=openclaw
 ExecStart=/usr/bin/python3 /opt/v-ops/agent-shell-cgroup.py \
   --service-cgroup /sys/fs/cgroup/system.slice/openclaw-gateway.service \
-  --memory-high 12G \
+  --memory-high 12G --pids-max 10240 \
   --io-read-bps 80M --io-write-bps 80M \
   --io-path /home/openclaw/.openclaw --io-path /srv/openclaw-data/disk1
 Restart=always

@@ -142,6 +142,24 @@ class AgentShellTest(unittest.TestCase):
         self.assertEqual(group.tick(), [])
         self.assertEqual(len(group.writes), writes)
 
+    def test_pids_max_enables_pids_and_caps_agent_shell(self):
+        service = fake_cgroup(os.path.join(self.tmp.name, "cg"), sorted(TREE), enabled="io memory")
+        group = FakeCgroupFs(service, pids_max=10240, proc=self.proc)
+        group.tick()
+        with open(os.path.join(service, "cgroup.subtree_control")) as f:
+            self.assertIn("pids", f.read().split())
+        with open(os.path.join(service, "agent-shell", "pids.max")) as f:
+            self.assertEqual(f.read(), "10240")
+        self.assertEqual(self.events("prepared")[0]["limits"]["pids.max"], "10240")
+
+    def test_without_pids_max_pids_stays_off(self):
+        service = fake_cgroup(os.path.join(self.tmp.name, "cg"), sorted(TREE), enabled="io memory")
+        group = FakeCgroupFs(service, proc=self.proc)
+        group.tick()
+        with open(os.path.join(service, "cgroup.subtree_control")) as f:
+            self.assertNotIn("pids", f.read().split())
+        self.assertFalse(os.path.exists(os.path.join(service, "agent-shell", "pids.max")))
+
     def test_gateway_not_running_is_a_no_op(self):
         group = FakeCgroupFs(os.path.join(self.tmp.name, "missing.service"), proc=self.proc)
         self.assertEqual(group.tick(), [])
