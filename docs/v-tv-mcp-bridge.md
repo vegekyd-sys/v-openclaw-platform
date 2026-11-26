@@ -127,7 +127,7 @@ OpenClaw 9.1 没有「多会话共享一个 stdio MCP 进程」的开关：
   - 但 Claude Code 自己的 MCP 日志显示，它带 `Authorization` 头经 `http://127.0.0.1:18791/mcp` 连上了桥接，完成握手、拿到工具列表。
   - 工具调用本身和其他 runtime 走同一个桥接、同一条转发路径。
   - 上 V 后用一轮 /vcc 补验真实调用。
-- OpenClaw 自带的 `@modelcontextprotocol/sdk` 1.30.0 客户端也单独测过：3 个客户端共用 1 个上游（单元测试第 11 项，在 VLab 上跑）。
+- OpenClaw 自带的 `@modelcontextprotocol/sdk` 1.30.0 客户端也单独测过：3 个客户端共用 1 个上游（`lab/tv-mcp-bridge-sdk-check.mjs`，在 VLab 上跑；不进 CI，因为要用 runtime 里的 SDK）。
 
 ### 热切换（上线和回滚的真实路径）
 
@@ -195,7 +195,7 @@ OpenClaw 9.1 没有「多会话共享一个 stdio MCP 进程」的开关：
 ## 文件
 
 - `scripts/v-tv-mcp-bridge.mjs`：桥接本体，无依赖。
-- `scripts/v-tv-mcp-bridge.test.mjs`：单元测试，CI 在 `tests/vlab-static.sh` 里跑。
+- `scripts/v-tv-mcp-bridge.test.mjs`：单元测试，CI 在 `tests/vlab-static.sh` 和平台 catalog 里跑。`lab/tv-mcp-bridge-sdk-check.mjs`：用真实 MCP SDK 客户端的检查。
 - `systemd/v-tv-mcp-bridge.service`、`scripts/install-v-tv-mcp-bridge.sh`：V 上的安装、切换、回滚、状态。
 - `lab/tv-mcp-bridge-compare.mjs`：直连与桥接对比，只读。
 - `lab/candidate/tv-mcp-bridge-runtimes.mjs` 加 `tv-mcp-bridge-*.plan.json`：三种 runtime 与热切换的 candidate。

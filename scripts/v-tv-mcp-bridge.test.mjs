@@ -224,27 +224,5 @@ test("token file: dotenv key or a bare token; listen parsing", () => {
   assert.deepEqual(parseListen("[::1]:5"), { host: "::1", port: 5 });
 });
 
-test("the real MCP SDK client works against the bridge (when the SDK is available)", async (t) => {
-  const sdkRoot = process.env.MCP_SDK_ROOT;
-  if (!sdkRoot) return t.skip("set MCP_SDK_ROOT to a node_modules/@modelcontextprotocol/sdk directory");
-  const { Client } = await import(path.join(sdkRoot, "dist/esm/client/index.js"));
-  const { StreamableHTTPClientTransport } = await import(path.join(sdkRoot, "dist/esm/client/streamableHttp.js"));
-  const b = await startBridge();
-  try {
-    const clients = [];
-    for (let i = 0; i < 3; i += 1) {
-      const client = new Client({ name: "sdk-test", version: "1" });
-      await client.connect(new StreamableHTTPClientTransport(new URL(b.url), { requestInit: { headers: { authorization: `Bearer ${TOKEN}` } } }));
-      clients.push(client);
-    }
-    const { tools } = await clients[0].listTools();
-    assert.deepEqual(tools.map((x) => x.name), ["tv_status", "tv_volume"]);
-    const r = await clients[2].callTool({ name: "tv_status", arguments: {} });
-    assert.equal(JSON.parse(r.content[0].text).response_contract, "tv-status-v3");
-    for (const c of clients) await c.close();
-    assert.equal(b.upstream.stats.spawns, 1);
-  } finally { await b.close(); }
-});
-
 process.on("exit", () => fs.rmSync(tmp, { recursive: true, force: true }));
 void here;
