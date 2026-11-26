@@ -1,4 +1,4 @@
-# 2026-11-26：Gateway 任务数打满后崩溃，启动预检超时导致重启循环
+# 2026-11-26：Gateway 任务数打满后崩溃，启动预检超时重启循环，恢复后主线程又卡 22 分钟
 
 时间均为 CST。结论来自 V 上的 journald、`/tmp/openclaw` 文件日志、Codex `logs_2.sqlite`（只读）和进程表。
 
@@ -10,6 +10,10 @@
   - 这次失败退出本身又算一次非正常退出，下次启动还是要完整校验，于是每 5 分钟重启一次，没有尽头。
   - 期间 V 完全不回复，约 37 分钟。
 - **恢复**：15:39 把预检上限放宽到 1 小时后重启。完整校验用了 716 s，15:54:43 `[gateway] ready`，5 个 worker、重启恢复 6 条全部 settled。
+- **16:07:02–16:29:49 再次不回（22.7 分钟）**：记忆库准备阶段在 Gateway 主线程对 makaron 库做完整校验（`memory-database-preparation` `integrity` 1,361,689 ms）。
+  - 预检的完整校验在子进程里做，结果不写成 Gateway 这一生命周期的收据。Gateway 的生命周期目录 `c4f9600e…` 里，16:29:49 之前没有任何收据。
+  - 所以 makaron 第一次被记忆检索打开时，主线程又从头校验一遍。
+  - 干净重启时会沿用上一生命周期的收据，碰不到这条路径；只有非正常退出后才会出现，所以这是 V 上第一次。
 
 ## 任务数被谁占满
 
@@ -23,7 +27,15 @@
 - **每会话 MCP**（设计如此，规模随会话数增长）：
   - `xiaomi-tv-remote`：`openclaw.json` 的 `mcp.servers`，每个会话一个 ssh 到 VLab 的进程。
   - `openai-developers` 插件：每个 Codex 线程一个 `node ./mcp/server.mjs`。
-- **V Browser 的 Chrome**。
+- **GeeLark 账号开通流程的 Chrome 漏标签页（今天的触发因素）**：
+  - agent 在 agent-shell 里起了专用 Chrome（CDP 22900，profile 在 `memory/projects/geelark-provisioning-workflow/.state/chrome-profile`）。
+  - 它写的临时脚本每次 `ctx.newPage()`，结束时只 `browser.close()`。对 `connectOverCDP` 来说这只是断开连接，页面不会关。
+  - 16:31 重启后 13 分钟里，这个 Chrome 已经开了 11 个页面，其中同一个 loongproxy 管理页开了 8 个，渲染进程每 5 分钟多一个。
+  - 崩溃时残留了 93 个 chrome 进程。
+- **为什么是今天**：
+  - 不是运行时长：11-21 到 11-23 连续运行 68 小时没出事。
+  - 也不是对话量：11-23 到 11-25 每天 1500–1800 个 Codex 线程，今天到 16 点只有 271 个。
+  - 今天群里在密集做 TikTok/Outlook 开号登录，这个 Chrome 一直在漏；再叠加 11-19 起每个 Codex 线程多出来的 xcodebuildmcp，第一次顶到 4096。
 
 ## 修复
 
@@ -32,6 +44,16 @@
 | `TasksMax=16384` | `systemd/openclaw-gateway.service.d/gateway-capacity.conf` | 15:44 已 `set-property` 生效；由 `scripts/install-v-gateway-capacity.sh` 改为仓库管理 |
 | `OPENCLAW_DB91_PREFLIGHT_TIMEOUT_MS=3600000` | 同一 drop-in | 15:39 先用 `/run` 运行时 drop-in 应急；安装脚本会删掉应急文件 |
 | 停用远程插件 `build-ios-apps`、`defense-factory` | V 上 makaron、v-codex 的 `codex-home/config.toml`（运行状态，不在 git） | 见下 |
+
+| agent-shell `pids.max=10240` | `systemd/v-agent-shell-cgroup.service`、`scripts/v-agent-shell-cgroup.py --pids-max` | 16:5x 已用 `scripts/install-v-agent-shell-cgroup.sh v --enable` 装上 V。agent 再漏，先失败的是 agent 自己的命令，Gateway 至少保留约 6000 |
+| 关掉 GeeLark Chrome 的 8 个重复标签页 | V 运行状态 | 每个网址留最新一个，chrome 进程 21 → 13 |
+| GeeLark 流程笔记加「复用标签、新开的页用完关」 | V 工作区 `memory/projects/geelark-provisioning-workflow/main.md` 第 88 行，备份 `main.md.bak-20261126` | agent 下次读笔记生效 |
+| `last-lifecycle.json` 指回运行中的 Gateway | V `.db91-integrity/` | 见下 |
+
+**生命周期记录被 agent 命令覆盖**：
+- 16:34:16 和 16:35:46，agent 通过 OpenClaw exec 起了两个 `core/dist/index.js` 进程，其参数被 `isGatewayServer` 判定为 Gateway。
+- 它们各自建了一个新生命周期，并改写了 `last-lifecycle.json`。下次重启时，沿用上一轮检查结果要靠这个文件。指向错误的生命周期，干净重启也会退回完整预检，耗时 12 分钟。
+- 已手工把它指回运行中的 Gateway（`c4f9600e…`，pid 3591187），原文件备份在 `~/.cache/last-lifecycle.json.bak-20261126`。
 
 **Codex 远程插件**：这是 Codex 的运行状态，不进仓库，只在这里记录做法。
 
@@ -53,6 +75,9 @@
 4. 恢复办法：把目录移回原处，并删掉上面这几行配置。
 
 ## 遗留
+
+- `db91-integrity-bootstrap.mjs`：Gateway 的子进程（环境里已有 `OPENCLAW_DB91_INTEGRITY_EPOCH`）不应再开新生命周期、改写 `last-lifecycle.json`。这是 dist 改动，要走 VLab 和重启。
+- 预检的完整校验结果应发布为 Gateway 生命周期的收据，主线程才不会再做一遍。另一条路是记忆库准备阶段永远不在主线程同步跑整库校验。
 
 - 每会话 MCP 进程随会话数线性增长，16384 只是把上限推远。长期办法是给 MCP 运行时设空闲回收，或者让 Codex 线程空闲后卸载。
 - 预检完整校验的耗时随 makaron 库增长：49 GB 需要约 12 分钟。任何一次崩溃都意味着至少 12 分钟不可用。

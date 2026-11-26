@@ -27,8 +27,14 @@ Limits on agent-shell:
                Above it the kernel throttles the group instead of killing it.
   io.max       (when the unit also delegates the io controller): read/write bandwidth per disk, so
                a scan cannot saturate the disks the Gateway writes to.
+  pids.max     (--pids-max, off by default): processes + threads in agent-shell. The Gateway unit's
+               TasksMax counts agent-shell too; on 2026-11-26 an agent's Chrome that kept opening
+               tabs plus per-thread MCP servers used up all 4096 and the Gateway itself failed to
+               spawn and exited. With a cap here an agent that leaks hits it first: its own next
+               fork fails with EAGAIN while the Gateway keeps the rest of the unit's budget.
 
-Nothing is refused and nothing is killed; commands that stay under the limits run as before.
+Nothing is killed; commands that stay under the limits run as before. Above pids.max new processes
+and threads in agent-shell are refused.
 
 Usage (systemd: systemd/v-agent-shell-cgroup.service):
   v-agent-shell-cgroup.py --service-cgroup /sys/fs/cgroup/system.slice/openclaw-gateway.service
@@ -169,7 +175,7 @@ def disk_of(path: str, sysfs: str = "/sys") -> str | None:
 class AgentShellCgroup:
     def __init__(self, service: str, group: str = DEFAULT_GROUP, source: str = DEFAULT_SOURCE,
                  memory_high: int | None = 12 * 1024**3, memory_max: int | None = None,
-                 io_read_bps: int | None = None, io_write_bps: int | None = None,
+                 pids_max: int | None = None, io_read_bps: int | None = None, io_write_bps: int | None = None,
                  io_paths: list[str] | None = None, dry_run: bool = False, proc: Proc | None = None,
                  sysfs: str = "/sys"):
         self.service = service.rstrip("/")
@@ -177,6 +183,7 @@ class AgentShellCgroup:
         self.source_dir = os.path.join(self.service, source)
         self.memory_high = memory_high
         self.memory_max = memory_max
+        self.pids_max = pids_max
         self.io_read_bps = io_read_bps
         self.io_write_bps = io_write_bps
         self.io_paths = io_paths or []
@@ -208,7 +215,8 @@ class AgentShellCgroup:
             return True
         available = self._read("cgroup.controllers").split()
         enabled = self._read("cgroup.subtree_control").split()
-        for controller in ("memory", "io"):
+        wanted = ("memory", "io", "pids") if self.pids_max else ("memory", "io")
+        for controller in wanted:
             if controller in available and controller not in enabled:
                 # Allowed only while the service cgroup itself holds no process (DelegateSubgroup
                 # put them all in foreground).
@@ -220,6 +228,9 @@ class AgentShellCgroup:
         if os.path.isdir(self.group_dir) or self.dry_run:
             limits.append(("memory.high", str(self.memory_high) if self.memory_high else "max"))
             limits.append(("memory.max", str(self.memory_max) if self.memory_max else "max"))
+            pids_enabled = "pids" in (self._read("cgroup.subtree_control").split() if not self.dry_run else available)
+            if self.pids_max and pids_enabled:
+                limits.append(("pids.max", str(self.pids_max)))
             io_enabled = "io" in (self._read("cgroup.subtree_control").split() if not self.dry_run else available)
             if io_enabled and (self.io_read_bps or self.io_write_bps):
                 for disk in sorted({d for d in (disk_of(p, self.sysfs) for p in self.io_paths) if d}):
@@ -265,6 +276,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--source", default=DEFAULT_SOURCE)
     ap.add_argument("--memory-high", default="12G")
     ap.add_argument("--memory-max", default="max")
+    ap.add_argument("--pids-max", type=int, default=None,
+                    help="cap on processes + threads in agent-shell; needs the pids controller")
     ap.add_argument("--io-read-bps", default=None, help="e.g. 80M; needs the io controller delegated")
     ap.add_argument("--io-write-bps", default=None)
     ap.add_argument("--io-path", action="append", default=[], help="a path on each disk to limit")
@@ -275,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
     group = AgentShellCgroup(
         args.service_cgroup, group=args.group, source=args.source,
         memory_high=parse_size(args.memory_high), memory_max=parse_size(args.memory_max),
-        io_read_bps=parse_size(args.io_read_bps), io_write_bps=parse_size(args.io_write_bps),
+        pids_max=args.pids_max, io_read_bps=parse_size(args.io_read_bps), io_write_bps=parse_size(args.io_write_bps),
         io_paths=args.io_path, dry_run=args.dry_run)
     stop = {"now": False}
     signal.signal(signal.SIGTERM, lambda *_: stop.__setitem__("now", True))
