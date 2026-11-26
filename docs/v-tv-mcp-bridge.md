@@ -110,7 +110,7 @@ OpenClaw 9.1 没有「多会话共享一个 stdio MCP 进程」的开关：
 
 - `initialize` 的 `serverInfo`、`capabilities`：直连与桥接一致。
 - `tools/list`：直连与桥接**逐字节相同**，6 个工具。
-- `tv_status`：两边返回同一个结果。现在都是 401，见上面的附带发现。
+- `tv_status`：两边返回同一个结果。11-26 时都是 401（见上面的附带发现）；11-27 授权恢复后，两边都返回完整结果。
 - 21 个会话经桥接只起了 1 个上游。除第一次外，其余 20 次 `initialize` 合计 16 ms。
 
 ### 三种 runtime 的真实回合
@@ -188,6 +188,27 @@ review 指出三处问题，都改在 `scripts/v-tv-mcp-switch.mjs` 里。`insta
    - `switch` 先断言当前条目等于 11-26 的 stdio 原条目，不等就退出（码 5，`--force` 才放行）。
    - 写入前把当前条目存档到 V 的 `/var/lib/v-tv-mcp-bridge/`（`pre-switch-<时间>.json` 和 `latest.json`）。
    - `rollback` 从存档恢复，并断言当前条目还是桥接的 url 条目。没有存档时拒绝（码 12），除非显式加 `--builtin-stdio`。
+
+11-27 在 VLab candidate 上重跑热切换，这次走的就是这个脚本（`HOTSWITCH_TOKEN_AT`，提交 `2b7e85cb`）：
+
+| 场景 | candidate | 结果 |
+|---|---|---|
+| worker，Gateway 启动时没有令牌 | `candidate-dedc0114` | `switch` 退出码 3，配置一个字节没变 |
+| worker，令牌随 Gateway 启动 | `candidate-d2ec6199` | 通过 |
+| vds，同上 | `candidate-50e51f7c` | 通过 |
+
+两次通过的共同表现：
+
+- `plan` 写的是副本，真实配置不变。
+- 把 `.env` 换成别的令牌后，`check-token` 退出码 7。
+- `switch` 和 `rollback` 都只改了 `mcp.servers.xiaomi-tv-remote` 下的路径，Gateway 热重载日志里也只有这些路径。
+- 存档里是切换前的 stdio 条目，`rollback` 原样写回。
+- `pool is closing` 和 `before plugin reload` 都是 0。
+- 切换前后的回合都拿到同样的 `tv_status` 结果。小米授权已恢复，现在返回的是完整的 `tv-status-v3`，不再是 401。
+- 进程数：
+  - worker：切换后每会话 stdio 进程 1→0。
+  - vds：Gateway 侧的 stdio 进程 1→0；切换前已开的 Codex 线程留着它那 1 个，直到线程结束。
+  - 回滚后，新会话又回到每会话 1 个（worker）或 2 个（vds）。
 
 ### 什么时候切：选空闲时段
 
