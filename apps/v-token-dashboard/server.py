@@ -42,7 +42,7 @@ class Snapshot:
             today = dt.datetime.fromtimestamp(end, BEIJING).date()
             first_day = today - dt.timedelta(days=self.days - 1)
             start = int(dt.datetime.combine(first_day, dt.time(), BEIJING).timestamp())
-            data = capture(start, end)
+            data = capture(start, end, self.file.parent)
             if self.file.exists():
                 previous = json.loads(gzip.decompress(self.file.read_bytes()))
                 for identity in {row[2] for row in data["rows"]}:
