@@ -42,21 +42,28 @@ export const SUPPORTED_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03
 export const DEFAULT_UPSTREAM = [
   "/usr/bin/ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
   "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3",
+  // Own connection: never ride on (or become) a ControlMaster another V process shares.
+  "-o", "ControlPath=none",
   "vlab", "/usr/bin/python3", "-I", "/srv/v-ha-lab/tv-mcp/stdio.py",
 ];
 const MAX_BODY_BYTES = 1 << 20;
 const MAX_UPSTREAM_LINE_BYTES = 4 << 20;
 
-export function readToken(file, key = "V_TV_MCP_TOKEN") {
-  const text = fs.readFileSync(file, "utf8");
-  for (const line of text.split(/\r?\n/u)) {
+/** Every value assigned to `key` in a dotenv file, in file order. */
+export function readTokenAssignments(file, key = "V_TV_MCP_TOKEN") {
+  const values = [];
+  for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/u)) {
     const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/u);
-    if (m && m[1] === key) {
-      const v = m[2].replace(/^(['"])(.*)\1$/u, "$2");
-      if (v) return v;
-    }
+    if (m && m[1] === key) values.push(m[2].replace(/^(['"])(.*)\1$/u, "$2"));
   }
-  const lines = text.split(/\r?\n/u).map((l) => l.trim()).filter(Boolean);
+  return values;
+}
+
+/** The token from a dotenv file (last assignment wins, as systemd's EnvironmentFile) or a bare token file. */
+export function readToken(file, key = "V_TV_MCP_TOKEN") {
+  const value = readTokenAssignments(file, key).filter(Boolean).at(-1);
+  if (value) return value;
+  const lines = fs.readFileSync(file, "utf8").split(/\r?\n/u).map((l) => l.trim()).filter(Boolean);
   if (lines.length === 1 && !lines[0].includes("=")) return lines[0];
   throw new Error(`no ${key} in ${file}`);
 }

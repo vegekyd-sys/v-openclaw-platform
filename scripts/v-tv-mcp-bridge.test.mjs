@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { Upstream, createBridgeServer, readToken, parseListen } from "./v-tv-mcp-bridge.mjs";
+import { DEFAULT_UPSTREAM, Upstream, createBridgeServer, readToken, readTokenAssignments, parseListen } from "./v-tv-mcp-bridge.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const TOKEN = "t".repeat(32);
@@ -218,10 +218,22 @@ test("token file: dotenv key or a bare token; listen parsing", () => {
   const bare = path.join(tmp, "bare");
   fs.writeFileSync(bare, `${TOKEN}\n`);
   assert.equal(readToken(bare), TOKEN);
+  // systemd's EnvironmentFile: the last assignment wins
+  fs.writeFileSync(env, `V_TV_MCP_TOKEN=old\nexport V_TV_MCP_TOKEN='${TOKEN}'\n`);
+  assert.equal(readToken(env), TOKEN);
+  assert.deepEqual(readTokenAssignments(env), ["old", TOKEN]);
   fs.writeFileSync(env, "OTHER=1\n");
   assert.throws(() => readToken(env), /no V_TV_MCP_TOKEN/u);
+  assert.deepEqual(readTokenAssignments(env), []);
   assert.deepEqual(parseListen("127.0.0.1:18791"), { host: "127.0.0.1", port: 18791 });
   assert.deepEqual(parseListen("[::1]:5"), { host: "::1", port: 5 });
+});
+
+test("the default upstream is V's per-session command on its own ssh connection", () => {
+  const i = DEFAULT_UPSTREAM.indexOf("ControlPath=none");
+  assert(i > 0 && DEFAULT_UPSTREAM[i - 1] === "-o", "ControlPath=none must be an ssh option");
+  assert(DEFAULT_UPSTREAM.indexOf("vlab") > i, "ssh options must precede the host");
+  assert.deepEqual(DEFAULT_UPSTREAM.slice(-4), ["vlab", "/usr/bin/python3", "-I", "/srv/v-ha-lab/tv-mcp/stdio.py"]);
 });
 
 process.on("exit", () => fs.rmSync(tmp, { recursive: true, force: true }));

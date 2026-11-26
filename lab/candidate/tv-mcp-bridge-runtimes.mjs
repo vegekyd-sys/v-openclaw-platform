@@ -20,6 +20,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const runtime = process.env.VLAB_CANDIDATE_RUNTIME;
 const configPath = process.env.OPENCLAW_CONFIG_PATH;
@@ -177,9 +178,9 @@ const bridgeHealth = async () => { try { return await (await fetch(`${BRIDGE}/he
 
 // ---- Gateway
 let gateway, client, lines = [];
-function startGateway() {
+function startGateway(extraEnv = {}) {
   lines = [];
-  gateway = spawn(process.execPath, ["--max-old-space-size=8192", `${dist}/index.js`, "gateway", "--port", String(port)], { env: { ...env, OPENCLAW_GATEWAY_PORT: String(port) }, stdio: ["ignore", "pipe", "pipe"] });
+  gateway = spawn(process.execPath, ["--max-old-space-size=8192", `${dist}/index.js`, "gateway", "--port", String(port)], { env: { ...env, ...extraEnv, OPENCLAW_GATEWAY_PORT: String(port) }, stdio: ["ignore", "pipe", "pipe"] });
   for (const s of [gateway.stdout, gateway.stderr]) {
     s.setEncoding("utf8");
     s.on("data", (chunk) => { for (const line of chunk.split(/\r?\n/u).filter(Boolean)) lines.push(line); if (lines.length > 80_000) lines.splice(0, lines.length - 80_000); });
@@ -245,13 +246,26 @@ async function turn(phase, i) {
 }
 
 // Hot switch, the way V would roll out and back: Gateway running on the stdio entry, then
-// `openclaw mcp set` (the official single-server writer) to the url entry, a turn in the
-// same and in a new session, then `mcp set` back to stdio and one more turn. Only the main
-// config is written; the Worker config must follow by derivation, and the pool must live.
-function mcpSet(phase) {
-  const r = spawnSync(process.execPath, [`${dist}/index.js`, "mcp", "set", "xiaomi-tv-remote", JSON.stringify(mcpEntry(phase))], { env, encoding: "utf8", timeout: 180_000 });
-  return { status: r.status, out: redact(`${r.stdout}${r.stderr}`).trim().split("\n").slice(-3).join(" | ").slice(0, 400) };
+// scripts/v-tv-mcp-switch.mjs (what install-v-tv-mcp-bridge.sh runs on V: token check against
+// the Gateway's environ, bridge self-test, current-entry assertion + archive, `openclaw config
+// set` on a copy first) to the url entry, a turn in the same and in a new session, then its
+// rollback to the archived entry and one more turn. Only the main config is written; the
+// Worker config must follow by derivation, and the pool must live.
+const HELPER = fileURLToPath(new URL("../../scripts/v-tv-mcp-switch.mjs", import.meta.url));
+const archiveDir = path.join(stateDir, "tv-mcp-switch-archive");
+function helper(cmd, extra = []) {
+  const args = [HELPER, cmd, "--config", configPath, "--dotenv", path.join(stateDir, ".env"), "--run-as", "", "--home", "", "--state-dir", stateDir,
+    "--archive-dir", archiveDir, "--url", `${BRIDGE}/mcp`, "--cli", JSON.stringify([process.execPath, `${dist}/index.js`]),
+    "--gateway-pid", String(gateway.pid), "--stdio-entry", JSON.stringify(mcpEntry("baseline")), ...extra];
+  const r = spawnSync(process.execPath, args, { env, encoding: "utf8", timeout: 600_000 });
+  return { status: r.status, out: redact(`${r.stdout}${r.stderr}`).trim().split("\n").slice(-4).join(" | ").slice(0, 700) };
 }
+const leaves = (a, b, p = "") => {
+  const rec = (x) => x !== null && typeof x === "object" && !Array.isArray(x);
+  if ((rec(a) || a === undefined) && (rec(b) || b === undefined) && (rec(a) || rec(b))) return [...new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})])].flatMap((k) => leaves(a?.[k], b?.[k], p ? `${p}.${k}` : k));
+  return JSON.stringify(a) === JSON.stringify(b) ? [] : [p];
+};
+const outsideEntry = (paths) => paths.filter((x) => !x.startsWith("mcp.servers.xiaomi-tv-remote"));
 const workerCfgEntry = (cfg) => {
   try { return JSON.parse(fs.readFileSync(cfg.plugins.entries["vlab-agent-worker-isolation"].config.workerConfigPath, "utf8")).mcp?.servers?.["xiaomi-tv-remote"]?.transport ?? null; } catch (e) { return `unreadable: ${e.message}`; }
 };
@@ -267,10 +281,12 @@ async function hotSwitch() {
   const tokenAtStart = process.env.HOTSWITCH_TOKEN_AT === "start";
   const dotenv = path.join(stateDir, ".env");
   if (!tokenAtStart) fs.rmSync(dotenv, { force: true });
+  fs.rmSync(archiveDir, { recursive: true, force: true });
   const config = writeConfigs("baseline");
   port = Number(config.gateway?.port); gwToken = config.gateway?.auth?.token;
   const h0 = await bridgeHealth();
-  startGateway();
+  // On V the token reaches the Gateway's environment through systemd EnvironmentFile=.env.
+  startGateway(tokenAtStart ? { V_TV_MCP_TOKEN: token } : {});
   await connectGateway();
   const ready = Date.now() + 240_000;
   while (Date.now() < ready && !lines.some((l) => l.includes("[worker-runtime-prewarm"))) await sleep(500);
@@ -281,7 +297,24 @@ async function hotSwitch() {
   await step("stdio: session 1", { turn: s1 });
   const logMark = lines.length;
   fs.writeFileSync(dotenv, `V_TV_MCP_TOKEN=${token}\n`, { mode: 0o600 });
-  out.switchToBridge = mcpSet("bridge");
+  const beforeBytes = fs.readFileSync(configPath, "utf8");
+  if (!tokenAtStart) {
+    // The Gateway started without the token: the helper must refuse and write nothing.
+    out.switchRefused = helper("switch");
+    out.switchRefusedUnchanged = fs.readFileSync(configPath, "utf8") === beforeBytes;
+    await stopGateway();
+    return out;
+  }
+  // Guards, on the live Gateway: dry run writes nothing; a .env token that differs from the
+  // Gateway's (re-install / restore after start) is refused.
+  out.plan = helper("switch", ["--dry-run"]);
+  out.planUnchanged = fs.readFileSync(configPath, "utf8") === beforeBytes;
+  fs.writeFileSync(dotenv, `V_TV_MCP_TOKEN=${"x".repeat(43)}\n`, { mode: 0o600 });
+  out.mismatch = helper("check-token");
+  fs.writeFileSync(dotenv, `V_TV_MCP_TOKEN=${token}\n`, { mode: 0o600 });
+  out.switchToBridge = helper("switch");
+  out.switchChangedOutside = outsideEntry(leaves(JSON.parse(beforeBytes), JSON.parse(fs.readFileSync(configPath, "utf8"))));
+  out.archived = fs.existsSync(path.join(archiveDir, "latest.json")) ? JSON.parse(fs.readFileSync(path.join(archiveDir, "latest.json"), "utf8")).entry?.command : null;
   await sleep(15_000);
   out.reloadLogs = lines.slice(logMark).filter((l) => /reload|mcp|worker.*(gen|roll|config)|pool is closing|before plugin reload/iu.test(l)).slice(0, 20).map((l) => redact(l).slice(0, 240));
   await step("after mcp set url (15 s)");
@@ -295,7 +328,11 @@ async function hotSwitch() {
   const hist = JSON.stringify(await client.request("chat.history", { sessionKey: sameKey, limit: 80 }).catch(() => ""));
   await step("url: same session as stdio turn", { sameSessionQuotes: (hist.match(/unauthorized\(401\)|tv-status-v3/gu) ?? []).length });
   const mark2 = lines.length;
-  out.switchBack = mcpSet("baseline");
+  const beforeBack = fs.readFileSync(configPath, "utf8");
+  out.switchBack = helper("rollback");
+  const backConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  out.switchBackChangedOutside = outsideEntry(leaves(JSON.parse(beforeBack), backConfig));
+  out.switchBackEntryIsBaseline = JSON.stringify(backConfig.mcp.servers["xiaomi-tv-remote"]) === JSON.stringify(mcpEntry("baseline"));
   await sleep(15_000);
   out.rollbackLogs = lines.slice(mark2).filter((l) => /reload|pool is closing|before plugin reload/iu.test(l)).slice(0, 10).map((l) => redact(l).slice(0, 240));
   const s3 = await turn("hot", 3);
@@ -369,8 +406,21 @@ try {
 console.log(JSON.stringify(report, null, 1));
 if (report.hotswitch) {
   const hs = report.hotswitch;
-  assert.equal(hs.switchToBridge.status, 0, `mcp set url failed: ${hs.switchToBridge.out}`);
-  assert.equal(hs.switchBack.status, 0, `mcp set stdio failed: ${hs.switchBack.out}`);
+  if (hs.switchRefused) {
+    assert.equal(hs.switchRefused.status, 3, `switch without the token in the Gateway's environment was not refused: ${hs.switchRefused.out}`);
+    assert(hs.switchRefusedUnchanged, "refused switch changed the config");
+    console.log(`PASS harness=${HARNESS} (switch refused: Gateway started without the token)`);
+    process.exit(0);
+  }
+  assert.equal(hs.plan.status, 0, `dry run failed: ${hs.plan.out}`);
+  assert(hs.planUnchanged, "dry run changed the config");
+  assert.equal(hs.mismatch.status, 7, `token mismatch not refused: ${hs.mismatch.out}`);
+  assert.equal(hs.switchToBridge.status, 0, `switch failed: ${hs.switchToBridge.out}`);
+  assert.deepEqual(hs.switchChangedOutside, [], "switch changed config outside the entry");
+  assert.equal(hs.archived, mcpEntry("baseline").command, "switch did not archive the stdio entry");
+  assert.equal(hs.switchBack.status, 0, `rollback failed: ${hs.switchBack.out}`);
+  assert.deepEqual(hs.switchBackChangedOutside, [], "rollback changed config outside the entry");
+  assert(hs.switchBackEntryIsBaseline, "rollback did not restore the archived entry");
   for (const st of hs.steps.filter((x) => x.turn)) assert(st.turn.calledTvStatus && st.turn.quotes401 === Boolean(direct.error?.includes("401")), `hotswitch ${st.label}: tool result differs`);
   const url = hs.steps.find((x) => x.label === "url: new session");
   assert(url.bridgeForwarded >= 2, "after mcp set, the new session did not go through the bridge");
