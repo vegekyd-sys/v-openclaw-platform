@@ -30,7 +30,7 @@
 - **GeeLark 账号开通流程的 Chrome 漏标签页（今天的触发因素）**：
   - agent 在 agent-shell 里起了专用 Chrome（CDP 22900，profile 在 `memory/projects/geelark-provisioning-workflow/.state/chrome-profile`）。
   - 它写的临时脚本每次 `ctx.newPage()`，结束时只 `browser.close()`。对 `connectOverCDP` 来说这只是断开连接，页面不会关。
-  - 16:31 重启后 13 分钟里，这个 Chrome 已经开了 11 个页面，其中同一个 loongproxy 管理页开了 8 个，渲染进程每 5 分钟多一个。
+  - Gateway 恢复后 agent 在 16:31 又起了这个 Chrome，13 分钟里已经开了 11 个页面，其中同一个 loongproxy 管理页开了 8 个，渲染进程每 5 分钟多一个。
   - 崩溃时残留了 93 个 chrome 进程。
 - **为什么是今天**：
   - 不是运行时长：11-21 到 11-23 连续运行 68 小时没出事。
@@ -44,8 +44,7 @@
 | `TasksMax=16384` | `systemd/openclaw-gateway.service.d/gateway-capacity.conf` | 15:44 已 `set-property` 生效；由 `scripts/install-v-gateway-capacity.sh` 改为仓库管理 |
 | `OPENCLAW_DB91_PREFLIGHT_TIMEOUT_MS=3600000` | 同一 drop-in | 15:39 先用 `/run` 运行时 drop-in 应急；安装脚本会删掉应急文件 |
 | 停用远程插件 `build-ios-apps`、`defense-factory` | V 上 makaron、v-codex 的 `codex-home/config.toml`（运行状态，不在 git） | 见下 |
-
-| agent-shell `pids.max=10240` | `systemd/v-agent-shell-cgroup.service`、`scripts/v-agent-shell-cgroup.py --pids-max` | 16:5x 已用 `scripts/install-v-agent-shell-cgroup.sh v --enable` 装上 V。agent 再漏，先失败的是 agent 自己的命令，Gateway 至少保留约 6000 |
+| agent-shell `pids.max=10240` | `systemd/v-agent-shell-cgroup.service`、`scripts/v-agent-shell-cgroup.py --pids-max` | 16:56 已用 `scripts/install-v-agent-shell-cgroup.sh v --enable` 装上 V。agent 再漏，先失败的是 agent 自己的命令，Gateway 至少保留约 6000 |
 | 关掉 GeeLark Chrome 的 8 个重复标签页 | V 运行状态 | 每个网址留最新一个，chrome 进程 21 → 13 |
 | GeeLark 流程笔记加「复用标签、新开的页用完关」 | V 工作区 `memory/projects/geelark-provisioning-workflow/main.md` 第 88 行，备份 `main.md.bak-20261126` | agent 下次读笔记生效 |
 | `last-lifecycle.json` 指回运行中的 Gateway | V `.db91-integrity/` | 见下 |
