@@ -151,8 +151,8 @@ ltest('an inherited lifecycle whose Gateway is gone, a reused pid, or a respawn 
   assert.equal(carry.inheritedLifecycle({base: s.base, env, pid: 4242, ppid: 1, bootId: lifecycle.bootId, startedAt: () => undefined}), null, 'owner gone');
   assert.equal(carry.inheritedLifecycle({base: s.base, env, pid: 4242, ppid: 1, bootId: lifecycle.bootId, startedAt: () => lifecycle.startedAt + 60_000}), null, 'pid reused by a later process');
   if (lifecycle.bootId) assert.equal(carry.inheritedLifecycle({base: s.base, env, pid: 4242, ppid: 1, bootId: '99999999-2222-3333-4444-555555555555', startedAt: alive}), null, 'other boot');
-  assert.equal(carry.inheritedLifecycle({base: s.base, env, pid: 4242, ppid: owner, bootId: lifecycle.bootId, startedAt: alive, cmdline: () => 'node\0index.js\0gateway\0'}), null, 'same command line from the owner: update respawn successor');
-  assert.equal(carry.inheritedLifecycle({base: s.base, env, pid: 4242, ppid: owner, bootId: lifecycle.bootId, startedAt: alive, cmdline: (p) => (p === owner ? 'node\0--inspect\0index.js\0gateway\0' : 'node\0index.js\0gateway\0')})?.owner, owner, 'exec child with another command line');
+  assert.equal(carry.inheritedLifecycle({base: s.base, env, pid: 4242, ppid: owner, bootId: lifecycle.bootId, startedAt: alive}), null, 'a direct child of the owner may be its update successor (whatever its command line): own lifecycle');
+  assert.equal(carry.inheritedLifecycle({base: s.base, env: {...env, OPENCLAW_DB91_INTEGRITY_EPOCH: 'x'}, pid: 4242, ppid: 1, bootId: lifecycle.bootId, startedAt: alive}), null, 'malformed epoch');
   assert.equal(carry.inheritedLifecycle({base: s.base, env: {...env, OPENCLAW_DB91_INTEGRITY_DIR: '/elsewhere'}, pid: 4242, ppid: 1, bootId: lifecycle.bootId, startedAt: alive}), null, 'directory must be the epoch under this state root');
 });
 
@@ -165,6 +165,48 @@ ltest('a second Gateway on the same state does not move last-lifecycle.json off 
   assert.match(other.stderr, /still runs the recorded lifecycle; last-lifecycle.json stays on it/);
   assert.equal(pointer(s.base), gw.epoch);
   await gw.stop();
+  assert.match(bootChild(dist, s.env).stderr, /clean-restart carry: 1\/1 /);
+});
+
+// A Gateway that runs alongside the recorded one -- the update-restart successor OpenClaw spawns, or
+// one started by hand -- keeps last-lifecycle.json on the running one, but records that it ran
+// alongside it. If it then crashes, is still running, or revoked a receipt, the next restart must not
+// carry the recorded lifecycle's receipts even though that one exited cleanly (review of PR #655).
+ltest('a lifecycle alongside the recorded one stops the carry unless it exited cleanly and revoked nothing', async (t) => {
+  const cases = [
+    {name: 'crashed', run: async (s) => { bootChild(dist, s.env, {exit: 'crash'}); }, reason: 'alongside-exit-not-clean'},
+    {name: 'revoked', run: async (s) => {
+      const other = bootChild(dist, s.env);
+      fs.writeFileSync(path.join(other.dir, HASH(s.file) + '.revoked.json'), JSON.stringify({format: 'x', nonce: 'n'}), {mode: 0o600});
+    }, reason: 'alongside-revoked'},
+    {name: 'still running', run: async (s, t) => { const other = await runningGateway(dist, s.env); t.after(() => other.child.kill('SIGKILL')); }, reason: 'alongside-lifecycle-running'},
+    {name: 'clean, nothing revoked', run: async (s) => { bootChild(dist, s.env); }, reason: null},
+  ];
+  for (const c of cases) {
+    await t.test(c.name, async (t) => {
+      const s = state(t);
+      const gw = await runningGateway(dist, s.env);
+      t.after(() => gw.child.kill('SIGKILL'));
+      await c.run(s, t);
+      const alongside = epochs(s.base).filter((e) => e !== gw.epoch).map((e) => JSON.parse(fs.readFileSync(path.join(s.base, e, 'lifecycle.json'), 'utf8')));
+      assert.equal(alongside.length, 1);
+      assert.equal(alongside[0].alongside, gw.epoch, 'the new lifecycle records the running one');
+      assert.equal(pointer(s.base), gw.epoch);
+      await gw.stop(); // the recorded Gateway exits cleanly
+      const next = bootChild(dist, s.env);
+      if (c.reason) assert.match(next.stderr, new RegExp(`clean-restart carry: 0/1 .*"\\*":"${c.reason}"`));
+      else assert.match(next.stderr, /clean-restart carry: 1\/1 /);
+    });
+  }
+});
+
+ltest('lifecycles that do not record running alongside the previous one are ignored by the carry', async (t) => {
+  const s = state(t);
+  const first = bootChild(dist, s.env);
+  // a crashed lifecycle written by older bytes (no "alongside"), like the 2026-11-26 strays on V
+  const stray = path.join(s.base, '00000000-1111-2222-3333-444444444444');
+  fs.mkdirSync(stray, {mode: 0o700});
+  fs.writeFileSync(path.join(stray, 'lifecycle.json'), JSON.stringify({format: 'openclaw-db91-lifecycle-v1', epoch: path.basename(stray), bootId: JSON.parse(fs.readFileSync(path.join(first.dir, 'lifecycle.json'), 'utf8')).bootId, pid: 999999, startedAt: Date.now()}), {mode: 0o600});
   assert.match(bootChild(dist, s.env).stderr, /clean-restart carry: 1\/1 /);
 });
 

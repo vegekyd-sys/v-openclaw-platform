@@ -4,20 +4,20 @@
     "target": "openclaw/dist/db91-integrity-bootstrap.mjs",
     "before": "87b7fa4767b0b7b56800e0163977778ee5da6999dfec6b5a07410208248dad84",
     "after": "f3c120788315f4e5b09f65b1f7347c12647342978f134bee4757aec2e5db2b6d",
-    "source_commit": "versa:11670ce12b6"
+    "source_commit": "versa:ca494f9134f"
   },
   {
     "source": "lab/release-files/db91-lifecycle-proof/db91-restart-carry.mjs",
     "target": "openclaw/dist/db91-restart-carry.mjs",
     "before": "5f18d635380c9d0d73ae30b4db0b2e9d5f7d6b19de46b69cdb2dd722e003ffca",
-    "after": "7d79c32725a35492db3353ec7c0577aa83002e8ea7d1ca77bb89279b4ac8095a",
-    "source_commit": "versa:11670ce12b6"
+    "after": "fe54e3fe8f274ff517b17878b4c469550d28f85a558002536c847a4b790cf103",
+    "source_commit": "versa:ca494f9134f"
   },
   {
     "source": "lab/release-files/db91-lifecycle-proof/db91-integrity-gate.mjs",
     "target": "openclaw/dist/db91-integrity-gate.mjs",
     "before": "aa68547bbf63e027c81b135b351c8a979cd2f3c3b101d81014e48efbeafdff2e",
     "after": "8e82bad02088e19fd86e89c81d8a81bf94cca64782304ece38ae7a59d655fa99",
-    "source_commit": "versa:11670ce12b6"
+    "source_commit": "versa:ca494f9134f"
   }
 ]
