@@ -1,0 +1,40 @@
+{
+  "id": "v-session-relay",
+  "name": "V Session Relay",
+  "description": "Gateway ledger for sessions_send: the request is posted in the target chat and worked on there, results come back once per batch, restarts are recovered, and loops are stopped.",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "role": { "type": "string", "enum": ["gateway", "worker-guard"] },
+      "workerGuard": { "type": "boolean" },
+      "ledgerDir": { "type": "string" },
+      "ownerName": { "type": "string" },
+      "agentNames": { "type": "object", "additionalProperties": { "type": "string" } },
+      "limits": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "maxDepth": { "type": "integer", "minimum": 0 },
+          "maxFanoutPerRun": { "type": "integer", "minimum": 0 },
+          "maxChainMembers": { "type": "integer", "minimum": 0 },
+          "maxSendsPerChain": { "type": "integer", "minimum": 0 },
+          "maxPerPair": { "type": "integer", "minimum": 0 },
+          "maxSendsPerMinute": { "type": "integer", "minimum": 0 },
+          "chainIdleTtlMs": { "type": "integer", "minimum": 0 },
+          "chainHardTtlMs": { "type": "integer", "minimum": 0 },
+          "maxWakeRoundsPerSend": { "type": "integer", "minimum": 0 },
+          "queueTimeoutMs": { "type": "integer", "minimum": 0 },
+          "runTimeoutMs": { "type": "integer", "minimum": 0 },
+          "inlineMaxMs": { "type": "integer", "minimum": 0 },
+          "maxConcurrentRequestTurns": { "type": "integer", "minimum": 0 },
+          "maxQueuePerTarget": { "type": "integer", "minimum": 0 },
+          "sharedVisibleChars": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}
