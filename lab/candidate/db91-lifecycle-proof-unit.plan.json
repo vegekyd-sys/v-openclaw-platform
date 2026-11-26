@@ -1,0 +1,13 @@
+{
+  "tests": ["lab/db91-lifecycle-proof.test.mjs"],
+  "support": [
+    "lab/release-files/db91-lifecycle-proof/db91-integrity-bootstrap.mjs",
+    "lab/release-files/db91-lifecycle-proof/db91-restart-carry.mjs",
+    "lab/release-files/db91-lifecycle-proof/db91-integrity-gate.mjs",
+    "lab/release-files/restart-speed/dist/db91-integrity-bootstrap.mjs",
+    "lab/release-files/restart-speed/dist/db91-restart-carry.mjs",
+    "lab/release-files/db91-shrink-reuse/db91-integrity-gate.mjs",
+    "experiments/db91-integrity-gate/fixture-verify-worker.mjs"
+  ],
+  "timeoutSeconds": 600
+}
