@@ -28,7 +28,7 @@ def sync(directory, force=False):
                 return json.load(source)["end"]
         end = snapshot_end()
         previous = json.loads(receipt.read_text())["end"] if receipt.exists() else 0
-        if force or time.time() - end >= 6 * 3600 - 60:
+        if force or not end or end < previous or (end == previous and time.time() - end >= 6 * 3600 - 60):
             state.refresh(background=False)
             if state.error:
                 raise RuntimeError(state.error)

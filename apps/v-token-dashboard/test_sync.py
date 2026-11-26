@@ -14,7 +14,7 @@ class SyncTest(unittest.TestCase):
     def test_failed_publish_preserves_receipt_and_retries_current_snapshot(self):
         with tempfile.TemporaryDirectory() as folder:
             state = Path(folder)
-            now = int(time.time())
+            now = int(time.time()) - 7 * 3600
             (state / "snapshot.json.gz").write_bytes(gzip.compress(json.dumps({"end": now}).encode()))
             receipt = state / "published-public.json"
             receipt.write_text(json.dumps({"end": now - 3600}))
@@ -25,7 +25,10 @@ class SyncTest(unittest.TestCase):
                 self.assertEqual(json.loads(receipt.read_text())["end"], now - 3600)
                 publish.side_effect = None
                 sync(state)
-                sync(state)
                 self.assertEqual(json.loads(receipt.read_text())["end"], now)
+                self.assertEqual(publish.call_count, 2)
+                collect.assert_not_called()
+                with patch("sync.time.time", return_value=now + 60):
+                    sync(state)
                 self.assertEqual(publish.call_count, 2)
                 collect.assert_not_called()
