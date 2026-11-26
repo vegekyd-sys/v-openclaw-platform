@@ -359,6 +359,7 @@
         "lab/gpt-live-voice-exec-lifetime.test.mjs",
         "lab/gpt-live-voice-tool-order.test.mjs",
         "lab/db91-shrink-reuse.test.mjs",
+        "lab/db91-lifecycle-proof.test.mjs",
         "lab/placement-evidence-absence.test.mjs",
         "lab/placement-sweep-lists.test.mjs",
         "lab/transcript-index-preflight.test.mjs",
