@@ -332,7 +332,7 @@ async function hotSwitch() {
   out.switchBack = helper("rollback");
   const backConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
   out.switchBackChangedOutside = outsideEntry(leaves(JSON.parse(beforeBack), backConfig));
-  out.switchBackEntryIsBaseline = JSON.stringify(backConfig.mcp.servers["xiaomi-tv-remote"]) === JSON.stringify(mcpEntry("baseline"));
+  out.switchBackEntryIsBaseline = leaves(backConfig.mcp.servers["xiaomi-tv-remote"], mcpEntry("baseline")).length === 0; // key order may differ
   await sleep(15_000);
   out.rollbackLogs = lines.slice(mark2).filter((l) => /reload|pool is closing|before plugin reload/iu.test(l)).slice(0, 10).map((l) => redact(l).slice(0, 240));
   const s3 = await turn("hot", 3);

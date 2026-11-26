@@ -90,6 +90,17 @@ OpenClaw 9.1 没有「多会话共享一个 stdio MCP 进程」的开关：
   - 连接失败后 2 s 内快速失败，不会被一群会话打成重连风暴。
   - 请求超时且期间上游一个字节都没回，判定为半开连接，主动断开、下次重连。
 - 日志每次 `tools/call` 一行：工具名、结果类别、耗时，不记参数。
+- 上游 ssh 带 `-o ControlPath=none`，自己一条连接，不搭也不建任何 ControlMaster。V 上 openclaw 用户连 vlab 现在本来就没开 ControlMaster（11-27 `ssh -G vlab` 只读确认），这一项是防以后有人开了之后和别的进程共用主连接。
+
+### 代价：共享意味着一起坏
+
+- 以前每个会话一条 ssh，某一条断了只影响一个会话。现在所有会话共用桥接的**一条**上游：ssh 断、VLab 重启、HA 重启、桥接进程挂掉，会**同时**影响所有会话的电视工具。
+- 缓解：
+  - 上游断开后，在途请求立刻收到明确错误，下一次请求自动重连。
+  - 重连失败时 2 s 内快速失败，不会让一群会话排队卡住。
+  - 桥接进程本身由 systemd `Restart=always` 拉起。
+- 影响面只有电视工具：它不在 Gateway 进程里，挂了不影响回合本身。
+- 这和改前的差别主要是「同时」：改前 HA 或 VLab 出事，所有会话本来也一样用不了电视。
 
 ## 验收结果（11-26 19:30–20:20，VLab candidate + 本机）
 
@@ -131,7 +142,7 @@ OpenClaw 9.1 没有「多会话共享一个 stdio MCP 进程」的开关：
 
 ### 热切换（上线和回滚的真实路径）
 
-做法：Gateway 运行中，用官方 `openclaw mcp set` 把 stdio 换成 url，再换回来。
+做法：Gateway 运行中，把 stdio 换成 url，再换回来。11-26 的几次用的是 `openclaw mcp set`；11-27 review 之后改成 `scripts/v-tv-mcp-switch.mjs`（见下一节），又在 VLab 上重跑了一遍。
 
 | 场景 | candidate | 结果 |
 |---|---|---|
@@ -153,7 +164,37 @@ OpenClaw 9.1 没有「多会话共享一个 stdio MCP 进程」的开关：
 - 令牌在 Gateway 启动之后才写进 `~/.openclaw/.env`。
 - Gateway 自己的 MCP 客户端发出的是没展开的字面量 `Bearer ${V_TV_MCP_TOKEN}`（桥接记为 `unauthorized (unexpanded-placeholder)`），被拒，该回合卡到超时。
 - 所以**令牌必须在 Gateway 启动时就在它的环境里**。
-- 安装脚本的 `switch` 会先查运行中 Gateway 的 `/proc/<pid>/environ`，没有令牌就拒绝切换。11-26 在 V 上只读验证过，这道检查当前会正确拒绝。
+- `switch` 会先查运行中 Gateway 的 `/proc/<pid>/environ`：没有令牌就拒绝切换；有令牌但和 `.env` 里的不一样也拒绝（见下一节）。11-26 在 V 上只读验证过，这道检查当前会正确拒绝。
+
+### 切换脚本的保护（11-27 review 后补）
+
+review 指出三处问题，都改在 `scripts/v-tv-mcp-switch.mjs` 里。`install-v-tv-mcp-bridge.sh` 的 `plan`/`switch`/`rollback`/`status` 每次都把当前仓库里的这个文件传到 V，以 root 身份跑。
+
+1. **配置只准改这一个条目。**
+   - 原来用 `openclaw mcp set` 直接写生产 `openclaw.json`，写完才列出改了什么。
+   - 顺带改动的原因已查明，不是环境变量问题：`mcp set` 写回的是经过 schema 校验、**填好默认值的整份配置**（`commitConfiguredMcpServers` 写 `validated.config`）。
+     - V 上 `models.providers.moonshot.models[0]`（kimi-k3）没写 `cost`、`maxTokens`，它会顺手补上 `cost: 0×4`、`maxTokens: 8192`。
+     - 在 VLab 上用一份配置副本复现：最小环境和 Gateway 的完整环境两种跑法，结果完全一样。
+     - V 和 VLab 的 OpenClaw `dist/index.js` 是同一份（sha256 前缀 `fe5494158ceb9545`）。
+   - 现在改用 `openclaw config set mcp.servers.xiaomi-tv-remote '<json>' --strict-json`：它只合并这一个路径，保留 `${V_TV_MCP_TOKEN}` 原样，整条替换（不和旧条目合并）。这些都在 VLab 配置副本上验证过。
+   - 而且先把 `OPENCLAW_CONFIG_PATH` 指向一份私有副本跑一遍：只要副本里出现 `mcp.servers.xiaomi-tv-remote.*` 以外的变动，或者写出来的条目和目标不完全相同，就退出（码 4），不写真实配置。
+   - 通过后：备份真实配置，确认它在这期间没被别人改过（否则退出码 9），用同一条命令写入，再核对结果和副本**完全一致**（否则退出码 6，并给出用备份恢复的命令）。
+   - `plan` 只做到副本这一步，什么都不写，可以在切换前先跑。
+2. **令牌要比值，不只看有没有。**
+   - 在 V 上以 root 分别读 `/proc/<Gateway pid>/environ` 和 `~/.openclaw/.env` 里的 `V_TV_MCP_TOKEN`，各算 sha256 后比较，不打印值。
+   - Gateway 没有令牌：退出码 3；两边不同（重跑过 install、`.env` 从备份恢复过）：退出码 7；`.env` 里这个键不是恰好一行：退出码 8。
+   - 桥接读 `.env` 的规则改成和 systemd `EnvironmentFile` 一样，最后一行为准。
+3. **回滚写回切换前真实存在的条目。**
+   - `switch` 先断言当前条目等于 11-26 的 stdio 原条目，不等就退出（码 5，`--force` 才放行）。
+   - 写入前把当前条目存档到 V 的 `/var/lib/v-tv-mcp-bridge/`（`pre-switch-<时间>.json` 和 `latest.json`）。
+   - `rollback` 从存档恢复，并断言当前条目还是桥接的 url 条目。没有存档时拒绝（码 12），除非显式加 `--builtin-stdio`。
+
+### 什么时候切：选空闲时段
+
+- `mcp.*` 的热重载动作是 `dispose-mcp-runtimes`：**所有会话**的 MCP 运行时都会被丢弃、下次用到时重建，不只是电视这一个。
+- 所以正在调用 MCP 工具的回合可能被打断。
+- `switch` 和 `rollback` 都要挑 V 空闲的时候做：没有在跑的回合、夜班暂停或排空。
+- worker 池不受影响（不走插件重载）。
 
 ### 每会话开销对比（V 与 VLab 两侧）
 
@@ -175,11 +216,12 @@ OpenClaw 9.1 没有「多会话共享一个 stdio MCP 进程」的开关：
    - 启动桥接，用这个令牌自检 `initialize` 和 `tools/list`。
    - **这一步不改 OpenClaw 配置、不重启 Gateway**，线上行为不变。
 2. **等下一次计划内的 Gateway 重启**（任何原因的都行），让令牌经 systemd `EnvironmentFile` 进入 Gateway 环境。不需要专门为此重启。
-3. `scripts/install-v-tv-mcp-bridge.sh switch v`：
-   - 检查 Gateway 环境里已有令牌，再自检一次桥接。
-   - 备份 `openclaw.json`，用官方 `openclaw mcp set` 把 `xiaomi-tv-remote` 换成 url，并列出所有变动的配置路径。在 VLab 上，CLI 写入时还顺带规范化了 `models.providers.*`，要看一眼。
+3. 先跑 `scripts/install-v-tv-mcp-bridge.sh plan v`：令牌比对、桥接自检、当前条目断言，再在配置副本上试写一次。只读，不改任何东西。
+4. 挑 V 空闲的时段，跑 `scripts/install-v-tv-mcp-bridge.sh switch v`：
+   - 前面这些检查再做一遍，然后存档当前条目、备份 `openclaw.json`。
+   - 用 `openclaw config set` 写入 url 条目，再核对结果。保护细节见上面「切换脚本的保护」。
    - **热生效，不重启**。
-4. 验收：
+5. 验收：
    - `install-v-tv-mcp-bridge.sh status v`：两份配置都是 `streamable-http`；每会话 ssh 数只降不升，Codex 旧线程结束后归零。
    - `journalctl -u v-tv-mcp-bridge` 里出现三种客户端的 `initialize`，`unauthorized` 为 0。
    - Gateway 日志有 `config hot reload applied (mcp…`，没有 `before plugin reload`；`vlab.workers.status` 的 workers > 0。
@@ -188,7 +230,8 @@ OpenClaw 9.1 没有「多会话共享一个 stdio MCP 进程」的开关：
 
 ## 回滚
 
-- `scripts/install-v-tv-mcp-bridge.sh rollback v`：用 `openclaw mcp set` 写回 11-26 的 stdio 原条目，热生效、不重启。下一个新会话就回到每会话一条 ssh。VLab 上验证过。
+- `scripts/install-v-tv-mcp-bridge.sh rollback v`：从 `/var/lib/v-tv-mcp-bridge/latest.json` 写回切换前的条目，热生效、不重启。下一个新会话就回到每会话一条 ssh。保护和 `switch` 一样（先试写副本），也要挑空闲时段。VLab 上验证过。
+- 如果 `switch` 报退出码 6：说明真实写入和副本不一致，按提示 `cp -p <备份> openclaw.json` 恢复。
 - 桥接可以留着不用，或 `sudo systemctl disable --now v-tv-mcp-bridge`。
 - `.env` 里的令牌留着无害。
 
@@ -196,7 +239,8 @@ OpenClaw 9.1 没有「多会话共享一个 stdio MCP 进程」的开关：
 
 - `scripts/v-tv-mcp-bridge.mjs`：桥接本体，无依赖。
 - `scripts/v-tv-mcp-bridge.test.mjs`：单元测试，CI 在 `tests/vlab-static.sh` 和平台 catalog 里跑。`lab/tv-mcp-bridge-sdk-check.mjs`：用真实 MCP SDK 客户端的检查。
-- `systemd/v-tv-mcp-bridge.service`、`scripts/install-v-tv-mcp-bridge.sh`：V 上的安装、切换、回滚、状态。
+- `scripts/v-tv-mcp-switch.mjs`（测试 `scripts/v-tv-mcp-switch.test.mjs`）：切换和回滚的保护逻辑，在 V 上以 root 跑。
+- `systemd/v-tv-mcp-bridge.service`、`scripts/install-v-tv-mcp-bridge.sh`：V 上的安装、试写（`plan`）、切换、回滚、状态。
 - `lab/tv-mcp-bridge-compare.mjs`：直连与桥接对比，只读。
 - `lab/candidate/tv-mcp-bridge-runtimes.mjs` 加 `tv-mcp-bridge-*.plan.json`：三种 runtime 与热切换的 candidate。
 - `lab/tv-mcp-bridge-vlab-fixture.sh`：candidate 用的 VLab 临时 root 单元（`up`/`down`），用完已 `down`。
