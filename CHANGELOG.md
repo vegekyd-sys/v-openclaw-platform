@@ -10,6 +10,28 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## db91-lifecycle-proof-20261127
+
+上线：2026-11-27 00:51 CST（promote-to-v 00:4x 装好文件；v-self-restart 00:45:52 提交、00:48:38 判定空闲停机，201 s 就绪，清掉 2 个 Codex 孤儿登记，workers 5/5、4 条渠道流全在）  ·  tag `db91-lifecycle-proof-20261127`
+
+**摘要**：11-26 停摆事故（`docs/incidents/2026-11-26-gateway-tasks-max-crash-loop.md`）的 DB91 两处根治，和同批的 #652/#653/#654 一起上线。
+- #655：Gateway 的子进程（agent 在 exec 里起的 `core/dist/index.js gateway…`）沿用运行中的生命周期，不再新建 epoch、改写 `last-lifecycle.json`，所以干净重启能沿用上一轮的完整校验；收据缺失时按同样的规则从 `admission.json` 补回，不再在主线程整库校验（11-26 makaron 49 GB 卡 22.7 分钟）；有并行生命周期未干净退出时拒绝沿用。源码 versa `ca494f9134f`。
+- 同一次重启带上 #654 的令牌：`V_TV_MCP_TOKEN` 随 Gateway 启动进入环境，00:57 切到共享桥接。#652（TasksMax 16384 等）11-26 已用安装脚本上线，#653 是 Mac 上的采集任务，不在 V 的字节里。
+
+V 验收（重启后）：
+- 3 个文件线上字节与发版一致。启动预检 `clean-restart carry: 8/8 databases reuse the previous lifecycle's full check (c4f9600e…)`，**79 ms 通过**（11-26 非正常退出后是 716 s），admission proofs 8/8。
+- 启动窗口主线程停顿 22 s / 30 s（上一版 20.3/22.4 s），飞书长连接 00:53:09 才重连；这期间 Tianyi 00:52 的一条私聊没被收到，重连后的补收为 0 条，00:56 起正常。
+- 重启空闲判定漏掉了群 `oc_e0714165` 正在跑命令的回合（00:43 起批量替换素材），重启后被记为已回复、没有续跑，Tianyi 00:56 说「继续」后正常完成。
+- 电视桥接（#654）：`plan` 令牌一致、副本试写只动这一条；`switch` 00:57:04 写入。**V 上 `mcp.*` 变更会触发 telegram/钉钉/飞书渠道重载**（VLab candidate 未暴露），等在跑的回合 300 s 后强制重载，01:02:15 飞书重连。之后新会话全部走桥接（转发 11 次、0 失败、只有 1 条上游 ssh），不再新起每会话 ssh；切换前已有的 17 条随 Codex 线程结束退出。
+
+相对上一版 `v-batch-20261125`：3 个文件变化。
+
+**经 VLab 发版 `db91-lifecycle-proof-20261127`**（monitor-v-production-70a57a，dev `4d4b6737`）
+> 验收：Shared VLab release db91-lifecycle-proof-20261127 (PR #655, dev 4d4b6737, versa ca494f9134f), Gateway pid 3452690->386580. Startup: [db91-integrity] clean-restart carry 8/8 reuse previous lifecycle 9d1e4d94, full check 0, preflight passed 3054ms, admission proofs 8/8; admission.json + lifecycle.json written in epoch 339f604d, last-lifecycle points at it. Real turn agent:makaron:explicit:vlab-dev-d…
+- `core` db91-integrity-bootstrap.mjs  87b7fa47 → f3c12078
+- `core` db91-integrity-gate.mjs  aa68547b → 8e82bad0
+- `core` db91-restart-carry.mjs  5f18d635 → fe54e3fe
+
 ## v-batch-20261125
 
 上线：2026-11-25 22:44 CST（promote-to-v 22:24 装好文件；等 oc_2ab0b5b3 的 V Voice 子 agent 22:22 完成后提交 v-self-restart，22:39:49 空闲停机，206 s 就绪，清掉 2 个 Codex 孤儿登记，workers 5/5、4 条渠道流全在）  ·  tag `v-batch-20261125`
