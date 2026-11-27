@@ -178,6 +178,8 @@ export function buildPackage(opts) {
   if (wsFiles.length) {
     if (!fileExists(repo, workspaceCommit, 'distro/workspace/render.mjs')) throw new Error('distro/workspace/payload/ without distro/workspace/render.mjs: the installer could not fill its placeholders');
     add('runtime/workspace-render.mjs', readFile(repo, workspaceCommit, 'distro/workspace/render.mjs'));
+    // Which workspace files are the system's (updated with the release) and which the owner's (never).
+    if (fileExists(repo, workspaceCommit, 'distro/workspace/update-policy.json')) add('runtime/workspace-policy.json', readFile(repo, workspaceCommit, 'distro/workspace/update-policy.json'));
     if (fileExists(repo, workspaceCommit, 'distro/workspace/V_CORE_COMMIT')) vCoreCommit = readFile(repo, workspaceCommit, 'distro/workspace/V_CORE_COMMIT').toString('utf8').trim();
   } else add('workspace/.empty', 'distro/workspace/payload/ did not exist at the workspace commit; the installer seeds nothing.\n');
 

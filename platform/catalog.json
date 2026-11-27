@@ -557,7 +557,8 @@
         "distro/install/lib/release.test.mjs",
         "distro/install/config/openclaw-config.test.mjs",
         "distro/install/lib/v-asr-volcengine.test.mjs",
-        "distro/install/lib/skills.test.mjs"
+        "distro/install/lib/skills.test.mjs",
+        "distro/install/lib/workspace-update.test.mjs"
       ]
     }
   ],

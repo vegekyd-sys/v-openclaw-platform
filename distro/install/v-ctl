@@ -4,6 +4,7 @@
 #   v-ctl openclaw <args...>      the installed OpenClaw CLI as the service user, with its environment
 #   v-ctl pair <code>             approve the owner's first Feishu DM (dmPolicy=pairing)
 #   v-ctl reconfigure             apply keys or options added to /etc/v/*.env after the install
+#   v-ctl workspace-update [--dry-run]   bring the workspace's system files to this release
 set -euo pipefail
 PREFIX="${V_PREFIX:-/opt/v}"
 NODE="$PREFIX/node/current/bin/node"
@@ -14,6 +15,6 @@ case "${1:-}" in
     [ "$sub" = pair ] && set -- pairing approve feishu "$@"
     exec python3 "$PREFIX/current/runtime/ops/v-memory-indexer-run.py" --cli "$@" ;;
   reconfigure) shift; exec bash "$(readlink -f "$PREFIX/current")/install/reconfigure.sh" "$@" ;;
-  ""|-h|--help) sed -n '2,7p' "$0" ;;
+  ""|-h|--help) sed -n '2,8p' "$0" ;;
   *) exec "$NODE" "$PREFIX/current/install/lib/vctl.mjs" "$@" ;;
 esac
