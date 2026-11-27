@@ -38,4 +38,6 @@ systemctl restart openclaw-gateway.service
 "${VCTL[@]}" desktop-services
 if [ "$TUNNEL" -eq 1 ]; then systemctl enable -q v-cloudflared.service; systemctl restart v-cloudflared.service; fi
 "${VCTL[@]}" install-skills || echo "warning: global skills were not all installed; rerun: v-ctl install-skills" >&2
+# A key added or removed changes the embedding provider; rebuild the memory index (vctl memory-check, #676).
+"${VCTL[@]}" memory-check 2>/dev/null || echo "warning: memory index not checked; run: v-ctl memory-check" >&2
 "${VCTL[@]}" status
