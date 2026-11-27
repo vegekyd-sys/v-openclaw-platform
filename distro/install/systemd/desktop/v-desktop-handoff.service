@@ -11,7 +11,8 @@ Type=simple
 User=@USER@
 Group=@USER@
 Environment=HOME=@HOME@
-ExecStart=@PREFIX@/node/current/bin/node @PREFIX@/current/optional/desktop/service/server.mjs @ETC@/desktop-handoff/config.json
+# The real release path, not current/: server.mjs runs only when argv[1] equals its resolved path.
+ExecStart=@PREFIX@/node/current/bin/node @RELEASE@/optional/desktop/service/server.mjs @ETC@/desktop-handoff/config.json
 Restart=always
 RestartSec=3
 MemoryMax=256M
