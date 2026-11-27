@@ -2,8 +2,8 @@
 """Move V's data down the tiers automatically: T0 system disk -> T1 data disk -> T2 COS.
 
 docs/v-storage-tiering-plan.md. Every move is copy, verify, then delete; nothing is
-deleted that has not been verified at its destination, and nothing in COS is ever
-deleted by this program (its credentials cannot).
+deleted that has not been verified at its destination, and this program never
+deletes anything in COS.
 
 Categories come from /etc/v-storage/policy.json "archive.categories":
 
@@ -72,8 +72,8 @@ DEFAULTS = {
     "bucket": "",
     "prefix": "archive/v",
     "cool_hours": 24,
-    "rate_mb_s": 4,
-    "max_bytes_per_run": 80 * 10 ** 9,
+    "rate_mb_s": 40,  # runs at night only; internal COS traffic bypasses the public shaper (#693)
+    "max_bytes_per_run": 300 * 10 ** 9,
     "max_seconds_per_run": 5 * 3600,
     "categories": [],
 }

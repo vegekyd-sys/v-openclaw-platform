@@ -27,8 +27,8 @@
     "bucket": "",
     "prefix": "archive/v",
     "cool_hours": 24,
-    "rate_mb_s": 4,
-    "max_bytes_per_run": 80000000000,
+    "rate_mb_s": 40,
+    "max_bytes_per_run": 300000000000,
     "max_seconds_per_run": 18000,
     "categories": [
       {

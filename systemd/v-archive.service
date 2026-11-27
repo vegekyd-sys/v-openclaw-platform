@@ -7,8 +7,8 @@ RequiresMountsFor=/srv/openclaw-data/disk1
 
 [Service]
 Type=oneshot
-# TENCENTCLOUD_SECRET_ID/KEY: the Gateway's account. Its COS policy (V-COSArchive)
-# allows writing and reading this one bucket and starting restores, never deleting.
+# TENCENTCLOUD_SECRET_ID/KEY: the Gateway's account (QcloudCOSFullAccess since 2026-11-28,
+# Tianyi's call: V owns its storage). This program itself never deletes in COS.
 EnvironmentFile=/home/openclaw/.openclaw/gateway.systemd.env
 StateDirectory=v-archive
 StateDirectoryMode=0700
