@@ -13,6 +13,8 @@
     "makaron-cli": { "package": "makaron-cli", "version": "0.17.30", "lock": "makaron-cli", "bin": "makaron" },
     "lark-cli": { "package": "@larksuite/cli", "version": "1.0.97", "lock": "lark-cli", "bin": "lark-cli",
       "env": { "LARKSUITE_CLI_CONFIG_DIR": "${HOME}/.lark-cli" },
-      "note": "lark-cli 1.0.97 never fetches a tenant token from LARKSUITE_CLI_APP_ID/SECRET env; configure runs `config init` into the config dir instead (V's own layout)." }
+      "unsetEnv": ["LARKSUITE_CLI_APP_ID", "LARKSUITE_CLI_APP_SECRET", "LARK_CHANNEL"],
+      "unsetEnvPrefixes": ["OPENCLAW_", "HERMES_"],
+      "note": "lark-cli runs as a standalone tool on its own config (configure writes it with config init). With LARKSUITE_CLI_APP_* in env it disables auth and never fetches a tenant token; with OPENCLAW_* in env it demands `config bind`. Line B's feishu-docs.py strips the same variables." }
   }
 }

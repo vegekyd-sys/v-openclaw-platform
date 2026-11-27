@@ -161,12 +161,15 @@ export function createConfig(o) {
         maxConcurrent: 8,
         heartbeat: { every: '0m' },
         contextPruning: { mode: 'cache-ttl', ttl: '1m' },
-        compaction: { mode: 'safeguard', keepRecentTokens: 8000, recentTurnsPreserve: 3, midTurnPrecheck: { enabled: true }, timeoutSeconds: 360, model: m.fastModel, notifyUser: true },
+        // V's compaction: the Worker plugin's quality-checked provider, one retry when the summary fails its check.
+        compaction: { mode: 'safeguard', keepRecentTokens: 8000, recentTurnsPreserve: 3, midTurnPrecheck: { enabled: true }, timeoutSeconds: 360, model: m.fastModel, notifyUser: true, provider: 'versa-fast-quality-v1', qualityGuard: { enabled: true, maxRetries: 1 } },
         subagents: { maxConcurrent: 8, runTimeoutSeconds: 21600, announceTimeoutMs: 21600000 },
         modelSelectionScope: 'session',
       },
       // 2026.9.1 keys agents by id (agents.list is migrated on every start, with a warning).
-      entries: { [o.agentId ?? 'makaron']: { workspace: o.workspace } },
+      // The id stays makaron: V's Worker plugin falls back to it and a Heartbeat stream guard
+      // matches agent:makaron:cron:*. What people see (the Feishu card footer) is identity.name.
+      entries: { [o.agentId ?? 'makaron']: { workspace: o.workspace, identity: { name: env.V_AGENT_NAME || 'V' } } },
     },
     memory: {
       search: embeddings
@@ -218,6 +221,7 @@ export function createConfig(o) {
             minWorkers: 1, maxWorkers, sessionsPerWorker: 3,
             idleTimeoutMs: 180000, requestTimeoutMs: 600000, requestStallTimeoutMs: 120000, gatewayOwnedToolTimeoutMs: 310000,
             fastCompactionModel: m.fastModel,
+            fastCompactionMaxInputChars: 420000, fastCompactionMaxOutputTokens: 12000, fastCompactionMaxQualityRetries: 1,
             workerConfigPath: path.join(o.stateDir, 'worker-openclaw.json'),
             gatewayConfigPath: path.join(o.stateDir, 'openclaw.json'),
             nativeRequestTimeoutMs: 21600000,

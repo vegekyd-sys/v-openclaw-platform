@@ -42,7 +42,10 @@ test('standalone deepseek is V: /vds Codex first, Worker pool fallback, V model 
   assert.equal(cfg.plugins.entries['vlab-agent-worker-isolation'].config.workerConfigPath, '/home/openclaw/.openclaw/worker-openclaw.json');
   assert.equal(cfg.plugins.entries['v-session-relay'].config.ownerName, '王总');
   assert.ok(cfg.plugins.load.paths.includes('/opt/v/current/plugins/worker'));
-  assert.deepEqual(cfg.agents.entries, { makaron: { workspace: base.workspace } });
+  assert.deepEqual(cfg.agents.entries, { makaron: { workspace: base.workspace, identity: { name: 'V' } } });
+  assert.equal(cfg.agents.defaults.compaction.provider, 'versa-fast-quality-v1');
+  assert.deepEqual(cfg.agents.defaults.compaction.qualityGuard, { enabled: true, maxRetries: 1 });
+  assert.equal(cfg.plugins.entries['vlab-agent-worker-isolation'].config.fastCompactionMaxQualityRetries, 1);
   assert.equal(cfg.agents.list, undefined);
   assert.equal(cfg.channels, undefined, 'no Feishu app, no channel');
   assert.deepEqual(cfg.tools.deny, []);

@@ -61,11 +61,15 @@ const SECRET_KEY = /(_KEY|_SECRET|_TOKEN|_PASSWORD)$/;
 
 // A tool that needs env of its own (lark-cli's config dir) gets a shim instead of a
 // symlink; values the caller set win.
-export function toolShim(bin, env) {
-  const lines = Object.entries(env).map(([k, v]) => {
-    if (!/^[A-Z_][A-Z0-9_]*$/.test(k)) throw new Error(`bad env name ${k}`);
-    return `export ${k}="\${${k}:-${v}}"`;
-  });
+export function toolShim(bin, env, { unset = [], unsetPrefixes = [] } = {}) {
+  const name = (k) => { if (!/^[A-Z_][A-Z0-9_]*$/.test(k)) throw new Error(`bad env name ${k}`); return k; };
+  const lines = [];
+  if (unset.length) lines.push(`unset ${unset.map(name).join(' ')}`);
+  for (const pre of unsetPrefixes) {
+    name(pre.replace(/_$/, ''));
+    lines.push(`for v in $(env | sed -n 's/^\\(${pre}[A-Za-z0-9_]*\\)=.*/\\1/p'); do unset "$v"; done`);
+  }
+  for (const [k, v] of Object.entries(env)) lines.push(`export ${name(k)}="\${${k}:-${v}}"`);
   return `#!/bin/sh\n# v-distro shim: sets the tool's own env, then runs it.\n${lines.join('\n')}\nexec '${bin}' "$@"\n`;
 }
 
@@ -114,7 +118,7 @@ function requireKeys(env) {
   if (preset === 'deepseek' && !env.DEEPSEEK_API_KEY) missing.push('DEEPSEEK_API_KEY');
   if (preset === 'vercel' && !env.AI_GATEWAY_API_KEY) missing.push('AI_GATEWAY_API_KEY');
   if (!!env.FEISHU_APP_ID !== !!env.FEISHU_APP_SECRET) missing.push('FEISHU_APP_ID and FEISHU_APP_SECRET together');
-  if (missing.length) throw new Error(`missing in the env file: ${missing.join(', ')}`);
+  if (missing.length) throw new Error(`missing ${missing.join(', ')}: put it in the env file (or /etc/v/secrets.env for keys), then run configure again${preset === 'deepseek' && missing.includes('DEEPSEEK_API_KEY') ? ' (the default model is DeepSeek through /vds, as on V; V_MODEL_PRESET=vercel uses AI_GATEWAY_API_KEY instead)' : ''}`);
 }
 
 function cmdSplitEnv(input) {
@@ -162,7 +166,7 @@ function cmdInstallRelease(pkgDir, opts) {
     const t = readJson(path.join(dest, 'runtime/tools.json')).npm[name];
     const link = path.join(P.bin, t.bin);
     fs.rmSync(link, { force: true });
-    if (t.env) fs.writeFileSync(link, toolShim(bin, t.env), { mode: 0o755 });
+    if (t.env) fs.writeFileSync(link, toolShim(bin, t.env, { unset: t.unsetEnv, unsetPrefixes: t.unsetEnvPrefixes }), { mode: 0o755 });
     else fs.symlinkSync(bin, link);
   }
   placeDesktopPlugin(dest);
@@ -374,21 +378,32 @@ async function cmdConfigure(opts) {
 }
 
 // lark-cli talks to Feishu as the same app as the channel (line B's skills and scripts use it).
-// Its env credentials never yield a tenant token, so write its own config as V does:
-// ~/.lark-cli/<profile>/config.json, the secret on stdin, never on the command line.
+// It runs as a standalone tool on ~/.lark-cli/config.json, written here with the secret on
+// stdin. Outside any agent context on purpose: with OPENCLAW_* set it files the config under a
+// profile directory that line B's feishu-docs.py does not read, and then demands `config bind`.
+// The Gateway also gets LARKSUITE_CLI_APP_ID/SECRET/CONFIG_DIR (/etc/v/lark.env): the
+// interface line B's workspace reads to know the bound app (distro/workspace/README.md).
 export function larkCliInitArgs(appId, domain) {
   if (!/^cli_[A-Za-z0-9]+$/.test(appId)) throw new Error(`FEISHU_APP_ID ${appId} is not a cli_ app id`);
   return ['config', 'init', '--app-id', appId, '--app-secret-stdin', '--brand', domain === 'lark' ? 'lark' : 'feishu', '--force-init'];
 }
 
+export function larkEnvFile({ appId, secret, configDir }) {
+  return `# lark-cli's view of the Feishu app (v-distro configure; line B's interface). Root only.\nLARKSUITE_CLI_APP_ID=${appId}\nLARKSUITE_CLI_APP_SECRET=${secret}\nLARKSUITE_CLI_CONFIG_DIR=${configDir}\n`;
+}
+
 function configureLarkCli(env, bin) {
-  if (!env.FEISHU_APP_ID || !env.FEISHU_APP_SECRET) return 'no-feishu';
-  if (!bin || !fs.existsSync(bin)) return 'not-installed';
+  const envFile = path.join(P.etc, 'lark.env');
+  if (!env.FEISHU_APP_ID || !env.FEISHU_APP_SECRET) { fs.rmSync(envFile, { force: true }); return 'no-feishu'; }
   const dir = path.join(P.home, '.lark-cli');
+  fs.writeFileSync(envFile, larkEnvFile({ appId: env.FEISHU_APP_ID, secret: env.FEISHU_APP_SECRET, configDir: dir }), { mode: 0o600 });
+  fs.chmodSync(envFile, 0o600);
+  if (!bin || !fs.existsSync(bin)) return 'not-installed';
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   run('chown', [`${P.user}:${P.user}`, dir]);
-  run('runuser', ['-u', P.user, '--', 'env', `HOME=${P.home}`, `LARKSUITE_CLI_CONFIG_DIR=${dir}`, `OPENCLAW_HOME=${P.home}`,
-    'LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1', bin, ...larkCliInitArgs(env.FEISHU_APP_ID, env.FEISHU_DOMAIN)], { input: env.FEISHU_APP_SECRET, stdio: ['pipe', 'pipe', 'pipe'] });
+  run('runuser', ['-u', P.user, '--', 'env', '-i', `HOME=${P.home}`, `PATH=${path.dirname(process.execPath)}:/usr/bin:/bin`, `LARKSUITE_CLI_CONFIG_DIR=${dir}`,
+    'LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1', 'LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1', bin, ...larkCliInitArgs(env.FEISHU_APP_ID, env.FEISHU_DOMAIN)], { input: env.FEISHU_APP_SECRET, stdio: ['pipe', 'pipe', 'pipe'] });
+  if (!fs.existsSync(path.join(dir, 'config.json'))) throw new Error(`lark-cli config init did not write ${path.join(dir, 'config.json')}`);
   return 'configured';
 }
 

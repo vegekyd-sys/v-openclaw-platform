@@ -50,6 +50,27 @@ sudo v-distro-<ver>/install/install.sh --env-file ./v.env --probe
 升级：在新包里跑 `sudo v-distro-<new>/install/update.sh --probe`；回退：`sudo /opt/v/current/install/rollback.sh`。
 语义见 CONTRACT.md 第 5 节。
 
+## 可选组件
+
+都在 env 文件里打开（`install/v.env.example`），不打开时什么都不装、不配。
+
+| 组件 | 打开方式 | 客户机需要 | 做不到的 |
+| --- | --- | --- | --- |
+| 桌面接管 + computer use | `V_DESKTOP=1` | amd64；约多占 0.5–1 GB 内存；能访问 dl.google.com 和 Ubuntu 软件源。显示器是 Xtigervnc，无界面机器不需要 Xvfb 或显卡 | 接管链接默认只在本机能打开（`http://127.0.0.1:23950`，可以用 `ssh -L 23950:127.0.0.1:23950` 访问）。要在内网或公网打开，需要客户自己的反向代理或隧道，再设 `V_PUBLIC_ORIGIN` |
+| 语音消息转文字 | `VOLCENGINE_API_KEY` | 火山新版控制台的 key，并开通「录音文件识别极速版」；能访问 openspeech.bytedance.com | — |
+| VSync | `install.sh --vsync-env <file>` | Portal 签发的身份文件，由人带外交付；能用 HTTPS 访问 mirror-v-portal.vercel.app | 要等 Portal 那边启用；启用前 `mirror-vsync.py whoami` 返回 `VSYNC_DISABLED` |
+
+- 控制链接是不记名的，谁拿到都能接管桌面。所以客户版用 `controlAnywhere:false`：主人在群里要链接时，链接通过私聊发给他（V 本身是 true）。
+- Chrome 只从 Google 官方 apt 源装：先核对签名钥主指纹 `EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796`，apt 用 `signed-by` 只信这把钥匙。机器上已有的 chromium 和 playwright 浏览器不会被用到。
+
+## 飞书、lark-cli 与 agent 名字
+
+- lark-cli 用 `~/.lark-cli/config.json` 独立运行；configure 用 `config init --app-secret-stdin` 写这个文件，运行时不带任何 OpenClaw 环境变量。
+  原因：环境里有 `LARKSUITE_CLI_APP_*` 时，lark-cli 会禁用 auth 命令，也拿不到应用令牌；有 `OPENCLAW_*` 时，它会要求先 `config bind`，并把配置写到另一个 profile 目录，B 线的脚本读不到。
+  `/opt/v/bin/lark-cli` 和 B 线的 `feishu-docs.py` 会去掉同一批变量。
+- B 线工作区靠 `LARKSUITE_CLI_APP_ID/SECRET/CONFIG_DIR` 判断有没有绑定飞书应用，由 `/etc/v/lark.env` 提供给 Gateway（agent 的 exec 会继承）。缺了这个文件，上手引导会说「接不上飞书」。
+- 卡片页脚显示的名字来自 `V_AGENT_NAME`（默认 `V`）。内部 agent id 仍是 makaron（见 CONTRACT 第 4 节）；`V_OWNER_NAME` 等配置不受影响。
+
 ## 依赖与 V 一致的证据（2026-11-27）
 
 - core：`lock.mjs core-openclaw openclaw@2026.9.1 --before 2026-09-04T13:00:00Z` 解出的依赖，与 V

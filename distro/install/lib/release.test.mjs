@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { applyOverlay, replacePackage, verifyCapture, verifyPackage, linkNpmProjects, overlayStatePlugins, installRelease } from './release.mjs';
-import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME } from './vctl.mjs';
+import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile } from './vctl.mjs';
 import { execFileSync } from 'node:child_process';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
@@ -237,13 +237,17 @@ test('tool shims: lark-cli gets its config dir (caller value wins), never app cr
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'v-distro-shim-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const fake = path.join(dir, 'real-lark');
-  fs.writeFileSync(fake, '#!/bin/sh\necho "${LARKSUITE_CLI_APP_ID:-none}|$LARKSUITE_CLI_CONFIG_DIR|$*"\n', { mode: 0o755 });
+  fs.writeFileSync(fake, '#!/bin/sh\necho "${LARKSUITE_CLI_APP_ID:-none}|${OPENCLAW_HOME:-none}|${LARKSUITE_CLI_APP_SECRET:-none}|$LARKSUITE_CLI_CONFIG_DIR|$*"\n', { mode: 0o755 });
   const tools = JSON.parse(fs.readFileSync(new URL('../../runtime/tools.json', import.meta.url), 'utf8'));
   const shim = path.join(dir, 'lark-cli');
-  fs.writeFileSync(shim, toolShim(fake, tools.npm['lark-cli'].env), { mode: 0o755 });
+  const lark = tools.npm['lark-cli'];
+  fs.writeFileSync(shim, toolShim(fake, lark.env, { unset: lark.unsetEnv, unsetPrefixes: lark.unsetEnvPrefixes }), { mode: 0o755 });
   const run = (env) => execFileSync(shim, ['im', '+x'], { env: { PATH: '/usr/bin:/bin', HOME: '/home/openclaw', ...env } }).toString().trim();
-  assert.equal(run({ FEISHU_APP_ID: 'app', FEISHU_APP_SECRET: 's' }), 'none|/home/openclaw/.lark-cli|im +x');
-  assert.equal(run({ LARKSUITE_CLI_CONFIG_DIR: '/x' }), 'none|/x|im +x');
+  // The agent's env carries the bound app and OpenClaw context; lark-cli must see neither.
+  assert.equal(run({ LARKSUITE_CLI_APP_ID: 'cli_a', LARKSUITE_CLI_APP_SECRET: 's', OPENCLAW_HOME: '/home/openclaw', OPENCLAW_SERVICE_KIND: 'gateway' }), 'none|none|none|/home/openclaw/.lark-cli|im +x');
+  assert.equal(run({ LARKSUITE_CLI_CONFIG_DIR: '/x' }), 'none|none|none|/x|im +x');
+  assert.equal(larkEnvFile({ appId: 'cli_a', secret: 's', configDir: '/home/openclaw/.lark-cli' }).split('\n').filter((l) => /^[A-Z]/.test(l)).join(','),
+    'LARKSUITE_CLI_APP_ID=cli_a,LARKSUITE_CLI_APP_SECRET=s,LARKSUITE_CLI_CONFIG_DIR=/home/openclaw/.lark-cli');
   assert.throws(() => toolShim(fake, { 'bad name': 'x' }), /bad env name/);
   const args = larkCliInitArgs('cli_ab12', undefined);
   assert.deepEqual(args, ['config', 'init', '--app-id', 'cli_ab12', '--app-secret-stdin', '--brand', 'feishu', '--force-init']);
