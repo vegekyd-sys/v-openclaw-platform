@@ -405,3 +405,11 @@ test("VSync: the broker client ships, says when it has no identity, and the skil
     env: { ...process.env, NEXUS_VSYNC_URL: "", NEXUS_VSYNC_AGENT: "", NEXUS_VSYNC_TOKEN: "" } });
   assert.equal(r.status, 3, r.stderr);
 });
+
+test("doc comment sessions: the final reply is the comment, posted by the plugin as the bot; posting comments yourself is forbidden", () => {
+  const a = fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8");
+  const sec = a.slice(a.indexOf("<!-- v-distro:begin doc-comments -->"), a.indexOf("<!-- v-distro:end doc-comments -->"));
+  assert.match(sec, /你的最终回复就是评论回复/);
+  assert.match(sec, /不调用 `lark-cli drive \+add-comment`、`\+add-reply`/);
+  assert.match(sec, /最终回复不能是空的或 `NO_REPLY`/);
+});
