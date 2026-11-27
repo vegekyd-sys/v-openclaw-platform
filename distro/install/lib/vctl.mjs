@@ -20,6 +20,8 @@
 //   vctl.mjs desktop-services                               (re)start the desktop units on the current release, then pair
 //   vctl.mjs memory-check                                   rebuild a memory index built for another embedding provider
 //   vctl.mjs workspace-update [--target <releaseDir>] [--dry-run]   the workspace's system files to that release (three-way)
+//   vctl.mjs backup [--out-dir DIR] [--keep N]            online backup archive (state, lark-cli, /etc/v), 0600
+//   vctl.mjs restore-backup <archive> --root DIR | --live   unpack and verify; --live replaces this machine's state
 //   vctl.mjs install-skills                                 global skills (runtime/skills.json, skill CLIs) -> ~/.openclaw/skills
 //   vctl.mjs vsync-env <issued.env>                         -> /etc/v/vsync.env (the Portal-issued VSync identity)
 
@@ -535,6 +537,79 @@ async function cmdWorkspaceUpdate(opts) {
   }
 }
 
+// ---- backups (backup.mjs) ----
+const sha256File = (f) => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+const VAR_LIB = () => process.env.V_VAR_LIB || '/var/lib/v-distro';
+const rel = (abs) => abs.replace(/^\/+/, '');
+function backupTrees() {
+  const { BACKUP_EXCLUDE } = BACKUP;
+  return [
+    { from: P.state, to: rel(P.state), exclude: BACKUP_EXCLUDE },
+    { from: path.join(P.home, '.lark-cli'), to: rel(path.join(P.home, '.lark-cli')) },
+    { from: path.join(P.home, '.local', 'share', 'lark-cli'), to: rel(path.join(P.home, '.local', 'share', 'lark-cli')) },
+    { from: P.etc, to: rel(P.etc) },
+    { from: VAR_LIB(), to: rel(VAR_LIB()), exclude: ['restore-*'] },
+  ];
+}
+let BACKUP;
+
+async function cmdBackup(opts) {
+  BACKUP = await import('./backup.mjs');
+  const outDir = opts['out-dir'] || path.join(P.backups, 'archives');
+  fs.mkdirSync(outDir, { recursive: true, mode: 0o700 });
+  fs.chmodSync(outDir, 0o700);
+  const manifest = fs.existsSync(path.join(P.current, 'manifest.json')) ? readJson(path.join(P.current, 'manifest.json')) : {};
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const stage = fs.mkdtempSync(path.join(outDir, '.stage-'));
+  try {
+    const image = await BACKUP.buildBackupImage({ trees: backupTrees(), stage });
+    const meta = { schema: 'v-distro-backup/1', takenAt: new Date().toISOString(), host: os.hostname(), version: manifest.version ?? null, release: manifest.release ?? null, ...image };
+    fs.writeFileSync(path.join(stage, 'v-backup-manifest.json'), `${JSON.stringify(meta, null, 1)}\n`, { mode: 0o600 });
+    const archive = path.join(outDir, `v-backup-${manifest.version ?? 'unknown'}-${stamp}.tar.gz`);
+    BACKUP.tarCreate(stage, archive);
+    const sum = sha256File(archive);
+    fs.writeFileSync(`${archive}.sha256`, `${sum}  ${path.basename(archive)}\n`, { mode: 0o600 });
+    const pruned = BACKUP.prunable(outDir, Number(opts.keep || 0));
+    for (const f of pruned) { fs.rmSync(path.join(outDir, f), { force: true }); fs.rmSync(path.join(outDir, `${f}.sha256`), { force: true }); }
+    out({ step: 'backup', archive, bytes: fs.statSync(archive).size, sha256: sum, files: Object.keys(image.files).length, databases: Object.keys(image.databases), pruned });
+  } finally {
+    fs.rmSync(stage, { recursive: true, force: true });
+  }
+}
+
+async function cmdRestoreBackup(archive, opts) {
+  BACKUP = await import('./backup.mjs');
+  if (!archive || !fs.existsSync(archive)) throw new Error('restore-backup <archive> --root DIR | --live');
+  if (fs.existsSync(`${archive}.sha256`)) {
+    const want = fs.readFileSync(`${archive}.sha256`, 'utf8').split(/\s+/)[0];
+    if (sha256File(archive) !== want) throw new Error(`${archive} does not match its .sha256`);
+  }
+  if (!opts.root && !opts.live) throw new Error('say where: --root DIR (a copy to inspect) or --live (replace this machine\'s state)');
+  const root = opts.root || fs.mkdtempSync(path.join(P.backups, 'restore-'));
+  BACKUP.tarExtract(archive, root);
+  const manifest = readJson(path.join(root, 'v-backup-manifest.json'));
+  const check = await BACKUP.verifyImage(root, manifest);
+  if (!check.ok) throw new Error(`backup does not verify: ${check.problems.slice(0, 10).join('; ')}`);
+  if (!opts.live) { out({ step: 'restore-backup', root, live: false, version: manifest.version, takenAt: manifest.takenAt, ...check }); return; }
+  for (const u of ['openclaw-gateway.service', 'v-memory-indexer.service']) {
+    if (spawnSync('systemctl', ['is-active', '--quiet', u]).status === 0) throw new Error(`stop ${u} first (systemctl stop openclaw-gateway v-memory-indexer)`);
+  }
+  // The current state is moved aside, never deleted; npm-installed plugins come back from it.
+  const aside = `${P.state}.replaced-${Date.now()}`;
+  if (fs.existsSync(P.state)) fs.renameSync(P.state, aside);
+  for (const t of backupTrees()) {
+    const src = path.join(root, t.to);
+    if (!fs.existsSync(src)) continue;
+    fs.mkdirSync(t.from, { recursive: true });
+    run('cp', ['-a', `${src}/.`, `${t.from}/`]);
+  }
+  for (const x of ['npm', 'cache']) if (fs.existsSync(path.join(aside, x)) && !fs.existsSync(path.join(P.state, x))) fs.renameSync(path.join(aside, x), path.join(P.state, x));
+  for (const d of [P.state, path.join(P.home, '.lark-cli'), path.join(P.home, '.local')]) if (fs.existsSync(d)) run('chown', ['-R', `${P.user}:${P.user}`, d]);
+  if (fs.existsSync(secretsEnvFile())) fs.chmodSync(secretsEnvFile(), 0o600);
+  fs.rmSync(root, { recursive: true, force: true });
+  out({ step: 'restore-backup', live: true, version: manifest.version, takenAt: manifest.takenAt, replacedStateKeptAt: aside, next: 'v-ctl reconfigure' });
+}
+
 function readLink(link) {
   try { return fs.readlinkSync(link); } catch { return null; }
 }
@@ -898,6 +973,7 @@ function parseOpts(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--check-history' || a === '--history-only' || a === '--skip-tools' || a === '--force' || a === '--restart') opts[a.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = true;
+    else if (a === '--live' || a === '--dry-run') opts[a.slice(2)] = true;
     else if (a.startsWith('--')) { opts[a.slice(2)] = argv[i + 1]; i += 1; }
     else opts._.push(a);
   }
@@ -930,6 +1006,8 @@ async function main() {
     case 'install-skills': await cmdInstallSkills(); break;
     case 'memory-check': cmdMemoryCheck(); break;
     case 'workspace-update': await cmdWorkspaceUpdate(opts); break;
+    case 'backup': await cmdBackup(opts); break;
+    case 'restore-backup': await cmdRestoreBackup(opts._[0], opts); break;
     case 'desktop-services': await cmdDesktopServices(opts); break;
     default: throw new Error(`unknown command ${cmd ?? ''}; see the header of ${path.relative(process.cwd(), fileURLToPath(import.meta.url))}`);
   }
