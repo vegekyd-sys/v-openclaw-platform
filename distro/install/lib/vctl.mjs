@@ -67,9 +67,40 @@ const SECRET_KEY = /(_KEY|_SECRET|_TOKEN|_PASSWORD)$/;
 
 // A tool that needs env of its own (lark-cli's config dir) gets a shim instead of a
 // symlink; values the caller set win.
-export function toolShim(bin, env, { unset = [], unsetPrefixes = [] } = {}) {
+// Shell guards a shim can run before the tool (tools.json "guards").
+// owner-voice: lark-cli runs with the owner's user login; a comment, reply, message or reaction sent
+// that way shows as the owner writing. Those must go as the bot (or as V's final reply, which the
+// Feishu plugin posts as the bot). Reading, and editing documents as the owner, stay allowed.
+export const SHIM_GUARDS = {
+  'owner-voice': String.raw`v_guard_owner_voice() {
+  area=""; speak=""; as=""; method=""; prev=""
+  for a in "$@"; do
+    case "$a" in drive|im|api) [ -z "$area" ] && area="$a" ;; esac
+    if [ "$area" = "api" ]; then
+      case "$a" in POST|PUT|PATCH|post|put|patch) method="$a" ;; esac
+      case "$a" in */comments*|*/replies*|/open-apis/im/v1/messages*) [ -n "$method" ] && speak="$a" ;; esac
+    fi
+    case "$a" in
+      +add-comment|+add-reply|+reply-comment|+comment-*|+messages-send|+messages-reply|+message-send|+reply|+send|+messages-forward|+messages-update|+reactions-*|+reaction-*) speak="$a" ;;
+    esac
+    [ "$prev" = "--as" ] && as="$a"
+    case "$a" in --as=*) as="@@AS_VALUE@@" ;; esac
+    prev="$a"
+  done
+  [ -n "$area" ] && [ -n "$speak" ] && [ "$as" != "bot" ] || return 0
+  echo "{\"ok\":false,\"error\":{\"type\":\"policy\",\"code\":\"V_OWNER_VOICE_BLOCKED\",\"message\":\"不以主人名义发言：$area $speak 只能用 --as bot。在文档评论会话里不要自己发评论，把回复直接写成最终回复，飞书插件会用机器人身份贴回原评论。\"}}"
+  exit 3
+}
+v_guard_owner_voice "$@"`.replace('@@AS_VALUE@@', '${a#--as=}'),
+};
+
+export function toolShim(bin, env, { unset = [], unsetPrefixes = [], guards = [] } = {}) {
   const name = (k) => { if (!/^[A-Z_][A-Z0-9_]*$/.test(k)) throw new Error(`bad env name ${k}`); return k; };
   const lines = [];
+  for (const g of guards) {
+    if (!SHIM_GUARDS[g]) throw new Error(`unknown shim guard ${g}`);
+    lines.push(SHIM_GUARDS[g]);
+  }
   if (unset.length) lines.push(`unset ${unset.map(name).join(' ')}`);
   for (const pre of unsetPrefixes) {
     name(pre.replace(/_$/, ''));
@@ -172,7 +203,7 @@ function cmdInstallRelease(pkgDir, opts) {
     const t = readJson(path.join(dest, 'runtime/tools.json')).npm[name];
     const link = path.join(P.bin, t.bin);
     fs.rmSync(link, { force: true });
-    if (t.env) fs.writeFileSync(link, toolShim(bin, t.env, { unset: t.unsetEnv, unsetPrefixes: t.unsetEnvPrefixes }), { mode: 0o755 });
+    if (t.env) fs.writeFileSync(link, toolShim(bin, t.env, { unset: t.unsetEnv, unsetPrefixes: t.unsetEnvPrefixes, guards: t.guards }), { mode: 0o755 });
     else fs.symlinkSync(bin, link);
   }
   placeDesktopPlugin(dest);

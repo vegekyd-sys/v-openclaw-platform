@@ -9,6 +9,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { applyOverlay, replacePackage, verifyCapture, verifyPackage, linkNpmProjects, overlayStatePlugins, installRelease } from './release.mjs';
 import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, keyAliases, memoryNeedsRebuild, parseCliJson, larkInitNeeded } from './vctl.mjs';
+import { spawnSync } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
@@ -333,4 +334,45 @@ test('lark-cli config init runs only when there is no config or it names another
   assert.equal(larkInitNeeded(null, 'cli_a').init, true);
   assert.equal(larkInitNeeded('{broken', 'cli_a').init, true);
   assert.equal(larkInitNeeded(JSON.stringify({ appId: 'cli_a' }), 'cli_a').init, false, 'older flat layout');
+});
+
+test('lark-cli shim never speaks as the owner: comments, replies, messages and reactions need --as bot; reads and doc edits pass', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'v-distro-voice-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const fake = path.join(dir, 'real-lark');
+  fs.writeFileSync(fake, '#!/bin/sh\necho "RAN $*"\n', { mode: 0o755 });
+  const lark = JSON.parse(fs.readFileSync(new URL('../../runtime/tools.json', import.meta.url), 'utf8')).npm['lark-cli'];
+  assert.deepEqual(lark.guards, ['owner-voice']);
+  const shim = path.join(dir, 'lark-cli');
+  fs.writeFileSync(shim, toolShim(fake, lark.env, { unset: lark.unsetEnv, unsetPrefixes: lark.unsetEnvPrefixes, guards: lark.guards }), { mode: 0o755 });
+  const call = (...args) => spawnSync(shim, args, { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', HOME: dir } });
+  const blocked = [
+    ['drive', '+add-comment', '--doc', 'x', '--as', 'user'],
+    ['drive', '+add-reply', '--comment', 'c'],
+    ['im', '+messages-send', '--chat-id', 'oc_x', '--text', 'hi'],
+    ['im', '+messages-reply', '--message-id', 'om_x', '--as=user'],
+    ['im', '+reactions-create', '--message-id', 'om_x'],
+    ['api', 'POST', '/open-apis/drive/v1/files/abc/comments', '--data', '{}'],
+    ['api', 'PATCH', '/open-apis/im/v1/messages/om_x'],
+  ];
+  for (const args of blocked) {
+    const r = call(...args);
+    assert.equal(r.status, 3, args.join(' '));
+    assert.equal(JSON.parse(r.stdout).error.code, 'V_OWNER_VOICE_BLOCKED', args.join(' '));
+  }
+  const allowed = [
+    ['drive', '+add-comment', '--doc', 'x', '--as', 'bot'],
+    ['im', '+messages-send', '--chat-id', 'oc_x', '--as=bot'],
+    ['im', '+messages-mget', '--message-ids', 'om_x'],
+    ['docs', '+update', '--doc', 'x', '--as', 'user'],
+    ['im', '+chat-create', '--name', 'room'],
+    ['api', 'GET', '/open-apis/drive/v1/files/abc/comments'],
+    ['contact', '+user-get', '--as', 'user'],
+  ];
+  for (const args of allowed) {
+    const r = call(...args);
+    assert.equal(r.status, 0, args.join(' '));
+    assert.equal(r.stdout.trim(), `RAN ${args.join(' ')}`);
+  }
+  assert.throws(() => toolShim(fake, {}, { guards: ['nope'] }), /unknown shim guard/);
 });
