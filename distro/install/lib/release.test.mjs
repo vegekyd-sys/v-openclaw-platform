@@ -374,5 +374,22 @@ test('lark-cli shim never speaks as the owner: comments, replies, messages and r
     assert.equal(r.status, 0, args.join(' '));
     assert.equal(r.stdout.trim(), `RAN ${args.join(' ')}`);
   }
+  // "Send this as me": --owner-approved lets a message or reaction through as the owner, leaves an audit
+  // line without the text, and is removed before lark-cli runs. Comments never go as the owner.
+  const audit = path.join(dir, 'audit.log');
+  const callA = (...args) => spawnSync(shim, args, { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', HOME: dir, V_OWNER_VOICE_AUDIT: audit } });
+  const ok = callA('im', '+messages-send', '--chat-id', 'oc_team', '--text', 'the secret plan', '--owner-approved', '主人说：替我跟团队说明天十点开会');
+  assert.equal(ok.status, 0);
+  assert.equal(ok.stdout.trim(), 'RAN im +messages-send --chat-id oc_team --text the secret plan', 'the flag never reaches lark-cli');
+  const line = fs.readFileSync(audit, 'utf8').trim().split('\t');
+  assert.match(line[0], /^\d{4}-\d\d-\d\dT/);
+  assert.deepEqual(line.slice(1), ['im +messages-send', '--chat-id=oc_team', '主人说：替我跟团队说明天十点开会']);
+  assert.ok(!fs.readFileSync(audit, 'utf8').includes('secret plan'), 'the text sent is not logged');
+  assert.equal(callA('im', '+reactions-create', '--message-id', 'om_x', '--owner-approved=主人让我点个赞').status, 0);
+  const comment = callA('drive', '+add-comment', '--doc', 'x', '--owner-approved', '主人说的');
+  assert.equal(comment.status, 3, 'comments never go as the owner');
+  assert.match(JSON.parse(comment.stdout).error.message, /文档评论只能用机器人身份/);
+  assert.equal(callA('api', 'POST', '/open-apis/drive/v1/files/abc/comments', '--owner-approved', 'x').status, 3);
+  assert.equal(fs.readFileSync(audit, 'utf8').trim().split('\n').length, 2, 'only the two approved sends were logged');
   assert.throws(() => toolShim(fake, {}, { guards: ['nope'] }), /unknown shim guard/);
 });
