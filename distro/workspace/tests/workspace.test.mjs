@@ -269,6 +269,15 @@ test("the 2026-11-27 decisions hold: VSync, A2A and computer use ship and follow
   assert.ok(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8").includes("skills/computer-use"));
 });
 
+test("task room: the skill ships, takes the owner and app from this machine, and AGENTS.md points at it", () => {
+  const s = fs.readFileSync(path.join(PAYLOAD, "skills/feishu-task-room-router/SKILL.md"), "utf8");
+  assert.match(s, /agent:@@AGENT_ID@@:feishu:group:<chat_id>/);
+  assert.match(s, /v-schedule\.py owner/);
+  assert.match(s, /feishu-docs\.py status/);
+  assert.doesNotMatch(s, /\b(ou|cli)_[0-9a-f]{6,}/);
+  assert.ok(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8").includes("skills/feishu-task-room-router"));
+});
+
 function renderedWorkspace() {
   const out = path.join(tmp("py"), "ws");
   build(out, { values: { WORKSPACE: out, AGENT_ID: "test-v", STATE_DIR: path.join(out, ".state"), TIMEZONE: "Asia/Shanghai" } });
