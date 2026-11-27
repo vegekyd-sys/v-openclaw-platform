@@ -413,3 +413,12 @@ test("doc comment sessions: the final reply is the comment, posted by the plugin
   assert.match(sec, /不调用 `lark-cli drive \+add-comment`、`\+add-reply`/);
   assert.match(sec, /最终回复不能是空的或 `NO_REPLY`/);
 });
+
+test("speaking as the owner: only with --owner-approved and the owner's own words, never for comments, and reported back", () => {
+  const tools = fs.readFileSync(path.join(PAYLOAD, "TOOLS.md"), "utf8");
+  assert.match(tools, /--owner-approved "<主人的原话>"/);
+  assert.match(tools, /在当前对话里明确/);
+  assert.match(tools, /lark-owner-voice\.log/);
+  assert.match(tools, /发完在单聊里告诉主人发了什么、发给了谁/);
+  assert.match(tools, /文档评论和回复评论不能这样发/);
+});
