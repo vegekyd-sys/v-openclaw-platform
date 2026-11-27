@@ -340,7 +340,8 @@ test('lark-cli shim never speaks as the owner: comments, replies, messages and r
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'v-distro-voice-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const fake = path.join(dir, 'real-lark');
-  fs.writeFileSync(fake, '#!/bin/sh\necho "RAN $*"\n', { mode: 0o755 });
+  // The stand-in fails with 2 when asked to (FAIL in the args), like a send the API rejects.
+  fs.writeFileSync(fake, '#!/bin/sh\necho "RAN $*"\ncase "$*" in *FAIL*) echo "api said no" >&2; exit 2 ;; esac\n', { mode: 0o755 });
   const lark = JSON.parse(fs.readFileSync(new URL('../../runtime/tools.json', import.meta.url), 'utf8')).npm['lark-cli'];
   assert.deepEqual(lark.guards, ['owner-voice']);
   const shim = path.join(dir, 'lark-cli');
@@ -383,7 +384,7 @@ test('lark-cli shim never speaks as the owner: comments, replies, messages and r
   assert.equal(ok.stdout.trim(), 'RAN im +messages-send --chat-id oc_team --text the secret plan', 'the flag never reaches lark-cli');
   const line = fs.readFileSync(audit, 'utf8').trim().split('\t');
   assert.match(line[0], /^\d{4}-\d\d-\d\dT/);
-  assert.deepEqual(line.slice(1), ['im +messages-send', '--chat-id=oc_team', '主人说：替我跟团队说明天十点开会']);
+  assert.deepEqual(line.slice(1), ['im +messages-send', '--chat-id=oc_team', '主人说：替我跟团队说明天十点开会', 'mode=send', 'result=ok']);
   assert.ok(!fs.readFileSync(audit, 'utf8').includes('secret plan'), 'the text sent is not logged');
   assert.equal(callA('im', '+reactions-create', '--message-id', 'om_x', '--owner-approved=主人让我点个赞').status, 0);
   const comment = callA('drive', '+add-comment', '--doc', 'x', '--owner-approved', '主人说的');
@@ -391,5 +392,18 @@ test('lark-cli shim never speaks as the owner: comments, replies, messages and r
   assert.match(JSON.parse(comment.stdout).error.message, /文档评论只能用机器人身份/);
   assert.equal(callA('api', 'POST', '/open-apis/drive/v1/files/abc/comments', '--owner-approved', 'x').status, 3);
   assert.equal(fs.readFileSync(audit, 'utf8').trim().split('\n').length, 2, 'only the two approved sends were logged');
+  // A dry run is logged as one; a failed send keeps its exit code and output, and says so in the audit.
+  assert.equal(callA('im', '+messages-send', '--chat-id', 'oc_team', '--dry-run', '--owner-approved', '主人说的').status, 0);
+  const failed = callA('im', '+messages-send', '--chat-id', 'oc_team', '--text', 'FAIL', '--owner-approved', '主人说的');
+  assert.equal(failed.status, 2);
+  assert.match(failed.stderr, /api said no/);
+  const rows = fs.readFileSync(audit, 'utf8').trim().split('\n').map((l) => l.split('\t'));
+  assert.deepEqual(rows.slice(-2).map((r) => r.slice(4)), [['mode=dry-run', 'result=ok'], ['mode=send', 'result=failed:2']]);
+  // Help is never blocked and never logged.
+  const help = callA('im', '+messages-send', '--help');
+  assert.equal(help.status, 0);
+  assert.equal(help.stdout.trim(), 'RAN im +messages-send --help');
+  assert.equal(callA('drive', '+add-comment', '-h').status, 0);
+  assert.equal(fs.readFileSync(audit, 'utf8').trim().split('\n').length, 4);
   assert.throws(() => toolShim(fake, {}, { guards: ['nope'] }), /unknown shim guard/);
 });

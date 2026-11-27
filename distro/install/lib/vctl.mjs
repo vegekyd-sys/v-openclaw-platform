@@ -91,7 +91,8 @@ for v_a do
   set -- "$@" "$v_a"
 done
 v_guard_owner_voice() {
-  area=""; speak=""; kind=""; as=""; method=""; prev=""; to=""
+  area=""; speak=""; kind=""; as=""; method=""; prev=""; to=""; mode="send"
+  for a in "$@"; do case "$a" in --help|-h) return 0 ;; --dry-run) mode="dry-run" ;; esac; done
   for a in "$@"; do
     case "$a" in drive|im|api) [ -z "$area" ] && area="$a" ;; esac
     if [ "$area" = "api" ]; then
@@ -111,9 +112,8 @@ v_guard_owner_voice() {
   done
   [ -n "$area" ] && [ -n "$speak" ] && [ "$as" != "bot" ] || return 0
   if [ "$kind" = message ] && [ -n "$v_owner_approved" ]; then
-    v_log="\${V_OWNER_VOICE_AUDIT:-$HOME/.openclaw/audit/lark-owner-voice.log}"
-    mkdir -p "\$(dirname "$v_log")" 2>/dev/null
-    printf '%s\t%s %s\t%s\t%s\n' "\$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$area" "$speak" "\${to:-?}" "\$(printf '%s' "$v_owner_approved" | tr '\t\n' '  ' | cut -c1-200)" >> "$v_log"
+    # Run lark-cli as a child (not exec) so the audit line can say how it went.
+    v_wrap=1; v_audit_op="$area $speak"; v_audit_to="\${to:-?}"; v_audit_mode="$mode"
     return 0
   fi
   if [ "$kind" = comment ]; then
@@ -122,6 +122,12 @@ v_guard_owner_voice() {
     echo "{\"ok\":false,\"error\":{\"type\":\"policy\",\"code\":\"V_OWNER_VOICE_BLOCKED\",\"message\":\"不以主人名义发言：$area $speak 请改用 --as bot。只有主人在当前对话里明确要求代他发时，才加 --owner-approved '<主人原话摘要>'；发完在单聊里告诉主人发了什么。\"}}"
   fi
   exit 3
+}
+v_guard_after() {
+  v_log="\${V_OWNER_VOICE_AUDIT:-$HOME/.openclaw/audit/lark-owner-voice.log}"
+  mkdir -p "\$(dirname "$v_log")" 2>/dev/null
+  if [ "$1" = 0 ]; then v_result="ok"; else v_result="failed:$1"; fi
+  printf '%s\t%s\t%s\t%s\tmode=%s\tresult=%s\n' "\$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$v_audit_op" "$v_audit_to" "\$(printf '%s' "$v_owner_approved" | tr '\t\n' '  ' | cut -c1-200)" "$v_audit_mode" "$v_result" >> "$v_log"
 }
 v_guard_owner_voice "$@"`
     // String.raw keeps \$ as written (needed so JS does not read ${...}); the shell wants a bare $.
@@ -141,7 +147,12 @@ export function toolShim(bin, env, { unset = [], unsetPrefixes = [], guards = []
     lines.push(`for v in $(env | sed -n 's/^\\(${pre}[A-Za-z0-9_]*\\)=.*/\\1/p'); do unset "$v"; done`);
   }
   for (const [k, v] of Object.entries(env)) lines.push(`export ${name(k)}="\${${k}:-${v}}"`);
-  return `#!/bin/sh\n# v-distro shim: sets the tool's own env, then runs it.\n${lines.join('\n')}\nexec '${bin}' "$@"\n`;
+  // A guard that wants the outcome (v_wrap set) runs the tool as a child: output passes through,
+  // the exit code is returned as is, and v_guard_after sees it.
+  const run = guards.length
+    ? `if [ -n "\${v_wrap:-}" ]; then\n  '${bin}' "$@"; v_rc=$?\n  v_guard_after "$v_rc"\n  exit "$v_rc"\nfi\nexec '${bin}' "$@"`
+    : `exec '${bin}' "$@"`;
+  return `#!/bin/sh\n# v-distro shim: sets the tool's own env, then runs it.\n${lines.join('\n')}\n${run}\n`;
 }
 
 export function openclawShim(prefix) {
