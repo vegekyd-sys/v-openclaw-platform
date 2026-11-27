@@ -442,12 +442,14 @@ async function cmdWorkspaceUpdate(opts) {
           fs.chmodSync(tmpBase, 0o644);
           args.push('--base', tmpBase);
         }
-        const r = spawnSync('runuser', ['-u', P.user, '--', 'python3', ...args], { cwd: P.workspace, env: agentEnv(), encoding: 'utf8', timeout: 180000 });
+        // The Gateway's PATH (agentEnv) has no /usr/sbin: name runuser by its path, or nothing starts.
+        const runuser = fs.existsSync('/usr/sbin/runuser') ? '/usr/sbin/runuser' : 'runuser';
+        const r = spawnSync(runuser, ['-u', P.user, '--', 'python3', ...args], { cwd: P.workspace, env: agentEnv(), encoding: 'utf8', timeout: 180000 });
         if (tmpBase) fs.rmSync(tmpBase, { force: true });
         const said = (r.stdout || '').trim();
         let parsed = null;
         try { parsed = JSON.parse(said.slice(said.indexOf('{'))); } catch { /* plain text */ }
-        report.schedules = r.status === 0 ? (parsed ?? 'installed') : { skipped: true, exit: r.status, said: (said || r.stderr || '').slice(-400) };
+        report.schedules = r.status === 0 ? (parsed ?? 'installed') : { skipped: true, exit: r.status, ...(r.error ? { error: String(r.error.message ?? r.error) } : {}), said: (said || r.stderr || '').slice(-400) };
       }
       fs.mkdirSync(path.join(P.varLib, 'workspace-updates'), { recursive: true });
       fs.writeFileSync(path.join(P.varLib, 'workspace-updates', `${new Date().toISOString().replace(/[:.]/g, '-')}.json`), `${JSON.stringify(report, null, 2)}\n`);
