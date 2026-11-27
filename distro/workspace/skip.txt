@@ -184,6 +184,22 @@ skills/11                             客户需求调研文档
 skills/tone-aesthetics                没有 SKILL.md，只有产出物
 skills/skills                         误建的空目录
 
+# --- decide.txt items not carried (decided 2026-11-27: same as V where it works for a customer) ---
+skills/browser-fast-run               写死 V 的 Chrome 端口和 V 的决策模型账号，客户机上跑不起来
+skills/youtube-video-download         V 上从未进 git（v-core 没有），写死 V 的浏览器 profile；先进 v-core 再带
+skills/meshy-image-to-3d              V 上从未进 git（v-core 没有）；要客户自己的 Meshy key
+skills/makaron-ad-creator             随 makaron-cli 装成全局 skill（global-skills.json），工作区不另带
+skills/openclaw-disk-full-recovery    V 上从未进 git；自托管机器由部署方运维
+skills/scene-*                        V 的 Scene 搜索站卡片与产线；通用的 Scene CLI 用 scene-cli 自带的 skill（global-skills.json）
+skills/meeting-co-pilot               依赖 V 自己的飞书会议接入服务
+skills/skill-inventory-export         V 上从未进 git；正文举例全是 V 的客户
+skills/lark-user-routing              多人共用一个 V 的身份路由（依赖 lark-users）；客户版只有一位主人
+
+# --- found on V 2026-11-27 after the first inventory ---
+skills/temeter-video                  V 的一个客户的固定节目形态
+skills/*.skill                        旧的单文件打包副本，正文已在对应 skill 目录里
+
 # --- single files inside carried directories ---
 skills/tiktok-publish-copy/references/cases.md 客户已发布的真实文案与账号；SKILL.md 在案例库为空时照常工作
 skills/feishu-channel-cards/references/nightshift-progress.md V 夜班的进度卡（依赖 V 的夜班仓库）
+skills/computer-use/references/session-evidence-2026-10-03.md  V 自己三次实测的记录（站点、账号、主人的 2FA），不是规则

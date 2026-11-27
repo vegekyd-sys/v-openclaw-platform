@@ -11,9 +11,9 @@
   "key": "heartbeat-daily-review",
   "name": "主动推进 · 每日复盘 12:00",
   "cron": "0 12 * * *",
-  "enabled": false,
+  "enabled": true,
   "timeoutSeconds": 600,
-  "description": "和主人一起回看过去 24 小时的主动提醒：哪些有用、哪些重复、接下来怎么改。默认关闭。",
+  "description": "和主人一起回看过去 24 小时的主动提醒：哪些有用、哪些重复、接下来怎么改。默认开（和 V 一致）；过去 24 小时没发过提醒就静默。",
   "prompt": "【主动推进 · 每日复盘】先读 skills/proactive-heartbeat/SKILL.md 的「每日复盘」一节，按它做。跑 `python3 scripts/heartbeat-assistant.py review` 拿到过去 24 小时实际发出的提醒和主人的反馈。用中文写一条给主人的复盘：时间窗、每件事一句背景、哪些有用（有证据）、哪些重复或打扰、下一步打算怎么调；最后最多一个真正需要主人定的问题。过去 24 小时一条都没发，就只回复 NO_REPLY。"
  },
  {

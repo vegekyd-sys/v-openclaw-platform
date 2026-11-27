@@ -1,7 +1,7 @@
 # 可安装 V 的工作区盘点
 
 2026-11-27 CST，对照 V 的活工作区（只读）、V Core（`vegekyd-sys/v-core`）和 Mirror V v20 的 payload 做的分类。
-机器可读的分类在 `carry.txt`（带）、`skip.txt`（不带）、`decide.txt`（等决定）；`sync.mjs` 用它们做审阅门，
+机器可读的分类在 `carry.txt`（带）、`skip.txt`（不带）、`decide.txt`（等决定，目前为空）；`sync.mjs` 用它们做审阅门，
 这份文件解释为什么。全局 skill 的分类在 `global-skills.json`。
 
 口径（用户 2026-11-27 定）：单一主人；写飞书（文档、日程、任务、多维表）和主动推进（Heartbeat，每 6 小时一轮，汇报给主人）都和 V 一样；
@@ -11,14 +11,14 @@
 
 | | 数量 |
 |---|---|
-| V 工作区 `skills/` 目录 | 303（178 个进过 git，125 个从未提交） |
-| 其中带 | 47 |
-| 其中不带 | 241 |
-| 其中等决定 | 15 |
-| 工作区自己的（不来自 V） | 6：`proactive-heartbeat`、`memory-cold-start`、`agent-to-agent-protocol`、`v-browser-device`、`vsync`*、`agent-to-agent-protocol-feishu-a2a-defaults`* |
+| V 工作区 `skills/` 目录 | 306（2026-11-27 晚复核；初版盘点时 303） |
+| 其中带 | 52 |
+| 其中不带 | 254 |
+| 其中等决定 | 0（2026-11-27 全部定了，见第四节） |
+| 工作区自己的（不来自 V） | 4：`proactive-heartbeat`、`memory-cold-start`、`agent-to-agent-protocol`、`v-browser-device` |
 | 全局 skill（`~/.agents/skills`、`~/.openclaw/skills`） | 约 100，见 `global-skills.json` |
 
-\* 这两个是 Mirror v20 从 V 带来的，在 `decide.txt` 里等决定；payload 里暂时保留 Mirror 的版本（不随 V 更新）。
+`vsync`、`agent-to-agent-protocol-feishu-a2a-defaults` 原是 Mirror v20 带来的副本，2026-11-27 起改为随 V 更新（carry），工作区只保留各自的「接收端」改写。
 
 ## 一、通用，要带（carry.txt）
 
@@ -61,7 +61,7 @@ Mirror 已带：`makaron`（只带官方部分）、`makaron-video`、`makaron-r
 | 定时任务 | 时间 | 默认 |
 |---|---|---|
 | 主动推进 | 每 6 小时（02:30/08:30/14:30/20:30） | 开 |
-| 主动推进 · 每日复盘 | 12:00 | 关（见 decide） |
+| 主动推进 · 每日复盘 | 12:00 | 开（2026-11-27 定，和 V 一致；没发过提醒就静默） |
 | Heartbeat 维护 | 08:00、20:00 | 开 |
 | Memory Librarian 编译 / 质检 | 21:00 / 22:00 | 开 |
 | 午夜报告 | 00:00 | 开 |
@@ -81,24 +81,26 @@ Mirror 已带：`makaron`（只带官方部分）、`makaron-video`、`makaron-r
 | V 的脚本 | V 工作区 `scripts/` 下 676 个条目（约 2,300 个文件）里，除上面带走的 25 个，全部不带：客户批处理（`xq-*`、`render-*-cards.js`、`zhicheng-*` 等）、V 主机巡检、V 的复盘与看板 | 客户项目或 V 主机专用；被带走的 skill 若提到没带的脚本，`sync.mjs` 会报 MISSING DEPENDENCY |
 | 杂项 | `tone-aesthetics`（没有 SKILL.md，只有产出物）、`skills`（误建的空目录）、`11`（客户调研） | 不是 skill |
 
-## 四、需要用户决定（decide.txt）
+## 四、原「等决定」的条目（2026-11-27 定）
 
-| 条目 | 问题 | 我的建议 |
+Tianyi 定了三条：VSync 要带、桌面接管要带、每日复盘要开；其余按「和 V 一致、能用就带」处理。`decide.txt` 现在是空的。
+
+| 条目 | 结果 | 为什么 |
 |---|---|---|
-| `vsync`、`agent-to-agent-protocol-feishu-a2a-defaults` | 客户版要不要能和 V / VSync Hub 互通 | 本客户不带（单主人、单 V）；payload 里 Mirror 的两份先留着不随 V 更新，定了再删或转 carry |
-| `computer-use` | 电脑代操作规则 | 带，但要去个人化重写（去掉收货地址、付款习惯、V 的 Chrome profile）；前提是 A 线给客户机装桌面 / 浏览器。AGENTS.md 已有通用的分工原则 |
-| `background-worker-contract` | 客户运行时带不带 Worker 池 | 随 A 线：带 Worker 就带它 |
-| `browser-fast-run` | 依赖 V 的逐步决策模型账号 | 不带 |
-| `youtube-video-download`、`skill-inventory-export` | 通用，但写死 V 的路径 / 用 V 的客户举例 | 改写后带，优先级低 |
-| `meshy-image-to-3d` | 需要 Meshy key | 客户有需求再带 |
-| `makaron-ad-creator` | 取决于客户是否开通 Makaron | 开通就随 makaron-cli 装全局版 |
-| `openclaw-disk-full-recovery` | 自托管运维给 V 还是给部署方 | 不带（部署方维护） |
-| `scene-*` | 客户买 Scene 才有意义 | 不带 |
-| `qcc-company-lookup` | 要客户自己的企查查账号 | 客户有账号再带 |
-| `meeting-co-pilot` | 依赖 V 的飞书会议接入服务 | 不带 |
-| `lark-user-routing` | 多人共用一个 V 时的飞书身份路由 | 单主人不带，多人版再带 |
-| 主动推进 · 每日复盘（schedules.json，默认关） | V 是在项目群里和主人一起复盘 | 先关；主人觉得主动提醒需要调教时再开，发到主人私聊 |
-| 全局：演示 / 网页类（`frontend-slides`、`pptx` 等）、hyperframes | 见 `global-skills.json` | 演示类带（钉版本），hyperframes 按需 |
+| `vsync` | **带**（carry） | Tianyi 定。随 V 更新；工作区保留「装好的 V 作为接收端」一节（没有 hub 权限时走飞书文件 + sha256 + @ 回执）。`scripts/vsync-*` 不带：打包脚本写死 V 的包清单，拉取脚本是 V 的运维 |
+| `agent-to-agent-protocol-feishu-a2a-defaults` | **带**（carry） | 同上。V 的 open_id 换成「从任务里取发送方的 open_id」；通用的 `agent-to-agent-protocol` 本来就在 payload 里 |
+| `computer-use` | **带**（carry） | Tianyi 定。判断和流程原样随 V；V 自己的环境（V 的 Chrome 与主人 Mac Chrome 的分流表、profile 名、V 的邮箱、支付宝 AI 付）改写成通用说法；V 的实测记录 `references/session-evidence-*` 不带。AGENTS.md 指向它 |
+| `background-worker-contract` | **带**（carry） | A 线的客户运行时带 Worker 池；夜班一节和 V 的客户 CLI 例子去掉 |
+| `qcc-company-lookup` | **带**（carry） | 通用，主人自己配企查查 token 就能用，没配会说明怎么配 |
+| `scene-*` | 官方 `scene-cli` 作为**全局 skill 装**（`global-skills.json`）；工作区的 `scene-*` 不带 | Scene CLI 是公开的，主人建个人 key 就能用；V 的飞书搜索站卡片、产线 helper 依赖 V 的服务 |
+| `makaron-ad-creator` | 作为**全局 skill 装**（随 makaron-cli） | 和其余 makaron 全局 skill 一起 |
+| `browser-fast-run` | 不带 | 写死 V 的 Chrome 端口和 V 的决策模型账号，客户机上跑不起来 |
+| `meeting-co-pilot` | 不带 | 依赖 V 自己的飞书会议接入服务 |
+| `lark-user-routing` | 不带 | 多人共用一个 V 的身份路由，客户版只有一位主人 |
+| `youtube-video-download`、`meshy-image-to-3d`、`skill-inventory-export`、`openclaw-disk-full-recovery` | 暂不带 | V 上从未进 git、v-core 里没有，跟不了 V 的更新；要带先在 V 上提交、进 v-core 的 scope，再移进 `carry.txt` |
+| 主动推进 · 每日复盘 | **默认开** | Tianyi 定。发到主人私聊，过去 24 小时没发过提醒就 `NO_REPLY` |
+| 全局：演示 / 网页类（`frontend-design`、`frontend-slides`、`pptx`、`remotion-best-practices`）、hyperframes 一组 | **装**（钉版本） | 和 V 一致；hyperframes 需要 Chrome 和 ffmpeg |
+| 全局：V 自己的副本（`image-generation`、`ppt-template-batch` 等六个） | 不带 | 从未进任何仓库 |
 
 ## 五、Heartbeat V2 的通用版
 
@@ -114,19 +116,18 @@ V 的 Heartbeat V2（「V 先知」）由三个从未提交的脚本加一个放
   `record`（发出前登记）、`feedback`（主人原话）、`review`（每日复盘材料）。判断全部留给模型，规则写在 `skills/proactive-heartbeat/SKILL.md`。
 - 频率和静默时段取自 USER.md（上手引导里问），默认每天、23:00–08:00 静默。
 
-## 六、要在 V 活工作区上提交的（由用户决定，本线没有在 V 上做任何改动）
+## 六、在 V 活工作区上的提交
 
-1. **`/scripts/*.mjs` 被 V 工作区 `.gitignore` 挡住**：`apify-client.mjs`、`apify-search.mjs`、`apify-worker-io.mjs`、`heartbeat-v2-stream-guard*.mjs` 从未进 git。
-   要么 `git add -f`，要么改 `.gitignore`；否则 v-core 的每日同步永远拿不到它们的更新（本次是手工拷进 v-core 的）。
-2. **从未提交、已进 v-core PR 的 21 个 skill**：上面标「从未提交」的那些。在 V 上提交后，v-core 每日同步会认领它们（同步基线前进以后不会冲突）。
-3. **已改未提交**：`scripts/heartbeat-dispatch.py`（回执文件是列表时的兼容，`_send_dispatch_report`）、`skills/makaron`（COMPOSITE.json、feishu / official 两部分、nsfw 参考）、
-   `skills/tiktok-publish-copy`（7 个文件）。
-4. **Heartbeat V2 本体**：上面四个文件。它们属于 V 的个人部分，进不进 V 自己的 git 由用户定；客户版不依赖它们。
-5. `skills/tiktok-publish-copy/references/cases.md` 是客户真实文案，建议加进 V 服务器上 v-core 同步的私有排除表（本线看不到也不改那个文件）。
+1. 2026-11-27 已提交（Tianyi 批准）：上面标「从未提交」的 21 个 skill 和 `scripts/apify-client.mjs`、`apify-search.mjs`、`apify-worker-io.mjs`（`.gitignore` 的 `/scripts/*.mjs` 挡着，用 `git add -f`），
+   V 工作区提交 `dcad4523`，只含这 24 个文件，字节与 v-core main 相同；没有 push（v-core 的每日同步只读工作区的本地提交）。下一次同步会把它们列为 pending（v-core 先有了同样的文件），合掉那次滚动 PR 即清。
+2. 仍未提交、等 Tianyi 定：`scripts/heartbeat-dispatch.py`（回执文件是列表时的兼容）、`skills/makaron`（COMPOSITE.json、feishu / official 两部分、nsfw 参考）、`skills/tiktok-publish-copy`（7 个文件）。
+3. **Heartbeat V2 本体**（`heartbeat-personal-assistant.py`、`heartbeat-v2-choice.py`、`heartbeat-v2-stream-guard*.mjs` 和记忆目录里的引擎）属于 V 的个人部分，进不进 V 自己的 git 由用户定；客户版不依赖它们。
+4. `skills/tiktok-publish-copy/references/cases.md` 是客户真实文案，建议加进 V 服务器上 v-core 同步的私有排除表（本线看不到也不改那个文件）。
 
 ## 七、已知缺口
 
 - 写飞书的用户身份权限名（`docx:document`、`calendar:calendar`、`task:task:write` 等）按飞书惯例写，以客户租户上 `lark-cli auth scopes` 的结果为准；没开通不挡上手，只是那一类写不了。
 - 没有在真实飞书租户上跑过一遍完整上手（扫码授权 → 初稿 → 登记定时任务 → 第一轮主动推进）。下周装客户前需要在 VLab 或测试租户上走一遍。
-- `vsync`、`agent-to-agent-protocol*`、`v-browser-device` 是 Mirror 的版本，留在 payload 里没有删，等第四节的决定。
+- `computer-use` 和 `vsync` 在工作区里改写过几段：V 以后改到同一段时同步会报冲突，要人按第四节的原则合。
+- `v-browser-device` 仍是 Mirror 的版本（V 的全局 skill，依赖 V Browser 服务）。
 - 依赖检查只看 skill 正文：`social-search-apify-first` 提到 V 上的 `apify-douyin-search.py`、`weixin-sph-download.py`、`bilibili-browser-download.mjs`，客户机上没有，skill 会退回别的路径。

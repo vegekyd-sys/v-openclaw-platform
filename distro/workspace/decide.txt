@@ -1,18 +1,4 @@
 # Generic enough to consider, but someone has to decide before a customer gets it.
 # Reviewed (the sync gate accepts them) and NOT carried until moved to carry.txt.
 # Format: <glob> <question to decide>. INVENTORY.md explains each.
-
-skills/vsync                          客户版要不要和 V / VSync Hub 互通（Mirror v20 已带）
-skills/agent-to-agent-protocol-feishu-a2a-defaults 同上，跨 agent 协作默认规则；客户只有一个 V 时用不上
-skills/computer-use                   电脑代操作规则通用，但正文含主人的收货、付款、V 的 Chrome profile；客户机装不装桌面/浏览器（A 线）定了再改写
-skills/background-worker-contract     客户版运行时带不带 Worker 池（A 线）
-skills/browser-fast-run               依赖 V 的逐步决策模型账号
-skills/youtube-video-download         通用，但写死 V 的浏览器 profile 路径，需改写
-skills/meshy-image-to-3d              通用，需要 Meshy key；V 上未进 git
-skills/makaron-ad-creator             Makaron 市场 skill，取决于客户是否开通 Makaron（也随 makaron-cli 装成全局 skill）
-skills/openclaw-disk-full-recovery    自托管 OpenClaw 的运维流程；客户机由部署方维护还是交给 V
-skills/scene-*                        Scene 是公司产品；客户买了 Scene 才带，带时要去掉 V 的搜索站卡片
-skills/qcc-company-lookup             企查查查询对客户有用，但要客户自己的企查查账号
-skills/meeting-co-pilot               飞书会议入会助手，依赖 V 的会议接入服务
-skills/skill-inventory-export         通用的 skill 盘点，正文举例全是 V 的客户，需改写
-skills/lark-user-routing              多人共用一个 V 时的飞书身份路由（依赖 lark-users）；单主人用不上，多人版再带
+# 2026-11-27: all earlier entries decided (carry.txt / skip.txt, INVENTORY.md section 4). Empty for now.
