@@ -555,7 +555,8 @@
       "files": [
         "distro/build/build.test.mjs",
         "distro/install/lib/release.test.mjs",
-        "distro/install/config/openclaw-config.test.mjs"
+        "distro/install/config/openclaw-config.test.mjs",
+        "distro/install/lib/v-asr-volcengine.test.mjs"
       ]
     }
   ],

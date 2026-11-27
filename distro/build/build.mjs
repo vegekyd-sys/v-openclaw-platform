@@ -184,11 +184,16 @@ export function buildPackage(opts) {
     const target = f.rel.startsWith('config/') ? f.rel : `install/${f.rel}`;
     add(target, f.data, f.mode);
   }
+  // Desktop takeover (V's apps/v-desktop-handoff: display script, share-link service, plugin),
+  // installed only when the env says V_DESKTOP=1. Tests stay in the repo.
+  const desktopFiles = filesUnder(repo, sourceCommit, 'apps/v-desktop-handoff', { exclude: (p) => /(^|\/)(tests|node_modules)\//.test(p) });
+  if (!desktopFiles.length) throw new Error('apps/v-desktop-handoff/ is missing at the source commit');
+  for (const f of desktopFiles) add(`optional/desktop/${f.rel}`, f.data, f.mode);
   add('optional/optional.json', `${JSON.stringify({
     schema: 'v-distro-optional/1',
-    note: 'v-distro/1 lists the optional parts; their bytes are not shipped yet.',
+    note: 'Parts the installer adds only when the env file turns them on.',
     components: {
-      desktop: { source: `${REPO_SLUG}:apps/v-desktop-handoff`, included: false },
+      desktop: { source: `${REPO_SLUG}:apps/v-desktop-handoff`, included: true, dir: 'optional/desktop', enable: 'V_DESKTOP=1' },
       vbrowser: { source: 'vegekyd-sys/v-browser', included: false },
       voice: { source: `${REPO_SLUG}:lab/gpt-live-h5`, included: false },
     },

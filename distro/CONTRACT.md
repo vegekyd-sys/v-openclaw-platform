@@ -94,7 +94,7 @@ v-distro-<version>.tgz              解开后是一个目录 v-distro-<version>/
 ```
 /opt/v/node/v<node>/                    Node（tools.json 校验过的官方包）
 /opt/v/tools/<name>-<version>/          codex、makaron-cli、lark-cli（各自 npm ci 自己的锁）
-/opt/v/bin/                             服务 PATH 第一项：codex、makaron（链接）；lark-cli（小脚本：没设 LARKSUITE_CLI_* 时取 FEISHU_APP_ID/SECRET，配置目录 ~/.lark-cli）；
+/opt/v/bin/                             服务 PATH 第一项：codex、makaron（链接）；lark-cli（小脚本：去掉 OPENCLAW_*、HERMES_*、LARKSUITE_CLI_APP_*，用 ~/.lark-cli/config.json 独立运行）；
                                         openclaw（当前版本的 OpenClaw CLI，agent 的 exec 用它，B 线的 v-schedule.py 靠它建定时任务）
 /opt/v/releases/<version>/              解开的包 + 装好的依赖，root 所有，服务只读
     core/                               openclaw@<upstream> 包本身（依赖在 core/node_modules，与 V 同布局），dist 上叠覆盖层
@@ -106,6 +106,10 @@ v-distro-<version>.tgz              解开后是一个目录 v-distro-<version>/
 /opt/v/previous -> releases/<old>
 /etc/v/install.env                      非密钥输入（主人名、时区、profile、可选开关），0644
 /etc/v/secrets.env                      密钥（模型 key、飞书 app secret、Gateway token），0600 root
+/etc/v/lark.env                         有飞书时由 configure 写：LARKSUITE_CLI_APP_ID/SECRET/CONFIG_DIR（B 线工作区读的接口），0600 root
+/etc/v/vsync.env                        install.sh --vsync-env 装的 Portal 身份（NEXUS_VSYNC_URL/AGENT/TOKEN），0600 root
+/etc/v/desktop-handoff/                 V_DESKTOP=1：接管链接服务的 config.json 和 admin-token（root:openclaw 0640）
+/home/openclaw/.lark-cli/config.json    lark-cli 自己的配置（应用 id + secret，0600 openclaw）；主人授权后的用户 token 也在这里
 /home/openclaw/.openclaw/               状态：openclaw.json（生成）、库、会话、记忆索引
 /home/openclaw/.openclaw/npm/projects/  OpenClaw 自己从 npm 装的官方插件（feishu、codex、provider）；
                                         安装器把 V 捕获的包文件盖上去（vctl overlay-plugins），升级/回退时换成目标版本的字节
@@ -141,6 +145,13 @@ node_modules，换完逐文件核对），然后重启一次。版本不是捕�
 | `XAI_API_KEY` | 否 | 看图/生图模型 |
 | `V_WORKERS_MAX` | 否，默认 4 | Worker 池上限（V 是 24，一人用的机器 4 够） |
 | `TZ` | 否，默认 `Asia/Shanghai` | |
+| `V_AGENT_NAME` | 否，默认 `V` | 飞书卡片页脚等处显示的名字（`agents.entries.makaron.identity.name`）。内部 agent id 固定为 makaron：V 的 Worker 插件按它兜底，Heartbeat 的流式守卫也认 `agent:makaron:cron:*` |
+| `VOLCENGINE_API_KEY` | 否 | 语音消息转文字，和 V 一样用火山「录音文件识别极速版」；没有就不转写 |
+| `V_DESKTOP` | 否 | `1`：桌面接管与 computer use（TigerVNC + XFCE 的 :99、Google 官方源的 Chrome、接管链接、cua node、`computer` 工具），只支持 amd64 |
+| `V_PUBLIC_ORIGIN` | 否 | 接管链接的对外地址。不设时为 `http://127.0.0.1:23950`，只能在本机打开；需要反向代理或隧道把 `/desktop-handoff` 转到 127.0.0.1:23950 |
+
+默认模型和 V 相同：`deepseek` 预设，主模型 `deepseek/vds-deepseek-flash`（Codex harness），回落到 Worker 的 `deepseek/deepseek-flash`，直连 DeepSeek 官方 API；
+压缩用 Worker 插件带质量检查的 `versa-fast-quality-v1`，最多重试 1 次。缺 `DEEPSEEK_API_KEY` 时 configure 报错，不会静默换成别的模型。`V_MODEL_PRESET=vercel` 是可选项。
 
 `sandbox` profile 给 C 线：不开渠道（`OPENCLAW_SKIP_CHANNELS`）、不开原生 cron（沙盒睡着时不跑定时器）、
 禁用 `message` 工具（没有渠道时它发到 internal-ui，图和文字都会丢）、`gateway.reload.mode: off`（沙盒里不热重载）、
@@ -171,3 +182,4 @@ Gateway 只绑回环，其余（模型、Worker、记忆、harness）与 standal
 - 2026-11-27 20:20 `workspace/` 只取 `distro/workspace/payload/**`（B 线接口），`render.mjs` 作为 `runtime/workspace-render.mjs` 一起打包、种工作区时渲染占位符；
   manifest 记 `vCoreCommit`；sandbox profile 加 `gateway.reload.mode: off`；去掉了没实现的 `v-ctl workspace-diff`。
 - 2026-11-27 23:10 `/opt/v/bin` 加 `openclaw` CLI 和 lark-cli 的环境变量映射（B 线工作区要求）。
+- 2026-11-27 23:50 加可选组件（`V_DESKTOP`、`VOLCENGINE_API_KEY`、`--vsync-env`）；lark-cli 改为用自己的配置文件独立运行，B 线读的 `LARKSUITE_CLI_*` 由 `/etc/v/lark.env` 提供；V 的压缩设置；显示名 `V_AGENT_NAME`（内部 id 仍是 makaron）。

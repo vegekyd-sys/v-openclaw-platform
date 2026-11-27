@@ -81,6 +81,9 @@ function fixtureRepo(t) {
   // Line B's own tooling and tests sit beside payload/; its leak tests carry id shapes.
   write(repo, 'distro/workspace/tests/workspace.test.mjs', `const leak = 'ou_${'b2'.repeat(16)}';\n`);
   write(repo, 'distro/workspace/build.mjs', 'export {};\n');
+  write(repo, 'apps/v-desktop-handoff/plugin/index.js', 'export default {};\n');
+  write(repo, 'apps/v-desktop-handoff/desktop/start-desktop.sh', '#!/bin/sh\n', 0o755);
+  write(repo, 'apps/v-desktop-handoff/service/tests/server.test.mjs', 'not shipped\n');
   git(repo, 'add', '-A');
   git(repo, 'commit', '-qm', 'main');
   return repo;
@@ -126,7 +129,8 @@ test('manifest records sources, components and every file; system tar unpacks it
   const paths = m.files.map((f) => f.path);
   for (const p of ['runtime/core/manifest.json', `runtime/core/dist/${LONG}`, 'runtime/worker/dist/index.mjs', 'runtime/ops/op.py',
     'runtime/locks/core-openclaw/package-lock.json', 'install/install.sh', 'install/lib/vctl.mjs', 'config/openclaw-config.mjs',
-    'workspace/AGENTS.md', 'optional/optional.json']) assert.ok(paths.includes(p), p);
+    'workspace/AGENTS.md', 'optional/optional.json', 'optional/desktop/plugin/index.js', 'optional/desktop/desktop/start-desktop.sh']) assert.ok(paths.includes(p), p);
+  assert.ok(!paths.some((p) => p.includes('/tests/')), 'desktop tests stay in the repo');
   assert.ok(!paths.includes('install/lib/vctl.test.mjs'));
   const dir = untar(t, built.tgz);
   const pkg = path.join(dir, 'v-distro-0.1.0-test');

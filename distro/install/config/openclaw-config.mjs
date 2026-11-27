@@ -103,6 +103,7 @@ function modelSetup(preset, env, codex) {
  * @param {string} o.workspace
  * @param {Record<string,string>} o.env  install.env + secrets.env merged; values are only tested for presence
  * @param {string|null} [o.codexCommand] native codex binary, when the codex CLI is installed
+ * @param {string} [o.etcDir]     /etc/v (desktop handoff admin token)
  */
 export function createConfig(o) {
   if (!PROFILES.includes(o.profile)) throw new Error(`profile must be one of ${PROFILES.join(', ')}`);
@@ -160,12 +161,15 @@ export function createConfig(o) {
         maxConcurrent: 8,
         heartbeat: { every: '0m' },
         contextPruning: { mode: 'cache-ttl', ttl: '1m' },
-        compaction: { mode: 'safeguard', keepRecentTokens: 8000, recentTurnsPreserve: 3, midTurnPrecheck: { enabled: true }, timeoutSeconds: 360, model: m.fastModel, notifyUser: true },
+        // V's compaction: the Worker plugin's quality-checked provider, one retry when the summary fails its check.
+        compaction: { mode: 'safeguard', keepRecentTokens: 8000, recentTurnsPreserve: 3, midTurnPrecheck: { enabled: true }, timeoutSeconds: 360, model: m.fastModel, notifyUser: true, provider: 'versa-fast-quality-v1', qualityGuard: { enabled: true, maxRetries: 1 } },
         subagents: { maxConcurrent: 8, runTimeoutSeconds: 21600, announceTimeoutMs: 21600000 },
         modelSelectionScope: 'session',
       },
       // 2026.9.1 keys agents by id (agents.list is migrated on every start, with a warning).
-      entries: { [o.agentId ?? 'makaron']: { workspace: o.workspace } },
+      // The id stays makaron: V's Worker plugin falls back to it and a Heartbeat stream guard
+      // matches agent:makaron:cron:*. What people see (the Feishu card footer) is identity.name.
+      entries: { [o.agentId ?? 'makaron']: { workspace: o.workspace, identity: { name: env.V_AGENT_NAME || 'V' } } },
     },
     memory: {
       search: embeddings
@@ -217,6 +221,7 @@ export function createConfig(o) {
             minWorkers: 1, maxWorkers, sessionsPerWorker: 3,
             idleTimeoutMs: 180000, requestTimeoutMs: 600000, requestStallTimeoutMs: 120000, gatewayOwnedToolTimeoutMs: 310000,
             fastCompactionModel: m.fastModel,
+            fastCompactionMaxInputChars: 420000, fastCompactionMaxOutputTokens: 12000, fastCompactionMaxQualityRetries: 1,
             workerConfigPath: path.join(o.stateDir, 'worker-openclaw.json'),
             gatewayConfigPath: path.join(o.stateDir, 'openclaw.json'),
             nativeRequestTimeoutMs: 21600000,
@@ -242,6 +247,43 @@ export function createConfig(o) {
         actions: { reactions: true },
       },
     };
+  }
+  const prefix = path.dirname(o.releaseDir);
+
+  // Voice messages become text the way V does it: a CLI media model that calls Volcengine
+  // BigASR Flash (install/lib/v-asr-volcengine.mjs). No key, no audio transcription.
+  if (has('VOLCENGINE_API_KEY')) {
+    cfg.tools.media = {
+      audio: { enabled: true, timeoutSeconds: 60, maxBytes: 26214400, maxChars: 8000, language: 'zh', echoTranscript: false },
+      models: [{ type: 'cli', command: path.join(prefix, 'node/current/bin/node'), args: [plugin('install/lib/v-asr-volcengine.mjs'), '{{MediaPath}}'], timeoutSeconds: 60, language: 'zh', capabilities: ['audio'] }],
+    };
+  }
+
+  // Desktop takeover and computer use (V's v-desktop-handoff + cua node), only when asked for:
+  // headed Chrome on the host display :99, the share-link plugin, and the computer tool.
+  if (env.V_DESKTOP === '1') {
+    const desktopState = path.join(o.stateDir, 'desktop');
+    cfg.desktop = { host: { enabled: true, port: 5900, passwordFile: path.join(desktopState, 'vnc-password.txt') } };
+    cfg.browser = {
+      defaultProfile: 'openclaw', headless: false, noSandbox: true, tabCleanup: { enabled: true },
+      extraArgs: ['--window-position=0,0', '--window-size=1280,760'],
+      ssrfPolicy: { allowedHostnames: ['localhost', '127.0.0.1'] },
+    };
+    pluginAllow.push('v-desktop-handoff', 'cua-computer');
+    loadPaths.push(plugin('plugins/desktop-handoff'));
+    cfg.plugins.entries['cua-computer'] = { enabled: true };
+    cfg.plugins.entries['v-desktop-handoff'] = {
+      enabled: true, hooks: { allowConversationAccess: true },
+      config: {
+        adminUrl: 'http://127.0.0.1:23951',
+        adminTokenFile: path.join(o.etcDir ?? '/etc/v', 'desktop-handoff', 'admin-token'),
+        openclawCommand: path.join(prefix, 'bin', 'openclaw'),
+        // A control link is a bearer link: for a customer it goes to the owner's DM only.
+        controlAnywhere: false,
+        ...(feishu && ownerOpenId ? { controlAnywhereActors: [`feishu:${ownerOpenId}`] } : {}),
+      },
+    };
+    cfg.tools.alsoAllow = ['computer'];
   }
   return cfg;
 }

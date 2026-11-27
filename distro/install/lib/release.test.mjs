@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { applyOverlay, replacePackage, verifyCapture, verifyPackage, linkNpmProjects, overlayStatePlugins, installRelease } from './release.mjs';
-import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim } from './vctl.mjs';
+import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile } from './vctl.mjs';
 import { execFileSync } from 'node:child_process';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
@@ -233,17 +233,58 @@ for (const [k, files] of Object.entries(lock.fake || {})) for (const [f, d] of O
 
 function readJsonFile(f) { return JSON.parse(fs.readFileSync(f, 'utf8')); }
 
-test('tool shims: lark-cli gets LARKSUITE_CLI_* from the FEISHU_* install env, values already set win; the agent has an openclaw CLI', (t) => {
+test('tool shims: lark-cli gets its config dir (caller value wins), never app credentials; lark-cli init keeps the secret off argv; the agent has an openclaw CLI', (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'v-distro-shim-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const fake = path.join(dir, 'real-lark');
-  fs.writeFileSync(fake, '#!/bin/sh\necho "$LARKSUITE_CLI_APP_ID|$LARKSUITE_CLI_APP_SECRET|$LARKSUITE_CLI_CONFIG_DIR|$*"\n', { mode: 0o755 });
+  fs.writeFileSync(fake, '#!/bin/sh\necho "${LARKSUITE_CLI_APP_ID:-none}|${OPENCLAW_HOME:-none}|${LARKSUITE_CLI_APP_SECRET:-none}|$LARKSUITE_CLI_CONFIG_DIR|$*"\n', { mode: 0o755 });
   const tools = JSON.parse(fs.readFileSync(new URL('../../runtime/tools.json', import.meta.url), 'utf8'));
   const shim = path.join(dir, 'lark-cli');
-  fs.writeFileSync(shim, toolShim(fake, tools.npm['lark-cli'].env), { mode: 0o755 });
+  const lark = tools.npm['lark-cli'];
+  fs.writeFileSync(shim, toolShim(fake, lark.env, { unset: lark.unsetEnv, unsetPrefixes: lark.unsetEnvPrefixes }), { mode: 0o755 });
   const run = (env) => execFileSync(shim, ['im', '+x'], { env: { PATH: '/usr/bin:/bin', HOME: '/home/openclaw', ...env } }).toString().trim();
-  assert.equal(run({ FEISHU_APP_ID: 'app', FEISHU_APP_SECRET: 's' }), 'app|s|/home/openclaw/.lark-cli|im +x');
-  assert.equal(run({ FEISHU_APP_ID: 'app', LARKSUITE_CLI_APP_ID: 'own' }), 'own||/home/openclaw/.lark-cli|im +x');
+  // The agent's env carries the bound app and OpenClaw context; lark-cli must see neither.
+  assert.equal(run({ LARKSUITE_CLI_APP_ID: 'cli_a', LARKSUITE_CLI_APP_SECRET: 's', OPENCLAW_HOME: '/home/openclaw', OPENCLAW_SERVICE_KIND: 'gateway' }), 'none|none|none|/home/openclaw/.lark-cli|im +x');
+  assert.equal(run({ LARKSUITE_CLI_CONFIG_DIR: '/x' }), 'none|none|none|/x|im +x');
+  assert.equal(larkEnvFile({ appId: 'cli_a', secret: 's', configDir: '/home/openclaw/.lark-cli' }).split('\n').filter((l) => /^[A-Z]/.test(l)).join(','),
+    'LARKSUITE_CLI_APP_ID=cli_a,LARKSUITE_CLI_APP_SECRET=s,LARKSUITE_CLI_CONFIG_DIR=/home/openclaw/.lark-cli');
   assert.throws(() => toolShim(fake, { 'bad name': 'x' }), /bad env name/);
+  const args = larkCliInitArgs('cli_ab12', undefined);
+  assert.deepEqual(args, ['config', 'init', '--app-id', 'cli_ab12', '--app-secret-stdin', '--brand', 'feishu', '--force-init']);
+  assert.equal(larkCliInitArgs('cli_ab12', 'lark')[6], 'lark');
+  assert.throws(() => larkCliInitArgs('${FEISHU_APP_ID}'), /not a cli_ app id/);
   assert.match(openclawShim('/opt/v'), /exec '\/opt\/v\/node\/current\/bin\/node' '\/opt\/v\/current\/core\/dist\/index.js' "\$@"/);
+});
+
+test('vsync identity: exactly the three Portal keys, each in its shape; anything else is refused', () => {
+  const good = 'NEXUS_VSYNC_URL=https://mirror-v-portal.vercel.app/onboard/vsync/v1\nNEXUS_VSYNC_AGENT=mirror-cust-acme\nexport NEXUS_VSYNC_TOKEN="tok_0123456789abcdef"\n# note\n';
+  assert.deepEqual(parseVsyncEnv(good), { NEXUS_VSYNC_URL: 'https://mirror-v-portal.vercel.app/onboard/vsync/v1', NEXUS_VSYNC_AGENT: 'mirror-cust-acme', NEXUS_VSYNC_TOKEN: 'tok_0123456789abcdef' });
+  assert.throws(() => parseVsyncEnv(`${good}GITHUB_TOKEN=x\n`), /unexpected key GITHUB_TOKEN/);
+  assert.throws(() => parseVsyncEnv('NEXUS_VSYNC_URL=https://x\nNEXUS_VSYNC_AGENT=a\n'), /missing NEXUS_VSYNC_TOKEN/);
+  assert.throws(() => parseVsyncEnv(good.replace('https://', 'http://')), /must be https/);
+  assert.throws(() => parseVsyncEnv(good.replace('mirror-cust-acme', 'Mirror_Acme')), /lowercase/);
+});
+
+test('desktop: share links stay on loopback unless an origin is given; the host node is a remote client of the local Gateway', () => {
+  const local = desktopHandoffConfig({ etc: '/etc/v', home: '/home/openclaw' });
+  assert.equal(local.bind, '127.0.0.1');
+  assert.equal(local.publicBaseUrl, 'http://127.0.0.1:23950');
+  assert.equal(local.adminTokenFile, '/etc/v/desktop-handoff/admin-token');
+  assert.equal(local.vnc.passwordFile, '/home/openclaw/.openclaw/desktop/vnc-password.txt');
+  const pub = desktopHandoffConfig({ etc: '/etc/v', home: '/home/openclaw', origin: 'https://v.example.com' });
+  assert.equal(pub.publicBaseUrl, 'https://v.example.com');
+  assert.equal(pub.bind, '127.0.0.1', 'admin shares the bind, so it never leaves loopback');
+  assert.throws(() => desktopHandoffConfig({ etc: '/etc/v', home: '/h', origin: 'https://v.example.com/desktop' }), /no path/);
+  const node = cuaNodeConfig(18789);
+  assert.equal(node.gateway.remote.url, 'ws://127.0.0.1:18789');
+  assert.equal(node.gateway.remote.token, '${OPENCLAW_GATEWAY_TOKEN}');
+  assert.equal(node.plugins.entries['cua-computer'].enabled, true);
+  assert.equal(node.browser.enabled, false);
+});
+
+test('desktop-pair approves only the host node\'s own requests', () => {
+  const list = { pending: [{ requestId: 'r1', displayName: CUA_NODE_NAME }, { requestId: 'r2', displayName: 'someone else\'s phone' }, { id: 'r3', clientDisplayName: CUA_NODE_NAME }], paired: [] };
+  assert.deepEqual(cuaPendingRequests(list), ['r1', 'r3']);
+  assert.deepEqual(cuaPendingRequests([{ requestId: 'n1', displayName: CUA_NODE_NAME }]), ['n1']);
+  assert.deepEqual(cuaPendingRequests({}), []);
 });

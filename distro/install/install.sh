@@ -13,6 +13,10 @@
 #   --skip-tools          do not install codex / makaron-cli / lark-cli
 #   --no-start            install and configure, but do not start the services
 #   --probe               after start, run one real model -> exec -> reply turn (uses the model key)
+#   --vsync-env FILE      the VSync identity file the Portal issued for this machine (NEXUS_VSYNC_*)
+#
+# Optional parts are switched on in the env file: V_DESKTOP=1 (desktop takeover and computer use),
+# VOLCENGINE_API_KEY (voice-message transcription). See install/v.env.example.
 #
 # Re-running is safe: an installed release is re-verified, never rebuilt, and an
 # existing workspace or state is never overwritten. To move to a new package, use
@@ -23,7 +27,7 @@ PKG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PREFIX="${V_PREFIX:-/opt/v}"
 V_USER="${V_USER:-openclaw}"
 V_HOME="${V_HOME:-/home/openclaw}"
-ENV_FILE="" REGISTRY="" NODE_MIRROR="" NODE_TARBALL="" SKIP_APT=0 SKIP_TOOLS=0 START=1 PROBE=0
+ENV_FILE="" REGISTRY="" NODE_MIRROR="" NODE_TARBALL="" SKIP_APT=0 SKIP_TOOLS=0 START=1 PROBE=0 VSYNC_ENV=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -35,7 +39,8 @@ while [ $# -gt 0 ]; do
     --skip-tools) SKIP_TOOLS=1; shift ;;
     --no-start) START=0; shift ;;
     --probe) PROBE=1; shift ;;
-    -h|--help) sed -n '2,22p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --vsync-env) VSYNC_ENV="$2"; shift 2 ;;
+    -h|--help) sed -n '2,26p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -116,6 +121,13 @@ say "Inputs"
 if [ -n "$ENV_FILE" ]; then "${VCTL[@]}" split-env "$ENV_FILE"; fi
 # Agent-side npm installs (and OpenClaw's own plugin installs) use the same registry.
 if [ -n "$REGISTRY" ] && ! grep -q '^V_NPM_REGISTRY=' /etc/v/install.env; then echo "V_NPM_REGISTRY=$REGISTRY" >> /etc/v/install.env; fi
+if [ -n "$VSYNC_ENV" ]; then "${VCTL[@]}" vsync-env "$VSYNC_ENV"; fi
+DESKTOP=0; grep -qx 'V_DESKTOP=1' /etc/v/install.env && DESKTOP=1
+if [ "$DESKTOP" -eq 1 ] && [ "$SKIP_APT" -eq 0 ]; then
+  say "Desktop packages (TigerVNC, XFCE, Google Chrome from Google's signed apt repository)"
+  . "$PKG_DIR/install/lib/desktop-packages.sh"
+  v_desktop_packages
+fi
 
 say "Release $VERSION (npm ci, overlays, tools)"
 args=(install-release "$PKG_DIR")
@@ -138,12 +150,18 @@ if [ "$START" -eq 0 ]; then
 fi
 
 say "Start"
+# The display comes first: the Gateway's browser tool opens Chrome on it.
+[ "$DESKTOP" -eq 0 ] || systemctl enable -q --now openclaw-desktop.service v-desktop-handoff.service
 systemctl restart openclaw-gateway.service
 "${VCTL[@]}" health --deadline-ms 600000
 "${VCTL[@]}" overlay-plugins --restart
 # The real-time indexer never runs a full index itself (V's rule); build the first one now.
 "$PREFIX/current/install/v-ctl" openclaw memory index --agent "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["agentId"])' "$PREFIX/current/manifest.json")" || echo "warning: first memory index failed; run: v-ctl openclaw memory index --agent makaron" >&2
 systemctl restart v-memory-indexer.service || echo "warning: memory indexer did not start; memory_search still works, it just indexes later" >&2
+if [ "$DESKTOP" -eq 1 ]; then
+  say "Desktop: share-link service and the host node for computer use"
+  "${VCTL[@]}" desktop-services
+fi
 if [ "$PROBE" -eq 1 ]; then
   say "Probe (real model -> exec -> final reply)"
   "${VCTL[@]}" probe

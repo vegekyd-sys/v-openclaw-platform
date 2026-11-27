@@ -12,6 +12,9 @@
       "native": { "linux-x64": "node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex", "linux-arm64": "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" } },
     "makaron-cli": { "package": "makaron-cli", "version": "0.17.30", "lock": "makaron-cli", "bin": "makaron" },
     "lark-cli": { "package": "@larksuite/cli", "version": "1.0.97", "lock": "lark-cli", "bin": "lark-cli",
-      "env": { "LARKSUITE_CLI_APP_ID": "${FEISHU_APP_ID:-}", "LARKSUITE_CLI_APP_SECRET": "${FEISHU_APP_SECRET:-}", "LARKSUITE_CLI_CONFIG_DIR": "${HOME}/.lark-cli" } }
+      "env": { "LARKSUITE_CLI_CONFIG_DIR": "${HOME}/.lark-cli" },
+      "unsetEnv": ["LARKSUITE_CLI_APP_ID", "LARKSUITE_CLI_APP_SECRET", "LARK_CHANNEL"],
+      "unsetEnvPrefixes": ["OPENCLAW_", "HERMES_"],
+      "note": "lark-cli runs as a standalone tool on its own config (configure writes it with config init). With LARKSUITE_CLI_APP_* in env it disables auth and never fetches a tenant token; with OPENCLAW_* in env it demands `config bind`. Line B's feishu-docs.py strips the same variables." }
   }
 }
