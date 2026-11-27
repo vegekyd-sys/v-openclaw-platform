@@ -18,7 +18,7 @@
 | `runtime/gateway.env` | V 的 Gateway 行为开关（无密钥） | A 线 |
 | `runtime/locks/` | core、codex 插件、feishu 插件、三个工具的依赖锁 | A 线 |
 | `install/` | install.sh / update.sh / rollback.sh / v-ctl、`lib/`、systemd 模板、`config/` 生成器 | A 线 |
-| `workspace/` | 去个人化的 V core + Mirror 上手引导 | **B 线** |
+| `workspace/` | 去个人化的 V core + Mirror 上手引导；包里只取 `payload/**` 和 `render.mjs` | **B 线** |
 
 ## 构建
 
@@ -28,7 +28,7 @@ node distro/build/build.mjs --release db91-lifecycle-proof-20261127 --version 20
 ```
 
 只读已提交的内容：先提交，再构建。输出 `<pkg>.tgz`、`<pkg>.tgz.sha256`、`<pkg>.tgz.json`（含 `tarSha256`）。
-B 线的工作区还没合进来时，用 `--workspace-ref <分支或提交>` 指过去。
+B 线的工作区还没合进来时，用 `--workspace-ref <分支或提交>` 指过去（例如 `origin/claude/distro-workspace-cd7827`）。
 
 构建时会：
 - 逐个文件按捕获 manifest 校验 sha256；captured-store 上多出或少了文件都失败；

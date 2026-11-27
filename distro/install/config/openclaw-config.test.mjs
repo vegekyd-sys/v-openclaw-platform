@@ -78,6 +78,8 @@ test('sandbox profile: no channel even with a Feishu app, sandbox-only tool deni
   assert.ok(!s.plugins.allow.includes('feishu'));
   for (const tool of ['gateway', 'cron', 'ask_user', 'sessions_yield', 'message']) assert.ok(s.tools.deny.includes(tool), tool);
   assert.ok(!a.tools.deny.includes('message'), 'standalone keeps message: it has the Feishu channel');
+  assert.deepEqual(s.gateway.reload, { mode: 'off' }, 'a sandbox never hot-reloads');
+  assert.equal(a.gateway.reload, undefined, 'standalone keeps OpenClaw\'s default reload');
   assert.deepEqual(s.agents.defaults.model, a.agents.defaults.model);
   assert.deepEqual(s.plugins.entries['vlab-agent-worker-isolation'], a.plugins.entries['vlab-agent-worker-isolation']);
   assert.throws(() => make({}, { profile: 'cloud' }), /profile must be one of/);

@@ -19,7 +19,8 @@ v-distro-<version>.tgz              解开后是一个目录 v-distro-<version>/
   runtime/components.json           各部分怎么装（覆盖层 / 整包替换 / 插件目录）、插件 id、锁的来源
   runtime/tools.json                Node 与 CLI 工具的钉死版本和校验和
   runtime/gateway.env               V 的行为开关（DB91、Worker 亲和等，无密钥），装进 systemd
-  workspace/                        B 线 distro/workspace/ 原样打进来（没有时为空目录，manifest 里 workspace=null）
+  workspace/                        B 线 distro/workspace/payload/** 的内容（只有 payload，B 的工具和测试不进包；没有时为空目录，manifest 里 workspace=null）
+  runtime/workspace-render.mjs      B 线的 distro/workspace/render.mjs：首次种工作区时填 @@WORKSPACE@@ 等占位符
   config/openclaw-config.mjs        openclaw.json 生成器，profile=standalone | sandbox
   optional/optional.json            可选组件（desktop、vbrowser、voice）；v0 只登记，不带字节
   install/install.sh update.sh rollback.sh v-ctl v.env.example lib/ systemd/
@@ -71,7 +72,7 @@ v-distro-<version>.tgz              解开后是一个目录 v-distro-<version>/
     "repo": "vegekyd-sys/v-openclaw-platform",
     "commit": "<40 位>", "commitTime": "<ISO>",
     "capturedStore": "<captured-store 提交>",
-    "workspace": { "ref": "...", "commit": "<40 位>", "tree": "<distro/workspace 树 sha>" } | null
+    "workspace": { "ref": "...", "commit": "<40 位>", "tree": "<distro/workspace/payload 树 sha>", "vCoreCommit": "<V_CORE_COMMIT>" | null } | null
   },
   "components": {
     "core":          { "dir": "runtime/core", "capture": "<rel>", "install": "overlay", "base": "openclaw@2026.9.1", "lock": "core-openclaw", "files": 233, "captureSha256": "..." },
@@ -140,7 +141,7 @@ node_modules，换完逐文件核对），然后重启一次。版本不是捕�
 | `TZ` | 否，默认 `Asia/Shanghai` | |
 
 `sandbox` profile 给 C 线：不开渠道（`OPENCLAW_SKIP_CHANNELS`）、不开原生 cron（沙盒睡着时不跑定时器）、
-禁用 `message` 工具（没有渠道时它发到 internal-ui，图和文字都会丢）、
+禁用 `message` 工具（没有渠道时它发到 internal-ui，图和文字都会丢）、`gateway.reload.mode: off`（沙盒里不热重载）、
 Gateway 只绑回环，其余（模型、Worker、记忆、harness）与 standalone 相同。C 线可以再在输出上合并自己的插件。
 
 ## 5. update / rollback 语义
@@ -150,7 +151,8 @@ Gateway 只绑回环，其余（模型、Worker、记忆、harness）与 standal
   任何一步失败自动回到旧版本（代码 + 快照）。工作区、会话、记忆、密钥不动。
 - `rollback.sh`：`current` 换回 `previous`。两版 `openclawSchema` 相同时只换代码（保留升级后的新会话）；
   不同时必须带 `--restore-state <快照>`，否则拒绝（新版本迁移过的库旧代码不一定能读）。
-- 工作区只在首次安装时种下。新包里工作区的新文件用 `v-ctl workspace-diff` 看，不自动覆盖。
+- 工作区只在首次安装时种下：复制包里的 `workspace/`，用 `runtime/workspace-render.mjs` 填占位符（WORKSPACE、AGENT_ID、STATE_DIR、TIMEZONE，
+  有剩下的就失败），再 `git init` 提交。之后的更新不碰工作区：新包里工作区的变化不自动合进来（对比命令还没做）。
 
 ## 6. 不进包、不进 git 的东西
 
@@ -164,3 +166,5 @@ Gateway 只绑回环，其余（模型、Worker、记忆、harness）与 standal
   codex/feishu 不按路径加载，盖在 OpenClaw 自己装的官方插件上（见第 3 节）；core 按 V 的布局摆放；
   `optional/` v0 只登记不带字节；tgz sha256 只在同平台可复现，跨平台以 `tarSha256` 为准。
 - 2026-11-27 18:40 加 `runtime/core-ai/`（V 改过的 4 个 `@openclaw/ai` 文件，来源 `distro/runtime/overlays/`）；sandbox profile 禁用 `message`。
+- 2026-11-27 20:20 `workspace/` 只取 `distro/workspace/payload/**`（B 线接口），`render.mjs` 作为 `runtime/workspace-render.mjs` 一起打包、种工作区时渲染占位符；
+  manifest 记 `vCoreCommit`；sandbox profile 加 `gateway.reload.mode: off`；去掉了没实现的 `v-ctl workspace-diff`。

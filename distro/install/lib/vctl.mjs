@@ -22,7 +22,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { verifyPackage, installRelease, installTools, readJson, copyTree, overlayStatePlugins } from './release.mjs';
 
 export const PATHS = {
@@ -205,7 +205,7 @@ async function cmdConfigure(opts) {
   out({ step: 'configure', profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, primary: cfg.agents.defaults.model.primary });
 }
 
-function cmdSeedWorkspace() {
+async function cmdSeedWorkspace() {
   const src = path.join(P.current, 'workspace');
   const exists = fs.existsSync(P.workspace) && fs.readdirSync(P.workspace).length > 0;
   if (exists) { out({ step: 'seed-workspace', seeded: false, reason: 'workspace already has files; never overwritten' }); return; }
@@ -219,7 +219,15 @@ function cmdSeedWorkspace() {
     }
   }
   const env = allEnv();
-  const install = { ownerName: env.V_OWNER_NAME, timezone: env.TZ || 'Asia/Shanghai', release: readJson(path.join(P.current, 'manifest.json')).release, distro: readJson(path.join(P.current, 'manifest.json')).version, installedAt: new Date().toISOString() };
+  const manifest = readJson(path.join(P.current, 'manifest.json'));
+  // Line B's placeholders, filled before the first commit; render() fails if any is left.
+  const renderer = path.join(P.current, 'runtime', 'workspace-render.mjs');
+  let rendered = 0;
+  if (fs.existsSync(renderer)) {
+    const { render } = await import(pathToFileURL(renderer).href);
+    rendered = render(P.workspace, { WORKSPACE: P.workspace, AGENT_ID: manifest.agentId || 'makaron', STATE_DIR: P.state, TIMEZONE: env.TZ || 'Asia/Shanghai' }).length;
+  }
+  const install = { ownerName: env.V_OWNER_NAME, timezone: env.TZ || 'Asia/Shanghai', release: manifest.release, distro: manifest.version, installedAt: new Date().toISOString() };
   fs.mkdirSync(path.join(P.workspace, '.v'), { recursive: true });
   fs.writeFileSync(path.join(P.workspace, '.v', 'install.json'), `${JSON.stringify(install, null, 2)}\n`);
   chownState();
@@ -233,7 +241,7 @@ function cmdSeedWorkspace() {
     asUser(['add', '-A']);
     asUser(['commit', '-qm', `seed: v-distro ${install.distro} (${install.release})`, '--allow-empty']);
   }
-  out({ step: 'seed-workspace', seeded: true, entries: files });
+  out({ step: 'seed-workspace', seeded: true, entries: files, rendered });
 }
 
 function heapMb() {
@@ -425,7 +433,7 @@ async function main() {
     case 'split-env': cmdSplitEnv(opts._[0]); break;
     case 'switch': cmdSwitch(opts._[0]); break;
     case 'configure': await cmdConfigure(opts); break;
-    case 'seed-workspace': cmdSeedWorkspace(); break;
+    case 'seed-workspace': await cmdSeedWorkspace(); break;
     case 'units': cmdUnits(); break;
     case 'health': await cmdHealth(opts); break;
     case 'probe': await cmdProbe(opts); break;

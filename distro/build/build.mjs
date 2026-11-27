@@ -6,7 +6,7 @@
 //
 // Every input is read from git objects: the --source commit for distro/,
 // scripts/ and release/captured/<rel>*/manifest.json, the captured-store ref
-// for the dist/ bytes, the --workspace-ref commit for distro/workspace/.
+// for the dist/ bytes, the --workspace-ref commit for distro/workspace/payload/ and render.mjs.
 // Uncommitted edits never reach the package, and the same inputs give the
 // same bytes.
 
@@ -166,11 +166,18 @@ export function buildPackage(opts) {
     if (!entries.some((e) => e.rel === `runtime/locks/${t.lock}/package-lock.json`)) throw new Error(`tool ${name}: lock ${t.lock} missing`);
   }
 
-  // workspace/ from line B. Empty (with a marker) until it exists.
-  const wsTree = treeSha(repo, workspaceCommit, 'distro/workspace');
-  const wsFiles = filesUnder(repo, workspaceCommit, 'distro/workspace');
+  // workspace/ = line B's distro/workspace/payload/ only (its README: the rest is B's
+  // tooling and tests, which carry leak fixtures). Its render.mjs ships beside it so the
+  // installer fills the placeholders. Empty (with a marker) until payload/ exists.
+  const wsTree = treeSha(repo, workspaceCommit, 'distro/workspace/payload');
+  const wsFiles = filesUnder(repo, workspaceCommit, 'distro/workspace/payload');
   for (const f of wsFiles) add(`workspace/${f.rel}`, f.data, f.mode);
-  if (!wsFiles.length) add('workspace/.empty', 'distro/workspace/ did not exist at the workspace commit; the installer seeds nothing.\n');
+  let vCoreCommit = null;
+  if (wsFiles.length) {
+    if (!fileExists(repo, workspaceCommit, 'distro/workspace/render.mjs')) throw new Error('distro/workspace/payload/ without distro/workspace/render.mjs: the installer could not fill its placeholders');
+    add('runtime/workspace-render.mjs', readFile(repo, workspaceCommit, 'distro/workspace/render.mjs'));
+    if (fileExists(repo, workspaceCommit, 'distro/workspace/V_CORE_COMMIT')) vCoreCommit = readFile(repo, workspaceCommit, 'distro/workspace/V_CORE_COMMIT').toString('utf8').trim();
+  } else add('workspace/.empty', 'distro/workspace/payload/ did not exist at the workspace commit; the installer seeds nothing.\n');
 
   // config/ and install/
   for (const f of filesUnder(repo, sourceCommit, 'distro/install', { exclude: (p) => /\.test\.m?js$/.test(p) || p.startsWith('fixtures/') })) {
@@ -205,7 +212,7 @@ export function buildPackage(opts) {
       commit: sourceCommit,
       commitTime: new Date(mtime * 1000).toISOString(),
       capturedStore: storeCommit,
-      workspace: wsFiles.length ? { ref: opts['workspace-ref'] ?? null, commit: workspaceCommit, tree: wsTree } : null,
+      workspace: wsFiles.length ? { ref: opts['workspace-ref'] ?? null, commit: workspaceCommit, tree: wsTree, vCoreCommit } : null,
     },
     components: componentMeta,
     tools,

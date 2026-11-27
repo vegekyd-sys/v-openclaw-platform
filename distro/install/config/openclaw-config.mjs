@@ -142,6 +142,9 @@ export function createConfig(o) {
       mode: 'local', bind: 'loopback', port: Number(env.V_GATEWAY_PORT || 18789),
       auth: { mode: 'token', token: ref('OPENCLAW_GATEWAY_TOKEN') },
       http: { endpoints: { responses: { enabled: true } } },
+      // A sandbox never hot-reloads: the Portal rewrites the file and restarts on its own terms,
+      // and a reload here closes the Worker pool for good (V, 2026-09-20).
+      ...(standalone ? {} : { reload: { mode: 'off' } }),
     },
     models: { mode: 'merge', providers: m.providers },
     agents: {

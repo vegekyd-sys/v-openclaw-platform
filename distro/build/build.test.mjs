@@ -75,7 +75,12 @@ function fixtureRepo(t) {
   write(repo, 'distro/install/lib/vctl.mjs', 'export {};\n');
   write(repo, 'distro/install/lib/vctl.test.mjs', 'not shipped\n');
   write(repo, 'distro/install/config/openclaw-config.mjs', 'export {};\n');
-  write(repo, 'distro/workspace/AGENTS.md', '# V\n');
+  write(repo, 'distro/workspace/payload/AGENTS.md', '# V at @@WORKSPACE@@\n');
+  write(repo, 'distro/workspace/render.mjs', 'export function render() { return []; }\n');
+  write(repo, 'distro/workspace/V_CORE_COMMIT', `${'c'.repeat(40)}\n`);
+  // Line B's own tooling and tests sit beside payload/; its leak tests carry id shapes.
+  write(repo, 'distro/workspace/tests/workspace.test.mjs', `const leak = 'ou_${'b2'.repeat(16)}';\n`);
+  write(repo, 'distro/workspace/build.mjs', 'export {};\n');
   git(repo, 'add', '-A');
   git(repo, 'commit', '-qm', 'main');
   return repo;
@@ -96,7 +101,7 @@ test('same inputs give the same bytes; uncommitted edits do not reach the packag
   const repo = fixtureRepo(t);
   const a = build(repo);
   write(repo, 'distro/install/install.sh', '#!/bin/sh\necho edited\n');
-  write(repo, 'distro/workspace/NEW.md', 'untracked\n');
+  write(repo, 'distro/workspace/payload/NEW.md', 'untracked\n');
   const b = build(repo);
   assert.equal(a.tgzSha256, b.tgzSha256);
   assert.equal(a.tarSha256, b.tarSha256);
@@ -154,10 +159,24 @@ test('a file on captured-store that the manifest does not list fails the build',
 
 test('secret-like content in the workspace fails the build', (t) => {
   const repo = fixtureRepo(t);
-  write(repo, 'distro/workspace/USER.md', `owner: ou_${'a1'.repeat(16)}\n`);
+  write(repo, 'distro/workspace/payload/USER.md', `owner: ou_${'a1'.repeat(16)}\n`);
   git(repo, 'add', '-A');
   git(repo, 'commit', '-qm', 'leak');
   assert.throws(() => build(repo), /secret-like content.*workspace\/USER.md \(feishu open_id\)/);
+});
+
+test('only distro/workspace/payload/ becomes workspace/; render.mjs ships beside it, B\'s tests and tools do not', (t) => {
+  const repo = fixtureRepo(t);
+  const { manifest } = build(repo);
+  const paths = manifest.files.map((f) => f.path);
+  assert.deepEqual(paths.filter((p) => p.startsWith('workspace/')), ['workspace/AGENTS.md']);
+  assert.ok(paths.includes('runtime/workspace-render.mjs'));
+  for (const p of paths) assert.ok(!/(^|\/)(tests|payload)\//.test(p) && !p.endsWith('V_CORE_COMMIT') && p !== 'workspace/build.mjs', p);
+  assert.equal(manifest.source.workspace.tree, git(repo, 'rev-parse', 'main:distro/workspace/payload'));
+  assert.equal(manifest.source.workspace.vCoreCommit, 'c'.repeat(40));
+  git(repo, 'rm', '-q', 'distro/workspace/render.mjs');
+  git(repo, 'commit', '-qm', 'no renderer');
+  assert.throws(() => build(repo), /without distro\/workspace\/render.mjs/);
 });
 
 test('a workspace ref other than the source commit is recorded; a missing workspace ships an empty marker', (t) => {
