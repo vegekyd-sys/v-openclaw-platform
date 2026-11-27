@@ -204,7 +204,7 @@ test('secret scan keeps to strict shapes (V code is full of sk-... class names)'
   const entries = (s) => [{ path: 'f', data: Buffer.from(s) }];
   assert.deepEqual(scanSecrets(entries('class="sk-suggestion__header" sk-followup-presentation-v1')), []);
   assert.equal(scanSecrets(entries(`key sk-${'0123456789abcdef'.repeat(2)}`))[0].kind, 'deepseek-style key');
-  assert.equal(scanSecrets(entries('-----BEGIN OPENSSH PRIVATE KEY-----'))[0].kind, 'private key');
+  assert.equal(scanSecrets(entries(['-----BEGIN OPENSSH', 'PRIVATE KEY-----'].join(' ')))[0].kind, 'private key');
 });
 
 test('distro overlays (V bytes outside platform captures) ship with their manifest; a release without one fails', (t) => {
