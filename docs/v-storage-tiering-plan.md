@@ -290,6 +290,32 @@ V 的 eth0 上有一条 55 Mbit 的 cake 整形（9/21 为了不让大上传饿�
 
 例行的成功和统计只写日志，不发消息。
 
+### COS 冷归档（2026-11-28 实施）
+
+- 桶：新加坡、单 AZ、私有读写、版本控制开、SSE-COS 加密，名字是 `v-archive-<APPID>`。APPID 不进 git，写在 V 的 `/etc/v-storage/archive-bucket`。控制台里还有一种「智能体桶」，它是给 AI 产品的终端用户做每人一块网盘用的，不适合冷归档。
+- 生命周期规则 `archive-tiering`（前缀 `archive/`）：30 天转归档存储，180 天转深度归档，不自动删除。被覆盖的旧版本 30 天转归档。未完成的分片上传 7 天后清理。规则只能用主账号在控制台改。
+- 权限：一开始只给了这一个桶的写入和读取，不给删除（CAM 策略 `V-COSArchive`）。2026-11-28 Tianyi 定：「V 要能删除和归档，本质上要有所有权限」，于是又给 Gateway 的子用户加了预设策略 `QcloudCOSFullAccess`。归档程序本身仍然从不删除 COS 里的东西；要删由 V 显式去做。代价是归档和备份能被 V（也就是能指挥 V 的人）删掉。版本控制可以挡住覆盖，但挡不住按版本删除。
+- 程序：`scripts/v-storage/archive.py`（`cos.py` 是标准库实现的 COS 客户端），由 `v-archive.timer` 每天 02:10 运行。各类数据的规则在 `policy.json` 的 `archive.categories` 里：
+
+  | 类别 | 动作 | 条件 |
+  |---|---|---|
+  | work | 系统盘 → 数据盘，原位置留软链 | 14 天没动（替代 `/root/archive-to-data.sh`） |
+  | output-alt | 系统盘 → 数据盘 | 30 天 |
+  | output-alt-cold | 数据盘 → COS | 90 天（按 mtime） |
+  | work-cold | 数据盘 → COS | 180 天（按 mtime） |
+  | recovery | 数据盘 → COS | 30 天（按 mtime） |
+  | media-inbound | 系统盘 → COS，按月打包 | 当月结束满 30 天 |
+
+  「按 mtime」：搬到数据盘这一步会重置 ctime，但上一步已经按 ctime 检查过，所以数据盘上的类别只看 mtime。
+- 安全规则：
+  - 上传时每个分片都用 Content-MD5 校验，上传完再核对对象大小和 ETag；
+  - 满 24 小时冷静期、且内容没有变化才删本地；
+  - 本地原位置留 `ARCHIVED.md`，写明对象路径和取回命令；
+  - 有进程打开的、带 immutable 文件的、带 `..` 软链的，一律跳过；
+  - 对象名都带日期，同一个名字再次归档也不会覆盖旧的。
+- 取回：`sudo /opt/v-storage/archive.py --restore <ARCHIVED.md 的路径或对象名> [目标目录]`。30 天内是标准存储，可以立即取回。之后要先发起恢复：归档存储约 3–5 小时，深度归档约 12–24 小时，然后再执行一次。
+- 限速 40 MB/s，每晚最多 300 GB、5 小时。原来 eth0 上的 CAKE 整形也会限制去 COS 的内网流量；2026-11-28 起 169.254/16 不再经过整形（#693），实测上传 49 → 358 Mbit/s，期间公网请求的延迟没有变化。
+
 ### 8.1 流转监控 `flow.py`（已实现）
 
 每天 09:30 跑一次，读的都是现成的数字：两块盘的 statvfs、在线库的文件大小、storage-lifecycle 早上 `du` 的分类大小、昨天一天的 Codex rollout 目录，以及各个搬运程序留下的回执（`work-archive-*.tsv`、`/var/lib/v-archive/receipts.jsonl`、governance 的 `deletions.jsonl`）。不会扫大目录。

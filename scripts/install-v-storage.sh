@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Install V's storage controllers: data-disk autogrow v2 and the daily flow monitor.
+# Install V's storage controllers: data-disk autogrow v2, the daily flow monitor and the
+# nightly tier archiver (enabled only once /etc/v-storage/archive-bucket names the bucket).
 #
 #   scripts/install-v-storage.sh v            install, run --check / --report, enable timers
 #   scripts/install-v-storage.sh v --dry-run  stage and run --check / --report only
@@ -20,8 +21,9 @@ ssh "$host" 'sudo grep -q "^TENCENTCLOUD_SECRET_ID=" /home/openclaw/.openclaw/ga
 
 stage=$(ssh "$host" 'mktemp -d')
 trap 'ssh "$host" "sudo rm -rf -- $stage"' EXIT
-scp -q "$repo_root"/scripts/v-storage/{tc.py,autogrow.py,flow.py,policy.json} "$host:$stage/"
-scp -q "$repo_root"/systemd/v-disk-autogrow.{service,timer} "$repo_root"/systemd/v-storage-flow.{service,timer} "$host:$stage/"
+scp -q "$repo_root"/scripts/v-storage/{tc.py,cos.py,autogrow.py,flow.py,archive.py,policy.json} "$host:$stage/"
+scp -q "$repo_root"/systemd/v-disk-autogrow.{service,timer} "$repo_root"/systemd/v-storage-flow.{service,timer} \
+  "$repo_root"/systemd/v-archive.{service,timer} "$host:$stage/"
 
 run_env="sudo systemd-run --quiet --wait --pipe -p EnvironmentFile=/home/openclaw/.openclaw/gateway.systemd.env"
 if [[ "$mode" == --dry-run ]]; then
@@ -29,6 +31,9 @@ if [[ "$mode" == --dry-run ]]; then
   ssh "$host" "$run_env -E V_AUTOGROW_STATE_DIR=$stage/ag -E V_STORAGE_POLICY=$stage/policy.json /usr/bin/python3 $stage/autogrow.py --check"
   echo '--- dry run: flow --report (records nothing, sends nothing) ---'
   ssh "$host" "$run_env -E V_FLOW_STATE_DIR=$stage/fl -E V_STORAGE_POLICY=$stage/policy.json /usr/bin/python3 $stage/flow.py --report"
+  echo '--- dry run: archive --dry-run (moves nothing, uploads nothing) ---'
+  ssh "$host" "sudo test -s /etc/v-storage/archive-bucket || echo 'no /etc/v-storage/archive-bucket yet: archive timer would stay off'"
+  ssh "$host" "$run_env -E V_ARCHIVE_STATE_DIR=$stage/ar -E V_STORAGE_POLICY=$stage/policy.json /usr/bin/python3 $stage/archive.py --dry-run 2>&1 | head -80" || true
   exit 0
 fi
 
@@ -41,9 +46,9 @@ if [ -d /usr/local/lib/v-disk-autogrow ]; then
   sudo cp -a /var/lib/v-disk-autogrow/state.json /var/lib/v-disk-autogrow/v1-backup-$ts/ 2>/dev/null || true
 fi
 sudo install -d -m 0755 /opt/v-storage /etc/v-storage
-for f in tc.py autogrow.py flow.py; do sudo install -m 0755 -o root -g root $stage/\$f /opt/v-storage/\$f; done
+for f in tc.py cos.py autogrow.py flow.py archive.py; do sudo install -m 0755 -o root -g root $stage/\$f /opt/v-storage/\$f; done
 sudo install -m 0644 -o root -g root $stage/policy.json /etc/v-storage/policy.json
-for u in v-disk-autogrow.service v-disk-autogrow.timer v-storage-flow.service v-storage-flow.timer; do
+for u in v-disk-autogrow.service v-disk-autogrow.timer v-storage-flow.service v-storage-flow.timer v-archive.service v-archive.timer; do
   sudo install -m 0644 -o root -g root $stage/\$u /etc/systemd/system/\$u
 done
 sudo systemctl daemon-reload"
@@ -53,5 +58,10 @@ ssh "$host" "$run_env /usr/bin/python3 /opt/v-storage/autogrow.py --check"
 ssh "$host" 'sudo systemctl enable --now v-disk-autogrow.timer v-storage-flow.timer'
 echo '--- flow --report ---'
 ssh "$host" "$run_env /usr/bin/python3 /opt/v-storage/flow.py --report"
-ssh "$host" 'systemctl list-timers v-disk-autogrow.timer v-storage-flow.timer --no-pager'
+if ssh "$host" 'sudo test -s /etc/v-storage/archive-bucket'; then
+  ssh "$host" 'sudo systemctl enable v-archive.timer && sudo systemctl start v-archive.timer'
+else
+  echo 'archive timer left off: write the bucket name to /etc/v-storage/archive-bucket first'
+fi
+ssh "$host" 'systemctl list-timers v-disk-autogrow.timer v-storage-flow.timer v-archive.timer --no-pager'
 echo "v1 backup: /var/lib/v-disk-autogrow/v1-backup-$ts (rollback: copy it back, daemon-reload, restart the timer)"
