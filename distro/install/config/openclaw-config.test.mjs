@@ -182,3 +182,11 @@ test('Night Shift only with V_NIGHTSHIFT_URL: workboard and nightshift-feishu po
   assert.deepEqual(on.plugins.entries['nightshift-feishu'], { enabled: true, config: { baseUrl: 'http://127.0.0.1:24879' } });
   assert.throws(() => make({ V_NIGHTSHIFT_URL: 'ftp://x' }), /http or https/);
 });
+
+test('image understanding is DeepSeek Flash by default; xAI only as a fallback when its key exists', () => {
+  assert.deepEqual(make({ XAI_API_KEY: '' }).agents.defaults.imageModel, { primary: 'deepseek/deepseek-flash' });
+  assert.deepEqual(make({}).agents.defaults.imageModel, { primary: 'deepseek/deepseek-flash', fallbacks: ['xai/grok-4.7'] });
+  const flash = make({}).models.providers.deepseek.models.find((m) => m.id === 'deepseek-flash');
+  assert.deepEqual(flash.input, ['text', 'image']);
+  assert.match(make({ V_MODEL_PRESET: 'vercel', XAI_API_KEY: '' }).agents.defaults.imageModel.primary, /^aigw\//);
+});

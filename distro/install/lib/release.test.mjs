@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { applyOverlay, replacePackage, verifyCapture, verifyPackage, linkNpmProjects, overlayStatePlugins, installRelease } from './release.mjs';
-import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile } from './vctl.mjs';
+import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, keyAliases } from './vctl.mjs';
 import { execFileSync } from 'node:child_process';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
@@ -307,4 +307,11 @@ test('cloudflared is pinned per architecture to a GitHub release asset and its s
     assert.match(a.sha256, /^[0-9a-f]{64}$/);
   }
   assert.ok(!t.npm['scene-cli'], 'Scene is not installed (Tianyi, 2026-11-28)');
+});
+
+test('key aliases: one Apify name set gives the other; both or neither set, nothing is added', () => {
+  assert.deepEqual(keyAliases({ APIFY_TOKEN: 't' }), { APIFY_API_KEY: 't' });
+  assert.deepEqual(keyAliases({ APIFY_API_KEY: 'k' }), { APIFY_TOKEN: 'k' });
+  assert.deepEqual(keyAliases({ APIFY_API_KEY: 'k', APIFY_TOKEN: 't' }), {});
+  assert.deepEqual(keyAliases({}), {});
 });
