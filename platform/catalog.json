@@ -548,6 +548,15 @@
         "lab/workboard-list-page.test.mjs",
         "lab/binary-attachment-text.test.mjs"
       ]
+    },
+    {
+      "id": "v-distro",
+      "purpose": "可安装发行包（distro/）：构建可复现、捕获字节校验、个人标识脱敏、安装覆盖层失败即停、整包替换、配置只写环境变量引用、回滚 schema 规则；全部离线，用临时 git 仓库",
+      "files": [
+        "distro/build/build.test.mjs",
+        "distro/install/lib/release.test.mjs",
+        "distro/install/config/openclaw-config.test.mjs"
+      ]
     }
   ],
   "deferredTestFiles": [

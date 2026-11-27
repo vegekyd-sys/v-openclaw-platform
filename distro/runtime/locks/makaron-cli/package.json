@@ -1,0 +1,7 @@
+{
+  "name": "v-distro-makaron-cli",
+  "private": true,
+  "dependencies": {
+    "makaron-cli": "0.17.30"
+  }
+}
