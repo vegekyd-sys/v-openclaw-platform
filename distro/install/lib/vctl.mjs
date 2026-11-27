@@ -429,10 +429,25 @@ async function cmdWorkspaceUpdate(opts) {
         wsGit(['commit', '-qm', `v-distro update ${report.from ?? '(seed)'} -> ${report.to}`, '--', ...touched]);
       }
       await recordWorkspaceBase(target, targetManifest.version);
-      // Scheduled tasks are declared in schedules.json; line B's v-schedule.py install applies them.
-      if (touched.includes('schedules.json')) {
-        const r = spawnSync('runuser', ['-u', P.user, '--', 'python3', 'scripts/v-schedule.py', 'install'], { cwd: P.workspace, env: agentEnv(), encoding: 'utf8', timeout: 180000 });
-        report.schedules = r.status === 0 ? 'installed' : `not installed: ${(r.stdout + r.stderr).trim().slice(-300)}`;
+      // Scheduled tasks (line B's update-policy.json "schedules"): v-schedule.py install --base <old file>
+      // adds missing system jobs, updates or removes the ones still exactly as the old file had them,
+      // and reports the ones the owner changed. Without a recorded owner it exits 1: skipped, reported.
+      if (fs.existsSync(path.join(P.workspace, 'scripts', 'v-schedule.py'))) {
+        const baseSchedules = path.join(baseDir, 'schedules.json');
+        const args = ['scripts/v-schedule.py', 'install'];
+        let tmpBase = null;
+        if (fs.existsSync(baseSchedules)) {
+          tmpBase = path.join(os.tmpdir(), `v-distro-schedules-base-${process.pid}.json`);
+          fs.copyFileSync(baseSchedules, tmpBase);
+          fs.chmodSync(tmpBase, 0o644);
+          args.push('--base', tmpBase);
+        }
+        const r = spawnSync('runuser', ['-u', P.user, '--', 'python3', ...args], { cwd: P.workspace, env: agentEnv(), encoding: 'utf8', timeout: 180000 });
+        if (tmpBase) fs.rmSync(tmpBase, { force: true });
+        const said = (r.stdout || '').trim();
+        let parsed = null;
+        try { parsed = JSON.parse(said.slice(said.indexOf('{'))); } catch { /* plain text */ }
+        report.schedules = r.status === 0 ? (parsed ?? 'installed') : { skipped: true, exit: r.status, said: (said || r.stderr || '').slice(-400) };
       }
       fs.mkdirSync(path.join(P.varLib, 'workspace-updates'), { recursive: true });
       fs.writeFileSync(path.join(P.varLib, 'workspace-updates', `${new Date().toISOString().replace(/[:.]/g, '-')}.json`), `${JSON.stringify(report, null, 2)}\n`);
