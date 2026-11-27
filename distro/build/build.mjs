@@ -43,14 +43,16 @@ const VERSION_RE = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,80}$/;
 function captureFiles(repo, sourceCommit, storeCommit, capture, { overlayDir } = {}) {
   const base = overlayDir ?? `release/captured/${capture}`;
   const bytesCommit = overlayDir ? sourceCommit : storeCommit;
+  // Overlay bytes sit in files/, not dist/: the repo's .gitignore drops every dist/ directory.
+  const bytesDir = overlayDir ? `${overlayDir}/files` : `${base}/dist`;
   const manifestPath = `${base}/manifest.json`;
   if (!fileExists(repo, sourceCommit, manifestPath)) throw new Error(`no ${manifestPath} at ${sourceCommit}`);
   const manifestBuf = readFile(repo, sourceCommit, manifestPath);
   const manifest = JSON.parse(manifestBuf.toString('utf8'));
   if (manifest.release !== capture) throw new Error(`${manifestPath} names release ${manifest.release}`);
   if (manifest.removedFromBase?.length) throw new Error(`${capture}: removedFromBase is not supported`);
-  if (!treeSha(repo, bytesCommit, `${base}/dist`)) throw new Error(`${capture}: no ${base}/dist at ${bytesCommit}`);
-  const tree = listTree(repo, bytesCommit, `${base}/dist`);
+  if (!treeSha(repo, bytesCommit, bytesDir)) throw new Error(`${capture}: no ${bytesDir} at ${bytesCommit}`);
+  const tree = listTree(repo, bytesCommit, bytesDir);
   const byPath = new Map(tree.map((f) => [f.path, f]));
   const blobs = readBlobs(repo, tree.map((f) => f.blob));
   const files = [];
@@ -59,14 +61,14 @@ function captureFiles(repo, sourceCommit, storeCommit, capture, { overlayDir } =
     const rel = entry.path.replace(/^\.\//, '');
     if (!rel || rel.split('/').some((p) => !p || p === '..' || p === '.')) throw new Error(`${capture}: bad path ${entry.path}`);
     const f = byPath.get(rel);
-    if (!f) throw new Error(`${capture}: ${rel} is in the manifest but not in ${base}/dist`);
+    if (!f) throw new Error(`${capture}: ${rel} is in the manifest but not in ${bytesDir}`);
     const data = blobs.get(f.blob);
     if (sha256(data) !== entry.sha256) throw new Error(`${capture}: ${rel} sha256 differs from its manifest`);
     seen.add(rel);
     files.push({ rel, data, mode: f.mode });
   }
   const extra = tree.filter((f) => !seen.has(f.path)).map((f) => f.path);
-  if (extra.length) throw new Error(`${capture}: ${base}/dist has files the manifest does not list: ${extra.slice(0, 5).join(', ')}`);
+  if (extra.length) throw new Error(`${capture}: ${bytesDir} has files the manifest does not list: ${extra.slice(0, 5).join(', ')}`);
   return { manifest, manifestBuf, files };
 }
 

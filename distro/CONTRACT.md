@@ -40,7 +40,7 @@ v-distro-<version>.tgz              解开后是一个目录 v-distro-<version>/
 | `openai-chatgpt-responses-BAJ4gq3i.mjs` | c7957572… | |
 | `transports.mjs` | 7d7ae7a8… | |
 
-这些字节从 V 只读拷来，放在 `distro/runtime/overlays/<rel>/core-ai/`（manifest 格式和平台捕获一样，
+这些字节从 V 只读拷来，放在 `distro/runtime/overlays/<rel>/core-ai/`（字节在 `files/` 下，因为仓库 .gitignore 忽略所有 dist/；manifest 格式和平台捕获一样，
 每个文件带 npm 上游的 `baseSha256`），打包进 `runtime/core-ai/`，安装时盖在 `core/node_modules/@openclaw/ai/dist` 上，
 上游字节不对就失败。**发新 release 时必须重新核对**：`components.json` 里 `source: "distro"` 的组件在
 `overlays/<新 rel>/` 下找不到就构建失败，不会悄悄漏掉。同一次核对里，core 的 `dist/` 8,619 个文件、

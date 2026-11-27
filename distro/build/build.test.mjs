@@ -63,7 +63,7 @@ function fixtureRepo(t) {
   }));
   const ai = [['transports.mjs', 'V ai\n', 'modified', 'npm ai\n']];
   write(repo, `distro/runtime/overlays/${REL}/core-ai/manifest.json`, captureManifest(`${REL}.core-ai`, ai, { upstream: '2026.9.1' }));
-  for (const [p, d] of ai) write(repo, `distro/runtime/overlays/${REL}/core-ai/dist/${p}`, d);
+  for (const [p, d] of ai) write(repo, `distro/runtime/overlays/${REL}/core-ai/files/${p}`, d);
   write(repo, 'distro/runtime/tools.json', JSON.stringify({ node: { version: '22.23.1' }, npm: { t: { package: 't', version: '1.0.0', lock: 'tool-t', bin: 't' } } }));
   write(repo, 'distro/runtime/gateway.env', 'A=1\n');
   write(repo, 'distro/runtime/locks/core-openclaw/package.json', '{"dependencies":{"openclaw":"2026.9.1"}}\n');
