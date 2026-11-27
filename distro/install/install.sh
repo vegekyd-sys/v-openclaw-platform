@@ -162,6 +162,9 @@ if [ "$DESKTOP" -eq 1 ]; then
   say "Desktop: share-link service and the host node for computer use"
   "${VCTL[@]}" desktop-services
 fi
+say "Global skills (lark-*, makaron, scene, pinned GitHub skills)"
+# Needs GitHub and npm reachable; a skill that cannot be fetched is reported, not fatal.
+"${VCTL[@]}" install-skills || echo "warning: global skills were not all installed; rerun: v-ctl install-skills" >&2
 if [ "$PROBE" -eq 1 ]; then
   say "Probe (real model -> exec -> final reply)"
   "${VCTL[@]}" probe

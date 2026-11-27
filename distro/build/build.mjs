@@ -152,6 +152,8 @@ export function buildPackage(opts) {
 
   for (const f of filesUnder(repo, sourceCommit, 'distro/runtime/locks')) add(`runtime/locks/${f.rel}`, f.data, f.mode);
   for (const name of ['components.json', 'tools.json', 'gateway.env']) add(`runtime/${name}`, readFile(repo, sourceCommit, `distro/runtime/${name}`));
+  // Global skills: the pinned list and per-file hashes only; the skills themselves come from upstream at install.
+  if (fileExists(repo, sourceCommit, 'distro/runtime/skills.json')) add('runtime/skills.json', readFile(repo, sourceCommit, 'distro/runtime/skills.json'));
   for (const script of Object.keys(components.ops ?? {})) {
     const tree = listTree(repo, sourceCommit, path.posix.dirname(script)).find((f) => f.path === path.posix.basename(script));
     if (!tree) throw new Error(`ops script ${script} missing at ${sourceCommit}`);

@@ -1,0 +1,7 @@
+{
+  "name": "v-distro-makaron-music-library-cli",
+  "private": true,
+  "dependencies": {
+    "makaron-music-library-cli": "0.3.1"
+  }
+}
