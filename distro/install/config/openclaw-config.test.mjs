@@ -48,7 +48,7 @@ test('standalone deepseek is V: /vds Codex first, Worker pool fallback, V model 
   assert.equal(cfg.plugins.entries['vlab-agent-worker-isolation'].config.fastCompactionMaxQualityRetries, 1);
   assert.equal(cfg.agents.list, undefined);
   assert.equal(cfg.channels, undefined, 'no Feishu app, no channel');
-  assert.deepEqual(cfg.tools.deny, []);
+  assert.deepEqual(cfg.tools.deny, ['portal'], 'portal only mounts ports into the local Control UI; not a link for the owner');
   assert.equal(cfg.memory.search.provider, 'gemini');
 });
 
@@ -91,7 +91,7 @@ test('sandbox profile: no channel even with a Feishu app, sandbox-only tool deni
   const a = make({ FEISHU_APP_ID: 'cli_x' });
   assert.equal(s.channels, undefined);
   assert.ok(!s.plugins.allow.includes('feishu'));
-  for (const tool of ['gateway', 'cron', 'ask_user', 'sessions_yield', 'message']) assert.ok(s.tools.deny.includes(tool), tool);
+  for (const tool of ['gateway', 'cron', 'ask_user', 'sessions_yield', 'message', 'portal']) assert.ok(s.tools.deny.includes(tool), tool);
   assert.ok(!a.tools.deny.includes('message'), 'standalone keeps message: it has the Feishu channel');
   assert.deepEqual(s.gateway.reload, { mode: 'off' }, 'a sandbox never hot-reloads');
   assert.equal(a.gateway.reload, undefined, 'standalone keeps OpenClaw\'s default reload');

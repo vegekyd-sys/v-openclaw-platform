@@ -199,7 +199,9 @@ export function createConfig(o) {
       // A sandbox has no channel to answer an approval or a detached result on (Mirror V's list).
       // `message` too: with no channel the agent's message tool posts to internal-ui and the
       // image or text is lost (Mirror V, 2026-11-27). Standalone has Feishu and keeps it.
-      deny: standalone ? [] : ['gateway', 'cron', 'ask_user', 'sessions_yield', 'message', 'image_generate', 'video_generate', 'music_generate'],
+      // portal (core) only mounts a local port into this machine's Control UI Portals: the owner never
+      // sees that page, and the agent took it for a shareable link. V does not use it either.
+      deny: standalone ? ['portal'] : ['gateway', 'cron', 'ask_user', 'sessions_yield', 'message', 'image_generate', 'video_generate', 'music_generate', 'portal'],
       sessions: { visibility: 'all' },
       web: m.webProvider ? { search: { enabled: true, provider: m.webProvider }, fetch: { provider: m.webProvider } } : { search: { enabled: true } },
       elevated: { enabled: false },
