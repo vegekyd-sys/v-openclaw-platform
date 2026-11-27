@@ -47,7 +47,10 @@ export async function waitHealthy(opts, { deadlineMs = 300000, log = () => {} } 
   throw new Error(`gateway not healthy after ${deadlineMs} ms: ${last?.message ?? last}`);
 }
 
-const text = (m) => (typeof m.content === 'string' ? m.content : JSON.stringify((m.content ?? []).filter((c) => c.type === 'text')));
+// The Worker and embedded runtimes record tool output as text items; the Codex harness records
+// it as a toolResult item ({type:'toolResult', text, content}). Both count.
+export const messageText = (m) => (typeof m.content === 'string' ? m.content : JSON.stringify((m.content ?? []).filter((c) => c.type === 'text' || c.type === 'toolResult')));
+const text = messageText;
 
 /** Earlier passed probes must still have their tool result and final reply. */
 export async function checkHistory(gw, agentId, evidenceDir) {
