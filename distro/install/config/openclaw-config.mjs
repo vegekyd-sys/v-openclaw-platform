@@ -186,7 +186,9 @@ export function createConfig(o) {
     tools: {
       profile: 'full',
       // A sandbox has no channel to answer an approval or a detached result on (Mirror V's list).
-      deny: standalone ? [] : ['gateway', 'cron', 'ask_user', 'sessions_yield', 'image_generate', 'video_generate', 'music_generate'],
+      // `message` too: with no channel the agent's message tool posts to internal-ui and the
+      // image or text is lost (Mirror V, 2026-11-27). Standalone has Feishu and keeps it.
+      deny: standalone ? [] : ['gateway', 'cron', 'ask_user', 'sessions_yield', 'message', 'image_generate', 'video_generate', 'music_generate'],
       sessions: { visibility: 'all' },
       web: m.webProvider ? { search: { enabled: true, provider: m.webProvider }, fetch: { provider: m.webProvider } } : { search: { enabled: true } },
       elevated: { enabled: false },

@@ -196,8 +196,9 @@ export function installRelease(releaseDir, { npm, registry, log = () => {} } = {
     const captureDir = path.join(releaseDir, 'runtime', id);
     const target = c.target ? path.join(releaseDir, c.target) : null;
     if (c.install === 'overlay') {
-      installPackageRoot(releaseDir, path.dirname(c.target), c.package, path.join(locks, c.lock), { npm, registry, log });
-      record.components[id] = applyOverlay(captureDir, target, manifest.upstream.openclaw);
+      // With a lock: npm ci the package first (core). Without: overlay into what an earlier part installed (core-ai).
+      if (c.lock) installPackageRoot(releaseDir, path.dirname(c.target), c.package, path.join(locks, c.lock), { npm, registry, log });
+      record.components[id] = applyOverlay(captureDir, target, c.lock ? manifest.upstream.openclaw : undefined);
     } else if (c.install === 'npm-package') {
       const projectDir = path.join(releaseDir, c.target.split('/node_modules/')[0]);
       npmCi(projectDir, path.join(locks, c.lock), { npm, registry, log });

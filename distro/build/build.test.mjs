@@ -55,11 +55,15 @@ function fixtureRepo(t) {
     agentId: 'makaron', openclawSchema: { '2026.9.1': { state: 15, agent: 19 } },
     components: {
       core: { suffix: '', install: 'overlay', lock: 'core-openclaw', target: 'core/node_modules/openclaw/dist' },
+      'core-ai': { source: 'distro', install: 'overlay', package: '@openclaw/ai', target: 'core/node_modules/@openclaw/ai/dist' },
       worker: { suffix: '.worker', install: 'plugin-dir', pluginId: 'w', target: 'plugins/worker' },
     },
     notIncluded: { '.dingtalk': 'not for customers' },
     ops: { 'scripts/op.py': 'an ops script' },
   }));
+  const ai = [['transports.mjs', 'V ai\n', 'modified', 'npm ai\n']];
+  write(repo, `distro/runtime/overlays/${REL}/core-ai/manifest.json`, captureManifest(`${REL}.core-ai`, ai, { upstream: '2026.9.1' }));
+  for (const [p, d] of ai) write(repo, `distro/runtime/overlays/${REL}/core-ai/dist/${p}`, d);
   write(repo, 'distro/runtime/tools.json', JSON.stringify({ node: { version: '22.23.1' }, npm: { t: { package: 't', version: '1.0.0', lock: 'tool-t', bin: 't' } } }));
   write(repo, 'distro/runtime/gateway.env', 'A=1\n');
   write(repo, 'distro/runtime/locks/core-openclaw/package.json', '{"dependencies":{"openclaw":"2026.9.1"}}\n');
@@ -182,4 +186,15 @@ test('secret scan keeps to strict shapes (V code is full of sk-... class names)'
   assert.deepEqual(scanSecrets(entries('class="sk-suggestion__header" sk-followup-presentation-v1')), []);
   assert.equal(scanSecrets(entries(`key sk-${'0123456789abcdef'.repeat(2)}`))[0].kind, 'deepseek-style key');
   assert.equal(scanSecrets(entries('-----BEGIN OPENSSH PRIVATE KEY-----'))[0].kind, 'private key');
+});
+
+test('distro overlays (V bytes outside platform captures) ship with their manifest; a release without one fails', (t) => {
+  const repo = fixtureRepo(t);
+  const m = build(repo).manifest;
+  assert.equal(m.components['core-ai'].capture, `${REL}.core-ai`);
+  assert.equal(m.components['core-ai'].source, `distro/runtime/overlays/${REL}/core-ai`);
+  assert.ok(m.files.some((f) => f.path === 'runtime/core-ai/dist/transports.mjs'));
+  git(repo, 'mv', `distro/runtime/overlays/${REL}`, 'distro/runtime/overlays/other-release');
+  git(repo, 'commit', '-qm', 'overlay for another release only');
+  assert.throws(() => build(repo), /no distro\/runtime\/overlays\/fixture-rel-20261127\/core-ai\/manifest.json/);
 });

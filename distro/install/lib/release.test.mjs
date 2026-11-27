@@ -186,6 +186,7 @@ for (const [k, files] of Object.entries(lock.fake || {})) for (const [f, d] of O
   const files = {
     'runtime/components.json': JSON.stringify({ components: {
       core: { install: 'overlay', package: 'openclaw', lock: 'core', target: 'core/dist' },
+      'core-ai': { install: 'overlay', source: 'distro', package: '@openclaw/ai', target: 'core/node_modules/@openclaw/ai/dist' },
       worker: { install: 'plugin-dir', target: 'plugins/worker' },
       codex: { install: 'state-overlay', package: '@openclaw/codex' },
       feishu: { install: 'npm-package', package: '@openclaw/feishu', lock: 'feishu', target: 'plugins/feishu/node_modules/@openclaw/feishu', peerLink: 'openclaw', stateOverlay: true },
@@ -193,16 +194,18 @@ for (const [k, files] of Object.entries(lock.fake || {})) for (const [f, d] of O
     'runtime/locks/core/package.json': '{}',
     'runtime/locks/core/package-lock.json': JSON.stringify({ fake: {
       'node_modules/openclaw': { 'package.json': '{"version":"2026.9.1"}', 'dist/index.js': 'base' },
-      'node_modules/@openclaw/ai': { 'dist/index.mjs': 'ai' } } }),
+      'node_modules/@openclaw/ai': { 'package.json': '{"version":"2026.9.1"}', 'dist/index.mjs': 'ai', 'dist/transports.mjs': 'npm ai' } } }),
     'runtime/locks/feishu/package.json': '{}',
     'runtime/locks/feishu/package-lock.json': JSON.stringify({ fake: { 'node_modules/@openclaw/feishu': { 'package.json': 'npm', 'dist/m.js': 'upstream', 'node_modules/dep/i.js': 'b' } } }),
     'runtime/core/dist/index.js': 'V', 'runtime/core/dist/v.mjs': coreCode,
     'runtime/worker/dist/index.mjs': 'w',
+    'runtime/core-ai/dist/transports.mjs': 'V ai',
     'runtime/codex/dist/package.json': 'c',
     'runtime/feishu/dist/package.json': 'npm', 'runtime/feishu/dist/dist/m.js': 'Vfeishu',
   };
   const caps = {
     core: { release: 'r', upstream: '2026.9.1', files: [{ path: './index.js', sha256: sha('V'), kind: 'modified', baseSha256: sha('base') }, { path: './v.mjs', sha256: sha(coreCode), kind: 'added' }] },
+    'core-ai': { release: 'r.core-ai', upstream: '2026.9.1', files: [{ path: './transports.mjs', sha256: sha('V ai'), kind: 'modified', baseSha256: sha('npm ai') }] },
     worker: { release: 'r.worker', files: [{ path: './index.mjs', sha256: sha('w'), kind: 'added' }] },
     codex: { release: 'r.codex', files: [{ path: './package.json', sha256: sha('c'), kind: 'added' }] },
     feishu: { release: 'r.feishu', files: [{ path: './package.json', sha256: sha('npm'), kind: 'added' }, { path: './dist/m.js', sha256: sha('Vfeishu'), kind: 'added' }] },
@@ -214,6 +217,8 @@ for (const [k, files] of Object.entries(lock.fake || {})) for (const [f, d] of O
   const record = installRelease(rel, { npm });
   assert.equal(fs.readFileSync(path.join(rel, 'core/dist/index.js'), 'utf8'), 'V');
   assert.equal(fs.readFileSync(path.join(rel, 'core/node_modules/@openclaw/ai/dist/index.mjs'), 'utf8'), 'ai', 'deps nested under the package, as on V');
+  assert.equal(fs.readFileSync(path.join(rel, 'core/node_modules/@openclaw/ai/dist/transports.mjs'), 'utf8'), 'V ai', 'V\'s @openclaw/ai change laid over the npm copy');
+  assert.equal(record.components['core-ai'].modified, 1);
   assert.ok(!fs.existsSync(path.join(rel, '.npm-core')), 'staging removed');
   assert.equal(fs.readFileSync(path.join(rel, 'plugins/worker/index.mjs'), 'utf8'), 'w');
   assert.equal(fs.readFileSync(path.join(rel, 'plugins/feishu/node_modules/@openclaw/feishu/dist/m.js'), 'utf8'), 'Vfeishu');

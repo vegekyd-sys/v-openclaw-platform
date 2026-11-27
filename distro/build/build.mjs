@@ -34,14 +34,23 @@ export function parseArgs(argv) {
 
 const VERSION_RE = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,80}$/;
 
-function captureFiles(repo, sourceCommit, storeCommit, capture) {
-  const manifestPath = `release/captured/${capture}/manifest.json`;
+/**
+ * A capture's manifest and bytes. Platform captures: manifest on the source
+ * commit, bytes on captured-store. Distro overlays (bytes V changed outside what
+ * the platform captures, e.g. core's node_modules): both under
+ * distro/runtime/overlays/<release>/<component>/ on the source commit.
+ */
+function captureFiles(repo, sourceCommit, storeCommit, capture, { overlayDir } = {}) {
+  const base = overlayDir ?? `release/captured/${capture}`;
+  const bytesCommit = overlayDir ? sourceCommit : storeCommit;
+  const manifestPath = `${base}/manifest.json`;
   if (!fileExists(repo, sourceCommit, manifestPath)) throw new Error(`no ${manifestPath} at ${sourceCommit}`);
   const manifestBuf = readFile(repo, sourceCommit, manifestPath);
   const manifest = JSON.parse(manifestBuf.toString('utf8'));
   if (manifest.release !== capture) throw new Error(`${manifestPath} names release ${manifest.release}`);
   if (manifest.removedFromBase?.length) throw new Error(`${capture}: removedFromBase is not supported`);
-  const tree = listTree(repo, storeCommit, `release/captured/${capture}/dist`);
+  if (!treeSha(repo, bytesCommit, `${base}/dist`)) throw new Error(`${capture}: no ${base}/dist at ${bytesCommit}`);
+  const tree = listTree(repo, bytesCommit, `${base}/dist`);
   const byPath = new Map(tree.map((f) => [f.path, f]));
   const blobs = readBlobs(repo, tree.map((f) => f.blob));
   const files = [];
@@ -50,14 +59,14 @@ function captureFiles(repo, sourceCommit, storeCommit, capture) {
     const rel = entry.path.replace(/^\.\//, '');
     if (!rel || rel.split('/').some((p) => !p || p === '..' || p === '.')) throw new Error(`${capture}: bad path ${entry.path}`);
     const f = byPath.get(rel);
-    if (!f) throw new Error(`${capture}: ${rel} is in the manifest but not on captured-store`);
+    if (!f) throw new Error(`${capture}: ${rel} is in the manifest but not in ${base}/dist`);
     const data = blobs.get(f.blob);
     if (sha256(data) !== entry.sha256) throw new Error(`${capture}: ${rel} sha256 differs from its manifest`);
     seen.add(rel);
     files.push({ rel, data, mode: f.mode });
   }
   const extra = tree.filter((f) => !seen.has(f.path)).map((f) => f.path);
-  if (extra.length) throw new Error(`${capture}: captured-store has files the manifest does not list: ${extra.slice(0, 5).join(', ')}`);
+  if (extra.length) throw new Error(`${capture}: ${base}/dist has files the manifest does not list: ${extra.slice(0, 5).join(', ')}`);
   return { manifest, manifestBuf, files };
 }
 
@@ -116,8 +125,10 @@ export function buildPackage(opts) {
   const componentMeta = {};
   let upstream = null;
   for (const [id, c] of Object.entries(components.components)) {
-    const capture = `${release}${c.suffix}`;
-    const { manifest, manifestBuf: capturedManifestBuf, files } = captureFiles(repo, sourceCommit, storeCommit, capture);
+    const distroOverlay = c.source === 'distro';
+    const capture = distroOverlay ? `${release}.${id}` : `${release}${c.suffix}`;
+    const { manifest, manifestBuf: capturedManifestBuf, files } = captureFiles(repo, sourceCommit, storeCommit, capture,
+      distroOverlay ? { overlayDir: `distro/runtime/overlays/${release}/${id}` } : {});
     const redactions = applyRedactions(id, manifest, files, components.redactions ?? []);
     const manifestBuf = redactions.length ? Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`) : capturedManifestBuf;
     if (id === 'core') {
@@ -127,7 +138,7 @@ export function buildPackage(opts) {
     add(`runtime/${id}/manifest.json`, manifestBuf);
     for (const f of files) add(`runtime/${id}/dist/${f.rel}`, f.data, f.mode);
     componentMeta[id] = {
-      dir: `runtime/${id}`, capture, install: c.install, ...(c.package ? { package: c.package } : {}),
+      dir: `runtime/${id}`, capture, install: c.install, ...(distroOverlay ? { source: `distro/runtime/overlays/${release}/${id}` } : {}), ...(c.package ? { package: c.package } : {}),
       ...(c.pluginId ? { pluginId: c.pluginId } : {}), ...(c.lock ? { lock: c.lock } : {}), target: c.target,
       ...(id === 'core' ? { base: `openclaw@${upstream}` } : {}),
       files: files.length, captureSha256: sha256(capturedManifestBuf), capturedAt: manifest.capturedAt ?? null,

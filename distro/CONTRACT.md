@@ -10,6 +10,7 @@ B 线（`distro/workspace/`）产工作区，C 线（mirror-v-portal）在沙盒
 v-distro-<version>.tgz              解开后是一个目录 v-distro-<version>/
   manifest.json                     见第 2 节；包里其余每个文件都列在 files[] 里
   runtime/core/                     release/captured/<rel>/ 的 manifest.json + dist/**（覆盖层，不是完整 openclaw）
+  runtime/core-ai/                  V 改过的 core 依赖 @openclaw/ai 的 4 个文件（见下「发行包自带的覆盖层」）
   runtime/worker/                   <rel>.worker   的 manifest.json + dist/**（vlab-agent-worker-isolation 插件目录）
   runtime/codex/                    <rel>.codex    的 manifest.json + dist/**（完整 @openclaw/codex 包文件）
   runtime/feishu/                   <rel>.feishu   的 manifest.json + dist/**（完整 @openclaw/feishu 包文件）
@@ -26,6 +27,24 @@ v-distro-<version>.tgz              解开后是一个目录 v-distro-<version>/
 ```
 
 `<rel>.dingtalk`、`.wecom`、`.meeting-bridge` 是 V 自己的渠道和会议桥，不进包（manifest `notIncluded` 里列出）。
+
+### 发行包自带的覆盖层（`distro/runtime/overlays/<rel>/<component>/`）
+
+平台捕获只覆盖 core 的 `dist/`，不含 `node_modules`。V 还改过 core 依赖里的文件：
+2026-11-27 把 V 的 `core/node_modules` 全部 24,861 个文件与同一把锁 npm 装出来的逐个比 sha256，**只有 `@openclaw/ai` 的 4 个文件不同**：
+
+| 文件 | V 的 sha256 | 说明 |
+| --- | --- | --- |
+| `openai-completions-stream-DZjwK8vp.mjs` | a66edfc5… | #568：工具调用写成文本（DSML）时的修复 |
+| `openai-completions-D0QZ0AyB.mjs` | 915ac13d… | |
+| `openai-chatgpt-responses-BAJ4gq3i.mjs` | c7957572… | |
+| `transports.mjs` | 7d7ae7a8… | |
+
+这些字节从 V 只读拷来，放在 `distro/runtime/overlays/<rel>/core-ai/`（manifest 格式和平台捕获一样，
+每个文件带 npm 上游的 `baseSha256`），打包进 `runtime/core-ai/`，安装时盖在 `core/node_modules/@openclaw/ai/dist` 上，
+上游字节不对就失败。**发新 release 时必须重新核对**：`components.json` 里 `source: "distro"` 的组件在
+`overlays/<新 rel>/` 下找不到就构建失败，不会悄悄漏掉。同一次核对里，core 的 `dist/` 8,619 个文件、
+包里其余 847 个文件都与 V 相同（`dist/` 只有脱敏那一个文件不同）。
 
 ### 可复现
 
@@ -121,6 +140,7 @@ node_modules，换完逐文件核对），然后重启一次。版本不是捕�
 | `TZ` | 否，默认 `Asia/Shanghai` | |
 
 `sandbox` profile 给 C 线：不开渠道（`OPENCLAW_SKIP_CHANNELS`）、不开原生 cron（沙盒睡着时不跑定时器）、
+禁用 `message` 工具（没有渠道时它发到 internal-ui，图和文字都会丢）、
 Gateway 只绑回环，其余（模型、Worker、记忆、harness）与 standalone 相同。C 线可以再在输出上合并自己的插件。
 
 ## 5. update / rollback 语义
@@ -143,3 +163,4 @@ Gateway 只绑回环，其余（模型、Worker、记忆、harness）与 standal
   `runtime/locks/`、`runtime/components.json`、`runtime/gateway.env`、`runtime/ops/` 是新增的；
   codex/feishu 不按路径加载，盖在 OpenClaw 自己装的官方插件上（见第 3 节）；core 按 V 的布局摆放；
   `optional/` v0 只登记不带字节；tgz sha256 只在同平台可复现，跨平台以 `tarSha256` 为准。
+- 2026-11-27 18:40 加 `runtime/core-ai/`（V 改过的 4 个 `@openclaw/ai` 文件，来源 `distro/runtime/overlays/`）；sandbox profile 禁用 `message`。

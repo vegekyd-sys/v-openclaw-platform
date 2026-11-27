@@ -76,7 +76,8 @@ test('sandbox profile: no channel even with a Feishu app, sandbox-only tool deni
   const a = make({ FEISHU_APP_ID: 'cli_x' });
   assert.equal(s.channels, undefined);
   assert.ok(!s.plugins.allow.includes('feishu'));
-  for (const tool of ['gateway', 'cron', 'ask_user', 'sessions_yield']) assert.ok(s.tools.deny.includes(tool), tool);
+  for (const tool of ['gateway', 'cron', 'ask_user', 'sessions_yield', 'message']) assert.ok(s.tools.deny.includes(tool), tool);
+  assert.ok(!a.tools.deny.includes('message'), 'standalone keeps message: it has the Feishu channel');
   assert.deepEqual(s.agents.defaults.model, a.agents.defaults.model);
   assert.deepEqual(s.plugins.entries['vlab-agent-worker-isolation'], a.plugins.entries['vlab-agent-worker-isolation']);
   assert.throws(() => make({}, { profile: 'cloud' }), /profile must be one of/);

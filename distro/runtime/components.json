@@ -19,6 +19,13 @@
       "lockSource": "generated: lock.mjs core-openclaw openclaw@2026.9.1 --before 2026-09-04T13:00:00Z; 310/310 package versions equal V's core/node_modules (2026-11-27)",
       "layout": "V's layout: core/ is the openclaw package itself and its dependencies sit in core/node_modules (the Worker resolves openclaw/node_modules/<dep> directly; core/dist/../../npm/projects is V's release-relative plugin path)"
     },
+    "core-ai": {
+      "source": "distro",
+      "install": "overlay",
+      "package": "@openclaw/ai",
+      "target": "core/node_modules/@openclaw/ai/dist",
+      "note": "V changed 4 files of core's dependency @openclaw/ai (one is #568, DSML tool calls written as text). Platform captures stop at core/dist, so these bytes live in distro/runtime/overlays/<release>/core-ai/ (copied read-only from V, each with its npm baseSha256). A release without that directory fails the build: re-check V's core/node_modules for every new release."
+    },
     "worker": {
       "suffix": ".worker",
       "install": "plugin-dir",
