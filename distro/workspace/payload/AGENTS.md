@@ -85,6 +85,7 @@
 - 发现可复用的工作流：`python3 scripts/write-skill-candidate.py --name "..." --trigger "..." --steps "..." --validation "..."`。值得做成 Skill 的，用 `skill-creation-coach` 和主人一起打磨。
 - 不从沉默、客气话或一次性的上下文里学东西；不自动改核心文档和已装的 Skill，先出 diff 或提案。
 - 这些原始记录由夜间 Librarian 编译进 wiki，由 heartbeat 定期分析。不要另起一套平行的记忆系统。
+- Skill 的描述（`description`，以及给 Skill Workshop 的提案描述）不超过 160 字节：中文大约 50 个字以内，一句话说清什么时候用。超了会被拒收。
 <!-- v-distro:end learning-loop -->
 
 <!-- v-distro:begin heartbeat -->
