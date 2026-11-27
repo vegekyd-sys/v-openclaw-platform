@@ -288,3 +288,13 @@ test('desktop-pair approves only the host node\'s own requests', () => {
   assert.deepEqual(cuaPendingRequests([{ requestId: 'n1', displayName: CUA_NODE_NAME }]), ['n1']);
   assert.deepEqual(cuaPendingRequests({}), []);
 });
+
+test('probe reads tool output from both Worker text items and Codex toolResult items', async () => {
+  const { messageText } = await import('./gateway.mjs');
+  const worker = { role: 'toolResult', content: [{ type: 'text', text: 'MARK_TOOL' }] };
+  const codex = { role: 'toolResult', content: [{ type: 'toolResult', name: 'bash', content: 'MARK_TOOL', text: 'MARK_TOOL' }] };
+  const thinking = { role: 'assistant', content: [{ type: 'thinking', thinking: 'MARK_TOOL' }] };
+  assert.ok(messageText(worker).includes('MARK_TOOL'));
+  assert.ok(messageText(codex).includes('MARK_TOOL'));
+  assert.ok(!messageText(thinking).includes('MARK_TOOL'), 'reasoning that merely mentions the marker does not count');
+});
