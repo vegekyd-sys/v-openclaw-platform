@@ -98,6 +98,8 @@ systemctl start openclaw-gateway.service || fail "start failed"
 "${VCTL[@]}" fingerprint --compare "$SNAP/fingerprint.json" || fail "workspace or databases changed"
 if [ "$PROBE" -eq 1 ]; then "${VCTL[@]}" probe --check-history || fail "probe failed"; fi
 systemctl start v-memory-indexer.service || echo "warning: memory indexer did not start" >&2
+# A key added or removed since the last configure changes the embedding provider; rebuild the index now.
+"${VCTL[@]}" memory-check || echo "warning: memory index not current; rerun: v-ctl memory-check" >&2
 "${VCTL[@]}" install-skills || echo "warning: global skills were not all installed; rerun: v-ctl install-skills" >&2
 "${VCTL[@]}" status
 say "Updated $OLD -> $NEW. Snapshot kept at $SNAP; rollback.sh goes back."

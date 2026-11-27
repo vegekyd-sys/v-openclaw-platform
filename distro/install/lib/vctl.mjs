@@ -18,6 +18,7 @@
 //   vctl.mjs fingerprint <out.json> | fingerprint --compare <before.json>   workspace + databases kept?
 //   vctl.mjs desktop-pair [--deadline-ms N]                 approve the host cua node (V_DESKTOP=1)
 //   vctl.mjs desktop-services                               (re)start the desktop units on the current release, then pair
+//   vctl.mjs memory-check                                   rebuild a memory index built for another embedding provider
 //   vctl.mjs install-skills                                 global skills (runtime/skills.json, skill CLIs) -> ~/.openclaw/skills
 //   vctl.mjs vsync-env <issued.env>                         -> /etc/v/vsync.env (the Portal-issued VSync identity)
 
@@ -260,11 +261,20 @@ function configureDesktop(env) {
 }
 
 // The OpenClaw CLI as the service user with the service environment (same path as `v-ctl openclaw`).
-function openclawCli(args) {
-  const r = spawnSync('python3', [path.join(P.current, 'runtime', 'ops', 'v-memory-indexer-run.py'), '--cli', ...args], { encoding: 'utf8', timeout: 60000 });
+function openclawCli(args, { timeoutMs = 60000 } = {}) {
+  const r = spawnSync('python3', [path.join(P.current, 'runtime', 'ops', 'v-memory-indexer-run.py'), '--cli', ...args], { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 });
   if (r.status !== 0) throw new Error(`openclaw ${args.slice(0, 2).join(' ')} failed (${r.status}): ${(r.stderr || r.stdout || '').trim().slice(-300)}`);
-  const text = r.stdout.slice(r.stdout.search(/[[{]/));
-  return JSON.parse(text);
+  return parseCliJson(r.stdout);
+}
+
+/** The JSON a CLI printed, skipping log lines before it (some start with "[tag]"). */
+export function parseCliJson(stdout) {
+  const lines = stdout.split('\n');
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!/^\s*[[{]/.test(lines[i])) continue;
+    try { return JSON.parse(lines.slice(i).join('\n')); } catch { /* a log line; keep looking */ }
+  }
+  throw new Error(`no JSON in CLI output: ${stdout.slice(0, 200)}`);
 }
 
 export const CUA_NODE_NAME = 'V host desktop';
@@ -343,6 +353,35 @@ function cmdVsyncEnv(input) {
   fs.writeFileSync(file, `# VSync identity issued by the Portal for this machine (v-distro). Revoke it on the Portal.\n${VSYNC_KEYS.map((k) => `${k}=${env[k]}`).join('\n')}\n`, { mode: 0o600 });
   fs.chmodSync(file, 0o600);
   out({ step: 'vsync-env', file, agent: env.NEXUS_VSYNC_AGENT, url: env.NEXUS_VSYNC_URL });
+}
+
+/**
+ * Which agents' memory index needs a rebuild: built for another embedding model (a key was added
+ * or removed: fts-only <-> gemini), vector index incomplete, or dirty. OpenClaw then pauses vector
+ * search and has the agent ask the owner to run a command; the installer does it instead.
+ */
+export function memoryNeedsRebuild(statusJson) {
+  const list = Array.isArray(statusJson) ? statusJson : [statusJson];
+  return list.filter((a) => {
+    const s = a?.status ?? {};
+    const identity = s.custom?.indexIdentity?.status;
+    const vector = s.vector?.enabled ? s.vector?.index?.state : 'complete';
+    return (identity && identity !== 'valid') || (vector && vector !== 'complete') || s.dirty === true;
+  }).map((a) => ({ agentId: a.agentId, identity: a?.status?.custom?.indexIdentity?.status ?? null, vector: a?.status?.vector?.index?.state ?? null, dirty: a?.status?.dirty ?? null }));
+}
+
+function cmdMemoryCheck() {
+  const stale = memoryNeedsRebuild(openclawCli(['memory', 'status', '--json']));
+  const rebuilt = [];
+  for (const a of stale) {
+    log(`memory index of ${a.agentId} needs a rebuild (identity ${a.identity}, vector ${a.vector}, dirty ${a.dirty}); rebuilding`);
+    // Embeds every memory chunk again; a large memory takes minutes.
+    openclawCli(['memory', 'status', '--index', '--json', '--agent', a.agentId], { timeoutMs: 30 * 60 * 1000 });
+    rebuilt.push(a.agentId);
+  }
+  const still = memoryNeedsRebuild(openclawCli(['memory', 'status', '--json']));
+  out({ step: 'memory-check', rebuilt, ok: still.length === 0, still });
+  if (still.length) throw new Error(`memory index still not current for ${still.map((a) => a.agentId).join(', ')}`);
 }
 
 function readLink(link) {
@@ -694,6 +733,7 @@ async function main() {
     case 'desktop-pair': await cmdDesktopPair(opts); break;
     case 'vsync-env': cmdVsyncEnv(opts._[0]); break;
     case 'install-skills': await cmdInstallSkills(); break;
+    case 'memory-check': cmdMemoryCheck(); break;
     case 'desktop-services': await cmdDesktopServices(opts); break;
     default: throw new Error(`unknown command ${cmd ?? ''}; see the header of ${path.relative(process.cwd(), fileURLToPath(import.meta.url))}`);
   }

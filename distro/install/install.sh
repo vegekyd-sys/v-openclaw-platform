@@ -158,6 +158,8 @@ systemctl restart openclaw-gateway.service
 # The real-time indexer never runs a full index itself (V's rule); build the first one now.
 "$PREFIX/current/install/v-ctl" openclaw memory index --agent "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["agentId"])' "$PREFIX/current/manifest.json")" || echo "warning: first memory index failed; run: v-ctl openclaw memory index --agent makaron" >&2
 systemctl restart v-memory-indexer.service || echo "warning: memory indexer did not start; memory_search still works, it just indexes later" >&2
+# An index built for another embedding provider pauses vector search; rebuild it here, never via the owner.
+"${VCTL[@]}" memory-check || echo "warning: memory index not current; rerun: v-ctl memory-check" >&2
 if [ "$DESKTOP" -eq 1 ]; then
   say "Desktop: share-link service and the host node for computer use"
   "${VCTL[@]}" desktop-services
