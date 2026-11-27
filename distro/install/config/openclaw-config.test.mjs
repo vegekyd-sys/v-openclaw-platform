@@ -67,7 +67,11 @@ test('Feishu: owner open_id gives an allowlist and owner; without it the first D
   assert.deepEqual(owner.commands.ownerAllowFrom, ['feishu:ou_abc123']);
   assert.equal(owner.channels.feishu.connectionMode, 'websocket');
   assert.ok(owner.plugins.allow.includes('feishu'));
-  assert.deepEqual(owner.plugins.load.paths, ['/opt/v/current/plugins/worker', '/opt/v/current/plugins/session-relay'], 'official plugins never load by path (untrusted origin)');
+  assert.deepEqual(owner.plugins.load.paths, ['/opt/v/current/plugins/worker', '/opt/v/current/plugins/session-relay', '/opt/v/current/plugins/deepseek-web'], 'official plugins never load by path (untrusted origin); only V\'s own do');
+  assert.ok(owner.plugins.allow.includes('v-deepseek-web'), 'the deepseek web_search provider comes from V\'s plugin');
+  assert.equal(owner.tools.web.search.provider, 'deepseek');
+  const vercel = make({ V_MODEL_PRESET: 'vercel' });
+  assert.ok(!vercel.plugins.load.paths.some((p) => p.endsWith('deepseek-web')));
   const pairing = make({ FEISHU_APP_ID: 'cli_x' });
   assert.equal(pairing.channels.feishu.dmPolicy, 'pairing');
   assert.equal(pairing.commands.ownerAllowFrom, undefined);

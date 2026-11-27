@@ -184,6 +184,15 @@ export function buildPackage(opts) {
     const target = f.rel.startsWith('config/') ? f.rel : `install/${f.rel}`;
     add(target, f.data, f.mode);
   }
+  // V's own plugins kept as source in this repo (byte-identical to V's /opt copies):
+  // v-deepseek-web gives web_search / web_fetch the 'deepseek' provider V uses.
+  const vPlugins = { 'deepseek-web': 'apps/v-deepseek-web/plugin' };
+  for (const [name, dir] of Object.entries(vPlugins)) {
+    const files = filesUnder(repo, sourceCommit, dir, { exclude: (p) => /(^|\/)(tests|node_modules)\//.test(p) });
+    if (!files.length) throw new Error(`${dir}/ is missing at the source commit`);
+    for (const f of files) add(`vplugins/${name}/${f.rel}`, f.data, f.mode);
+  }
+
   // Desktop takeover (V's apps/v-desktop-handoff: display script, share-link service, plugin),
   // installed only when the env says V_DESKTOP=1. Tests stay in the repo.
   const desktopFiles = filesUnder(repo, sourceCommit, 'apps/v-desktop-handoff', { exclude: (p) => /(^|\/)(tests|node_modules)\//.test(p) });

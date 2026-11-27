@@ -170,6 +170,7 @@ function cmdInstallRelease(pkgDir, opts) {
     else fs.symlinkSync(bin, link);
   }
   placeDesktopPlugin(dest);
+  placeVPlugins(dest);
   // The agent's exec needs the OpenClaw CLI too (line B's v-schedule.py registers cron jobs with it).
   fs.rmSync(path.join(P.bin, 'openclaw'), { force: true });
   fs.writeFileSync(path.join(P.bin, 'openclaw'), openclawShim(P.prefix), { mode: 0o755 });
@@ -190,6 +191,17 @@ function placeDesktopPlugin(dest) {
   if (!fs.existsSync(typebox)) throw new Error(`desktop plugin: ${typebox} missing in the runtime`);
   fs.mkdirSync(path.join(target, 'node_modules'), { recursive: true });
   fs.symlinkSync(typebox, path.join(target, 'node_modules', 'typebox'));
+}
+
+// V's own plugins shipped as source (vplugins/<name>) load by path from <release>/plugins/<name>.
+function placeVPlugins(dest) {
+  const root = path.join(dest, 'vplugins');
+  if (!fs.existsSync(root)) return;
+  for (const name of fs.readdirSync(root)) {
+    const target = path.join(dest, 'plugins', name);
+    fs.rmSync(target, { recursive: true, force: true });
+    copyTree(path.join(root, name), target);
+  }
 }
 
 export const DESKTOP_UNITS = ['openclaw-desktop.service', 'v-desktop-handoff.service', 'openclaw-cua-node.service'];
@@ -456,6 +468,10 @@ function cmdUnits() {
   const vars = {
     '@PREFIX@': P.prefix, '@USER@': P.user, '@HOME@': P.home, '@ETC@': P.etc,
     '@PORT@': String(gatewayPort()), '@HEAP_MB@': String(heapMb()), '@TZ@': allEnv().TZ || 'Asia/Shanghai',
+    // The release's real path: some of V's services decide they are the main module by comparing
+    // argv[1] with their own resolved path, and do nothing (exit 0) when started through current/.
+    // units is rerun on every switch, update and rollback, so this follows the active release.
+    '@RELEASE@': fs.realpathSync(P.current),
   };
   const written = [];
   for (const name of fs.readdirSync(tpl).filter((f) => f.endsWith('.service'))) {

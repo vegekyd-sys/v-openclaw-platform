@@ -65,7 +65,9 @@ function modelSetup(preset, env, codex) {
       model: codex ? { primary: 'deepseek/vds-deepseek-flash', fallbacks: ['deepseek/deepseek-flash'] } : { primary: 'deepseek/deepseek-flash' },
       models,
       fastModel: 'deepseek/deepseek-flash',
-      pluginIds: ['deepseek'],
+      // web_search / web_fetch on DeepSeek, as on V: the 'deepseek' provider comes from V's own
+      // v-deepseek-web plugin (shipped in vplugins/), not from core; without it the config is invalid.
+      pluginIds: ['deepseek', 'v-deepseek-web'],
       webProvider: 'deepseek',
     };
   }
@@ -136,7 +138,7 @@ export function createConfig(o) {
   // Only V's own plugins load by path. Official plugins (feishu, codex, providers) must
   // come from OpenClaw's own npm install: a path-loaded copy has origin "config" and the
   // feishu channel is then refused its ingress queue. The installer lays V's bytes over them.
-  const loadPaths = [plugin('plugins/worker'), plugin('plugins/session-relay')];
+  const loadPaths = [plugin('plugins/worker'), plugin('plugins/session-relay'), ...(m.webProvider === 'deepseek' ? [plugin('plugins/deepseek-web')] : [])];
 
   const cfg = {
     gateway: {
