@@ -11,7 +11,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export const here = path.dirname(new URL(import.meta.url).pathname);
+// DISTRO_WORKSPACE_DIR points the tools at another copy (tests use a fixture).
+export const here = process.env.DISTRO_WORKSPACE_DIR || path.dirname(new URL(import.meta.url).pathname);
 export const payloadDir = path.join(here, "payload");
 
 // ---------------------------------------------------------------- placeholders
