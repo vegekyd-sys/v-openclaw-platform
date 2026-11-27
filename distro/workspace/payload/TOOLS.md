@@ -68,7 +68,24 @@
 
 - 先查凭据在不在（`echo ${VERCEL_TOKEN:+set}`、`echo ${CLOUDFLARE_API_TOKEN:+set}`，只看有没有，不打印值）。没有就**直接告诉主人**：「这项需要你补 Vercel 或 Cloudflare 账号，补好之前我先把文件发到飞书。」然后用飞书附件或云空间交付。
 - 不要静默跳过，也不要编一个链接、说已经部署好了。部署了就用 `curl -sI` 核对返回 200 再发链接。
-- 不要用别人的账号、公共的免登录托管或临时隧道代替。
+- 不要用别人的账号或公共的免登录托管代替。
+- **OpenClaw 自带的 `portal` 工具不是给主人的链接**：它只在这台机器的 Control UI（Portals）里能打开，主人在飞书里打不开。不要把它的地址发给主人，也不要拿它跟主人说「已经有链接了」。
+
+### 没有账号时：临时预览链接（只用于预览）
+
+主人只是想先看看效果（网页、演示稿、小应用），又还没有 Vercel 或 Cloudflare 账号时，可以开一个临时预览链接，**只能**用下面这个脚本：
+
+```bash
+python3 scripts/temp-preview.py start --dir <有 index.html 的目录> --purpose "<是什么、给谁看>"   # 或 --port <已在本机 127.0.0.1 上跑的端口>
+python3 scripts/temp-preview.py list           # 还开着的预览
+python3 scripts/temp-preview.py stop <id>      # 提前关；--all 全关
+```
+
+- 它起一个只监听本机的服务和一个 Cloudflare 临时隧道（trycloudflare），**默认 24 小时后自动关掉**，记录在工作区的 `.v/previews.json`，日志在 `.v/previews/`。不要自己另起 `cloudflared`、`http.server` 或别的隧道，也不要用 `nohup` 挂着不管。
+- 发链接时必须告诉主人这是临时链接、什么时候自动关（脚本输出的 `tellOwner`），以及正式链接需要补 Vercel 或 Cloudflare 账号。
+- 主人确认看过、交付确认后，就用 `stop` 关掉，不要等到 24 小时。
+- **含客户资料、内部资料或任何私密内容的页面，不能用临时隧道**（链接谁拿到都能打开）：只发文件（飞书附件或云空间）。
+- 机器上没有 `cloudflared` 时脚本会直接说明，不要自己去下载装；改为发文件。
 
 
 ## 采集通道与上限

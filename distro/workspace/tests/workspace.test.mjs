@@ -294,6 +294,22 @@ test("2026-11-28: no Scene; Night Shift ships generic and says it needs the serv
     assert.match(read(rel), /这项需要你补 Vercel 或 Cloudflare 账号/, rel);
 });
 
+test("temporary previews: one script, closed automatically, said to be temporary, never for private material; portal is not a link for the owner", () => {
+  const read = (rel) => fs.readFileSync(path.join(PAYLOAD, rel), "utf8");
+  const tools = read("TOOLS.md");
+  assert.match(tools, /scripts\/temp-preview\.py start/);
+  assert.match(tools, /默认 24 小时后自动关掉/);
+  assert.match(tools, /含客户资料、内部资料或任何私密内容的页面，不能用临时隧道/);
+  assert.match(tools, /`portal` 工具不是给主人的链接/);
+  assert.ok(fs.existsSync(path.join(PAYLOAD, "scripts/temp-preview.py")));
+  assert.match(read("skills/night-shift-operator/SKILL.md"), /不能用临时预览链接/);
+  assert.match(read(".gitignore"), /^\.v\/previews\.json$/m);
+  for (const rel of lib.walk(PAYLOAD)) {
+    if (!/\.md$/.test(rel)) continue;
+    assert.doesNotMatch(read(rel), /通过 ?Portal|Portal 生成/, rel);
+  }
+});
+
 function renderedWorkspace() {
   const out = path.join(tmp("py"), "ws");
   build(out, { values: { WORKSPACE: out, AGENT_ID: "test-v", STATE_DIR: path.join(out, ".state"), TIMEZONE: "Asia/Shanghai" } });
