@@ -147,3 +147,7 @@ test('desktop only with V_DESKTOP=1: host display, headed Chrome, takeover plugi
   assert.equal(h.openclawCommand, '/opt/v/bin/openclaw');
   assert.equal(h.adminTokenFile, '/etc/v/desktop-handoff/admin-token');
 });
+
+test('Skill Workshop as on V: auto-applied proposals, no autonomous review', () => {
+  assert.deepEqual(make({}).skills.workshop, { approvalPolicy: 'auto', maxSkillBytes: 100000, autonomous: { mode: 'off' } });
+});

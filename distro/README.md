@@ -60,6 +60,8 @@ sudo v-distro-<ver>/install/install.sh --env-file ./v.env --probe
 | 语音消息转文字 | `VOLCENGINE_API_KEY` | 火山新版控制台的 key，并开通「录音文件识别极速版」；能访问 openspeech.bytedance.com | — |
 | VSync | `install.sh --vsync-env <file>` | Portal 签发的身份文件，由人带外交付；能用 HTTPS 访问 mirror-v-portal.vercel.app | 要等 Portal 那边启用；启用前 `mirror-vsync.py whoami` 返回 `VSYNC_DISABLED` |
 
+VSync 身份文件也可以直接放到 `/etc/v/vsync.env`（root 0600，只含 `NEXUS_VSYNC_URL`、`NEXUS_VSYNC_AGENT`、`NEXUS_VSYNC_TOKEN`），之后 `sudo systemctl restart openclaw-gateway` 才会进 agent 的环境。不要放进 `secrets.env`：那份文件每次 install/update 都会按 env 文件重写。验收：以 openclaw 用户、在网关环境里运行 `python3 <工作区>/scripts/mirror-vsync.py whoami`，应返回自己的 agent id 和 counterparts `["private-v"]`。
+
 - 控制链接是不记名的，谁拿到都能接管桌面。所以客户版用 `controlAnywhere:false`：主人在群里要链接时，链接通过私聊发给他（V 本身是 true）。
 - Chrome 只从 Google 官方 apt 源装：先核对签名钥主指纹 `EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796`，apt 用 `signed-by` 只信这把钥匙。机器上已有的 chromium 和 playwright 浏览器不会被用到。
 
