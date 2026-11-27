@@ -99,7 +99,7 @@ Tianyi 定了三条：VSync 要带、桌面接管要带、每日复盘要开；�
 | `lark-user-routing` | 不带 | 多人共用一个 V 的身份路由，客户版只有一位主人 |
 | `youtube-video-download`、`meshy-image-to-3d`、`skill-inventory-export`、`openclaw-disk-full-recovery` | 暂不带 | V 上从未进 git、v-core 里没有，跟不了 V 的更新；要带先在 V 上提交、进 v-core 的 scope，再移进 `carry.txt` |
 | 主动推进 · 每日复盘 | **默认开** | Tianyi 定。发到主人私聊，过去 24 小时没发过提醒就 `NO_REPLY` |
-| 全局：演示 / 网页类（`frontend-design`、`frontend-slides`、`pptx`、`remotion-best-practices`）、hyperframes 一组 | **装**（钉版本） | 和 V 一致；hyperframes 需要 Chrome 和 ffmpeg |
+| 全局：`frontend-design`、`frontend-slides`、`remotion-best-practices`、hyperframes 一组 | **装**（`global-skills.json` 写了确切的上游提交，按 git 对象 hash 与 V 的文件对过） | 和 V 一致；hyperframes 需要 Chrome 和 ffmpeg。`pptx` 不装：Anthropic 的 pptx 不是开源许可，不能随客户包分发 |
 | 全局：V 自己的副本（`image-generation`、`ppt-template-batch` 等六个） | 不带 | 从未进任何仓库 |
 
 ## 五、Heartbeat V2 的通用版
