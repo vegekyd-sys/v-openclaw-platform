@@ -8,6 +8,16 @@
 
 ---
 
+## 决定与进展
+
+- **2026-11-27 16:3x CST** Tianyi 认可方案，并定了两点：
+  1. **V 自己拥有付款权限**，不另建 root-only 的身份。已在 CAM 新建自定义策略 `V-FinanceTrade`（内容只有 `finance:trade`），关联到 Gateway 使用的子用户。V 上用同一组凭据调用 `DescribeAccountBalance` 已经返回成功，账户余额 1042.86 元。因此第 4.2 节第 1 条不再适用：凭据仍放在 Gateway 的 env 文件里，靠花费上限和告警约束。
+  2. 要有**持续的流转监控**：看热、温、冷三层的数据是不是真的在流动，成本是不是合理。实现见第 8 节的 `flow.py`。
+- 费用中心里没有失败扩容留下的未支付订单：v1 的 116 次失败都在下单前就被拒了。
+- 代码：`scripts/v-storage/`（`autogrow.py` v2、`flow.py`、`tc.py`、`policy.json`），单元 `systemd/v-disk-autogrow.*`、`systemd/v-storage-flow.*`，安装脚本 `scripts/install-v-storage.sh`（带 `--dry-run`），测试 `tests/v-disk-autogrow.test.py`（13 项）、`tests/v-storage-flow.test.py`（8 项）。在 V 上 dry run：下一档 640 GiB，补差价约 24 元。
+
+---
+
 ## 0. 一页结论
 
 1. **自动扩容从来没有成功过，从设计上就付不了钱。**数据盘是包年包月盘，扩容要补差价。`v-disk-autogrow` 用的 CAM 子用户有 `lighthouse:ResizeDisks` 权限，云审计里这一步权限校验是通过的；但这个子用户没有支付权限（调用余额接口时返回 `finance:trade` 无权）。11-18 那次 200→400G 是 Tianyi 在控制台付的 42 元。11-25 03:05 第一次真正触发扩容就失败了，之后每 30 分钟重试一次，到 11-27 12:35 已失败 116 次。失败告警本身也没发出去，后来告警调用被从脚本里删掉了。
@@ -279,6 +289,21 @@ V 的 eth0 上有一条 55 Mbit 的 cake 整形（9/21 为了不让大上传饿�
 | 会话预算 | 现在已超但只是 warn | 改成每周报一次趋势，不每天报 |
 
 例行的成功和统计只写日志，不发消息。
+
+### 8.1 流转监控 `flow.py`（已实现）
+
+每天 09:30 跑一次，读的都是现成的数字：两块盘的 statvfs、在线库的文件大小、storage-lifecycle 早上 `du` 的分类大小、昨天一天的 Codex rollout 目录，以及各个搬运程序留下的回执（`work-archive-*.tsv`、`/var/lib/v-archive/receipts.jsonl`、governance 的 `deletions.jsonl`）。不会扫大目录。
+
+- 每天往 `/var/lib/v-storage-flow/history.jsonl` 写一行：三层的用量、分类大小、当天各层之间搬走和删掉的字节数、月成本（数据盘用 autogrow 查到的真实续费价，COS 按各档位刊例价，镜像按超出免费额度的个数）。
+- 出问题才告警（同一个问题 24 小时只报一次，恢复时报一次）：
+  - 系统盘按 7 天的速度 14 天内会写满，告警里附上增长最快的三个分类；
+  - 数据盘按 7 天的速度 14 天内会到自动扩容上限，这说明冷数据没有及时流走；
+  - 在 `policy.json` 的 `movers` 里登记过的搬运程序 48 小时没有成功运行；
+  - `drain` 里登记过、本该被搬走的分类在系统盘上每天仍涨超过 1 GB；
+  - 月成本超过预算（默认 450 元）；
+  - autogrow 30 分钟没有上报状态，或者报错、已暂停。
+- **每周一发一条存储周报**：三层用量、7 天的速度、7 天的流转量、增长最快的分类、月成本与预算的对比。这是 Tianyi 要的「看流转是否健康」，可以在 `policy.json` 里用 `weekly_report` 关掉。
+- 归档程序（P2）上线时，把它登记到 `movers`，把它负责的分类登记到 `drain`，监控就会开始盯着它。
 
 ---
 
