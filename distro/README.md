@@ -74,7 +74,7 @@ sudo v-distro-<ver>/install/install.sh --env-file ./v.env --probe
    - 机器人进群 `im.chat.member.bot.added_v1`、机器人被移出群 `im.chat.member.bot.deleted_v1`
    - 消息被添加、取消表情回复 `im.message.reaction.created_v1`、`im.message.reaction.deleted_v1`
    - 云文档新增评论 `drive.notice.comment_add_v1`
-   - 审批的评论事件（审批类事件里的「评论」）
+   - 审批评论新增、删除 `approval.instance.comment.created_v4`、`approval.instance.comment.deleted_v4`
 3. **事件与回调 → 回调配置**：同样用长连接，订阅卡片回传交互 `card.action.trigger`。
 4. **权限管理 → 批量处理 → 批量导入/导出权限**：导入包里的 `install/feishu-app-scopes.json`，一次开通应用身份 170 项、用户身份 258 项。
    这份清单是 V 自己的应用（V - Makaron）2026-11-27 导出的权限，再加上两种身份的 `bitable:app`、`sheets:spreadsheet`；用户身份覆盖了 V 本人授权过的全部 245 项（B 线的 `distro/workspace/feishu-user-scopes.txt`，`auth:user.id:read` 是在此基础上补的）。
