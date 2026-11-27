@@ -108,6 +108,7 @@ v-distro-<version>.tgz              解开后是一个目录 v-distro-<version>/
 /etc/v/secrets.env                      密钥（模型 key、飞书 app secret、Gateway token），0600 root
 /etc/v/lark.env                         有飞书时由 configure 写：LARKSUITE_CLI_APP_ID/SECRET/CONFIG_DIR（B 线工作区读的接口），0600 root
 /etc/v/vsync.env                        install.sh --vsync-env 装的 Portal 身份（NEXUS_VSYNC_URL/AGENT/TOKEN），0600 root
+/etc/v/cloudflared.env                  有 CLOUDFLARE_TUNNEL_TOKEN 时由 configure 写：TUNNEL_TOKEN（v-cloudflared.service 读），0600 root
 /etc/v/desktop-handoff/                 V_DESKTOP=1：接管链接服务的 config.json 和 admin-token（root:openclaw 0640）
 /home/openclaw/.lark-cli/config.json    lark-cli 自己的配置（应用 id + secret，0600 openclaw）；主人授权后的用户 token 也在这里
 /home/openclaw/.openclaw/               状态：openclaw.json（生成）、库、会话、记忆索引
@@ -148,6 +149,8 @@ node_modules，换完逐文件核对），然后重启一次。版本不是捕�
 | `V_AGENT_NAME` | 否，默认 `V` | 飞书卡片页脚等处显示的名字（`agents.entries.makaron.identity.name`）。内部 agent id 固定为 makaron：V 的 Worker 插件按它兜底，Heartbeat 的流式守卫也认 `agent:makaron:cron:*` |
 | `VOLCENGINE_API_KEY` | 否 | 语音消息转文字，和 V 一样用火山「录音文件识别极速版」；没有就不转写 |
 | `V_DESKTOP` | 否 | `1`：桌面接管与 computer use（TigerVNC + XFCE 的 :99、Google 官方源的 Chrome、接管链接、cua node、`computer` 工具），只支持 amd64 |
+| `CLOUDFLARE_TUNNEL_TOKEN` | 否 | Cloudflare Zero Trust tunnel 的 token：装 cloudflared（V 的版本，按 sha256 校验）并起 `v-cloudflared.service`；路由在 Cloudflare 后台配 |
+| `V_NIGHTSHIFT_URL` | 否 | 在跑的夜班服务地址：打开 core 自带的 workboard 和 V 的 nightshift-feishu 插件（`vplugins/nightshift-feishu`，0.1.4，与 V 同字节） |
 | `V_PUBLIC_ORIGIN` | 否 | 接管链接的对外地址。不设时为 `http://127.0.0.1:23950`，只能在本机打开；需要反向代理或隧道把 `/desktop-handoff` 转到 127.0.0.1:23950 |
 
 默认模型和 V 相同：`deepseek` 预设，主模型 `deepseek/vds-deepseek-flash`（Codex harness），回落到 Worker 的 `deepseek/deepseek-flash`，直连 DeepSeek 官方 API；
@@ -183,3 +186,4 @@ Gateway 只绑回环，其余（模型、Worker、记忆、harness）与 standal
   manifest 记 `vCoreCommit`；sandbox profile 加 `gateway.reload.mode: off`；去掉了没实现的 `v-ctl workspace-diff`。
 - 2026-11-27 23:10 `/opt/v/bin` 加 `openclaw` CLI 和 lark-cli 的环境变量映射（B 线工作区要求）。
 - 2026-11-27 23:50 加可选组件（`V_DESKTOP`、`VOLCENGINE_API_KEY`、`--vsync-env`）；lark-cli 改为用自己的配置文件独立运行，B 线读的 `LARKSUITE_CLI_*` 由 `/etc/v/lark.env` 提供；V 的压缩设置；显示名 `V_AGENT_NAME`（内部 id 仍是 makaron）。
+- 2026-11-28 01:20 去掉 Scene（Tianyi 定）；加可选的夜班插件（`V_NIGHTSHIFT_URL`）和 Cloudflare 隧道（`CLOUDFLARE_TUNNEL_TOKEN`）；`vplugins` 列表移到 components.json，可以钉到本仓库的旧提交并带逐文件 sha256；`v-ctl reconfigure` 用来应用安装后补上的配置。
