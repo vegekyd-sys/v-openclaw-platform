@@ -19,7 +19,7 @@ ssh "$host" 'sudo grep -q "^TENCENTCLOUD_SECRET_ID=" /home/openclaw/.openclaw/ga
   || { echo "gateway.systemd.env on $host has no TENCENTCLOUD_SECRET_ID" >&2; exit 1; }
 
 stage=$(ssh "$host" 'mktemp -d')
-trap 'ssh "$host" "rm -rf -- $stage"' EXIT
+trap 'ssh "$host" "sudo rm -rf -- $stage"' EXIT
 scp -q "$repo_root"/scripts/v-storage/{tc.py,autogrow.py,flow.py,policy.json} "$host:$stage/"
 scp -q "$repo_root"/systemd/v-disk-autogrow.{service,timer} "$repo_root"/systemd/v-storage-flow.{service,timer} "$host:$stage/"
 
