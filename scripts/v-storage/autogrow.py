@@ -188,9 +188,13 @@ def local_status():
     return size // GIB, used, free
 
 
-def filesystem_gib():
-    fs = os.statvfs(MOUNT)
-    return fs.f_blocks * fs.f_frsize / GIB
+def filesystem_bytes():
+    """ext4's own size from the superblock. statvfs f_blocks leaves out metadata
+    (a 400 GiB ext4 reports ~394 GiB), so it can never be compared with the device."""
+    meta = run(["/usr/sbin/tune2fs", "-l", str(DEVICE)], env={"LC_ALL": "C"})
+    blocks = int(re.search(r"^Block count:\s+(\d+)", meta, re.M)[1])
+    bsize = int(re.search(r"^Block size:\s+(\d+)", meta, re.M)[1])
+    return blocks * bsize
 
 
 def migrate_v1(state):
@@ -299,7 +303,7 @@ def reconcile(state, now, size_gib):
 
 def tick(state, now, policy):
     size_gib, used, free = local_status()
-    if "target" not in state and size_gib - filesystem_gib() >= 1:
+    if "target" not in state and size_gib * GIB > filesystem_bytes():
         # The disk grew (a console resize, or an order from before a restart) but ext4 did not.
         grow_filesystem(size_gib)
         alert(state, "grown-%d" % size_gib, "数据盘已是 %d GiB，文件系统已同步并校验。" % size_gib, now, every=0)
