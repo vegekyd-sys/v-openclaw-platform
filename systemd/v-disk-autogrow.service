@@ -1,0 +1,19 @@
+[Unit]
+Description=Grow and pay for V's Lighthouse data disk before it fills (v2)
+Documentation=file:/opt/v-storage/autogrow.py
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/srv/openclaw-data/disk1
+
+[Service]
+Type=oneshot
+# TENCENTCLOUD_SECRET_ID/KEY: the Gateway's account, which has finance:trade since
+# 2026-11-27 (CAM policy V-FinanceTrade). Nothing in this repo holds the values.
+EnvironmentFile=/home/openclaw/.openclaw/gateway.systemd.env
+StateDirectory=v-disk-autogrow
+StateDirectoryMode=0700
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/v-storage/autogrow.py
+Nice=10
+# resize2fs on a grown disk can take a few minutes.
+TimeoutStartSec=15min

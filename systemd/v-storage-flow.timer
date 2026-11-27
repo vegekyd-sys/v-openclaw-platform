@@ -1,0 +1,12 @@
+[Unit]
+Description=V storage flow check, daily 09:30 CST (weekly summary on Mondays)
+
+[Timer]
+# After storage lifecycle (04:40, its du feeds the category sizes), the system image
+# (05:20) and session archive (05:50); late enough that a Monday summary is read.
+OnCalendar=*-*-* 09:30:00 Asia/Shanghai
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

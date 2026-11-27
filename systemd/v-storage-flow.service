@@ -1,0 +1,15 @@
+[Unit]
+Description=Daily hot/warm/cold storage flow and cost check for V
+Documentation=file:/opt/v-storage/flow.py
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/home/openclaw/.openclaw/gateway.systemd.env
+StateDirectory=v-storage-flow
+StateDirectoryMode=0700
+ExecStart=/usr/bin/python3 /opt/v-storage/flow.py
+Nice=19
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=20min
