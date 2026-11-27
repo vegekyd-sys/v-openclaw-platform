@@ -307,6 +307,8 @@ def check_scopes() -> dict:
         "loginScopes": login_scopes(enabled),
         # 超出一次授权上限、这次没申请的（通常是人事、审批、邮箱这类不常用的）；用到时按 skill 的补授权兜底。
         "loginScopesSkipped": login_scopes_skipped(enabled),
+        # V 自己有、这个应用却没开通的用户权限：要和 V 对齐，得在开放平台给这个应用加上（用户身份权限）。
+        "vScopesNotEnabled": sorted(v_scopes() - enabled),
         "missing": {k: REQUIRED_SCOPES[k] for k in missing},
         "optionalMissing": {k: v for k, v in OPTIONAL_SCOPES.items() if k not in enabled},
     }
@@ -332,17 +334,29 @@ SCOPE_PRIORITY = ["docx", "docs", "wiki", "drive", "space", "calendar", "task", 
                   "im", "contact", "offline_access", "auth", "board", "slides", "mindnote", "search", "vc", "minutes"]
 
 
-def _rank(scope: str) -> tuple[int, str]:
+def v_scopes() -> set[str]:
+    """V 自己账号拿到的用户权限（scripts/feishu-v-scopes.txt）。超过一次授权的上限时先保这些，和 V 对齐。"""
+    try:
+        lines = (Path(__file__).resolve().parent / "feishu-v-scopes.txt").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return set()
+    return {l.strip() for l in lines if l.strip() and not l.startswith("#")}
+
+
+def _rank(scope: str, v: set[str] | None = None) -> tuple[int, int, str]:
     domain = scope.split(":", 1)[0]
-    return (SCOPE_PRIORITY.index(domain) if domain in SCOPE_PRIORITY else len(SCOPE_PRIORITY), scope)
+    in_v = 0 if (v is not None and scope in v) else 1
+    return (in_v, SCOPE_PRIORITY.index(domain) if domain in SCOPE_PRIORITY else len(SCOPE_PRIORITY), scope)
 
 
 def login_scopes(enabled) -> list[str]:
-    """登录时要申请的用户身份权限：读文档必需的几项在前，再按 SCOPE_PRIORITY 排应用上开通了的其余用户权限，
-    最多 MAX_LOGIN_SCOPES 项（飞书一次授权的上限）。剩下的见 login_scopes_skipped，用到时由各 skill 补授权。"""
+    """登录时要申请的用户身份权限：读文档必需的几项在前；其余是应用上开通了的用户权限，V 自己有的（feishu-v-scopes.txt）
+    排前面，再按 SCOPE_PRIORITY 排；最多 MAX_LOGIN_SCOPES 项（飞书一次授权的上限）。剩下的见 login_scopes_skipped，
+    用到时由各 skill 补授权。"""
     enabled = {s for s in enabled if s}
+    v = v_scopes()
     first = [k for k in REQUIRED_SCOPES if k in enabled]
-    rest = sorted(enabled - set(first), key=_rank)
+    rest = sorted(enabled - set(first), key=lambda s: _rank(s, v))
     return [*first, *rest][:MAX_LOGIN_SCOPES]
 
 

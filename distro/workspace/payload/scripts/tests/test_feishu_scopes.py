@@ -68,5 +68,16 @@ class LoginScopes(unittest.TestCase):
         self.assertEqual(set(got) | set(skipped), set(many))
 
 
+    def test_over_the_limit_v_s_own_scopes_are_kept_and_the_rest_dropped_first(self):
+        v = f.v_scopes()
+        self.assertGreater(len(v), 200, "V's list ships with the script")
+        extra = [f"zzz:extra{i}:read" for i in range(40)]
+        app = sorted(v - {"auth:user.id:read"}) + extra
+        got = f.login_scopes(app)
+        self.assertEqual(len(got), f.MAX_LOGIN_SCOPES)
+        self.assertTrue((v - {"auth:user.id:read"}) <= set(got), "every V scope the app has is requested")
+        self.assertTrue(set(f.login_scopes_skipped(app)) <= set(extra))
+
+
 if __name__ == "__main__":
     unittest.main()
