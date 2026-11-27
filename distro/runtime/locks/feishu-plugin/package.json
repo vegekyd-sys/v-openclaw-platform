@@ -1,0 +1,7 @@
+{
+  "name": "v-distro-feishu-plugin",
+  "private": true,
+  "dependencies": {
+    "@openclaw/feishu": "2026.9.1"
+  }
+}

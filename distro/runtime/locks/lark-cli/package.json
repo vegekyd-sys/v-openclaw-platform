@@ -1,0 +1,7 @@
+{
+  "name": "v-distro-lark-cli",
+  "private": true,
+  "dependencies": {
+    "@larksuite/cli": "1.0.97"
+  }
+}

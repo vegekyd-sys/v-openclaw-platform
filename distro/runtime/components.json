@@ -1,0 +1,76 @@
+{
+  "schema": "v-distro-components/1",
+  "agentId": "makaron",
+  "agentIdNote": "The Worker plugin falls back to agent id \"makaron\" in many places; V and Mirror V both run that id. It is internal only: the name the user sees comes from the workspace (IDENTITY.md).",
+  "openclawSchema": {
+    "2026.9.1": {
+      "state": 15,
+      "agent": 19
+    }
+  },
+  "openclawSchemaNote": "openclaw package.json openclaw.schemaVersions; rollback.sh may swap code alone only when these match",
+  "components": {
+    "core": {
+      "suffix": "",
+      "install": "overlay",
+      "package": "openclaw",
+      "lock": "core-openclaw",
+      "target": "core/dist",
+      "lockSource": "generated: lock.mjs core-openclaw openclaw@2026.9.1 --before 2026-09-04T13:00:00Z; 310/310 package versions equal V's core/node_modules (2026-11-27)",
+      "layout": "V's layout: core/ is the openclaw package itself and its dependencies sit in core/node_modules (the Worker resolves openclaw/node_modules/<dep> directly; core/dist/../../npm/projects is V's release-relative plugin path)"
+    },
+    "worker": {
+      "suffix": ".worker",
+      "install": "plugin-dir",
+      "pluginId": "vlab-agent-worker-isolation",
+      "target": "plugins/worker"
+    },
+    "codex": {
+      "suffix": ".codex",
+      "install": "state-overlay",
+      "package": "@openclaw/codex",
+      "pluginId": "codex",
+      "note": "OpenClaw installs the official @openclaw/codex into ~/.openclaw/npm/projects on the first start that configures it (trusted origin); the installer then lays V's captured package files over it, as V's own copy is. Lock kept for reference: V's npm project lock.",
+      "lock": "codex-plugin",
+      "lockSource": "copied from V ~/.openclaw/npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2 (2026-11-27)"
+    },
+    "feishu": {
+      "suffix": ".feishu",
+      "install": "npm-package",
+      "package": "@openclaw/feishu",
+      "pluginId": "feishu",
+      "lock": "feishu-plugin",
+      "target": "plugins/feishu/node_modules/@openclaw/feishu",
+      "peerLink": "openclaw",
+      "lockSource": "generated: lock.mjs feishu-plugin @openclaw/feishu@2026.9.1 --before 2026-09-09T04:00:00Z; 85/85 package versions equal V's feishu/node_modules (2026-11-27)",
+      "stateOverlay": true,
+      "note": "Two copies, as on V: the release copy under plugins/ is what V's core imports by relative path (npm/projects/openclaw-feishu-…); the channel itself must run from OpenClaw's own npm install (a plugin from plugins.load.paths has origin \"config\" and is refused the channel ingress queue), so V's bytes are laid over that copy too."
+    },
+    "session-relay": {
+      "suffix": ".session-relay",
+      "install": "plugin-dir",
+      "pluginId": "v-session-relay",
+      "target": "plugins/session-relay"
+    }
+  },
+  "notIncluded": {
+    ".dingtalk": "V's DingTalk channel; a customer install uses Feishu",
+    ".wecom": "V's WeCom channel; a customer install uses Feishu",
+    ".meeting-bridge": "V's meeting bridge; needs V's own meeting service"
+  },
+  "ops": {
+    "scripts/v-memory-indexer.mjs": "real-time memory_search index sync (V: /opt/v-sentinel)",
+    "scripts/v-memory-indexer-run.py": "runs the indexer with the Gateway unit's node, dist and environment",
+    "scripts/v-codex-orphan-cleanup.py": "Gateway ExecStartPre: drop Codex app-server registrations whose processes are gone (V: /opt/v-ops)"
+  },
+  "redactions": [
+    {
+      "component": "core",
+      "path": "gpt-live-call-lifecycle.mjs",
+      "pattern": "oc_[0-9a-f]{32}",
+      "replacement": "oc_redacted_by_v_distro",
+      "reason": "V's own Feishu group (GPT Live personal task room) hard-coded in V's voice lifecycle; voice is not part of the distro, so the key can never match"
+    }
+  ],
+  "redactionsNote": "Personal identifiers in V's captured bytes are replaced at build time; distro/build checks each still matches. Other V-specific defaults are overridden by config instead (v-session-relay ownerName)."
+}
