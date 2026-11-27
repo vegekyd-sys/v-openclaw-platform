@@ -147,3 +147,14 @@ test('desktop only with V_DESKTOP=1: host display, headed Chrome, takeover plugi
   assert.equal(h.openclawCommand, '/opt/v/bin/openclaw');
   assert.equal(h.adminTokenFile, '/etc/v/desktop-handoff/admin-token');
 });
+
+test('Night Shift only with V_NIGHTSHIFT_URL: workboard and nightshift-feishu pointed at the service', () => {
+  const off = make({});
+  assert.ok(!off.plugins.allow.includes('nightshift-feishu') && !off.plugins.allow.includes('workboard'));
+  assert.equal(off.plugins.entries['nightshift-feishu'], undefined);
+  const on = make({ V_NIGHTSHIFT_URL: 'http://127.0.0.1:24879' });
+  for (const id of ['workboard', 'nightshift-feishu']) assert.ok(on.plugins.allow.includes(id), id);
+  assert.ok(on.plugins.load.paths.includes('/opt/v/current/plugins/nightshift-feishu'));
+  assert.deepEqual(on.plugins.entries['nightshift-feishu'], { enabled: true, config: { baseUrl: 'http://127.0.0.1:24879' } });
+  assert.throws(() => make({ V_NIGHTSHIFT_URL: 'ftp://x' }), /http or https/);
+});

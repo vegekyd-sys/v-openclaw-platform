@@ -59,6 +59,7 @@ function fixtureRepo(t) {
       worker: { suffix: '.worker', install: 'plugin-dir', pluginId: 'w', target: 'plugins/worker' },
     },
     notIncluded: { '.dingtalk': 'not for customers' },
+    vplugins: { 'deepseek-web': { dir: 'apps/v-deepseek-web/plugin' } },
     ops: { 'scripts/op.py': 'an ops script' },
   }));
   const ai = [['transports.mjs', 'V ai\n', 'modified', 'npm ai\n']];
@@ -222,4 +223,27 @@ test('distro overlays (V bytes outside platform captures) ship with their manife
   git(repo, 'mv', `distro/runtime/overlays/${REL}`, 'distro/runtime/overlays/other-release');
   git(repo, 'commit', '-qm', 'overlay for another release only');
   assert.throws(() => build(repo), /no distro\/runtime\/overlays\/fixture-rel-20261127\/core-ai\/manifest.json/);
+});
+
+test('a vplugin pinned to an older commit ships those bytes only when they match the pinned sha256s', (t) => {
+  const repo = fixtureRepo(t);
+  write(repo, 'extensions/old-plugin/index.js', 'export default 1;\n');
+  write(repo, 'extensions/old-plugin/index.test.mjs', 'not shipped\n');
+  git(repo, 'add', '-A');
+  git(repo, 'commit', '-qm', 'old plugin');
+  const old = git(repo, 'rev-parse', 'HEAD');
+  git(repo, 'rm', '-rq', 'extensions');
+  const setPin = (sha) => {
+    const c = JSON.parse(fs.readFileSync(path.join(repo, 'distro/runtime/components.json'), 'utf8'));
+    c.vplugins['old-plugin'] = { dir: 'extensions/old-plugin', commit: old, sha256: { 'index.js': sha } };
+    write(repo, 'distro/runtime/components.json', JSON.stringify(c));
+    git(repo, 'add', '-A');
+    git(repo, 'commit', '-qm', 'pin');
+  };
+  setPin(createHash('sha256').update('export default 1;\n').digest('hex'));
+  const paths = build(repo).manifest.files.map((f) => f.path);
+  assert.ok(paths.includes('vplugins/old-plugin/index.js'));
+  assert.ok(!paths.includes('vplugins/old-plugin/index.test.mjs'));
+  setPin('0'.repeat(64));
+  assert.throws(() => build(repo), /old-plugin: files differ from the pinned sha256s: index.js/);
 });

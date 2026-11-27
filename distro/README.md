@@ -63,6 +63,38 @@ sudo v-distro-<ver>/install/install.sh --env-file ./v.env --probe
 - 控制链接是不记名的，谁拿到都能接管桌面。所以客户版用 `controlAnywhere:false`：主人在群里要链接时，链接通过私聊发给他（V 本身是 true）。
 - Chrome 只从 Google 官方 apt 源装：先核对签名钥主指纹 `EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796`，apt 用 `signed-by` 只信这把钥匙。机器上已有的 chromium 和 playwright 浏览器不会被用到。
 
+## 客户之后可以自己补的
+
+很多功能在 V 上依赖 Vercel、Cloudflare 或别的账号。安装器的原则是「有凭据就启用，没有就跳过」：缺了不会报错，补上之后跑一条命令就生效。
+
+做法都一样：把值写进 `/etc/v/install.env`（普通配置）或 `/etc/v/secrets.env`（以 `_KEY`、`_SECRET`、`_TOKEN` 结尾的密钥，root 0600），然后运行
+
+```bash
+sudo v-ctl reconfigure
+```
+
+它会补装新打开的组件需要的系统包，重新生成配置和 systemd 单元，只重启一次网关，再把可选服务拉起来。会话、记忆、工作区都不动。
+
+| 功能 | 要什么 | 写到哪 | 备注 |
+| --- | --- | --- | --- |
+| 模型（默认） | DeepSeek API key | `secrets.env`：`DEEPSEEK_API_KEY` | 主模型 vds 走 Codex，回落到 Worker |
+| 模型（Vercel AI Gateway） | Vercel 账号的 AI Gateway key | `install.env`：`V_MODEL_PRESET=vercel`；`secrets.env`：`AI_GATEWAY_API_KEY` | 可选，不是默认 |
+| 飞书 | 客户在飞书开发者后台自建的企业应用 | `install.env`：`FEISHU_APP_ID`、`V_OWNER_FEISHU_OPEN_ID`；`secrets.env`：`FEISHU_APP_SECRET` | 没填 open_id 时第一次私聊走配对码：`v-ctl pair <code>` |
+| 公网链接（Cloudflare 隧道） | Cloudflare 账号、一个域名、Zero Trust 里建的 tunnel 的 token | `secrets.env`：`CLOUDFLARE_TUNNEL_TOKEN`；`install.env`：`V_PUBLIC_ORIGIN=https://<域名>` | 在 Cloudflare 后台给 tunnel 加路由：`<域名>/desktop-handoff` → `http://127.0.0.1:23950`。cloudflared 用 V 上的版本（2026.7.2），按 sha256 校验。也可以用自己的反向代理，不用 Cloudflare，只设 `V_PUBLIC_ORIGIN` |
+| 桌面接管 + computer use | 无账号；amd64、多约 1 GB 内存 | `install.env`：`V_DESKTOP=1` | 接管链接要让外面能打开，需要上一行的公网链接 |
+| 语音消息转文字 | 火山引擎新版控制台的 key，开通「录音文件识别极速版」 | `secrets.env`：`VOLCENGINE_API_KEY` | |
+| 夜班 | 一个在跑的夜班服务（`vegekyd-sys/v-nightshift`） | `install.env`：`V_NIGHTSHIFT_URL=http://127.0.0.1:24879` | 打开 workboard 和 nightshift-feishu 插件。夜班服务本身目前不在发行包里 |
+| VSync | Portal 签发的身份文件 | `sudo v-ctl vsync-env <文件>`，然后 `sudo v-ctl reconfigure` | 只用 HTTPS 访问 mirror-v-portal.vercel.app |
+| 记忆向量检索 | Google AI key | `secrets.env`：`GOOGLE_API_KEY` | 没有时只用关键词检索 |
+| 看图、生图 | xAI key | `secrets.env`：`XAI_API_KEY` | |
+| 创作、社媒检索等 skill | 各 skill 自己的 key，比如 `MAKARON_API_KEY`、`APIFY_API_KEY` | `secrets.env` | `secrets.env` 里的变量 agent 运行命令时都拿得到，skill 没有 key 时会如实说没开通 |
+| 把网页或应用部署到 Vercel | Vercel token | `secrets.env`：`VERCEL_TOKEN` | 包里没有任何 skill 依赖它（V 的 report-web 部署 skill 不带）；有了以后 agent 可以用 `npx vercel --token "$VERCEL_TOKEN"` |
+
+V 上依赖 Cloudflare 或 Vercel、但不在客户版里的：
+- Control UI 和语音入口的公网地址（V 的 cloudflared）：客户版网关只听回环。
+- 夜班看板的公网地址加 basic auth（nightshift.tianyi.live）。
+- Mirror V 的 Portal（Vercel）：沙盒版用，客户单独部署不需要。
+
 ## 飞书、lark-cli 与 agent 名字
 
 - lark-cli 用 `~/.lark-cli/config.json` 独立运行；configure 用 `config init --app-secret-stdin` 写这个文件，运行时不带任何 OpenClaw 环境变量。

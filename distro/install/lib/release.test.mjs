@@ -298,3 +298,13 @@ test('probe reads tool output from both Worker text items and Codex toolResult i
   assert.ok(messageText(codex).includes('MARK_TOOL'));
   assert.ok(!messageText(thinking).includes('MARK_TOOL'), 'reasoning that merely mentions the marker does not count');
 });
+
+test('cloudflared is pinned per architecture to a GitHub release asset and its sha256', () => {
+  const t = JSON.parse(fs.readFileSync(new URL('../../runtime/tools.json', import.meta.url), 'utf8'));
+  for (const arch of ['linux-x64', 'linux-arm64']) {
+    const a = t.cloudflared[arch];
+    assert.match(a.url, new RegExp(`^https://github\\.com/cloudflare/cloudflared/releases/download/${t.cloudflared.version}/cloudflared-linux-(amd64|arm64)\\.deb$`));
+    assert.match(a.sha256, /^[0-9a-f]{64}$/);
+  }
+  assert.ok(!t.npm['scene-cli'], 'Scene is not installed (Tianyi, 2026-11-28)');
+});
