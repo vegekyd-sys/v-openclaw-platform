@@ -190,3 +190,7 @@ test('image understanding is DeepSeek Flash by default; xAI only as a fallback w
   assert.deepEqual(flash.input, ['text', 'image']);
   assert.match(make({ V_MODEL_PRESET: 'vercel', XAI_API_KEY: '' }).agents.defaults.imageModel.primary, /^aigw\//);
 });
+
+test('Skill Workshop as on V: auto-applied proposals, no autonomous review', () => {
+  assert.deepEqual(make({}).skills.workshop, { approvalPolicy: 'auto', maxSkillBytes: 100000, autonomous: { mode: 'off' } });
+});
