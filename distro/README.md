@@ -128,3 +128,11 @@ node --test distro/build/build.test.mjs distro/install/lib/release.test.mjs dist
 测试机上 `core/node_modules/@openclaw/ai/dist` 的 4 个文件与 V 的 sha256 一致（c7957572 / 915ac13d / a66edfc5 / 7d7ae7a8）；
 整个 `core/node_modules` 的 24,861 个文件与 V **0 个不同**。Gateway 仍用 `/opt/v/node/v22.23.1`，进程环境里没有 nvm。
 这个安装保留在测试机上，给飞书上手验收用。
+
+### 只打包 `workspace/payload` 后重装（2026-11-27 20:21 CST，版本 `2026.11.27-db91-lifecycle-proof.3`，提交 ed8f1093）
+
+工作区取自 B 线 `origin/claude/distro-workspace-cd7827` @ 59bf9d55（`vCoreCommit` 09f4aa59）。包 678 个文件，`tarSha256` 201606d7…；
+包里没有 B 的 `tests/`、`build.mjs`、`sync.mjs`，密钥扫描通过。先卸载再从零安装：74 s，探针（真实模型 → exec → 最终回复）通过。
+种下的工作区 16 项，渲染了 12 个文件，剩下的 `@@X@@` 为 0，首个提交 `seed: v-distro …proof.3`。
+用包里的生成器出 sandbox 配置：`gateway.reload = {mode:"off"}`，`tools.deny` 含 `message`。
+Gateway 仍是 `/opt/v/node/v22.23.1`、进程环境无 nvm；4 个 `@openclaw/ai` 文件与 V 的哈希一致；两个服务 active，保留给飞书验收。
