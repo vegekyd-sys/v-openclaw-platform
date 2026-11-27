@@ -69,6 +69,8 @@ sudo v-distro-<ver>/install/install.sh --env-file ./v.env --probe
   原因：环境里有 `LARKSUITE_CLI_APP_*` 时，lark-cli 会禁用 auth 命令，也拿不到应用令牌；有 `OPENCLAW_*` 时，它会要求先 `config bind`，并把配置写到另一个 profile 目录，B 线的脚本读不到。
   `/opt/v/bin/lark-cli` 和 B 线的 `feishu-docs.py` 会去掉同一批变量。
 - B 线工作区靠 `LARKSUITE_CLI_APP_ID/SECRET/CONFIG_DIR` 判断有没有绑定飞书应用，由 `/etc/v/lark.env` 提供给 Gateway（agent 的 exec 会继承）。缺了这个文件，上手引导会说「接不上飞书」。
+- 群聊（主人的 task room）：填了 `V_OWNER_FEISHU_OPEN_ID` 时，群里只有主人的消息会进来，不用 @（`groupPolicy: open` + `groupSenderAllowFrom: [主人]` + `requireMention: false`）。
+  注意：这个插件里 `groupAllowFrom` 按群的 chat_id 放行、`groupSenderAllowFrom` 按发送人放行，把 open_id 写进 `groupAllowFrom` 会挡住所有群。没填主人时群聊关闭。
 - 卡片页脚显示的名字来自 `V_AGENT_NAME`（默认 `V`）。内部 agent id 仍是 makaron（见 CONTRACT 第 4 节）；`V_OWNER_NAME` 等配置不受影响。
 
 ## 依赖与 V 一致的证据（2026-11-27）

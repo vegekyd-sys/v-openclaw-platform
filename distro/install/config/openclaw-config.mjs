@@ -238,10 +238,15 @@ export function createConfig(o) {
       feishu: {
         enabled: true, appId: ref('FEISHU_APP_ID'), appSecret: ref('FEISHU_APP_SECRET'),
         domain: env.FEISHU_DOMAIN === 'lark' ? 'lark' : 'feishu', connectionMode: 'websocket',
-        requireMention: true,
         dmPolicy: ownerOpenId ? 'allowlist' : 'pairing',
         ...(ownerOpenId ? { allowFrom: [ownerOpenId] } : {}),
-        groupPolicy: 'disabled',
+        // Groups (the owner's task rooms): only the owner's messages come in, without an @ (as on V,
+        // where AGENTS.md's group rules keep V quiet). In this plugin groupAllowFrom gates group
+        // chat ids and groupSenderAllowFrom gates senders, so: groups open, senders = the owner.
+        // Without a known owner, groups stay off.
+        ...(ownerOpenId
+          ? { groupPolicy: 'open', groupSenderAllowFrom: [ownerOpenId], requireMention: false }
+          : { groupPolicy: 'disabled', requireMention: true }),
         streaming: { mode: 'partial', block: { enabled: false } },
         reactionNotifications: 'own', typingIndicator: true, resolveSenderNames: true,
         capabilities: ['inlineButtons'], renderMode: 'auto',

@@ -72,8 +72,16 @@ test('Feishu: owner open_id gives an allowlist and owner; without it the first D
   assert.equal(owner.tools.web.search.provider, 'deepseek');
   const vercel = make({ V_MODEL_PRESET: 'vercel' });
   assert.ok(!vercel.plugins.load.paths.some((p) => p.endsWith('deepseek-web')));
+  // Task rooms: in groups only the owner's messages come in, no @ needed. groupAllowFrom would gate
+  // chat ids (oc_...), so an open_id there would shut every group.
+  assert.equal(owner.channels.feishu.groupPolicy, 'open');
+  assert.deepEqual(owner.channels.feishu.groupSenderAllowFrom, ['ou_abc123']);
+  assert.equal(owner.channels.feishu.groupAllowFrom, undefined);
+  assert.equal(owner.channels.feishu.requireMention, false);
   const pairing = make({ FEISHU_APP_ID: 'cli_x' });
   assert.equal(pairing.channels.feishu.dmPolicy, 'pairing');
+  assert.equal(pairing.channels.feishu.groupPolicy, 'disabled', 'no known owner, no groups');
+  assert.equal(pairing.channels.feishu.requireMention, true);
   assert.equal(pairing.commands.ownerAllowFrom, undefined);
   assert.throws(() => make({ FEISHU_APP_ID: 'cli_x', V_OWNER_FEISHU_OPEN_ID: 'not-an-id' }), /ou_/);
 });
