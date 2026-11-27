@@ -116,6 +116,51 @@ test("render refuses missing values and unknown placeholders", () => {
   assert.throws(() => render(dir, { WORKSPACE: "/w", AGENT_ID: "a", STATE_DIR: "/s", TIMEZONE: "Asia/Shanghai" }), /SOMETHING_ELSE/);
 });
 
+// ------------------------------------------------------------------ files git must carry
+
+test("no payload file is git-ignored (a package built from git objects would silently lose it)", () => {
+  // The platform root ignores artifacts/, which once kept the memory-graph library out of every package.
+  const files = lib.walk(PAYLOAD).map((rel) => path.join("distro/workspace/payload", rel));
+  const r = spawnSync("git", ["-C", path.resolve(WS, "../.."), "check-ignore", "--stdin", "-v"], { input: files.join("\n"), encoding: "utf8" });
+  assert.equal(r.stdout.trim(), "", `ignored by git:\n${r.stdout}`);
+});
+
+test("memory graph: the vendored library ships and memory-graph.py builds the page from a built workspace", () => {
+  assert.ok(fs.statSync(path.join(PAYLOAD, "artifacts/memory-graph/vendor/force-graph.min.js")).size > 100_000);
+  const ws = renderedWorkspace();
+  const r = py(ws, "memory-graph.py", []);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.ok(fs.existsSync(path.join(ws, "artifacts/memory-graph/index.html")), "graph page not written");
+});
+
+test("a project made from _TEMPLATE keeps its TODO.md reachable for the Librarian; an unlinked one is reported", () => {
+  const ws = renderedWorkspace();
+  const proj = path.join(ws, "memory/projects");
+  for (const [slug, link] of [["acme-launch", true], ["orphan-todo", false]]) {
+    fs.mkdirSync(path.join(proj, slug));
+    let main = fs.readFileSync(path.join(proj, "_TEMPLATE/main.md"), "utf8").replace("<项目名>", slug);
+    if (!link) main = main.replace(/^- \[待办\]\(TODO\.md\).*\n/m, "");
+    fs.writeFileSync(path.join(proj, slug, "main.md"), main);
+    fs.writeFileSync(path.join(proj, slug, "history.md"), `# ${slug} history\n`);
+    fs.copyFileSync(path.join(proj, "_TEMPLATE/TODO.md"), path.join(proj, slug, "TODO.md"));
+  }
+  const index = path.join(ws, "memory/index.md");
+  fs.appendFileSync(index, "\n- [acme-launch](projects/acme-launch/main.md) — test\n- [orphan-todo](projects/orphan-todo/main.md) — test\n");
+  const r = py(ws, "librarian-reachability.py", []);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const out = JSON.parse(fs.readFileSync(path.join(ws, "memory/librarian/unreachable.json"), "utf8"));
+  const unreachable = Object.values(out.groups).flat().map((n) => n.path);
+  assert.ok(!unreachable.includes("memory/projects/acme-launch/TODO.md"), `template-linked TODO.md unreachable: ${unreachable}`);
+  assert.ok(unreachable.includes("memory/projects/orphan-todo/TODO.md"), "the check must still flag an unlinked TODO.md");
+  assert.ok(!unreachable.some((p) => p.includes("/_TEMPLATE/")), "the template itself is not a page");
+  // heartbeat-assistant does not offer the template's example tasks as real work
+  const ctx = py(ws, "heartbeat-assistant.py", ["context"]);
+  assert.equal(ctx.status, 0, ctx.stderr);
+  const run = JSON.parse(ctx.stdout).context_path;
+  const todos = JSON.parse(fs.readFileSync(path.join(ws, run), "utf8")).material.open_todos;
+  assert.ok(todos.length > 0 && todos.every((t) => !t.file.includes("_TEMPLATE")));
+});
+
 // ------------------------------------------------------------------ review lists
 
 test("every carried path exists in the payload, and no entry is both carried and skipped", () => {
