@@ -48,7 +48,8 @@ class FakeCos:
         if method == "POST" and "uploadId" in params:
             u = self.uploads.pop(params["uploadId"])
             parts = [u["parts"][n] for n in sorted(u["parts"])]
-            etag = "%s-%d" % (hashlib.md5(b"".join(hashlib.md5(p).digest() for p in parts)).hexdigest(), len(parts))
+            # Real COS does not use S3's md5-of-md5s; any opaque value with the part count.
+            etag = "%s-%d" % (hashlib.sha1(b"".join(parts)).hexdigest()[:32], len(parts))
             self.objects[u["key"]] = (b"".join(parts), etag)
             return 200, {}, b""
         if method == "HEAD":
@@ -141,10 +142,6 @@ class Pure(Base):
         os.symlink("../elsewhere", d / "l")
         self.assertEqual(A.scan([str(d)])["problem"], "relative-dotdot-link")
 
-    def test_etag(self):
-        a, b = hashlib.md5(b"1").digest(), hashlib.md5(b"2").digest()
-        self.assertEqual(A.multipart_etag([a]), a.hex())
-        self.assertEqual(A.multipart_etag([a, b]), hashlib.md5(a + b).hexdigest() + "-2")
 
     def test_keys_are_dated(self):
         cat = {"name": "c"}

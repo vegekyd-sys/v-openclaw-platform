@@ -206,12 +206,6 @@ def object_key(policy, cat, item_id, now):
     return "%s/%s/%s.%s.tar.zst" % (policy["prefix"].rstrip("/"), cat["name"], safe, day)
 
 
-def multipart_etag(part_md5s):
-    if len(part_md5s) == 1:
-        return part_md5s[0].hex()
-    return "%s-%d" % (hashlib.md5(b"".join(part_md5s)).hexdigest(), len(part_md5s))
-
-
 # ---------- side effects ----------
 
 def notify(text):
@@ -278,7 +272,12 @@ class Throttle:
 
 
 def upload(policy, key, paths, base, throttle):
-    """tar | zstd streamed into COS. Returns (bytes, etag)."""
+    """tar | zstd streamed into COS. Returns (bytes, parts); parts is 0 for a single PUT.
+
+    COS checks each part against its Content-MD5 and we check the part ETag it returns
+    against our MD5. Its multipart object ETag is not S3's md5-of-md5s (measured
+    2026-11-28), so the object is checked by size and part count, and the ETag it
+    reports is recorded and must be unchanged when the local copy is deleted."""
     rel = [os.path.relpath(p, base) for p in paths]
     tar = subprocess.Popen(["tar", "--xattrs", "--acls", "--numeric-owner", "-C", base, "-cf", "-", "--"] + rel,
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -297,17 +296,22 @@ def upload(policy, key, paths, base, throttle):
                 # small object: one PUT
                 if tar.wait() or zst.wait():
                     raise RuntimeError("tar/zstd failed: %s" % tar.stderr.read().decode(errors="replace")[-300:])
-                cos.request("PUT", bucket, key, body=chunk, headers=dict(hdr))
+                _, h, _ = cos.request("PUT", bucket, key, body=chunk, headers=dict(hdr))
                 throttle.add(len(chunk))
-                return len(chunk), hashlib.md5(chunk).hexdigest()
+                if (h.get("ETag") or "").strip('"') != hashlib.md5(chunk).hexdigest():
+                    raise RuntimeError("object ETag is not our MD5")
+                return len(chunk), 0
             if upload_id is None:
                 _, _, body = cos.request("POST", bucket, key, params={"uploads": ""}, headers=dict(hdr))
                 upload_id = cos.xml_text(body, "UploadId")
             md5 = hashlib.md5(chunk).digest()
             n = len(md5s) + 1
             _, h, _ = cos.request("PUT", bucket, key, params={"partNumber": str(n), "uploadId": upload_id}, body=chunk)
+            etag = (h.get("ETag") or h.get("Etag") or "").strip('"')
+            if etag != md5.hex():
+                raise RuntimeError("part %d ETag is not our MD5" % n)
             md5s.append(md5)
-            parts.append((n, h.get("ETag") or h.get("Etag")))
+            parts.append((n, etag))
             total += len(chunk)
             throttle.add(len(chunk))
         if tar.wait() or zst.wait():
@@ -315,7 +319,7 @@ def upload(policy, key, paths, base, throttle):
         xml = "<CompleteMultipartUpload>%s</CompleteMultipartUpload>" % "".join(
             "<Part><PartNumber>%d</PartNumber><ETag>%s</ETag></Part>" % (n, e) for n, e in parts)
         cos.request("POST", bucket, key, params={"uploadId": upload_id}, body=xml.encode())
-        return total, multipart_etag(md5s)
+        return total, len(parts)
     except Exception:
         tar.kill()
         zst.kill()
@@ -421,7 +425,7 @@ def refresh_usage(policy):
 def list_usage(policy):
     usage, marker = {}, ""
     while True:
-        params = {"prefix": "", "max-keys": "1000"}
+        params = {"max-keys": "1000"}
         if marker:
             params["marker"] = marker
         _, _, body = cos.request("GET", policy["bucket"], "", params=params)
@@ -503,15 +507,20 @@ def run(policy, now, dry=False):
                 continue
             try:
                 if cat["action"] == "to-t1":
+                    budget -= facts["bytes"]
                     result = move_to_t1(cat, item_id, paths[0], facts, now)
                     (report["moved"] if result == "moved" else report["skipped"]).append("%s: %s" % (uid, result))
                 else:
                     key = object_key(policy, cat, item_id, now)
                     base = cat["root"]
-                    obj_bytes, etag = upload(policy, key, paths, base, throttle)
+                    budget -= facts["bytes"]  # counts even if verification below fails
+                    obj_bytes, nparts = upload(policy, key, paths, base, throttle)
                     h = head(policy, key)
-                    if int(h.get("content-length", -1)) != obj_bytes or h.get("etag", "").strip('"') != etag:
-                        raise RuntimeError("uploaded object does not match (size/etag)")
+                    etag = h.get("etag", "").strip('"')
+                    if int(h.get("content-length", -1)) != obj_bytes or \
+                            (nparts and not etag.endswith("-%d" % nparts)):
+                        raise RuntimeError("uploaded object does not match (size %s/%d, etag %s, parts %d)"
+                                           % (h.get("content-length"), obj_bytes, etag, nparts))
                     after = scan(paths, cat.get("age_by", "mtime+ctime"))
                     if after["newest"] != facts["newest"]:
                         raise RuntimeError("changed while uploading")
@@ -519,7 +528,6 @@ def run(policy, now, dry=False):
                                               "at": int(now), "objectBytes": obj_bytes, "etag": etag, **facts}
                     STATE.write_text(json.dumps(state))
                     report["uploaded"].append("%s %.1f MB -> %.1f MB" % (uid, facts["bytes"] / 1e6, obj_bytes / 1e6))
-                budget -= facts["bytes"]
             except Exception as e:
                 report["errors"].append("%s: %s" % (uid, e))
     if not dry:
