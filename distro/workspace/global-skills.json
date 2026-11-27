@@ -8,7 +8,6 @@
   { "skills": "makaron-music-library", "source": "npm makaron-music-library-cli@0.3.1 (skill shipped in the package; SKILL.md matches V by sha256)", "dir": "~/.openclaw/skills", "why": "Makaron 音乐库，和 V 一致；需要 MAKARON_API_KEY" },
   { "skills": "makaron-ad-creator", "source": "npm makaron-ad-creator-cli@0.6.7 (skill shipped in the package)", "dir": "~/.openclaw/skills", "why": "Makaron 广告创作，和 V 一致；没有 MAKARON_API_KEY 时如实说没开通" },
   { "skills": "makaron-persona-look", "source": "npm makaron-persona-look-cli@0.5.6 (skill at skills/makaron-persona-look in the package)", "dir": "~/.openclaw/skills", "why": "Makaron 人设形象，和 V 一致；同样需要 MAKARON_API_KEY" },
-  { "skills": "scene-cli", "source": "npm scene-cli@0.7.1, then `scene skill install --target ~/.openclaw/skills`", "why": "Scene 素材检索的官方 CLI skill；主人在 Scene 建个人 key（`scene auth set-key`）就能用，没有 key 时如实说没开通。V 的飞书搜索站部分不带", "dir": "~/.openclaw/skills" },
   { "skills": "frontend-design", "source": "github anthropics/skills @ 00756142ab04c82a447693cf373c4e0c554d1005, path skills/frontend-design", "dir": "~/.openclaw/skills/frontend-design", "why": "网页设计，Apache-2.0，和 V 一致" },
   { "skills": "frontend-slides", "source": "github zarazhangrui/frontend-slides @ 8dca834fc61abc9dd633cbe6a74ed7be3d82a608, root files: SKILL.md, STYLE_PRESETS.md, animation-patterns.md, html-template.md, viewport-base.css, scripts/, LICENSE (all six files V has match this commit)", "dir": "~/.openclaw/skills/frontend-slides", "why": "HTML 演示稿，MIT，和 V 一致" },
   { "skills": "remotion-best-practices", "source": "github remotion-dev/skills @ 277510e78245ac0fa275d7cb6520d52e0ac2e212, path skills/remotion (installed under the name remotion-best-practices)", "dir": "~/.openclaw/skills/remotion-best-practices", "why": "Remotion 视频写法。37/39 个文件与 V 相同；V 自己改过 rules/subtitles.md 和 rules/transcribe-captions.md（禁用本地 Whisper、改走 V 的火山 ASR），客户机没有那条服务，用上游原文。上游仓库没有许可证文件：安装器在客户机上从上游取，我们不转发文件" },
@@ -22,6 +21,7 @@
   { "skills": "v-browser-device, voice-cli, volcano-voice, large-file-transfer, universal-memory-contributor, social-search, video-analyze, video-review-analysis, report-web", "why": "依赖 V 自己的服务、主机或账号（V Browser、语音入口、跨境中转、Universal Memory、V 的报告站）" },
   { "skills": "elder-weekly-planner, product-weekly-planner, fluxedup-4090, ssh-4090, kdl-agent, taobao-flash-sale-kv, manju-*, aochuang-*, customer-health-score, b2b-tiktok-planning-doc, ecommerce-video, ai-jian-koubo, agent-to-agent-protocol", "why": "主人个人设备、公司内部团队流程或客户项目（agent-to-agent-protocol 由 payload 自带一份）" },
   { "skills": "image-generation, image-svg-pptx-pro, ppt-template-batch, explainer-video, unboxing-video, beautiful-feishu-whiteboard", "why": "V 自己的全局副本，从未进任何仓库；要带先进 v-core 并过脱敏（2026-11-27 仍未进）" },
-  { "skills": "pptx", "why": "anthropics/skills 的 pptx 不是开源许可（LICENSE.txt：按使用者与 Anthropic 的协议使用），不能随客户包分发；V 上的副本也只有 SKILL.md、缺脚本" }
+  { "skills": "pptx", "why": "anthropics/skills 的 pptx 不是开源许可（LICENSE.txt：按使用者与 Anthropic 的协议使用），不能随客户包分发；V 上的副本也只有 SKILL.md、缺脚本" },
+  { "skills": "scene-cli", "why": "不带 Scene（Tianyi 2026-11-28 定）" }
  ]
 }
