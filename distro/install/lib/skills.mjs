@@ -157,9 +157,15 @@ export function installSkills(o) {
       } catch (e) { for (const s of skills) failed[s.name] = `download ${k}: ${String(e.message ?? e).slice(0, 200)}`; continue; }
       for (const s of skills) {
         try {
+          // Only the listed files, each checked: upstream may carry more (README, plugin metadata).
           const src = s.path ? path.join(dir, safeRel(s.path)) : dir;
           const staging = path.join(tmp, `ghs-${safeName(s.name)}`);
-          fs.cpSync(src, staging, { recursive: true });
+          for (const f of Object.keys(s.files)) {
+            const from = path.join(src, safeRel(f));
+            if (!fs.existsSync(from) || fs.lstatSync(from).isSymbolicLink()) continue;
+            fs.mkdirSync(path.dirname(path.join(staging, f)), { recursive: true });
+            fs.copyFileSync(from, path.join(staging, f));
+          }
           const v = verifySkillDir(staging, s.files);
           if (!v.ok) throw new Error(`does not match the pinned files (missing ${v.missing.length}, extra ${v.extra.length}, changed ${v.changed.length})`);
           put(s.name, staging, `${repo}@${commit}${s.path ? `:${s.path}` : ''}`);

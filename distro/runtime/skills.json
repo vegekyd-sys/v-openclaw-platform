@@ -1,6 +1,6 @@
 {
  "schema": "v-distro-skills/1",
- "note": "Global skills V loads from outside its workspace (line B: distro/workspace/global-skills.json). Installed by `vctl install-skills` into ~/.openclaw/skills/<name> as the service user. GitHub skills are fetched on the customer machine at the pinned commit and checked file by file against these sha256s; nothing third-party is shipped in the package. pptx is not installed (its licence binds use to the user's agreement with Anthropic).",
+ "note": "Global skills V loads from outside its workspace (line B: distro/workspace/global-skills.json). Installed by `vctl install-skills` into ~/.openclaw/skills/<name> as the service user. GitHub skills are fetched on the customer machine at the pinned commit and only the listed files are taken, each checked against its sha256; nothing third-party is shipped in the package. pptx is not installed (its licence binds use to the user's agreement with Anthropic).",
  "target": ".openclaw/skills",
  "lark": {
   "tool": "lark-cli",
@@ -21,21 +21,21 @@
   {
    "name": "frontend-slides",
    "repo": "zarazhangrui/frontend-slides",
-   "commit": "fbf2c17fa4356e7802b055a3626c7dd6a5d509ea",
+   "commit": "8dca834fc61abc9dd633cbe6a74ed7be3d82a608",
    "path": "",
    "license": "MIT",
    "files": {
-    "LICENSE": "62928eb197fe4662d1efc3af0735b3ba5df3c0308badd9a2baf2b619009f5366",
-    "README.md": "9139ed31db2c6656e5a404edcd35b9eae15ddba997726f854dfc272cb6652bdc",
     "SKILL.md": "41fccbe44d4882f412e141028eb21395bb13327492a512abee6e55c672cb0c5a",
     "STYLE_PRESETS.md": "6dc14784dc7f59620a28e814ecbcaedcec387fac72db7cb81e623924cb5063f6",
     "animation-patterns.md": "1b7b7409893b68c09effb04f20a4603a5168e4956d76c3999c2ba8f86c4bbc8f",
-    "html-template.md": "cee304c9bdfaa25eb4a1b4953ac1b5de6fbf1f412b23528a8848f79c81746d05",
+    "html-template.md": "004d77d7631fd75ff1cac02f37777ec70fc9df692ba2caf8cb72857516ff2bb4",
     "viewport-base.css": "dab42c1a556a0fa51d3c39f7edfb93d8303e5c29625ade479a18ba97f2640734",
+    "scripts/extract-pptx.py": "4f5e7603c99b8b53e20c5b2a65abdf5edf9422b4c490dca9f2b872a752c17d2a",
     "scripts/deploy.sh": "74a1103519a61f90bf3912ee2eda81c77be0b944700d213e7fc08506bd8745f1",
     "scripts/export-pdf.sh": "16336202904f677bb988e784a3e1d5098ff09381733b63047c3a688d6a1989b4",
-    "scripts/extract-pptx.py": "4f5e7603c99b8b53e20c5b2a65abdf5edf9422b4c490dca9f2b872a752c17d2a"
-   }
+    "LICENSE": "62928eb197fe4662d1efc3af0735b3ba5df3c0308badd9a2baf2b619009f5366"
+   },
+   "note": "V's six files match this commit (2026-04-08, PR #48). LICENSE kept (MIT); README and plugin metadata left out."
   },
   {
    "name": "remotion-best-practices",
@@ -83,7 +83,8 @@
     "rules/assets/charts-bar-chart.tsx": "6e5e219c596c8515336570a5bc89c233e32e695d5816dec88eb929e798eeea61",
     "rules/assets/text-animations-typewriter.tsx": "92b5f47d6d18387a0aa008ce9dceefd30f673ae5879e16892bd4b4ea97f5dddb",
     "rules/assets/text-animations-word-highlight.tsx": "30e707bbc90e3734fcdb0f9e869bdb9fbbaf8ded1d923951d616f5ba402ce03d"
-   }
+   },
+   "note": "Upstream text. V edited rules/subtitles.md and rules/transcribe-captions.md to use its own Volcengine ASR service, which a customer machine does not have."
   },
   {
    "name": "hyperframes",
@@ -632,8 +633,8 @@
   }
  ],
  "differFromV": {
-  "frontend-slides": "V's copy (2026-05-22) predates this commit: html-template.md differs and V lacks LICENSE, README.md, scripts/deploy.sh, scripts/export-pdf.sh",
-  "remotion-best-practices": "rules/subtitles.md and rules/transcribe-captions.md differ from V's copy (2026-05-25)",
-  "frontend-design": "same SKILL.md as V; the commit also carries LICENSE.txt"
+  "remotion-best-practices": "rules/subtitles.md and rules/transcribe-captions.md: V's own edits for its Volcengine ASR; upstream text on customers",
+  "frontend-design": "same SKILL.md as V; LICENSE.txt added",
+  "makaron": "copied from makaron-cli@0.17.30 skills/makaron. `makaron install-skill` would pull unpinned packages through npx; V's copy is an older render"
  }
 }
