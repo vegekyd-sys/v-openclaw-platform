@@ -76,8 +76,8 @@ sudo v-distro-<ver>/install/install.sh --env-file ./v.env --probe
    - 云文档新增评论 `drive.notice.comment_add_v1`
    - 审批评论新增、删除 `approval.instance.comment.created_v4`、`approval.instance.comment.deleted_v4`
 3. **事件与回调 → 回调配置**：同样用长连接，订阅卡片回传交互 `card.action.trigger`。
-4. **权限管理 → 批量处理 → 批量导入/导出权限**：导入包里的 `install/feishu-app-scopes.json`，一次开通应用身份 170 项、用户身份 258 项。
-   这份清单是 V 自己的应用（V - Makaron）2026-11-27 导出的权限，再加上两种身份的 `bitable:app`、`sheets:spreadsheet`；用户身份覆盖了 V 本人授权过的全部 245 项（B 线的 `distro/workspace/feishu-user-scopes.txt`，`auth:user.id:read` 是在此基础上补的）。
+4. **权限管理 → 批量处理 → 批量导入/导出权限**：导入包里的 `install/feishu-app-scopes.json`，一次开通应用身份 170 项、用户身份 257 项。
+   这份清单是 V 自己的应用（V - Makaron）2026-11-27 导出的权限，再加上两种身份的 `bitable:app`、`sheets:spreadsheet`。用户身份覆盖了 V 本人授权过的 245 项（B 线的 `distro/workspace/feishu-user-scopes.txt`），只有 `auth:user.id:read` 不在里面：它是 OAuth 登录时默认附带的，后台批量导入不认它，放进去会让整份导入卡住。
    开齐之后，主人在上手引导里点一次授权，就能像 V 一样读写文档、日历、任务、多维表格和表格。应用上没有开通的权限，脚本不会去申请，也不会报错。
 5. **人事和薪酬类权限**（导入后会提示设置数据范围）：数据范围选「全部」。
 6. **版本管理与发布**：创建版本并发布（企业内部应用一般由管理员审核）。

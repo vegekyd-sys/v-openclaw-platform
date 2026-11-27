@@ -157,6 +157,9 @@ test('Feishu app scope import file: the console\'s batch-import format, both ide
   const bList = new URL('../../workspace/feishu-user-scopes.txt', import.meta.url);
   if (fs.existsSync(bList)) {
     const want = fs.readFileSync(bList, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
-    assert.deepEqual(want.filter((s) => !file.scopes.user.includes(s)), [], 'every user scope V was granted is in the import');
+    // auth:user.id:read comes with every OAuth login; the console refuses it in an import (the whole import then stalls).
+    const oauthDefault = ['auth:user.id:read'];
+    for (const s of oauthDefault) assert.ok(!file.scopes.user.includes(s), `${s} must not be in the import`);
+    assert.deepEqual(want.filter((s) => !file.scopes.user.includes(s) && !oauthDefault.includes(s)), [], 'every user scope V was granted is in the import');
   }
 });

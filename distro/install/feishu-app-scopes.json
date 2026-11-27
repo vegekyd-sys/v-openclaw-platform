@@ -181,7 +181,6 @@
       "approval:task:read",
       "approval:task:write",
       "attendance:task:readonly",
-      "auth:user.id:read",
       "base:app:copy",
       "base:app:create",
       "base:app:read",
