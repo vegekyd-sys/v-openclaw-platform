@@ -104,3 +104,20 @@ node --test distro/build/build.test.mjs distro/install/lib/release.test.mjs dist
 
 没覆盖到的：`V_MODEL_PRESET=deepseek` 下的 /vds（Codex harness，需要 DeepSeek key，codex 官方插件的覆盖路径因此没在真机上走过）；
 真实飞书收发；国内网络下的 `--registry`/`--node-mirror`；可选组件（desktop、vbrowser、voice）。
+
+### 测试机说明与「没有借用旧环境」的证明（2026-11-27 18:08 CST，版本 `2026.11.27-db91-lifecycle-proof.1`，提交 f5818332）
+
+测试机是**非全新系统**：腾讯云首尔轻量服务器「V from Versa」，Ubuntu 24.04.4 x86_64，4 核 8G。
+机器上原有的 OpenClaw 服务都已停用，没有删除，恢复步骤见机器上的 `/root/pre-distro-state/RESTORE.md`。
+安装器没有碰这些旧数据：`/root/.openclaw`、`/root/makaron-openclaw`、`/opt/vlab`、root 的 nvm（node v22.22.1）、
+`/home/ubuntu/.cache/ms-playwright`。
+
+- 发行包装的是**系统级** `/etc/systemd/system/openclaw-gateway.service`（User=openclaw）。root 下另有一个同名的**用户级**
+  unit（`/root/.config/systemd/user/openclaw-gateway.service`），处于 disabled 状态，与这个包无关；排查时看
+  `systemctl`，不要看 `systemctl --user`。
+- Gateway 进程 `/proc/<pid>/exe` 是 `/opt/v/node/v22.23.1/bin/node`（v22.23.1，安装器按 sha256 校验后下载的）；
+  openclaw 用户的全部 5 个 node 进程都是这一份。
+- 进程环境里的 PATH 是 `/opt/v/bin:/opt/v/node/current/bin:/home/openclaw/.local/bin:/home/openclaw/.npm-global/bin:/usr/local/bin:/usr/bin:/bin`，
+  不含 `.nvm`；`/usr/local/bin` 里也没有 node、npm 或 chromium；openclaw 用户读不了 `/root`；Gateway 没有打开任何 `/root` 下的文件。
+- 没有用机器上的 chromium 或 playwright：进程环境里没有相关变量，也没有起 chromium 进程。浏览器能力不在这次验收里。
+- 旧服务（openclaw-vlab-gateway、openclaw-dashboard、openclaw-memory-auto-index、nginx）仍是 inactive / disabled。
