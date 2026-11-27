@@ -8,7 +8,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { applyOverlay, replacePackage, verifyCapture, verifyPackage, linkNpmProjects, overlayStatePlugins, installRelease } from './release.mjs';
-import { splitEnv, schemaCompatible, fingerprintLoss } from './vctl.mjs';
+import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim } from './vctl.mjs';
+import { execFileSync } from 'node:child_process';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 
@@ -231,3 +232,18 @@ for (const [k, files] of Object.entries(lock.fake || {})) for (const [f, d] of O
 });
 
 function readJsonFile(f) { return JSON.parse(fs.readFileSync(f, 'utf8')); }
+
+test('tool shims: lark-cli gets LARKSUITE_CLI_* from the FEISHU_* install env, values already set win; the agent has an openclaw CLI', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'v-distro-shim-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const fake = path.join(dir, 'real-lark');
+  fs.writeFileSync(fake, '#!/bin/sh\necho "$LARKSUITE_CLI_APP_ID|$LARKSUITE_CLI_APP_SECRET|$LARKSUITE_CLI_CONFIG_DIR|$*"\n', { mode: 0o755 });
+  const tools = JSON.parse(fs.readFileSync(new URL('../../runtime/tools.json', import.meta.url), 'utf8'));
+  const shim = path.join(dir, 'lark-cli');
+  fs.writeFileSync(shim, toolShim(fake, tools.npm['lark-cli'].env), { mode: 0o755 });
+  const run = (env) => execFileSync(shim, ['im', '+x'], { env: { PATH: '/usr/bin:/bin', HOME: '/home/openclaw', ...env } }).toString().trim();
+  assert.equal(run({ FEISHU_APP_ID: 'app', FEISHU_APP_SECRET: 's' }), 'app|s|/home/openclaw/.lark-cli|im +x');
+  assert.equal(run({ FEISHU_APP_ID: 'app', LARKSUITE_CLI_APP_ID: 'own' }), 'own||/home/openclaw/.lark-cli|im +x');
+  assert.throws(() => toolShim(fake, { 'bad name': 'x' }), /bad env name/);
+  assert.match(openclawShim('/opt/v'), /exec '\/opt\/v\/node\/current\/bin\/node' '\/opt\/v\/current\/core\/dist\/index.js' "\$@"/);
+});

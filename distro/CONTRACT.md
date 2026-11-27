@@ -94,6 +94,8 @@ v-distro-<version>.tgz              解开后是一个目录 v-distro-<version>/
 ```
 /opt/v/node/v<node>/                    Node（tools.json 校验过的官方包）
 /opt/v/tools/<name>-<version>/          codex、makaron-cli、lark-cli（各自 npm ci 自己的锁）
+/opt/v/bin/                             服务 PATH 第一项：codex、makaron（链接）；lark-cli（小脚本：没设 LARKSUITE_CLI_* 时取 FEISHU_APP_ID/SECRET，配置目录 ~/.lark-cli）；
+                                        openclaw（当前版本的 OpenClaw CLI，agent 的 exec 用它，B 线的 v-schedule.py 靠它建定时任务）
 /opt/v/releases/<version>/              解开的包 + 装好的依赖，root 所有，服务只读
     core/                               openclaw@<upstream> 包本身（依赖在 core/node_modules，与 V 同布局），dist 上叠覆盖层
     npm/projects/<V 的项目名>/...        V 的 core 按相对路径引用的插件（符号链接到 plugins/ 下）
@@ -168,3 +170,4 @@ Gateway 只绑回环，其余（模型、Worker、记忆、harness）与 standal
 - 2026-11-27 18:40 加 `runtime/core-ai/`（V 改过的 4 个 `@openclaw/ai` 文件，来源 `distro/runtime/overlays/`）；sandbox profile 禁用 `message`。
 - 2026-11-27 20:20 `workspace/` 只取 `distro/workspace/payload/**`（B 线接口），`render.mjs` 作为 `runtime/workspace-render.mjs` 一起打包、种工作区时渲染占位符；
   manifest 记 `vCoreCommit`；sandbox profile 加 `gateway.reload.mode: off`；去掉了没实现的 `v-ctl workspace-diff`。
+- 2026-11-27 23:10 `/opt/v/bin` 加 `openclaw` CLI 和 lark-cli 的环境变量映射（B 线工作区要求）。

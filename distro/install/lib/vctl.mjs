@@ -56,6 +56,20 @@ function run(cmd, args, opts = {}) {
 
 const SECRET_KEY = /(_KEY|_SECRET|_TOKEN|_PASSWORD)$/;
 
+// A tool that wants env the installer has under another name (lark-cli reads LARKSUITE_CLI_*,
+// the install has FEISHU_*) gets a shim instead of a symlink; values the caller set win.
+export function toolShim(bin, env) {
+  const lines = Object.entries(env).map(([k, v]) => {
+    if (!/^[A-Z_][A-Z0-9_]*$/.test(k)) throw new Error(`bad env name ${k}`);
+    return `export ${k}="\${${k}:-${v}}"`;
+  });
+  return `#!/bin/sh\n# v-distro shim: fills the tool's own env names from the install's, then runs it.\n${lines.join('\n')}\nexec '${bin}' "$@"\n`;
+}
+
+export function openclawShim(prefix) {
+  return `#!/bin/sh\n# v-distro: the current release's OpenClaw CLI, for the service user and its agent.\nexec '${prefix}/node/current/bin/node' '${prefix}/current/core/dist/index.js' "$@"\n`;
+}
+
 export function splitEnv(text) {
   const install = [];
   const secrets = [];
@@ -145,8 +159,12 @@ function cmdInstallRelease(pkgDir, opts) {
     const t = readJson(path.join(dest, 'runtime/tools.json')).npm[name];
     const link = path.join(P.bin, t.bin);
     fs.rmSync(link, { force: true });
-    fs.symlinkSync(bin, link);
+    if (t.env) fs.writeFileSync(link, toolShim(bin, t.env), { mode: 0o755 });
+    else fs.symlinkSync(bin, link);
   }
+  // The agent's exec needs the OpenClaw CLI too (line B's v-schedule.py registers cron jobs with it).
+  fs.rmSync(path.join(P.bin, 'openclaw'), { force: true });
+  fs.writeFileSync(path.join(P.bin, 'openclaw'), openclawShim(P.prefix), { mode: 0o755 });
   fs.writeFileSync(path.join(dest, '.tools.json'), `${JSON.stringify(tools, null, 2)}\n`);
   run('chmod', ['-R', 'go-w', dest]);
   out({ step: 'install-release', version: manifest.version, release: manifest.release, dir: dest, components: Object.keys(record.components), tools: Object.keys(tools) });
