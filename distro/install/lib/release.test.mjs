@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { applyOverlay, replacePackage, verifyCapture, verifyPackage, linkNpmProjects, overlayStatePlugins, installRelease } from './release.mjs';
-import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, keyAliases } from './vctl.mjs';
+import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, keyAliases, memoryNeedsRebuild, parseCliJson } from './vctl.mjs';
 import { execFileSync } from 'node:child_process';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
@@ -314,4 +314,14 @@ test('key aliases: one Apify name set gives the other; both or neither set, noth
   assert.deepEqual(keyAliases({ APIFY_API_KEY: 'k' }), { APIFY_TOKEN: 'k' });
   assert.deepEqual(keyAliases({ APIFY_API_KEY: 'k', APIFY_TOKEN: 't' }), {});
   assert.deepEqual(keyAliases({}), {});
+});
+
+test('memory-check: an index built for another embedding model, an incomplete vector index or a dirty one is rebuilt', () => {
+  const agent = (custom, vector, dirty = false) => ({ agentId: 'makaron', status: { dirty, vector, custom } });
+  assert.deepEqual(memoryNeedsRebuild([agent({ indexIdentity: { status: 'valid' } }, { enabled: true, index: { state: 'complete' } })]), []);
+  assert.equal(memoryNeedsRebuild([agent({ indexIdentity: { status: 'mismatch' } }, { enabled: true, index: { state: 'complete' } })]).length, 1, 'fts-only index, gemini configured');
+  assert.equal(memoryNeedsRebuild([agent({ indexIdentity: { status: 'valid' } }, { enabled: true, index: { state: 'missing' } })]).length, 1);
+  assert.equal(memoryNeedsRebuild([agent({ indexIdentity: { status: 'valid' } }, { enabled: false }, true)]).length, 1, 'dirty');
+  assert.deepEqual(memoryNeedsRebuild([agent({ indexIdentity: { status: 'valid' } }, { enabled: false })]), [], 'keyword-only memory without vectors is fine');
+  assert.deepEqual(parseCliJson('(node) ExperimentalWarning\n[memory-preparation] {"pid":1}\n[{"agentId":"makaron"}]\n'), [{ agentId: 'makaron' }]);
 });
