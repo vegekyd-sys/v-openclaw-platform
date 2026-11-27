@@ -15,6 +15,7 @@
 | `render.mjs` | 装机时替换占位符（无依赖，可单独打进安装器） |
 | `lib.mjs` | 共享规则：清单、脱敏、泄漏扫描、占位符 |
 | `global-skills.json` | V 从工作区外加载的第三方 skill 包：装哪些、不装哪些 |
+| `feishu-user-scopes.txt` | V 自己的账号授权过的飞书用户权限（建机器人应用时照着开） |
 | `tests/` | `node --test distro/workspace/tests/*.test.mjs` |
 
 ## 装机接口（给 A 线和 C 线）
@@ -33,9 +34,8 @@
    `node render.mjs --dir <ws> --set WORKSPACE=… --set AGENT_ID=… --set STATE_DIR=… --set TIMEZONE=…`，或 `import { render } from "./render.mjs"`。
 3. 运行环境要求：
    - 飞书：机器人自己的企业应用交给 lark-cli，环境变量 `LARKSUITE_CLI_APP_ID`、`LARKSUITE_CLI_APP_SECRET`、`LARKSUITE_CLI_CONFIG_DIR`（工作区之外，服务用户可写）。
-     应用要开通的用户身份权限：读 `wiki:space:retrieve`、`wiki:node:retrieve`、`docx:document:readonly`、`docs:document.content:read`、`drive:drive.metadata:readonly`、
-     `space:document:retrieve`、`wiki:wiki:readonly`；写 `docx:document`、`calendar:calendar`、`task:task:write`、`task:tasklist:write`、`bitable:app`、
-     `sheets:spreadsheet`、`drive:drive`、`wiki:node:create`（`scripts/feishu-docs.py` 的 `REQUIRED_SCOPES` / `OPTIONAL_SCOPES`）。
+     应用要开通的用户身份权限：至少读文档的几项（`scripts/feishu-docs.py` 的 `REQUIRED_SCOPES`）；要「写飞书和 V 一样」，按 `feishu-user-scopes.txt`
+     （V 自己的账号实际授权的 245 项用户权限）开通。上手引导的一次登录会申请应用上已开通的全部用户权限，没开通的不申请也不报错。
    - 原生 cron 开着，agent 的 exec 能跑 `openclaw` CLI（`scripts/v-schedule.py` 用它登记定时任务）。主人的 open_id 装机时不知道：上手引导第 0 步从第一条可信私聊记下，
      最后一步 `v-schedule.py install` 按 `payload/schedules.json` 建任务，投递到主人私聊。沙盒（C 线）不开原生 cron 时，由 Portal 按同一份 `schedules.json` 调度。
    - 全局 skill 按 `global-skills.json` 的 `install` 装（至少 `lark-*`）。
