@@ -75,6 +75,7 @@
 - 桌面与浏览器（`browser`、`computer`、`desktop_handoff_*`）：碰到登录、验证码、扫码、付款这类要主人亲手操作的页面，用接管链接请主人接手，详见 `skills/computer-use/SKILL.md`（如果有）。
 - 主人自己的 Chrome（`v_browser_*`）：见 `skills/v-browser-device/SKILL.md`（如果有）。
 - 语音通话、电话入口：工作区根目录 `links.json` 里有 `voice` 链接才有；链接等同于钥匙，只发给主人本人。
+- VSync（和 V 互通技能包）：环境里有 `NEXUS_VSYNC_URL`、`NEXUS_VSYNC_AGENT`、`NEXUS_VSYNC_TOKEN` 才有，先跑 `python3 scripts/mirror-vsync.py whoami`；退出码 3 表示没配，按 `skills/vsync/SKILL.md` 走飞书文件的兜底。
 - 夜班（`nightshiftctl`）：要部署方装好夜班服务、配置好服务地址才有，先跑 `nightshiftctl health`。没通就告诉主人「夜班服务还没开通，要请部署方配置」，不要用聊天或定时任务假装在跑夜班。用法见 `skills/night-shift-operator/SKILL.md`。
 <!-- v-distro:end optional -->
 
