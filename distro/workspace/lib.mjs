@@ -106,7 +106,7 @@ export const DENY = [
   ["owner name", /\bTianyi\b|天翊|天懿|tianyicai/i],
   ["owner family", /Hsingyi|馨仪/],
   ["V private domain", /tianyi\.live|versa-ai\.|vegekyd|agentmail\.to/i],
-  ["tailnet host", /\b[a-z0-9-]+\.(tail[0-9a-f]+|ts)\.net\b/],
+  ["tailnet host", /(?<![a-z0-9-])[a-z0-9-]{1,63}\.(?:tail[0-9a-f]+|ts)\.net\b/],
   ["API key shape", /\b(sk-[A-Za-z0-9_-]{20,}|apify_api_[A-Za-z0-9]{10,}|ghp_[A-Za-z0-9]{20,}|xox[bp]-[A-Za-z0-9-]{10,}|AKID[A-Za-z0-9]{16,})/],
   ["mainland mobile number", /(?<![0-9])1[3-9][0-9]{9}(?![0-9])/],
   ["V business customer", /星擎|奥创|米奥|DealClaw|dealclaw|GeeLark|geelark|FCloud|fcloud/],
