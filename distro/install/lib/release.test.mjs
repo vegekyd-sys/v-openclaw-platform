@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { applyOverlay, replacePackage, verifyCapture, verifyPackage, linkNpmProjects, overlayStatePlugins, installRelease } from './release.mjs';
-import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, keyAliases, memoryNeedsRebuild, parseCliJson } from './vctl.mjs';
+import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, keyAliases, memoryNeedsRebuild, parseCliJson, larkInitNeeded } from './vctl.mjs';
 import { execFileSync } from 'node:child_process';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
@@ -324,4 +324,13 @@ test('memory-check: an index built for another embedding model, an incomplete ve
   assert.equal(memoryNeedsRebuild([agent({ indexIdentity: { status: 'valid' } }, { enabled: false }, true)]).length, 1, 'dirty');
   assert.deepEqual(memoryNeedsRebuild([agent({ indexIdentity: { status: 'valid' } }, { enabled: false })]), [], 'keyword-only memory without vectors is fine');
   assert.deepEqual(parseCliJson('(node) ExperimentalWarning\n[memory-preparation] {"pid":1}\n[{"agentId":"makaron"}]\n'), [{ agentId: 'makaron' }]);
+});
+
+test('lark-cli config init runs only when there is no config or it names another app: it would drop the owner\'s login', () => {
+  const withOwner = JSON.stringify({ apps: [{ appId: 'cli_a', appSecret: { source: 'file', id: 'x' }, brand: 'feishu', users: [{ openId: 'ou_owner' }] }] });
+  assert.deepEqual(larkInitNeeded(withOwner, 'cli_a'), { init: false, reason: 'same app already configured', users: 1 });
+  assert.equal(larkInitNeeded(withOwner, 'cli_b').init, true, 'another app: its login would not work for this one');
+  assert.equal(larkInitNeeded(null, 'cli_a').init, true);
+  assert.equal(larkInitNeeded('{broken', 'cli_a').init, true);
+  assert.equal(larkInitNeeded(JSON.stringify({ appId: 'cli_a' }), 'cli_a').init, false, 'older flat layout');
 });
