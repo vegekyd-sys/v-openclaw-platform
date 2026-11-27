@@ -1,0 +1,25 @@
+# V's host display for desktop takeover and computer use: loopback TigerVNC + XFCE on :99.
+# Xtigervnc is itself the X server, so a headless machine needs no Xvfb or GPU.
+# Installed only with V_DESKTOP=1 (v-distro).
+[Unit]
+Description=V host desktop: loopback TigerVNC + XFCE on :99 (v-distro)
+After=network.target
+Before=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+Environment=HOME=@HOME@
+Environment=DESKTOP_STATE_DIR=@HOME@/.openclaw/desktop
+Environment=DESKTOP_DISPLAY=99
+Environment=DESKTOP_RFB_PORT=5900
+Environment=DESKTOP_GEOMETRY=1280x800
+ExecStart=@PREFIX@/current/optional/desktop/desktop/start-desktop.sh
+KillMode=control-group
+Restart=on-failure
+RestartSec=5
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

@@ -16,6 +16,9 @@
 //   vctl.mjs overlay-plugins [--restart]                  V's bytes over OpenClaw-installed official plugins
 //   vctl.mjs status
 //   vctl.mjs fingerprint <out.json> | fingerprint --compare <before.json>   workspace + databases kept?
+//   vctl.mjs desktop-pair [--deadline-ms N]                 approve the host cua node (V_DESKTOP=1)
+//   vctl.mjs desktop-services                               (re)start the desktop units on the current release, then pair
+//   vctl.mjs vsync-env <issued.env>                         -> /etc/v/vsync.env (the Portal-issued VSync identity)
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -56,14 +59,14 @@ function run(cmd, args, opts = {}) {
 
 const SECRET_KEY = /(_KEY|_SECRET|_TOKEN|_PASSWORD)$/;
 
-// A tool that wants env the installer has under another name (lark-cli reads LARKSUITE_CLI_*,
-// the install has FEISHU_*) gets a shim instead of a symlink; values the caller set win.
+// A tool that needs env of its own (lark-cli's config dir) gets a shim instead of a
+// symlink; values the caller set win.
 export function toolShim(bin, env) {
   const lines = Object.entries(env).map(([k, v]) => {
     if (!/^[A-Z_][A-Z0-9_]*$/.test(k)) throw new Error(`bad env name ${k}`);
     return `export ${k}="\${${k}:-${v}}"`;
   });
-  return `#!/bin/sh\n# v-distro shim: fills the tool's own env names from the install's, then runs it.\n${lines.join('\n')}\nexec '${bin}' "$@"\n`;
+  return `#!/bin/sh\n# v-distro shim: sets the tool's own env, then runs it.\n${lines.join('\n')}\nexec '${bin}' "$@"\n`;
 }
 
 export function openclawShim(prefix) {
@@ -162,12 +165,157 @@ function cmdInstallRelease(pkgDir, opts) {
     if (t.env) fs.writeFileSync(link, toolShim(bin, t.env), { mode: 0o755 });
     else fs.symlinkSync(bin, link);
   }
+  placeDesktopPlugin(dest);
   // The agent's exec needs the OpenClaw CLI too (line B's v-schedule.py registers cron jobs with it).
   fs.rmSync(path.join(P.bin, 'openclaw'), { force: true });
   fs.writeFileSync(path.join(P.bin, 'openclaw'), openclawShim(P.prefix), { mode: 0o755 });
   fs.writeFileSync(path.join(dest, '.tools.json'), `${JSON.stringify(tools, null, 2)}\n`);
   run('chmod', ['-R', 'go-w', dest]);
   out({ step: 'install-release', version: manifest.version, release: manifest.release, dir: dest, components: Object.keys(record.components), tools: Object.keys(tools) });
+}
+
+// The desktop plugin loads by path from the release (like the Worker plugin) and imports
+// typebox from the runtime it runs in, as on V; nothing is vendored.
+function placeDesktopPlugin(dest) {
+  const src = path.join(dest, 'optional', 'desktop', 'plugin');
+  if (!fs.existsSync(src)) return;
+  const target = path.join(dest, 'plugins', 'desktop-handoff');
+  fs.rmSync(target, { recursive: true, force: true });
+  copyTree(src, target);
+  const typebox = path.join(dest, 'core', 'node_modules', 'typebox');
+  if (!fs.existsSync(typebox)) throw new Error(`desktop plugin: ${typebox} missing in the runtime`);
+  fs.mkdirSync(path.join(target, 'node_modules'), { recursive: true });
+  fs.symlinkSync(typebox, path.join(target, 'node_modules', 'typebox'));
+}
+
+export const DESKTOP_UNITS = ['openclaw-desktop.service', 'v-desktop-handoff.service', 'openclaw-cua-node.service'];
+export const desktopEnabled = (env) => env.V_DESKTOP === '1';
+
+/** The share-link service's config (V's /etc/v-desktop-handoff/config.json for one owner's machine). */
+export function desktopHandoffConfig({ etc, home, origin }) {
+  if (origin && !/^https?:\/\/[^\s/]+$/.test(origin)) throw new Error('V_PUBLIC_ORIGIN must be an origin like https://v.example.com (no path)');
+  return {
+    // Public and admin ports share this bind, so it stays loopback; a reverse proxy or tunnel
+    // that forwards /desktop-handoff to 127.0.0.1:23950 makes links reachable at V_PUBLIC_ORIGIN.
+    bind: '127.0.0.1', publicPort: 23950, adminPort: 23951,
+    publicBaseUrl: origin || 'http://127.0.0.1:23950',
+    pathPrefix: '/desktop-handoff', novncDir: '/usr/share/novnc', stateDir: '/var/lib/v-desktop-handoff',
+    adminTokenFile: path.join(etc, 'desktop-handoff', 'admin-token'),
+    title: 'V 的桌面', serverSideCursor: true,
+    vnc: { host: '::1', port: 5900, passwordFile: path.join(home, '.openclaw', 'desktop', 'vnc-password.txt') },
+    limits: { claimTtlMs: 600000, sessionTtlMs: 1800000, idleControlMs: 300000, maxViewers: 3, maxClaims: 5 },
+  };
+}
+
+/** The host node's own config: a remote-mode client of the local Gateway with cua-computer on. */
+export function cuaNodeConfig(port) {
+  return {
+    gateway: { mode: 'remote', remote: { transport: 'direct', url: `ws://127.0.0.1:${port}`, token: '${OPENCLAW_GATEWAY_TOKEN}' } },
+    browser: { enabled: false },
+    nodeHost: { browserProxy: { enabled: false } },
+    plugins: { entries: { 'cua-computer': { enabled: true } } },
+  };
+}
+
+function configureDesktop(env) {
+  if (!desktopEnabled(env)) return false;
+  const etc = path.join(P.etc, 'desktop-handoff');
+  fs.mkdirSync(etc, { recursive: true });
+  run('chown', [`root:${P.user}`, etc]);
+  fs.chmodSync(etc, 0o750);
+  const token = path.join(etc, 'admin-token');
+  if (!fs.existsSync(token) || !fs.readFileSync(token, 'utf8').trim()) fs.writeFileSync(token, `${crypto.randomBytes(32).toString('base64url')}\n`);
+  const cfgFile = path.join(etc, 'config.json');
+  fs.writeFileSync(cfgFile, `${JSON.stringify(desktopHandoffConfig({ etc: P.etc, home: P.home, origin: env.V_PUBLIC_ORIGIN }), null, 2)}\n`);
+  for (const f of [token, cfgFile]) { run('chown', [`root:${P.user}`, f]); fs.chmodSync(f, 0o640); }
+  for (const d of ['/var/lib/v-desktop-handoff', path.join(P.state, 'desktop'), path.join(P.state, 'node-cua', 'state')]) {
+    fs.mkdirSync(d, { recursive: true });
+    run('chown', ['-R', `${P.user}:${P.user}`, d]);
+    fs.chmodSync(d, 0o700);
+  }
+  const nodeCfg = path.join(P.state, 'node-cua', 'openclaw.json');
+  fs.writeFileSync(nodeCfg, `${JSON.stringify(cuaNodeConfig(gatewayPort()), null, 2)}\n`, { mode: 0o600 });
+  run('chown', [`${P.user}:${P.user}`, nodeCfg, path.join(P.state, 'node-cua')]);
+  // A non-root X server cannot create the socket directory itself.
+  fs.writeFileSync('/etc/tmpfiles.d/v-x11-unix.conf', 'd /tmp/.X11-unix 1777 root root 10d\n');
+  if (!process.env.V_NO_SYSTEMCTL) run('systemd-tmpfiles', ['--create', '/etc/tmpfiles.d/v-x11-unix.conf']);
+  return true;
+}
+
+// The OpenClaw CLI as the service user with the service environment (same path as `v-ctl openclaw`).
+function openclawCli(args) {
+  const r = spawnSync('python3', [path.join(P.current, 'runtime', 'ops', 'v-memory-indexer-run.py'), '--cli', ...args], { encoding: 'utf8', timeout: 60000 });
+  if (r.status !== 0) throw new Error(`openclaw ${args.slice(0, 2).join(' ')} failed (${r.status}): ${(r.stderr || r.stdout || '').trim().slice(-300)}`);
+  const text = r.stdout.slice(r.stdout.search(/[[{]/));
+  return JSON.parse(text);
+}
+
+export const CUA_NODE_NAME = 'V host desktop';
+const isCuaNode = (e) => [e.displayName, e.clientDisplayName, e.name, e.label].some((v) => v === CUA_NODE_NAME);
+const requestIdOf = (e) => e.requestId ?? e.id ?? e.request?.id;
+
+/** Pick the pending requests that belong to this host's cua node and nothing else. */
+export function cuaPendingRequests(list) {
+  const pending = Array.isArray(list) ? list : (list?.pending ?? []);
+  return pending.filter(isCuaNode).map(requestIdOf).filter(Boolean);
+}
+
+// The host node pairs twice: as a device, then as a node. Approve only requests that carry
+// its display name, until the Gateway lists it connected.
+async function cmdDesktopPair(opts) {
+  if (!desktopEnabled(allEnv())) { out({ step: 'desktop-pair', skipped: 'V_DESKTOP is not 1' }); return; }
+  const deadline = Date.now() + Number(opts['deadline-ms'] || 120000);
+  const approved = [];
+  for (;;) {
+    for (const id of cuaPendingRequests(openclawCli(['devices', 'list', '--json']))) { openclawCli(['devices', 'approve', id, '--json']); approved.push(`device:${id}`); }
+    for (const id of cuaPendingRequests(openclawCli(['nodes', 'pending', '--json']))) { openclawCli(['nodes', 'approve', id, '--json']); approved.push(`node:${id}`); }
+    const nodes = openclawCli(['nodes', 'status', '--json']);
+    const list = Array.isArray(nodes) ? nodes : (nodes.nodes ?? nodes.paired ?? []);
+    const mine = list.find(isCuaNode);
+    if (mine && (mine.connected ?? mine.online ?? mine.status === 'connected')) { out({ step: 'desktop-pair', ok: true, approved, node: mine.nodeId ?? mine.id ?? null }); return; }
+    if (Date.now() > deadline) throw new Error(`desktop-pair: the "${CUA_NODE_NAME}" node is not connected after approving [${approved.join(', ')}]; see journalctl -u openclaw-cua-node`);
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+}
+
+// After a switch the share-link service and the host node must run the new release's code;
+// the display itself keeps running (it holds no release code beyond its start script).
+async function cmdDesktopServices(opts) {
+  if (!desktopEnabled(allEnv())) { out({ step: 'desktop-services', skipped: 'V_DESKTOP is not 1' }); return; }
+  run('systemctl', ['enable', '--now', 'openclaw-desktop.service']);
+  run('systemctl', ['enable', 'v-desktop-handoff.service', 'openclaw-cua-node.service']);
+  run('systemctl', ['restart', 'v-desktop-handoff.service', 'openclaw-cua-node.service']);
+  await cmdDesktopPair(opts);
+}
+
+// VSync identity issued by the Portal (scripts/vsync-token.ts): exactly these three keys,
+// delivered out of band. Values are checked for shape and never printed.
+export const VSYNC_KEYS = ['NEXUS_VSYNC_URL', 'NEXUS_VSYNC_AGENT', 'NEXUS_VSYNC_TOKEN'];
+export function parseVsyncEnv(text) {
+  const env = {};
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim().replace(/^export\s+/, '');
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    const key = eq > 0 ? line.slice(0, eq).trim() : line;
+    if (!VSYNC_KEYS.includes(key)) throw new Error(`vsync env: unexpected key ${key.slice(0, 40)}`);
+    env[key] = line.slice(eq + 1).trim().replace(/^(['"])(.*)\1$/, '$2');
+  }
+  const missing = VSYNC_KEYS.filter((k) => !env[k]);
+  if (missing.length) throw new Error(`vsync env: missing ${missing.join(', ')}`);
+  if (!/^https:\/\/[^\s]+$/.test(env.NEXUS_VSYNC_URL)) throw new Error('vsync env: NEXUS_VSYNC_URL must be https');
+  if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(env.NEXUS_VSYNC_AGENT)) throw new Error('vsync env: NEXUS_VSYNC_AGENT must be lowercase letters, digits and dashes');
+  if (/\s/.test(env.NEXUS_VSYNC_TOKEN) || env.NEXUS_VSYNC_TOKEN.length < 16) throw new Error('vsync env: NEXUS_VSYNC_TOKEN looks wrong');
+  return env;
+}
+
+function cmdVsyncEnv(input) {
+  const env = parseVsyncEnv(fs.readFileSync(input, 'utf8'));
+  fs.mkdirSync(P.etc, { recursive: true, mode: 0o755 });
+  const file = path.join(P.etc, 'vsync.env');
+  fs.writeFileSync(file, `# VSync identity issued by the Portal for this machine (v-distro). Revoke it on the Portal.\n${VSYNC_KEYS.map((k) => `${k}=${env[k]}`).join('\n')}\n`, { mode: 0o600 });
+  fs.chmodSync(file, 0o600);
+  out({ step: 'vsync-env', file, agent: env.NEXUS_VSYNC_AGENT, url: env.NEXUS_VSYNC_URL });
 }
 
 function readLink(link) {
@@ -220,7 +368,28 @@ async function cmdConfigure(opts) {
   chownState();
   run('chown', [`${P.user}:${P.user}`, path.join(P.home, '.npmrc')]);
   run('chown', ['-R', `${P.user}:${P.user}`, path.join(P.home, '.npm-global')]);
-  out({ step: 'configure', profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, primary: cfg.agents.defaults.model.primary });
+  const lark = configureLarkCli(env, tools['lark-cli']);
+  const desktop = configureDesktop(env);
+  out({ step: 'configure', profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, larkCli: lark, desktop, audio: !!cfg.tools.media, primary: cfg.agents.defaults.model.primary });
+}
+
+// lark-cli talks to Feishu as the same app as the channel (line B's skills and scripts use it).
+// Its env credentials never yield a tenant token, so write its own config as V does:
+// ~/.lark-cli/<profile>/config.json, the secret on stdin, never on the command line.
+export function larkCliInitArgs(appId, domain) {
+  if (!/^cli_[A-Za-z0-9]+$/.test(appId)) throw new Error(`FEISHU_APP_ID ${appId} is not a cli_ app id`);
+  return ['config', 'init', '--app-id', appId, '--app-secret-stdin', '--brand', domain === 'lark' ? 'lark' : 'feishu', '--force-init'];
+}
+
+function configureLarkCli(env, bin) {
+  if (!env.FEISHU_APP_ID || !env.FEISHU_APP_SECRET) return 'no-feishu';
+  if (!bin || !fs.existsSync(bin)) return 'not-installed';
+  const dir = path.join(P.home, '.lark-cli');
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  run('chown', [`${P.user}:${P.user}`, dir]);
+  run('runuser', ['-u', P.user, '--', 'env', `HOME=${P.home}`, `LARKSUITE_CLI_CONFIG_DIR=${dir}`, `OPENCLAW_HOME=${P.home}`,
+    'LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1', bin, ...larkCliInitArgs(env.FEISHU_APP_ID, env.FEISHU_DOMAIN)], { input: env.FEISHU_APP_SECRET, stdio: ['pipe', 'pipe', 'pipe'] });
+  return 'configured';
 }
 
 async function cmdSeedWorkspace() {
@@ -281,8 +450,27 @@ function cmdUnits() {
     fs.writeFileSync(path.join(P.units, name), text, { mode: 0o644 });
     written.push(name);
   }
+  // Desktop units and the Gateway's DISPLAY drop-in exist only while V_DESKTOP=1.
+  const dropIn = path.join(P.units, 'openclaw-gateway.service.d', 'v-desktop.conf');
+  const desktop = desktopEnabled(allEnv());
+  const desktopTpl = path.join(tpl, 'desktop');
+  if (desktop && fs.existsSync(desktopTpl)) {
+    for (const name of DESKTOP_UNITS) {
+      let text = fs.readFileSync(path.join(desktopTpl, name), 'utf8');
+      for (const [k, v] of Object.entries(vars)) text = text.split(k).join(v);
+      if (/@[A-Z_]+@/.test(text)) throw new Error(`unfilled placeholder in ${name}`);
+      fs.writeFileSync(path.join(P.units, name), text, { mode: 0o644 });
+      written.push(name);
+    }
+    fs.mkdirSync(path.dirname(dropIn), { recursive: true });
+    fs.copyFileSync(path.join(desktopTpl, 'gateway-desktop.conf'), dropIn);
+    written.push('openclaw-gateway.service.d/v-desktop.conf');
+  } else {
+    fs.rmSync(dropIn, { force: true });
+    if (!process.env.V_NO_SYSTEMCTL) for (const name of DESKTOP_UNITS) spawnSync('systemctl', ['disable', '--now', name], { stdio: 'ignore' });
+  }
   if (!process.env.V_NO_SYSTEMCTL) run('systemctl', ['daemon-reload']);
-  out({ step: 'units', written, heapMb: vars['@HEAP_MB@'] });
+  out({ step: 'units', written, desktop, heapMb: vars['@HEAP_MB@'] });
 }
 
 function gatewayOpts() {
@@ -461,6 +649,9 @@ async function main() {
     case 'overlay-plugins': await cmdOverlayPlugins(opts); break;
     case 'fingerprint': cmdFingerprint(opts._[0], opts); break;
     case 'rollback-check': cmdRollbackCheck(); break;
+    case 'desktop-pair': await cmdDesktopPair(opts); break;
+    case 'vsync-env': cmdVsyncEnv(opts._[0]); break;
+    case 'desktop-services': await cmdDesktopServices(opts); break;
     default: throw new Error(`unknown command ${cmd ?? ''}; see the header of ${path.relative(process.cwd(), fileURLToPath(import.meta.url))}`);
   }
 }

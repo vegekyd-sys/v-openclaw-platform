@@ -1,0 +1,30 @@
+# A second OpenClaw node on this host, bound to the host display, so the `computer`
+# tool drives a real mouse and keyboard there (cua-computer). Same dist as the Gateway:
+# the computer-use execution lock and idle release run inside this process.
+# Pairing is approved once by `v-ctl desktop-pair`. Installed only with V_DESKTOP=1.
+[Unit]
+Description=V host node for computer use on :99 (v-distro)
+After=network.target openclaw-desktop.service openclaw-gateway.service
+Wants=openclaw-desktop.service
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+Environment=HOME=@HOME@
+Environment=DISPLAY=:99
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/.v-desktop-99/bus
+Environment=XDG_RUNTIME_DIR=/tmp/.v-desktop-99/runtime
+Environment=TMPDIR=/tmp
+Environment=OPENCLAW_CONFIG_PATH=@HOME@/.openclaw/node-cua/openclaw.json
+Environment=OPENCLAW_STATE_DIR=@HOME@/.openclaw/node-cua/state
+Environment=PATH=@PREFIX@/bin:@PREFIX@/node/current/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=@ETC@/secrets.env
+WorkingDirectory=@HOME@/.openclaw/node-cua
+ExecStart=@PREFIX@/node/current/bin/node @PREFIX@/current/core/dist/index.js node run --host 127.0.0.1 --port @PORT@ --display-name "V host desktop"
+Restart=always
+RestartSec=5
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

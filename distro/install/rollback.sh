@@ -44,6 +44,7 @@ systemctl start openclaw-gateway.service
 "$NODE" "$SELF_VCTL" overlay-plugins --restart
 "${VCTL[@]}" probe --check-history --history-only
 [ -n "$RESTORE" ] || "$NODE" "$SELF_VCTL" fingerprint --compare "$FP"
+"${VCTL[@]}" desktop-services 2>/dev/null || "$NODE" "$SELF_VCTL" desktop-services || true
 systemctl start v-memory-indexer.service || true
 "${VCTL[@]}" status
 echo "rolled back to $PREV"

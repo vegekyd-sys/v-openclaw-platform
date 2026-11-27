@@ -104,3 +104,31 @@ test('codex home toml trusts the workspace and reads the DeepSeek key by name', 
 test('env file parser: comments, export, quotes', () => {
   assert.deepEqual(parseEnvFile('# x\nexport A=1\nB="two words"\nC=\'3\'\nbad line\n'), { A: '1', B: 'two words', C: '3' });
 });
+
+test('voice transcription only with a Volcengine key: a CLI media model, as on V', () => {
+  assert.equal(make({}).tools.media, undefined);
+  const cfg = make({ VOLCENGINE_API_KEY: 'volc-test-value' });
+  assert.ok(!JSON.stringify(cfg).includes('volc-test-value'));
+  assert.equal(cfg.tools.media.audio.enabled, true);
+  assert.deepEqual(cfg.tools.media.models[0], { type: 'cli', command: '/opt/v/node/current/bin/node', args: ['/opt/v/current/install/lib/v-asr-volcengine.mjs', '{{MediaPath}}'], timeoutSeconds: 60, language: 'zh', capabilities: ['audio'] });
+});
+
+test('desktop only with V_DESKTOP=1: host display, headed Chrome, takeover plugin, computer tool; control links go to the owner only', () => {
+  const off = make({ FEISHU_APP_ID: 'cli_x', V_OWNER_FEISHU_OPEN_ID: 'ou_abc' });
+  assert.equal(off.desktop, undefined);
+  assert.equal(off.browser, undefined);
+  assert.ok(!off.plugins.allow.includes('cua-computer'));
+  const on = make({ FEISHU_APP_ID: 'cli_x', V_OWNER_FEISHU_OPEN_ID: 'ou_abc', V_DESKTOP: '1' });
+  assert.deepEqual(on.desktop.host, { enabled: true, port: 5900, passwordFile: '/home/openclaw/.openclaw/desktop/vnc-password.txt' });
+  assert.equal(on.browser.headless, false);
+  assert.equal(on.browser.defaultProfile, 'openclaw');
+  assert.equal(on.browser.profiles, undefined, 'the built-in managed profile must not be declared');
+  for (const id of ['v-desktop-handoff', 'cua-computer']) assert.ok(on.plugins.allow.includes(id), id);
+  assert.ok(on.plugins.load.paths.includes('/opt/v/current/plugins/desktop-handoff'));
+  assert.deepEqual(on.tools.alsoAllow, ['computer']);
+  const h = on.plugins.entries['v-desktop-handoff'].config;
+  assert.equal(h.controlAnywhere, false);
+  assert.deepEqual(h.controlAnywhereActors, ['feishu:ou_abc']);
+  assert.equal(h.openclawCommand, '/opt/v/bin/openclaw');
+  assert.equal(h.adminTokenFile, '/etc/v/desktop-handoff/admin-token');
+});

@@ -45,6 +45,11 @@ args=(install-release "$PKG_DIR")
 [ "$SKIP_TOOLS" -eq 0 ] || args+=(--skip-tools)
 "${NEW_VCTL[@]}" "${args[@]}"
 [ -z "$ENV_FILE" ] || "${NEW_VCTL[@]}" split-env "$ENV_FILE"
+if grep -qx 'V_DESKTOP=1' /etc/v/install.env && ! command -v Xtigervnc >/dev/null; then
+  say "Desktop packages (V_DESKTOP=1 is new on this machine)"
+  . "$PKG_DIR/install/lib/desktop-packages.sh"
+  v_desktop_packages
+fi
 
 say "Stop and snapshot"
 systemctl stop v-memory-indexer.service 2>/dev/null || true
@@ -65,6 +70,8 @@ rollback() {
   "$NODE" "$PREFIX/current/install/lib/vctl.mjs" health --deadline-ms 600000
   "${NEW_VCTL[@]}" overlay-plugins --restart
   "$NODE" "$PREFIX/current/install/lib/vctl.mjs" probe --check-history --history-only
+  # Releases before the desktop part have no desktop-services; the units they wrote are enough then.
+  "$NODE" "$PREFIX/current/install/lib/vctl.mjs" desktop-services 2>/dev/null || true
   # The failed release must not become the rollback target.
   if [ -n "$OLD_PREV" ]; then ln -sfn "$OLD_PREV" "$PREFIX/previous"; else rm -f "$PREFIX/previous"; fi
   systemctl start v-memory-indexer.service
@@ -86,6 +93,7 @@ systemctl start openclaw-gateway.service || fail "start failed"
 "${VCTL[@]}" overlay-plugins --restart || fail "could not lay V's plugin bytes over OpenClaw's install"
 # Test hook for the rollback path (distro/build/smoke): pretend the new release is unhealthy.
 [ "${V_DISTRO_TEST_FAIL:-}" != health ] || fail "injected failure (V_DISTRO_TEST_FAIL=health)"
+"${VCTL[@]}" desktop-services || fail "desktop services did not come back"
 "${VCTL[@]}" probe --check-history --history-only || fail "earlier sessions are not readable"
 "${VCTL[@]}" fingerprint --compare "$SNAP/fingerprint.json" || fail "workspace or databases changed"
 if [ "$PROBE" -eq 1 ]; then "${VCTL[@]}" probe --check-history || fail "probe failed"; fi

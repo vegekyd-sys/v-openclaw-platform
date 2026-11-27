@@ -1,0 +1,25 @@
+# One-time links that let the owner watch V's desktop and take over (a login, a captcha).
+# Public side 127.0.0.1:23950 (or the bind in @ETC@/desktop-handoff/config.json), admin
+# side 127.0.0.1:23951 with a bearer token the plugin reads. Installed only with V_DESKTOP=1.
+[Unit]
+Description=V desktop handoff links (v-distro)
+After=network.target openclaw-desktop.service
+Wants=openclaw-desktop.service
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+Environment=HOME=@HOME@
+ExecStart=@PREFIX@/node/current/bin/node @PREFIX@/current/optional/desktop/service/server.mjs @ETC@/desktop-handoff/config.json
+Restart=always
+RestartSec=3
+MemoryMax=256M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/v-desktop-handoff
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

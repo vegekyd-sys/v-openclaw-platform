@@ -103,6 +103,7 @@ function modelSetup(preset, env, codex) {
  * @param {string} o.workspace
  * @param {Record<string,string>} o.env  install.env + secrets.env merged; values are only tested for presence
  * @param {string|null} [o.codexCommand] native codex binary, when the codex CLI is installed
+ * @param {string} [o.etcDir]     /etc/v (desktop handoff admin token)
  */
 export function createConfig(o) {
   if (!PROFILES.includes(o.profile)) throw new Error(`profile must be one of ${PROFILES.join(', ')}`);
@@ -242,6 +243,43 @@ export function createConfig(o) {
         actions: { reactions: true },
       },
     };
+  }
+  const prefix = path.dirname(o.releaseDir);
+
+  // Voice messages become text the way V does it: a CLI media model that calls Volcengine
+  // BigASR Flash (install/lib/v-asr-volcengine.mjs). No key, no audio transcription.
+  if (has('VOLCENGINE_API_KEY')) {
+    cfg.tools.media = {
+      audio: { enabled: true, timeoutSeconds: 60, maxBytes: 26214400, maxChars: 8000, language: 'zh', echoTranscript: false },
+      models: [{ type: 'cli', command: path.join(prefix, 'node/current/bin/node'), args: [plugin('install/lib/v-asr-volcengine.mjs'), '{{MediaPath}}'], timeoutSeconds: 60, language: 'zh', capabilities: ['audio'] }],
+    };
+  }
+
+  // Desktop takeover and computer use (V's v-desktop-handoff + cua node), only when asked for:
+  // headed Chrome on the host display :99, the share-link plugin, and the computer tool.
+  if (env.V_DESKTOP === '1') {
+    const desktopState = path.join(o.stateDir, 'desktop');
+    cfg.desktop = { host: { enabled: true, port: 5900, passwordFile: path.join(desktopState, 'vnc-password.txt') } };
+    cfg.browser = {
+      defaultProfile: 'openclaw', headless: false, noSandbox: true, tabCleanup: { enabled: true },
+      extraArgs: ['--window-position=0,0', '--window-size=1280,760'],
+      ssrfPolicy: { allowedHostnames: ['localhost', '127.0.0.1'] },
+    };
+    pluginAllow.push('v-desktop-handoff', 'cua-computer');
+    loadPaths.push(plugin('plugins/desktop-handoff'));
+    cfg.plugins.entries['cua-computer'] = { enabled: true };
+    cfg.plugins.entries['v-desktop-handoff'] = {
+      enabled: true, hooks: { allowConversationAccess: true },
+      config: {
+        adminUrl: 'http://127.0.0.1:23951',
+        adminTokenFile: path.join(o.etcDir ?? '/etc/v', 'desktop-handoff', 'admin-token'),
+        openclawCommand: path.join(prefix, 'bin', 'openclaw'),
+        // A control link is a bearer link: for a customer it goes to the owner's DM only.
+        controlAnywhere: false,
+        ...(feishu && ownerOpenId ? { controlAnywhereActors: [`feishu:${ownerOpenId}`] } : {}),
+      },
+    };
+    cfg.tools.alsoAllow = ['computer'];
   }
   return cfg;
 }

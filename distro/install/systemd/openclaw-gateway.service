@@ -28,6 +28,8 @@ EnvironmentFile=@PREFIX@/current/runtime/gateway.env
 EnvironmentFile=@PREFIX@/current/.release.env
 EnvironmentFile=@ETC@/install.env
 EnvironmentFile=@ETC@/secrets.env
+# VSync identity (v-ctl vsync-env); absent on a machine without VSync.
+EnvironmentFile=-@ETC@/vsync.env
 ExecStartPre=/usr/bin/python3 @PREFIX@/current/runtime/ops/v-codex-orphan-cleanup.py
 ExecStart=@PREFIX@/node/current/bin/node --experimental-async-context-frame --max-old-space-size=@HEAP_MB@ @PREFIX@/current/core/dist/index.js gateway --port @PORT@
 Restart=always
