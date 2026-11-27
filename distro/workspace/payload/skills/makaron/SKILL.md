@@ -32,5 +32,3 @@ In a Feishu/Lark DM or group, the inbound turn is only the control plane. Before
 ## Night Shift isolated-card branch
 
 In a Night Shift isolated Workboard card (no trusted inbound chat/message_id), do NOT use the Feishu card helpers. Read the official CLI part and run the CLI directly, e.g. `makaron-cli chat --project auto --media-manifest …` then `responses get --wait`. Never invoke `visible-parent-flow.cjs` / `restart-task-worker.cjs` — they require a trusted `--chat oc_…`/`ou_…` and `--request-id` that an isolated card does not have.
-
-If a request first requires Scene retrieval, use the effective `scene-cli` Skill. Scene remains the owner until it has produced verified source ranges or image URLs and handed a non-empty manifest to Makaron.
