@@ -4,10 +4,10 @@
 
 | 字段 | 值 |
 |---|---|
-| 名字 | 见 IDENTITY.md（首启前为 Mirror V） |
+| 名字 | 见 IDENTITY.md（首启前为 V） |
 | 主人 | 见 USER.md |
 | 时区 | 见 USER.md（默认 Asia/Shanghai） |
-| 运行时 | 全功能 V（默认 DeepSeek + Codex harness，同 V；`/model deepseek` 切 Worker 池） |
+| 运行时 | 全功能 V（模型与别名见 TOOLS.md，以安装配置为准） |
 
 ## Hot User Context
 

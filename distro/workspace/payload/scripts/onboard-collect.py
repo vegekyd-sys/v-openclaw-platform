@@ -53,7 +53,7 @@ TZ = ZoneInfo("Asia/Shanghai")
 # 个人用户通常没有知识库，这往往是他们唯一现成的记忆来源。
 SOURCES = ("web", "paste", "shot", "browser", "feishu", "ai-memory")
 DISPOSITIONS = ("compiled", "skipped", "duplicate")
-OPENCLAW_MJS = Path("/vercel/sandbox/nexus/runtime/node_modules/openclaw/openclaw.mjs")
+OPENCLAW_MJS = Path(os.environ.get("OPENCLAW_MJS") or "/nonexistent/openclaw.mjs")
 
 # 抄自 librarian-adopt-untracked.py 的 SECRET，拆成 (名字, 正则)，group(1) 是要保留的
 # 前缀（键名 / Bearer），其余整段换成 <redacted>。替换后不再命中那条正则，所以这些页
@@ -251,7 +251,7 @@ def budget_gate(ws: Path, batch: Path) -> None:
 
 def reindex(ws: Path) -> str:
     """⑦ 重建索引，哪个存在用哪个；都不存在只提示，不报错。"""
-    agent = os.environ.get("NEXUS_AGENT_ID", "mirror-v-full")
+    agent = os.environ.get("NEXUS_AGENT_ID", "@@AGENT_ID@@")
     if shutil.which("openclaw"):
         cmd = ["openclaw", "memory", "index", "--agent", agent]
     elif OPENCLAW_MJS.exists() and shutil.which("node"):

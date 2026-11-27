@@ -1,8 +1,8 @@
 {
-  "workspace": "/vercel/sandbox/agent-data/workspace",
-  "ai_name": "Mirror V",
+  "workspace": "@@WORKSPACE@@",
+  "ai_name": "V",
   "user_name": "owner",
-  "timezone": "Asia/Shanghai",
+  "timezone": "@@TIMEZONE@@",
   "storage": {
     "backend": "local",
     "local": {

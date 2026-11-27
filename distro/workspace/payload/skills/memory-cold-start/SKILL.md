@@ -28,18 +28,18 @@ description: 记忆冷启动：主人的记忆是空的时候，把他已有的�
 
 ### 1. 飞书文档库（多数主人最大的来源）
 
-**用主人扫码时绑定的那个 Mirror V 应用读，不新建应用。** 平台在启动时已经把这个应用交给 lark-cli（`LARKSUITE_CLI_APP_ID` 等环境变量）。缺权限就在这个应用上补；主人授权一次，就能用他的身份读他本来就能看到的文档。用户 token 存在 `agent-data/lark-cli`，不进记忆、不进 git、不出现在回复里。
+**用这个机器人自己的飞书应用读，不新建应用。** 安装时已经把这个应用交给 lark-cli（`LARKSUITE_CLI_APP_ID` 等环境变量）。缺权限就在这个应用上补；主人授权一次，就能用他的身份读他本来就能看到的文档。用户 token 存在 `LARKSUITE_CLI_CONFIG_DIR`（工作区之外），不进记忆、不进 git、不出现在回复里。
 
 上手引导里用两条合并好的命令（`onboarding/GUIDE.md` 第 0–2 步）：
 
 1. `python3 scripts/feishu-docs.py connect`：装好、对权限、发起授权，按输出的 `do` 行事——`login` 发授权链接，`grant` 发开通权限的链接（扫码建应用时已经申请过，一般只有企业要管理员审批时才会出现），`read` 已经能读，`skip` 这台机器接不上飞书，`retry` 偶发错误。主人点完回「好了」，跑 `connect --finish`
-2. `python3 scripts/feishu-docs.py read`：盘点 + 读所有建议读的空间（默认跳过示例库和像凭据库的空间），最多约 3 分钟，并给出写初稿先看哪几份（`forDraft`；之后随时 `picks` 再看）。没读完，用 `portal_schedule` 加一条一次性任务接着跑 `read`，不让主人等
+2. `python3 scripts/feishu-docs.py read`：盘点 + 读所有建议读的空间（默认跳过示例库和像凭据库的空间），最多约 3 分钟，并给出写初稿先看哪几份（`forDraft`；之后随时 `picks` 再看）。没读完，用 `python3 scripts/v-schedule.py once --in 1m` 加一条一次性任务接着跑 `read`，不让主人等
 
 引导以外、主人只想读某几个空间时，用拆开的命令：`setup` / `scopes` / `login`（`--finish`）/ `inventory` / `pull --spaces <id,...>`（每轮最多 40 份、240 秒）。
 
 每一步的细节、过期了怎么办、权限审核卡住了怎么跟主人说：`references/feishu-lark-cli.md`。
 
-**这个应用只用来读文档。** 凭据就是 Mirror V 机器人自己的：不打印、不用它发消息、不改文档、不建群、不加人。消息一律走 Mirror V 自己的通道。主人不想授权，就退回粘正文 / 发截图，并把「不读飞书」记进 `USER.md` 的「已明确拒绝的采集源」。
+**冷启动这一步只读文档。** 凭据就是这个机器人自己的：不打印、不写进任何文件。之后主人让你替他写飞书（文档、日程、任务、多维表），按 `TOOLS.md` 的「飞书」一节做。主人不想授权，就退回粘正文 / 发截图，并把「不读飞书」记进 `USER.md` 的「已明确拒绝的采集源」。
 
 ### 2. 官网 / 公开主页（零授权）
 

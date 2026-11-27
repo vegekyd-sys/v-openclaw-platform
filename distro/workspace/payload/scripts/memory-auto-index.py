@@ -97,13 +97,13 @@ def run_incremental_index(workspace: Path, agent: str, openclaw_bin: str, log_fi
 def main() -> int:
     parser = argparse.ArgumentParser(description="Auto-index OpenClaw durable memory after file writes.")
     parser.add_argument("--workspace", default=os.getcwd(), help="OpenClaw workspace path")
-    parser.add_argument("--agent", default="makaron", help="OpenClaw agent id")
+    parser.add_argument("--agent", default="@@AGENT_ID@@", help="OpenClaw agent id")
     parser.add_argument("--openclaw-bin", default="openclaw", help="openclaw executable")
     parser.add_argument("--poll-seconds", type=float, default=5.0, help="Filesystem polling interval")
     parser.add_argument("--debounce-seconds", type=float, default=15.0, help="Quiet period before indexing")
     parser.add_argument("--startup-index", action="store_true", help="Run one incremental index on startup")
     parser.add_argument("--once", action="store_true", help="Run one incremental index and exit")
-    parser.add_argument("--log-file", default="/vercel/sandbox/agent-data/state/logs/memory-auto-index.log")
+    parser.add_argument("--log-file", default="@@STATE_DIR@@/logs/memory-auto-index.log")
     args = parser.parse_args()
 
     signal.signal(signal.SIGINT, _handle_stop)

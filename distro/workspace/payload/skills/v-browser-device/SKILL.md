@@ -13,7 +13,7 @@ Bind an authorized Chrome tab to the current OpenClaw Session with the V Browser
 
 When a user asks to connect or pair their Chrome:
 
-1. Share this instance's V Browser install page and ask them to install the extension: read it with `cat /vercel/sandbox/agent-data/links.json` (key `public.vbrowser`, add a trailing `/`). The page offers the extension zip; the user loads it in `chrome://extensions` with Developer mode on ("Load unpacked" after unzipping).
+1. Share this instance's V Browser install page and ask them to install the extension: read it with `cat @@WORKSPACE@@/links.json` (key `public.vbrowser`, add a trailing `/`). The page offers the extension zip; the user loads it in `chrome://extensions` with Developer mode on ("Load unpacked" after unzipping).
 2. Pairing strings are secrets. This instance has a single owner: pair only when the owner asks; in a group chat, ask the owner to message you privately first.
 3. Call `v_browser_pair` only after the owner explicitly asks for a pairing string.
 4. Send the returned pairing string only in the current direct conversation. Never copy it into Memory, files, logs, another chat, or a subagent task.
