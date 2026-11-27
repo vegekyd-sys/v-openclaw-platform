@@ -89,7 +89,7 @@ class Tick(unittest.TestCase):
         self.fail = None
         self.enterContext(mock.patch.object(a, "local_status", side_effect=lambda: (
             self.size, self.used * GIB, (self.fs - self.used) * GIB)))
-        self.enterContext(mock.patch.object(a, "filesystem_gib", side_effect=lambda: self.fs))
+        self.enterContext(mock.patch.object(a, "filesystem_bytes", side_effect=lambda: self.fs * GIB))
         self.enterContext(mock.patch.object(a, "notify", side_effect=lambda t: self.alerts.append(t) or True))
         self.enterContext(mock.patch.object(a, "remote_disk", side_effect=lambda: {
             "DiskSize": self.cloud, "DiskState": "ATTACHED", "ExpiredTime": EXPIRES, "RenewFlag": "NOTIFY_AND_AUTO_RENEW"}))
@@ -167,6 +167,13 @@ class Tick(unittest.TestCase):
         with mock.patch.object(a, "per_gib_month", return_value=(3.5, 1400.0)):
             self.run_ticks(T0 + 1500, 1)
         self.assertEqual(len(self.orders), 1)
+
+    def test_full_size_filesystem_is_left_alone(self):
+        # 2026-11-27: comparing statvfs (394 GiB on a 400 GiB ext4) with the device re-ran
+        # resize2fs and re-sent "已同步" every five minutes. The superblock size matches.
+        self.run_ticks(T0, 6)
+        self.assertEqual(self.grown, [])
+        self.assertFalse(any("已同步" in t for t in self.alerts if "已自动扩容" not in t))
 
     def test_device_bigger_than_filesystem_is_grown(self):
         self.size, self.fs = 500, 400
