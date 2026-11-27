@@ -1,20 +1,101 @@
 {
   "schema": "v-distro-tools/1",
-  "note": "Versions as live on V on 2026-11-27 (node --version, codex --version, the installed package.json of makaron-cli and @larksuite/cli).",
+  "note": "Versions as live on V on 2026-11-27 (node --version, codex --version, the installed package.json of makaron-cli and @larksuite/cli); the skill CLIs (makaron-ad-creator, persona-look, music-library, scene) are the versions in V's npm -g.",
   "node": {
     "version": "22.23.1",
-    "linux-x64": { "file": "node-v22.23.1-linux-x64.tar.xz", "sha256": "9749e988f437343b7fa832c69ded82a312e41a03116d766797ac14f6f9eee578" },
-    "linux-arm64": { "file": "node-v22.23.1-linux-arm64.tar.xz", "sha256": "0294e8b915ab75f92c7513d2fcb830ae06e10684e6c603e99a87dbf8835389c1" },
-    "mirrors": ["https://nodejs.org/dist/v22.23.1/", "https://npmmirror.com/mirrors/node/v22.23.1/"]
+    "linux-x64": {
+      "file": "node-v22.23.1-linux-x64.tar.xz",
+      "sha256": "9749e988f437343b7fa832c69ded82a312e41a03116d766797ac14f6f9eee578"
+    },
+    "linux-arm64": {
+      "file": "node-v22.23.1-linux-arm64.tar.xz",
+      "sha256": "0294e8b915ab75f92c7513d2fcb830ae06e10684e6c603e99a87dbf8835389c1"
+    },
+    "mirrors": [
+      "https://nodejs.org/dist/v22.23.1/",
+      "https://npmmirror.com/mirrors/node/v22.23.1/"
+    ]
   },
   "npm": {
-    "codex": { "package": "@openai/codex", "version": "0.169.1", "lock": "codex-cli", "bin": "codex",
-      "native": { "linux-x64": "node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex", "linux-arm64": "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" } },
-    "makaron-cli": { "package": "makaron-cli", "version": "0.17.30", "lock": "makaron-cli", "bin": "makaron" },
-    "lark-cli": { "package": "@larksuite/cli", "version": "1.0.97", "lock": "lark-cli", "bin": "lark-cli",
-      "env": { "LARKSUITE_CLI_CONFIG_DIR": "${HOME}/.lark-cli" },
-      "unsetEnv": ["LARKSUITE_CLI_APP_ID", "LARKSUITE_CLI_APP_SECRET", "LARK_CHANNEL"],
-      "unsetEnvPrefixes": ["OPENCLAW_", "HERMES_"],
-      "note": "lark-cli runs as a standalone tool on its own config (configure writes it with config init). With LARKSUITE_CLI_APP_* in env it disables auth and never fetches a tenant token; with OPENCLAW_* in env it demands `config bind`. Line B's feishu-docs.py strips the same variables." }
+    "codex": {
+      "package": "@openai/codex",
+      "version": "0.169.1",
+      "lock": "codex-cli",
+      "bin": "codex",
+      "native": {
+        "linux-x64": "node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+        "linux-arm64": "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex"
+      }
+    },
+    "makaron-cli": {
+      "package": "makaron-cli",
+      "version": "0.17.30",
+      "lock": "makaron-cli",
+      "bin": "makaron",
+      "skills": {
+        "makaron": "skills/makaron"
+      }
+    },
+    "lark-cli": {
+      "package": "@larksuite/cli",
+      "version": "1.0.97",
+      "lock": "lark-cli",
+      "bin": "lark-cli",
+      "env": {
+        "LARKSUITE_CLI_CONFIG_DIR": "${HOME}/.lark-cli"
+      },
+      "unsetEnv": [
+        "LARKSUITE_CLI_APP_ID",
+        "LARKSUITE_CLI_APP_SECRET",
+        "LARK_CHANNEL"
+      ],
+      "unsetEnvPrefixes": [
+        "OPENCLAW_",
+        "HERMES_"
+      ],
+      "note": "lark-cli runs as a standalone tool on its own config (configure writes it with config init). With LARKSUITE_CLI_APP_* in env it disables auth and never fetches a tenant token; with OPENCLAW_* in env it demands `config bind`. Line B's feishu-docs.py strips the same variables."
+    },
+    "makaron-ad-creator-cli": {
+      "package": "makaron-ad-creator-cli",
+      "version": "0.6.7",
+      "lock": "makaron-ad-creator-cli",
+      "bin": "makaron-ad",
+      "skills": {
+        "makaron-ad-creator": "skills/makaron-ad-creator"
+      }
+    },
+    "makaron-persona-look-cli": {
+      "package": "makaron-persona-look-cli",
+      "version": "0.5.6",
+      "lock": "makaron-persona-look-cli",
+      "bin": "personlib",
+      "skills": {
+        "makaron-persona-look": "skills/makaron-persona-look"
+      }
+    },
+    "makaron-music-library-cli": {
+      "package": "makaron-music-library-cli",
+      "version": "0.3.1",
+      "lock": "makaron-music-library-cli",
+      "bin": "musiclib",
+      "skills": {
+        "makaron-music-library": "skills/makaron-music-library"
+      }
+    },
+    "scene-cli": {
+      "package": "scene-cli",
+      "version": "0.7.1",
+      "lock": "scene-cli",
+      "bin": "scene",
+      "skillCommand": [
+        "skill",
+        "install",
+        "--target",
+        "{target}"
+      ],
+      "skillNames": [
+        "scene-cli"
+      ]
+    }
   }
 }

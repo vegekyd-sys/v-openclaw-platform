@@ -18,6 +18,7 @@
 //   vctl.mjs fingerprint <out.json> | fingerprint --compare <before.json>   workspace + databases kept?
 //   vctl.mjs desktop-pair [--deadline-ms N]                 approve the host cua node (V_DESKTOP=1)
 //   vctl.mjs desktop-services                               (re)start the desktop units on the current release, then pair
+//   vctl.mjs install-skills                                 global skills (runtime/skills.json, skill CLIs) -> ~/.openclaw/skills
 //   vctl.mjs vsync-env <issued.env>                         -> /etc/v/vsync.env (the Portal-issued VSync identity)
 
 import fs from 'node:fs';
@@ -302,6 +303,16 @@ async function cmdDesktopServices(opts) {
   run('systemctl', ['enable', 'v-desktop-handoff.service', 'openclaw-cua-node.service']);
   run('systemctl', ['restart', 'v-desktop-handoff.service', 'openclaw-cua-node.service']);
   await cmdDesktopPair(opts);
+}
+
+async function cmdInstallSkills() {
+  if (!fs.existsSync(path.join(P.current, 'runtime', 'skills.json'))) { out({ step: 'install-skills', skipped: 'no runtime/skills.json in this release' }); return; }
+  const { installSkills } = await import('./skills.mjs');
+  const uid = Number(run('id', ['-u', P.user]).trim());
+  const gid = Number(run('id', ['-g', P.user]).trim());
+  const r = installSkills({ releaseDir: fs.realpathSync(P.current), toolsRoot: P.tools, home: P.home, user: P.user, uid, gid,
+    nodeBin: path.dirname(process.execPath), run: (cmd, args, o = {}) => run(cmd, args, { maxBuffer: 64 * 1024 * 1024, ...o }), log });
+  out({ step: 'install-skills', ...r });
 }
 
 // VSync identity issued by the Portal (scripts/vsync-token.ts): exactly these three keys,
@@ -682,6 +693,7 @@ async function main() {
     case 'rollback-check': cmdRollbackCheck(); break;
     case 'desktop-pair': await cmdDesktopPair(opts); break;
     case 'vsync-env': cmdVsyncEnv(opts._[0]); break;
+    case 'install-skills': await cmdInstallSkills(); break;
     case 'desktop-services': await cmdDesktopServices(opts); break;
     default: throw new Error(`unknown command ${cmd ?? ''}; see the header of ${path.relative(process.cwd(), fileURLToPath(import.meta.url))}`);
   }
