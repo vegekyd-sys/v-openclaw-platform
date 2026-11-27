@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 // the model speaks as; OpenClaw is the runtime under it (docs/v-de-openclaw-review.md,
 // item S1). The same sentence is also the one Google's account endpoint rejects
 // with a fake 429 RESOURCE_EXHAUSTED, which blocks /neon
-// (docs/gemini-neon-account-bridge-20261119.md).
+// (docs/neon-antigravity-20261128.md).
 //
 // A plugin text transform (registerTextTransforms) is the lighter mechanism, but
 // it reads the process-wide active plugin registry, which vlab-worker processes

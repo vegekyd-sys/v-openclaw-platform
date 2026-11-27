@@ -200,7 +200,7 @@
         "scripts/configure-v-announce-timeout.test.mjs",
         "scripts/gpt62-aliases.test.mjs",
         "scripts/gemini-neon-alias.test.mjs",
-        "tests/gemini-account-bridge.test.mjs"
+        "tests/v-antigravity.test.mjs"
       ]
     },
     {

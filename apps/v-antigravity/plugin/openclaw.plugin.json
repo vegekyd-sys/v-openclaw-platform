@@ -1,0 +1,49 @@
+{
+  "id": "v-antigravity",
+  "name": "V Antigravity CLI",
+  "description": "Runs agent turns on the Antigravity CLI with V's system prompt and OpenClaw's tools over MCP.",
+  "activation": {
+    "onStartup": true
+  },
+  "cliBackends": [
+    "antigravity-cli"
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "agyBin": {
+        "type": "string"
+      },
+      "agyHome": {
+        "type": "string"
+      },
+      "runRoot": {
+        "type": "string"
+      },
+      "defaultEffort": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      },
+      "modelProvider": {
+        "type": "string"
+      },
+      "idleTimeoutMs": {
+        "type": "integer",
+        "minimum": 1000
+      },
+      "followOnTimeoutMs": {
+        "type": "integer",
+        "minimum": 1000
+      },
+      "workspaceDir": {
+        "type": "string"
+      }
+    }
+  }
+}
