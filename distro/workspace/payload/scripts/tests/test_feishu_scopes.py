@@ -55,5 +55,18 @@ class LoginScopes(unittest.TestCase):
         self.assertTrue(set(self.requested()) <= set(APP_SCOPES))
 
 
+    def test_more_scopes_than_one_authorisation_takes_are_capped_with_the_common_domains_first(self):
+        many = [*f.REQUIRED_SCOPES, *[f"payroll:item{i}:read" for i in range(200)], *[f"base:x{i}:create" for i in range(60)],
+                "calendar:calendar.free_busy:read", "sheets:spreadsheet:create", "contact:user:search"]
+        got = f.login_scopes(many)
+        self.assertEqual(len(got), f.MAX_LOGIN_SCOPES)
+        self.assertEqual(got[:len(f.REQUIRED_SCOPES)], list(f.REQUIRED_SCOPES))
+        for s in ("calendar:calendar.free_busy:read", "sheets:spreadsheet:create", "contact:user:search", "base:x59:create"):
+            self.assertIn(s, got)
+        skipped = f.login_scopes_skipped(many)
+        self.assertTrue(skipped and all(s.startswith("payroll:") for s in skipped))
+        self.assertEqual(set(got) | set(skipped), set(many))
+
+
 if __name__ == "__main__":
     unittest.main()
