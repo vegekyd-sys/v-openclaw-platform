@@ -344,3 +344,31 @@ test("v-schedule owner: records one owner and refuses a second", () => {
   assert.equal(py(ws, "v-schedule.py", ["owner", "--set", "not-an-id"]).status, 2);
   assert.equal((fs.statSync(path.join(ws, "onboarding/owner.json")).mode & 0o777), 0o600);
 });
+
+test("update policy: every payload file is system, sectioned or the owner's; the system ones stay managed; sections are well formed", () => {
+  const pol = JSON.parse(fs.readFileSync(path.join(WS, "update-policy.json"), "utf8"));
+  assert.equal(pol.schema, "v-distro-workspace-policy/1");
+  const re = (g) => new RegExp("^" + g.split("**").map((s) => s.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*")).join(".*") + "$");
+  const any = (list, rel) => list.some((g) => re(g).test(rel));
+  const managed = (rel) => (any(pol.system, rel) || pol.sections.includes(rel)) && !any(pol.owner, rel);
+  for (const rel of lib.walk(PAYLOAD)) {
+    if (rel.endsWith(".gitkeep")) continue;
+    assert.ok(any(pol.system, rel) || pol.sections.includes(rel) || any(pol.owner, rel), `unclassified: ${rel}`);
+  }
+  for (const rel of ["memory/SCHEMA.md", "memory/projects/_TEMPLATE/TODO.md", "scripts/feishu-docs.py", "skills/computer-use/SKILL.md",
+                     "schedules.json", "AGENTS.md", "TOOLS.md", "artifacts/memory-graph/vendor/force-graph.min.js"])
+    assert.ok(managed(rel), `should be managed: ${rel}`);
+  for (const rel of ["USER.md", "IDENTITY.md", "MEMORY.md", "memory/index.md", "memory/projects/acme/main.md", "onboarding/owner.json"])
+    assert.ok(!managed(rel), `must never be overwritten: ${rel}`);
+  for (const f of pol.sections) {
+    const text = fs.readFileSync(path.join(PAYLOAD, f), "utf8");
+    const begins = [...text.matchAll(/<!-- v-distro:begin ([a-z0-9-]+) -->/g)].map((m) => m[1]);
+    const ends = [...text.matchAll(/<!-- v-distro:end ([a-z0-9-]+) -->/g)].map((m) => m[1]);
+    assert.deepEqual(begins, ends, f);
+    assert.equal(new Set(begins).size, begins.length, `${f}: section ids are unique`);
+    const outside = text.replace(/<!-- v-distro:begin ([a-z0-9-]+) -->[\s\S]*?<!-- v-distro:end \1 -->/g, "");
+    assert.doesNotMatch(outside, /v-distro:(begin|end)/, `${f}: no nested or stray markers`);
+    assert.match(outside, /^## /m, `${f}: an owner area after the system sections`);
+  }
+  assert.match(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8"), /系统文件不要直接改/);
+});

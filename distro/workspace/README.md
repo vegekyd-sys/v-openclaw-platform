@@ -15,6 +15,7 @@
 | `render.mjs` | 装机时替换占位符（无依赖，可单独打进安装器） |
 | `lib.mjs` | 共享规则：清单、脱敏、泄漏扫描、占位符 |
 | `global-skills.json` | V 从工作区外加载的第三方 skill 包：装哪些、不装哪些 |
+| `update-policy.json` | 升级时工作区里哪些是系统文件（可以换新版）、哪些归主人（永远不动）；A 线的 update / rollback 按它三方比较 |
 | `feishu-user-scopes.txt` | V 自己的账号授权过的飞书用户权限（建机器人应用时照着开） |
 | `tests/` | `node --test distro/workspace/tests/*.test.mjs` |
 
@@ -40,7 +41,11 @@
      最后一步 `v-schedule.py install` 按 `payload/schedules.json` 建任务，投递到主人私聊。沙盒（C 线）不开原生 cron 时，由 Portal 按同一份 `schedules.json` 调度。
    - 全局 skill 按 `global-skills.json` 的 `install` 装（至少 `lark-*`）。
    - 可选：`MAKARON_API_KEY`（创作）、`APIFY_API_KEY`（社媒与图片搜索）。缺了相关 skill 会如实说没开通。
-4. 工作区只在首次安装时种下；之后的更新看下一节，由人决定合进哪台机器。
+4. 首次安装时种下工作区。之后每次 update / rollback，按 `update-policy.json` 更新工作区，基准是上次种下或升级时渲染好的那一版：
+   - 系统文件（`scripts/`、随安装带来的 `skills/`、`schedules.json` 等）没改过就换新版，被改过就保留现状、新版另存成 `<文件>.new` 并写进报告；
+   - `AGENTS.md`、`TOOLS.md` 只换 `<!-- v-distro:begin/end <id> -->` 之间的系统段，段外（文件末尾主人和 agent 自己加的部分）不动；
+   - 归主人的（`memory/`、`USER.md`、`IDENTITY.md`、主人自己加的 skill 等）永远不动；
+   - 文件更新完，以服务用户跑 `python3 scripts/v-schedule.py install --base <旧的 schedules.json>`：补缺的定时任务，主人没改过的跟着新版更新或删除，改过的列在 `ownerChanged`。
 
 ## 跟着 V 更新
 

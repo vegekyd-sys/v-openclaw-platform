@@ -1,0 +1,48 @@
+{
+ "schema": "v-distro-workspace-policy/1",
+ "note": "Which workspace files an update may replace. Only files that are in the payload, match `system` (or `sections`) and match no `owner` pattern are managed, by three-way comparison against the rendered base of the last install or update: unchanged since the base -> take the new version (or delete it when the new payload drops it); changed -> keep it, write <file>.new and report it. `sections` files are managed only between <!-- v-distro:begin <id> --> and <!-- v-distro:end <id> -->; text outside the markers belongs to the owner. A file installed before it had markers is compared as a whole file once. Globs: `*` (no slash) and `**`. Owner wins over system.",
+ "system": [
+  "skills/**",
+  "scripts/**",
+  "schedules.json",
+  "knight.config.json",
+  ".gitignore",
+  "SOUL.md",
+  "REDLINES.md",
+  "onboarding/GUIDE.md",
+  "onboarding/probes.json",
+  "onboarding/templates/**",
+  "memory/SCHEMA.md",
+  "memory/projects/_TEMPLATE/**",
+  "artifacts/memory-graph/vendor/**"
+ ],
+ "sections": [
+  "AGENTS.md",
+  "TOOLS.md"
+ ],
+ "owner": [
+  "USER.md",
+  "IDENTITY.md",
+  "MEMORY.md",
+  "HEARTBEAT.md",
+  "links.json",
+  "onboarding/owner.json",
+  "onboarding/progress.json",
+  "onboarding/feishu-*.json",
+  "memory/index.md",
+  "memory/log.md",
+  "memory/ai-patterns.md",
+  "memory/librarian/**",
+  "memory/projects/memory-librarian/**",
+  "memory/heartbeat/**",
+  "memory/people/**",
+  "memory/concepts/**",
+  "memory/decisions/**",
+  "memory/research/**",
+  "memory/reflections/**",
+  "memory/logs/**",
+  "artifacts-out/**",
+  ".v/**"
+ ],
+ "schedules": "After the files, run `python3 scripts/v-schedule.py install --base <the old schedules.json>` as the service user in the agent's environment: it adds missing system jobs, updates or removes jobs still exactly as the old file defined them, and reports jobs the owner changed (ownerChanged). Without a recorded owner it exits 1: skip and report."
+}
