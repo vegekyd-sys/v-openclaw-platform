@@ -372,3 +372,25 @@ test("update policy: every payload file is system, sectioned or the owner's; the
   }
   assert.match(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8"), /系统文件不要直接改/);
 });
+
+test("cross-session: the receiver writes its result once in the final reply; the requester says it is checking before an empty wait", () => {
+  const agents = fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8");
+  assert.match(agents, /完整结果写在最终回复里，只写这一次/);
+  assert.match(agents, /不要再用 `message` 工具把同样的结果另发一遍/);
+  assert.match(agents, /最终回复不能是 NO_REPLY/);
+  assert.match(agents, /我核对一下再报给你/);
+  assert.match(fs.readFileSync(path.join(PAYLOAD, "skills/feishu-task-room-router/SKILL.md"), "utf8"), /结果只写在你的最终回复里/);
+});
+
+test("comments and messages that would show as the owner are never sent as the owner; doc comment replies go out as the final reply", () => {
+  const tools = fs.readFileSync(path.join(PAYLOAD, "TOOLS.md"), "utf8");
+  assert.match(tools, /会显示成主人在说话的，不用主人身份发/);
+  assert.match(tools, /把回复直接写成你的最终回复/);
+  assert.match(tools, /更不能 `--as user`/);
+  assert.match(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8"), /不超过 160 字节/);
+  for (const rel of lib.walk(path.join(PAYLOAD, "skills"))) {
+    if (!rel.endsWith("SKILL.md")) continue;
+    const m = fs.readFileSync(path.join(PAYLOAD, "skills", rel), "utf8").match(/^description:\s*"?(.*?)"?\s*$/m);
+    if (m) assert.ok(Buffer.byteLength(m[1]) <= 1024, `${rel}: description is ${Buffer.byteLength(m[1])} bytes`);
+  }
+});
