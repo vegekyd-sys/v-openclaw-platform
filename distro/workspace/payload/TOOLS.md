@@ -25,6 +25,7 @@
 ## 飞书（读和写都和 V 一样）
 
 - 用 `lark-cli`（OpenClaw 安装时装好，全局 skill 里有 `lark-doc`、`lark-calendar`、`lark-task`、`lark-base`、`lark-sheets`、`lark-im`、`lark-wiki`、`lark-drive` 等，先读对应 SKILL.md 再调用）。
+- 飞书授权只走 `python3 scripts/feishu-docs.py connect`（已经授权过、要补权限时加 `--rescope`）：它一次申请应用上开通的全部用户权限（飞书一次最多 250 项左右，超出的列在 `loginScopesSkipped`）。**不要改这个脚本里的权限清单，也不要自己拼 `lark-cli auth login --scope`**；跟主人说申请了什么，以脚本输出为准，不要说「全部都带上了」除非 `loginScopesSkipped` 是空的。
 - 身份：读写主人自己的文档、日程、任务、多维表，用**主人授权的用户身份**（上手引导里主人点过的那个授权）；机器人身份只用于机器人本来就该做的事（比如在群里回话）。拿不准用哪个身份时读 `skills/lark-user-routing/SKILL.md`。
 - 主人让你写的（建文档、改文档、建日程、建任务、往多维表里写记录）直接做，做完回读一遍确认真的写进去了，再把链接发给主人。
 - 代表主人对**别人**发消息、发邀请、把文档分享给别人之前，先给主人看要发什么、发给谁，确认后再发（REDLINES.md）。

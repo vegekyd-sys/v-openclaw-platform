@@ -305,6 +305,8 @@ def check_scopes() -> dict:
         # 上手时一次申请：应用上开通了的全部用户身份权限（和 V 一样，V 的默认账号授权的就是它应用上的全部用户权限）。
         # 只取应用开通了的，没开通的不申请，也就不会在授权页报错。
         "loginScopes": login_scopes(enabled),
+        # 超出一次授权上限、这次没申请的（通常是人事、审批、邮箱这类不常用的）；用到时按 skill 的补授权兜底。
+        "loginScopesSkipped": login_scopes_skipped(enabled),
         "missing": {k: REQUIRED_SCOPES[k] for k in missing},
         "optionalMissing": {k: v for k, v in OPTIONAL_SCOPES.items() if k not in enabled},
     }
@@ -322,10 +324,31 @@ def check_scopes() -> dict:
     return out
 
 
+# 飞书一次设备授权最多接受 251 项权限（2026-11-28 在 V Clone 应用上实测：按个数算，和长度无关；多了整次报
+# 「too many scopes」）。留一项余量。授权是累加的：之前给过的权限，再授权一次也还在。
+MAX_LOGIN_SCOPES = 250
+# 超过上限时先保留的业务域：替主人读写飞书最常用的在前。
+SCOPE_PRIORITY = ["docx", "docs", "wiki", "drive", "space", "calendar", "task", "base", "bitable", "sheets",
+                  "im", "contact", "offline_access", "auth", "board", "slides", "mindnote", "search", "vc", "minutes"]
+
+
+def _rank(scope: str) -> tuple[int, str]:
+    domain = scope.split(":", 1)[0]
+    return (SCOPE_PRIORITY.index(domain) if domain in SCOPE_PRIORITY else len(SCOPE_PRIORITY), scope)
+
+
 def login_scopes(enabled) -> list[str]:
-    """登录时要申请的用户身份权限：读文档必需的几项在前，其余是应用上开通了的全部用户身份权限。"""
+    """登录时要申请的用户身份权限：读文档必需的几项在前，再按 SCOPE_PRIORITY 排应用上开通了的其余用户权限，
+    最多 MAX_LOGIN_SCOPES 项（飞书一次授权的上限）。剩下的见 login_scopes_skipped，用到时由各 skill 补授权。"""
     enabled = {s for s in enabled if s}
-    return [*[k for k in REQUIRED_SCOPES if k in enabled], *sorted(enabled - set(REQUIRED_SCOPES))]
+    first = [k for k in REQUIRED_SCOPES if k in enabled]
+    rest = sorted(enabled - set(first), key=_rank)
+    return [*first, *rest][:MAX_LOGIN_SCOPES]
+
+
+def login_scopes_skipped(enabled) -> list[str]:
+    asked = set(login_scopes(enabled))
+    return sorted({s for s in enabled if s} - asked, key=_rank)
 
 
 def cmd_scopes(_a) -> None:
