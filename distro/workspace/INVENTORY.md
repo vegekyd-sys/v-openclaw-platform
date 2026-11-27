@@ -141,7 +141,7 @@ V 上的现状（只读核对）和客户版的处理：
 | 会话协调规则 | AGENTS.md「跨会话协作」：协调者不固定，`sessions_send(timeoutSeconds=0)` 异步交办、结果自动交回、收到结果自己验收 | **已同步**（payload AGENTS.md 同名一节） |
 | 跨会话通信 | 原生 `sessions_send` + `v-session-relay` 插件（可见请求、同轮收齐只唤醒一次、轮询闸）+ 核心补丁；`tools.sessions.visibility=all` | **已同步**（A 线运行时：relay 插件、`ownerName` 用 `V_OWNER_NAME`、visibility all）。V Clone 测试机实测：A 交办给 B，B 回结果，A 自动被唤醒并核对通过 |
 | task room | `feishu-task-room-router`：用主人身份建只有主人和 V 的私有群，`sessions.patch` 设模型，`sessions_send` 交办，结果交回发起会话 | **已补上**：`skills/feishu-task-room-router`，主人 id 取 `v-schedule.py owner`、应用 id 取 `feishu-docs.py status`，agent id 用占位符，没指定模型就用默认。V 上这份在 `.agents/skills/`，被 `.git/info/exclude` 排除，从未进 git，所以是工作区自带的改写版，不随 V 同步 |
-| task room 的群路由 | V：`channels.feishu.groupPolicy=open`、`requireMention=false`、`groupAllowFrom=["*"]`，群里靠 AGENTS.md 的群聊规则保持安静；V 的几个 task room 群另有 `bindings` 指到不同 agent | 安装器现在是 `groupPolicy=disabled`，主人在房间里说话进不来，**要 A 线改**：`groupPolicy=allowlist`、`groupAllowFrom=[主人 open_id]`、群里不要求 @（和 V 一样）。单 agent，不需要 `bindings` 和 `tools.agentToAgent` |
+| task room 的群路由 | V：`channels.feishu.groupPolicy=open`、`requireMention=false`、`groupAllowFrom=["*"]`，群里靠 AGENTS.md 的群聊规则保持安静；V 的几个 task room 群另有 `bindings` 指到不同 agent | **A 线已改**（原来是 `groupPolicy=disabled`，主人在房间里说话进不来）：有主人 open_id 时 `groupPolicy=open`、`groupSenderAllowFrom=[主人]`、`requireMention=false`，群里只有主人的消息进来、不用 @；没填主人时群聊仍关。注意 `groupAllowFrom` 按群的 chat_id 放行，不是按发送人。单 agent，不需要 `bindings` 和 `tools.agentToAgent` |
 | 建群的用户权限 | `im:chat:create_by_user` | 在 `feishu-user-scopes.txt` 里，上手时一次授权（#669） |
 | workboard | OpenClaw 自带插件，V 上开着，给夜班的卡片用 | 不带（运行时里有，默认不开）：没有夜班就用不上 |
 | 夜班（Night Shift） | `nightshift-feishu` 插件 + V 的夜班服务（`baseUrl` 指 V 自己的服务）+ `vegekyd-sys/v-nightshift` 仓库 | 不带：V 自己的内容生产线，依赖 V 的服务和账号 |
