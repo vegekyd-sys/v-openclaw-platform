@@ -1,6 +1,9 @@
 # /neon：Gemini 4 Neon 走 Tianyi 的 Google 账号（2026-11-19 CST）
 
-状态：**被 Google 拦截，停在验证阶段。不要合入，也不要上 V。** 账号接口会识别 OpenClaw 默认 system prompt 的开头一句，并以 429 拒绝。要不要绕过需要 Tianyi 决定；这里没有做绕过。详见「验收：被拦在哪里」。
+状态：**VLab candidate 验证中，未合入、未上 V。** 合入 dev 和上线都要 Tianyi 明确批准。
+
+- 11/19：Google 账号接口识别 OpenClaw 默认 system prompt 的开头一句，并以 429 拒绝。详见「验收：被拦在哪里」。
+- 11/28：Tianyi 决定把这句改成 V 自己的身份句，和去 OpenClaw 化（PR #629 第 S1 项）一起做，同时让 `/neon` 跑通。见「11/28：系统提示开头改为 V」。
 
 ## 要求（Tianyi 11/19）
 
@@ -89,8 +92,35 @@ Gateway (vlab-worker) ─▶ Worker (PI harness, google-generative-ai transport)
   2. **绕过识别**：在桥里改写这句话即可。这是主动规避 Google 的反滥用识别，封号风险会明显上升，而且 Google 可以随时换特征。本 PR 没有实现，也不建议这么做。
   3. **等官方给个人订阅开放第三方使用的渠道。**
 
+## 11/28：系统提示开头改为 V
+
+所有 PI 和 CLI 回合的系统提示第一句，由「You are a personal assistant running inside OpenClaw.」改成「You are V, Tianyi's personal agent.」。full、minimal（子 agent、cron）、none 三种模式都改；Codex harness 的提示是另一套文字，不受影响，那一块属于 #629 的 C 系列。
+
+**为什么改 core，而不用插件。** 9.1 提供 `registerTextTransforms`，原本打算用一个 V 小插件做精确整句替换（#629 的建议）。candidate 实测：插件在 Gateway 里加载了，但 worker 发出的请求一个字节都没变。原因是这类文本替换读的是进程级的「活动插件注册表」，vlab-worker 进程跑在预备好的 plugin generation 上，从来不安装这张表。worker 只单独接上了 hook（`initializeGlobalHookRunner`），文本替换没有。V 的主力回合都在 worker 里跑，所以只能改 core。这一点会影响 #629 后续所有打算用文本替换插件做的项（S7–S15 等）。
+
+**改动：**
+- 源码：`vegekyd-sys/openclaw-versa` 分支 `versa/port-v-identity-line-20261128`，commit `52d03a420dd`。两处改成同一个常量 `AGENT_IDENTITY_LINE`，并补了测试。本机 Node 24.1.0 自带的 SQLite 版本过低，versa 的 vitest 跑不起来；改用下面的 dist 测试和 candidate 验证。
+- dist：`lab/patch-v-identity-line.mjs` 和 `lab/build-v-identity-line.mjs`，以 V 线上的 `system-prompt-params-B645JcX8.js` 为基线（sha `24d19663…`，VLab 字节相同），生成 `lab/release-files/v-identity-line/`，plan 是 `lab/v-identity-line.plan.json`。只替换这一个文件，需要重启。
+- `capability model run` 这条 CLI 诊断命令有自己的一份同样文字，它不是聊天回合，这次没改。
+
+**验证：**
+- 在 V 上的测试桥里只改写这一句，同一条 OpenClaw 真实请求（约 5 万 token、129 个工具）就由 429 变为 200，回复 `PLAIN_OK_0`。这说明整份系统提示里只有这一句被识别。
+- **VLab candidate `candidate-744e291e`（11/28 01:24 CST，全部通过）。** 运行时是 V 的 dist 加上这个补丁（`identityPatched=true`），配置按 `scripts/gemini-neon-alias.mjs` 改过 Gateway 和 Worker 两份。Neon 经 V 上的临时测试桥，通过 SSH 隧道访问。
+
+| 回合 | `/neon`（gemini-account/gemini-4-neon，medium） | `/deepseek`（同在 vlab-worker 通道） |
+|---|---|---|
+| 普通回复 ×3 | 3/3 正确；首字 16.5 / 16.0 / 12.2 s | 3/3；首字 1.5 / 1.8 / 1.3 s |
+| exec `hostname` | 调了 exec，回复 `TOOL=VM-0-4-ubuntu`；首字 33.5 s | 同样结果；2.1 s |
+| 附件图片（纯蓝 PNG） | 「蓝色」；14.5 s | 「蓝色」；1.3 s |
+| view_image（绿色 PNG） | 调了 view_image，回复「绿色」；26.3 s | 同样结果；2.6 s |
+| 桥返回 503 | 0.8 s 结束并报「模型服务中途出错」，桥只收到 1 次请求，不重试，也不切 fallback | — |
+| 桥连不上 | 37.5 s 后报 `network connection error` | — |
+
+**慢在上游。** 桥记录的上游首个分片时间是 8.3–19.4 s。这些请求输入约 5 万 token、带 129 个工具，缓存命中 1.6–5 万，思考只有 11–165 token。不带工具的小请求首个分片是 1.4 s，约 7 万 token 的纯文本 prompt 是 3.0 s。OpenClaw 这边比桥多出约 4 s，主要是测试隧道：188 KB 的请求要从新加坡绕到上海再回来，上 V 后本机直连不会有这段。所以 Neon 走账号接口的首字大约是 10–20 s，比 `/deepseek` 慢一个数量级，适合用在不追求速度的场合。`/think low` 能不能更快，没测。
+
 ## 上线步骤（等 Tianyi 批准后由监控 session 执行）
 
+0. dist 补丁 `lab/v-identity-line.plan.json`（会影响 V 的**所有**回合，需要重启）：按 `promote-to-v` 流程走，staging 时替换 `baseRelease`，在一次 `v-self-restart` 里生效。
 1. `sudo bash apps/gemini-account-bridge/install.sh`：安装 `/opt/gemini-account-bridge/<sha>`，起 `gemini-account-bridge.service`（scene-gemini 用户，127.0.0.1:25990，只放行 openclaw）。不动 relay 和它的端口 25986。
 2. 对两份配置分别跑 `node scripts/gemini-neon-alias.mjs apply <config> --cli <openclaw.mjs>`。9.1 的 reload 规则里 `models` 属于 hot（只重启 heartbeat），`agents`、`secrets` 属于 none，所以**不需要重启 Gateway**。Worker 按配置换代，与 11/02 的 `/terra` 相同。写入后核对 `vlab.workers.status` 里 workers>0 且没有处于 closing。
 3. 验收：在测试群发 `/neon`，再发一条需要 exec 的消息和一张图片。
@@ -102,6 +132,8 @@ Gateway (vlab-worker) ─▶ Worker (PI harness, google-generative-ai transport)
 - relay、Scene 和其他别名都不受影响。
 
 ## 风险与未覆盖
+
+- **系统提示第一句改变的是 V 所有回合的身份**，不只是 `/neon`：/deepseek、/vcc、子 agent、cron 都会受影响。上线后的第一轮，系统提示的稳定前缀会重新进缓存一次。这次 candidate 只覆盖了 `/neon` 和 `/deepseek` 两条路径。
 
 - 账号封禁风险见上。用量计入 Tianyi 的 Pro 订阅额度，和 Scene relay 共用同一个池子：五小时额度和周额度都是共用的。
 - 共享 VLab 没有这套登录，parity 对 `gemini-account` 会报差异。要么在 VLab 上单独登录一份 agy（需要 Tianyi 交互授权），要么让 VLab 通过 tailnet 访问 V 上的桥。待定。

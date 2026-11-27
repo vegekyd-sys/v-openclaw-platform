@@ -11,5 +11,11 @@
   "user": "lab-db91-parity",
   "env": {
     "BRIDGE_URL": "http://127.0.0.1:25990/v1beta"
-  }
+  },
+  "files": [
+    {
+      "source": "lab/release-files/v-identity-line/system-prompt-params-B645JcX8.js",
+      "target": "openclaw/dist/system-prompt-params-B645JcX8.js"
+    }
+  ]
 }

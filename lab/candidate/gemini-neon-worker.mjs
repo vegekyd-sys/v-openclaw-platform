@@ -1,6 +1,8 @@
 // Candidate test for /neon: Gemini 4 Neon on the account bridge, run by the PI harness
 // (Gateway vlab-worker -> Worker openclaw).
 //
+// Runtime: V's dist plus lab/release-files/v-identity-line (the system prompt opens as V; the
+// account endpoint rejects OpenClaw's default opening sentence with a fake 429).
 // Setup: the shared VLab config, changed exactly as scripts/gemini-neon-alias.mjs changes V
 // (same plan, applied with config-set merge semantics to both the Gateway and the Worker
 // config). The bridge itself is apps/gemini-account-bridge running on V; this test reaches it
@@ -195,13 +197,14 @@ async function turn(sessionKey, message, { attachments, limitMs = 300_000 } = {}
   };
 }
 
-const results = { neon: {}, deepseek: {}, failure: {} };
+const results = { neon: {}, deepseek: {}, failure: {}, identityPatched: null };
 try {
   startGateway();
   await connectGateway();
   const deadline = Date.now() + 240_000;
   while (Date.now() < deadline && !lines.some((l) => l.line.includes("[worker-runtime-prewarm.3]"))) await sleep(500);
   const stamp = Date.now();
+  results.identityPatched = fs.readFileSync(path.join(dist, "system-prompt-params-B645JcX8.js"), "utf8").includes("v-identity-line-v1");
   for (const name of (process.env.ARMS ?? "neon,deepseek").split(",")) {
     const alias = name;
     const key = `agent:makaron:explicit:neon-cand-${name}-${stamp}`;
@@ -209,7 +212,7 @@ try {
     out.directive = await turn(key, `/${alias}`);
     out.plain = [];
     for (let i = 0; i < PLAIN_REPEATS; i += 1) out.plain.push(await turn(key, `（平台自动化测试）只回复这一串，不要别的：PLAIN_OK_${i}`));
-    if (process.env.PROBE_ONLY) { console.log(JSON.stringify({ probe: out.plain })); process.exit(0); }
+    if (process.env.PROBE_ONLY) { console.log(JSON.stringify({ identityPatched: results.identityPatched, probe: out.plain }, null, 1)); process.exit(0); }
     out.exec = await turn(key, "（平台自动化测试）用 exec 工具运行 `hostname`，然后只回复：TOOL=<命令输出>");
     out.attachment = await turn(key, "（平台自动化测试）附件这张图整体是什么颜色？只回答一个中文颜色词。", {
       attachments: [{ type: "image", mimeType: "image/png", fileName: "neon-blue.png", content: blue }],
