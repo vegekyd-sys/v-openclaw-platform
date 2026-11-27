@@ -156,7 +156,9 @@ export function createConfig(o) {
         model: m.model,
         models: m.models,
         modelPolicy: { allow: Object.keys(m.models) },
-        ...(xai ? { imageModel: { primary: 'xai/grok-4.7' } } : {}),
+        // Image understanding on DeepSeek Flash (Tianyi, 2026-11-28; V itself uses grok): no extra key needed.
+        // xAI, when its key is there, is only the fallback.
+        imageModel: { primary: m.fastModel, ...(xai ? { fallbacks: ['xai/grok-4.7'] } : {}) },
         thinkingDefault: 'high',
         typingMode: 'instant',
         reasoningDefault: 'off',

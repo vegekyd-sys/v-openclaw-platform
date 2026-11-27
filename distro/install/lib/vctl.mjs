@@ -205,6 +205,29 @@ function placeVPlugins(dest) {
   }
 }
 
+// Keys that tools read under different names: when only one name is set, the Gateway (and the
+// agent's exec through it) also gets the other, from /etc/v/aliases.env (0600). Line B's skills
+// read both APIFY_API_KEY and APIFY_TOKEN.
+export const KEY_ALIASES = [['APIFY_API_KEY', 'APIFY_TOKEN']];
+export function keyAliases(env) {
+  const out = {};
+  for (const names of KEY_ALIASES) {
+    const have = names.find((n) => typeof env[n] === 'string' && env[n].length > 0);
+    if (!have) continue;
+    for (const n of names) if (!env[n]) out[n] = env[have];
+  }
+  return out;
+}
+
+function configureAliases(env) {
+  const file = path.join(P.etc, 'aliases.env');
+  const a = keyAliases(env);
+  if (!Object.keys(a).length) { fs.rmSync(file, { force: true }); return []; }
+  fs.writeFileSync(file, `# v-distro configure: the same keys under the other names some tools read\n${Object.entries(a).map(([k, v]) => `${k}=${v}`).join('\n')}\n`, { mode: 0o600 });
+  fs.chmodSync(file, 0o600);
+  return Object.keys(a);
+}
+
 export const DESKTOP_UNITS = ['openclaw-desktop.service', 'v-desktop-handoff.service', 'openclaw-cua-node.service'];
 export const desktopEnabled = (env) => env.V_DESKTOP === '1';
 
@@ -397,7 +420,8 @@ async function cmdConfigure(opts) {
   run('chown', ['-R', `${P.user}:${P.user}`, path.join(P.home, '.npm-global')]);
   const lark = configureLarkCli(env, tools['lark-cli']);
   const desktop = configureDesktop(env);
-  out({ step: 'configure', profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, larkCli: lark, desktop, audio: !!cfg.tools.media, primary: cfg.agents.defaults.model.primary });
+  const aliases = configureAliases(env);
+  out({ step: 'configure', profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, larkCli: lark, desktop, aliases, audio: !!cfg.tools.media, primary: cfg.agents.defaults.model.primary });
 }
 
 // lark-cli talks to Feishu as the same app as the channel (line B's skills and scripts use it).

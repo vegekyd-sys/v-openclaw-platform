@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { applyOverlay, replacePackage, verifyCapture, verifyPackage, linkNpmProjects, overlayStatePlugins, installRelease } from './release.mjs';
-import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile } from './vctl.mjs';
+import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, keyAliases } from './vctl.mjs';
 import { execFileSync } from 'node:child_process';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
@@ -297,4 +297,11 @@ test('probe reads tool output from both Worker text items and Codex toolResult i
   assert.ok(messageText(worker).includes('MARK_TOOL'));
   assert.ok(messageText(codex).includes('MARK_TOOL'));
   assert.ok(!messageText(thinking).includes('MARK_TOOL'), 'reasoning that merely mentions the marker does not count');
+});
+
+test('key aliases: one Apify name set gives the other; both or neither set, nothing is added', () => {
+  assert.deepEqual(keyAliases({ APIFY_TOKEN: 't' }), { APIFY_API_KEY: 't' });
+  assert.deepEqual(keyAliases({ APIFY_API_KEY: 'k' }), { APIFY_TOKEN: 'k' });
+  assert.deepEqual(keyAliases({ APIFY_API_KEY: 'k', APIFY_TOKEN: 't' }), {});
+  assert.deepEqual(keyAliases({}), {});
 });
