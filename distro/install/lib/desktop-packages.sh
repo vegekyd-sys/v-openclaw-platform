@@ -21,6 +21,8 @@ v_desktop_packages() {
   apt-get install -y -qq --no-install-recommends gnupg ca-certificates curl >/dev/null
   if [ ! -s "$GOOGLE_KEYRING" ]; then
     local tmp; tmp="$(mktemp -d)"
+    # A throwaway gpg home: checking the key must not create or change root's keyrings.
+    export GNUPGHOME="$tmp/gnupg"; mkdir -m 700 "$GNUPGHOME"
     curl -fsSL --retry 3 -o "$tmp/key.pub" "$GOOGLE_KEY_URL"
     local fprs; fprs="$(gpg --batch --show-keys --with-colons "$tmp/key.pub" | awk -F: '$1=="fpr"{print $10}')"
     if ! grep -qx "$GOOGLE_KEY_FPR" <<<"$fprs"; then
@@ -30,7 +32,7 @@ v_desktop_packages() {
     gpg --batch --no-default-keyring --keyring "$tmp/ring.gpg" --import "$tmp/key.pub" 2>/dev/null
     gpg --batch --no-default-keyring --keyring "$tmp/ring.gpg" --export "$GOOGLE_KEY_FPR" > "$GOOGLE_KEYRING"
     chmod 644 "$GOOGLE_KEYRING"
-    rm -rf "$tmp"
+    rm -rf "$tmp"; unset GNUPGHOME
   fi
   echo "deb [arch=amd64 signed-by=$GOOGLE_KEYRING] https://dl.google.com/linux/chrome/deb/ stable main" > "$GOOGLE_LIST"
   # Tell Google's package not to add or re-enable its own repository entry (its documented switch):
