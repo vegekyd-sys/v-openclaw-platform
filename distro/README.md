@@ -121,3 +121,10 @@ node --test distro/build/build.test.mjs distro/install/lib/release.test.mjs dist
   不含 `.nvm`；`/usr/local/bin` 里也没有 node、npm 或 chromium；openclaw 用户读不了 `/root`；Gateway 没有打开任何 `/root` 下的文件。
 - 没有用机器上的 chromium 或 playwright：进程环境里没有相关变量，也没有起 chromium 进程。浏览器能力不在这次验收里。
 - 旧服务（openclaw-vlab-gateway、openclaw-dashboard、openclaw-memory-auto-index、nginx）仍是 inactive / disabled。
+
+### 补 `@openclaw/ai` 覆盖层后重装（2026-11-27 19:05 CST，版本 `2026.11.27-db91-lifecycle-proof.2`，提交 d319ecac）
+
+先卸载再从零重装：94 s，真实模型 → exec → 最终回复通过（9.2 s）。
+测试机上 `core/node_modules/@openclaw/ai/dist` 的 4 个文件与 V 的 sha256 一致（c7957572 / 915ac13d / a66edfc5 / 7d7ae7a8）；
+整个 `core/node_modules` 的 24,861 个文件与 V **0 个不同**。Gateway 仍用 `/opt/v/node/v22.23.1`，进程环境里没有 nvm。
+这个安装保留在测试机上，给飞书上手验收用。
