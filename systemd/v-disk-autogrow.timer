@@ -1,0 +1,10 @@
+[Unit]
+Description=Check V's data disk every five minutes
+
+[Timer]
+OnCalendar=*-*-* *:00/5:00
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,22 @@
+{
+  "autogrow": {
+    "cap_gib": 1200,
+    "max_order_cny": 100,
+    "max_month_cny": 200,
+    "trigger_free_ratio": 0.25,
+    "trigger_growth_days": 21,
+    "target_free_ratio": 0.30,
+    "target_growth_days": 45,
+    "min_free_gib": 30,
+    "balance_reserve_cny": 50
+  },
+  "flow": {
+    "t0_full_days": 14,
+    "t1_cap_days": 14,
+    "mover_stale_hours": 48,
+    "budget_cny": 450,
+    "weekly_report": true,
+    "movers": {},
+    "drain": {}
+  }
+}
