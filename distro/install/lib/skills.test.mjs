@@ -50,6 +50,7 @@ test('install: npm, lark and GitHub skills land in ~/.openclaw/skills; a tampere
   const upstream = path.join(root, 'upstream');
   write(path.join(upstream, 'skills/good/SKILL.md'), 'good');
   write(path.join(upstream, 'skills/bad/SKILL.md'), 'tampered');
+  write(path.join(upstream, 'skills/good/README.md'), 'not listed, not taken');
   write(path.join(release, 'runtime/skills.json'), JSON.stringify({ target: '.openclaw/skills', lark: { tool: 'lark' }, github: [
     { name: 'good', repo: 'o/r', commit: 'a'.repeat(40), path: 'skills/good', files: { 'SKILL.md': sha('good') } },
     { name: 'bad', repo: 'o/r', commit: 'a'.repeat(40), path: 'skills/bad', files: { 'SKILL.md': sha('bad') } },
@@ -78,6 +79,7 @@ test('install: npm, lark and GitHub skills land in ~/.openclaw/skills; a tampere
   assert.deepEqual(r.installed, ['good', 'lark-im']);
   assert.equal(fs.readFileSync(path.join(skills, 'lark-im/SKILL.md'), 'utf8'), '# lark im\n');
   assert.equal(fs.readFileSync(path.join(skills, 'good/SKILL.md'), 'utf8'), 'good');
+  assert.ok(!fs.existsSync(path.join(skills, 'good/README.md')), 'only listed files are installed');
   assert.match(r.failed.bad, /does not match the pinned files/);
   assert.ok(!fs.existsSync(path.join(skills, 'bad')));
   assert.match(r.failed.makaron, /not installed by v-distro/);
