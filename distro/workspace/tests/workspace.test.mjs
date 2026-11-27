@@ -253,6 +253,20 @@ test("schedules.json: unique keys, valid crons, NO_REPLY as the silent token, sc
   }
   const hb = items.find((s) => s.key === "heartbeat-proactive");
   assert.equal(hb.cron, "30 2,8,14,20 * * *", "proactive heartbeat runs every 6 hours");
+  assert.equal(items.find((s) => s.key === "heartbeat-daily-review").enabled, true, "daily review is on by default, like V");
+});
+
+test("the 2026-11-27 decisions hold: VSync, A2A and computer use ship and follow V; nothing is left undecided", () => {
+  const l = lib.lists();
+  for (const s of ["vsync", "agent-to-agent-protocol-feishu-a2a-defaults", "computer-use", "background-worker-contract", "qcc-company-lookup"]) {
+    assert.equal(lib.classify(l, `skills/${s}`), "carry", s);
+    assert.ok(fs.existsSync(path.join(PAYLOAD, "skills", s, "SKILL.md")), s);
+  }
+  const undecided = fs.readFileSync(path.join(WS, "decide.txt"), "utf8").split("\n").filter((x) => x.trim() && !x.startsWith("#"));
+  assert.deepEqual(undecided, []);
+  const cu = fs.readFileSync(path.join(PAYLOAD, "skills/computer-use/SKILL.md"), "utf8");
+  assert.doesNotMatch(cu, /agentmail|22804|Profile 1|tianyi-mac|eleme-takeout|459 条|the owner/, "V's own browser setup stays out");
+  assert.ok(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8").includes("skills/computer-use"));
 });
 
 function renderedWorkspace() {
