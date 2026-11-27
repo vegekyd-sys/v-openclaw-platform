@@ -269,6 +269,22 @@ test("the 2026-11-27 decisions hold: VSync, A2A and computer use ship and follow
   assert.ok(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8").includes("skills/computer-use"));
 });
 
+test("2026-11-28: no Scene; Night Shift ships generic and says it needs the service; public links say they need Vercel or Cloudflare", () => {
+  const read = (rel) => fs.readFileSync(path.join(PAYLOAD, rel), "utf8");
+  for (const rel of lib.walk(PAYLOAD)) {
+    if (!/\.(md|json|py|mjs|cjs)$/.test(rel)) continue;
+    assert.doesNotMatch(read(rel), /scene-cli|Scene retrieval|scenes-ai\.com/, rel);
+  }
+  const ns = read("skills/night-shift-operator/SKILL.md");
+  assert.match(ns, /nightshiftctl health/);
+  assert.match(ns, /需要部署方装好夜班服务并配置服务地址才生效/);
+  assert.match(ns, /这项需要你补|需要你补 Vercel 或 Cloudflare 账号/);
+  assert.doesNotMatch(ns, /tianyi\.live|cdn\.makaron\.app|xingqing|base-buffer-contract|\/home\/openclaw/);
+  assert.match(read("TOOLS.md"), /## 公网链接：需要主人自己的 Vercel 或 Cloudflare 账号/);
+  for (const rel of ["skills/html-poster-design/SKILL.md", "skills/html-executive-pitch-deck-iteration/SKILL.md", "skills/meshy-3d-agent/SKILL.md"])
+    assert.match(read(rel), /这项需要你补 Vercel 或 Cloudflare 账号/, rel);
+});
+
 function renderedWorkspace() {
   const out = path.join(tmp("py"), "ws");
   build(out, { values: { WORKSPACE: out, AGENT_ID: "test-v", STATE_DIR: path.join(out, ".state"), TIMEZONE: "Asia/Shanghai" } });
