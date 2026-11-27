@@ -1,0 +1,17 @@
+{
+  "support": [
+    "lab/candidate/tv-mcp-bridge-runtimes.mjs",
+    "scripts/v-tv-mcp-switch.mjs",
+    "scripts/v-tv-mcp-bridge.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/tv-mcp-bridge-runtimes.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity",
+  "env": {
+    "HARNESS": "vds",
+    "PHASES": "hotswitch"
+  }
+}

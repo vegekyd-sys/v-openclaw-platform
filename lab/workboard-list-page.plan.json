@@ -1,0 +1,20 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/workboard-list-page/sqlite-store-CH-caj1l.js",
+      "target": "openclaw/dist/sqlite-store-CH-caj1l.js",
+      "before": "9ff2826f52d522b5122e1542a3adb3b306d20bc13d673d4988050d5bef1e4168"
+    },
+    {
+      "source": "lab/release-files/workboard-list-page/runtime-api-1CCazqtv.js",
+      "target": "openclaw/dist/runtime-api-1CCazqtv.js",
+      "before": "b1bdba866c4cf587c0db959ff9a04a5b127f37b1c470eb134e097f1a46f1d8d6"
+    },
+    {
+      "source": "lab/release-files/workboard-list-page/extensions/workboard/index.js",
+      "target": "openclaw/dist/extensions/workboard/index.js",
+      "before": "62a0a1b558563fc481bd7231fe2366feb6be1ea56a59b14e4afb4215c2c75590"
+    }
+  ]
+}

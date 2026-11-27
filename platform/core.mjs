@@ -171,7 +171,7 @@ export function parseTapSummary(output) {
   return result;
 }
 
-export async function runOffline(root, catalog, {timeoutMs=120000}={}) {
+export async function runOffline(root, catalog, {timeoutMs=240000}={}) {
   const audit=auditCatalog(root,catalog);
   if(!audit.catalogValid)throw Error(`Catalog failed: ${audit.errors.join('; ')}`);
   if(!Number.isInteger(timeoutMs)||timeoutMs<100||timeoutMs>300000)throw Error('Invalid offline test timeout');

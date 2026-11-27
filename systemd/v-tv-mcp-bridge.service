@@ -1,0 +1,31 @@
+# One shared Xiaomi TV MCP for every V session (PRODUCTION - not VLab).
+# Loopback Streamable HTTP on 127.0.0.1:18791 (bearer token V_TV_MCP_TOKEN from the Gateway's
+# ~/.openclaw/.env), one persistent `ssh vlab python3 stdio.py` upstream. Before this, every
+# Gateway session, Codex thread and claude-cli run spawned its own ssh (docs/v-tv-mcp-bridge.md).
+# Runs outside openclaw-gateway.service, so it does not count against the Gateway's TasksMax.
+# Installed by scripts/install-v-tv-mcp-bridge.sh.
+[Unit]
+Description=V Xiaomi TV MCP bridge (PRODUCTION - not VLab)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=openclaw
+Group=openclaw
+Environment=HOME=/home/openclaw
+Environment=TV_MCP_BRIDGE_LISTEN=127.0.0.1:18791
+Environment=TV_MCP_BRIDGE_TOKEN_FILE=/home/openclaw/.openclaw/.env
+Environment=TV_MCP_BRIDGE_TOKEN_KEY=V_TV_MCP_TOKEN
+ExecStart=/opt/node-v22.23.1/bin/node /opt/v-tv-mcp-bridge/v-tv-mcp-bridge.mjs
+Restart=always
+RestartSec=5
+TasksMax=64
+MemoryMax=256M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

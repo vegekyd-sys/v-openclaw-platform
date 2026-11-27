@@ -1,0 +1,33 @@
+{
+  "support": [
+    "lab/candidate/usage-session-select-setup.mjs",
+    "lab/candidate/usage-session-select-harness.mjs",
+    "lab/candidate/usage-session-select-repro.mjs",
+    "lab/candidate/usage-session-select-compare.mjs"
+  ],
+  "databases": [
+    "agents/makaron/agent/openclaw-agent.sqlite"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/usage-session-select-repro.mjs"
+  ],
+  "user": "lab-db91-parity",
+  "timeoutSeconds": 3600,
+  "files": [
+    {
+      "source": "lab/release-files/usage-session-select/usage-C3nh9kcO.js",
+      "target": "openclaw/dist/usage-C3nh9kcO.js",
+      "before": "44c5f048ed5bae4ed417a19a8d42962e6090bdfbc349b02b4fa37b73415c2e94"
+    },
+    {
+      "source": "lab/release-files/usage-offload/usage-C3nh9kcO.js",
+      "target": "openclaw/dist/usage-old-C3nh9kcO.js"
+    }
+  ],
+  "env": {
+    "ARM": "compare",
+    "USS_HARNESS": "compare",
+    "USS_TOTAL_ROWS": "8000"
+  }
+}

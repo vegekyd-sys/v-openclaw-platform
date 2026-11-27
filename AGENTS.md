@@ -14,6 +14,14 @@
   change. Passing tests, a repair request, an integration lease or another task
   approval does not grant merge authorization. After approval, execute the
   authorized integration and shared validation.
+- Exception (Tianyi, 2026-11-22): an agent may merge these two kinds of PR into dev
+  itself once CI is green, and must tell Tianyi afterwards:
+  - the capture PR of a release Tianyi approved for V: only `release/captured/`,
+    `release/source-map.json` and the CHANGELOG section;
+  - the PR that records a change Tianyi approved on V and that is already live there:
+    exactly that change plus its tests, with the same bytes as on V.
+  A PR that contains anything else, any code not yet on V, V's core documents, or
+  this file still needs explicit authorization. A red or pending check never qualifies.
 - Use `/Users/tianyicai/vlab-dev/lab/vlab.mjs` for worktree, integration and release
   operations. Use `candidate` for pre-merge tests against cached runtime code and selected
   VLab data snapshots in disposable server directories. Candidate execution has

@@ -45,6 +45,12 @@ jobs:
       # Workboard dist patches it relies on stay here with their tests.
       - name: Test Workboard dist patches
         run: node --test tests/workboard-*-patch.test.mjs
+      # The installable V workspace (distro/workspace/README.md): no V-private
+      # content, the sync gate and merge, build/render, Heartbeat and schedule helpers.
+      - name: Test the distro workspace
+        run: |
+          node --test distro/workspace/tests/*.test.mjs
+          cd distro/workspace/payload && python3 -m unittest discover -s scripts/tests -p 'test_*.py'
       - name: Validate vLab release assets
         run: ./tests/vlab-static.sh
       # Every OpenClaw byte V runs that differs from upstream must map to a

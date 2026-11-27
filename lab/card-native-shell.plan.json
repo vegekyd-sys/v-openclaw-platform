@@ -1,0 +1,20 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/card-native-shell/harness-DXVZ5II5.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/harness-DXVZ5II5.js",
+      "before": "2903634b801db3ed43e4374a6be6c2770d9745229ef705ef87729a3e83bdcfb2"
+    },
+    {
+      "source": "lab/release-files/card-native-shell/thread-lifecycle-DAcEJ_Om.js",
+      "target": "npm/projects/openclaw-codex-8902d781d4__openclaw-generation__g-b42d646e5561ece2/node_modules/@openclaw/codex/dist/thread-lifecycle-DAcEJ_Om.js",
+      "before": "bdb000d570172024f7b4c2b1e6ae74706ec68368aa7d1736e2af94ab39b7f99a"
+    },
+    {
+      "source": "lab/release-files/card-native-shell/runtime-Cy2RRq4n.js",
+      "target": "openclaw/dist/runtime-Cy2RRq4n.js",
+      "before": "e4690957affecbac32d049d778152850a0d69dca4d593145803a4b1e4e583a16"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+# v-distro: keeps memory_search current in real time, outside the Gateway (V's
+# v-memory-indexer.service). The runner takes node, dist and environment from the
+# Gateway unit, so it follows every update without being rewritten.
+[Unit]
+Description=V memory_search real-time indexer (v-distro)
+After=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=root
+Environment=GATEWAY_UNIT=openclaw-gateway.service
+ExecStart=/usr/bin/python3 @PREFIX@/current/runtime/ops/v-memory-indexer-run.py makaron
+Restart=on-failure
+RestartSec=60
+Nice=5
+MemoryHigh=1G
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,98 @@
+{
+  "release": "db91-lifecycle-proof-20261127.meeting-bridge",
+  "capturedAt": "2026-11-26T16:40:49.562Z",
+  "capturedFrom": {
+    "host": "v",
+    "runtimeDir": "/home/openclaw/.openclaw/extensions/v-meeting-bridge",
+    "baseDir": "none"
+  },
+  "upstream": null,
+  "platformCommit": null,
+  "note": "Point-in-time capture of how the live runtime diverges from its upstream base. These bytes are the existing production state, not a reviewed source build. Entries with alsoInRepo=null had no copy anywhere except the server.",
+  "counts": {
+    "runtimeFiles": 9,
+    "baseFiles": 0,
+    "modified": 0,
+    "added": 9,
+    "removedFromBase": 0,
+    "alreadyInRepo": 0,
+    "capturedOnly": 9,
+    "residue": 0
+  },
+  "removedFromBase": [],
+  "files": [
+    {
+      "path": "./core-loader.js",
+      "sha256": "a7d1d62f3edb62f48ad2507acc887b9eec46fc7227fd7fe5af9e593a244e5674",
+      "kind": "added",
+      "bytes": 2830,
+      "hostMtime": "2026-11-25T14:24:20.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/bridge.js",
+      "sha256": "d77cc9909cfa81355e864ed01967704380934f901a9a54775f8a81e3e7d48132",
+      "kind": "added",
+      "bytes": 19853,
+      "hostMtime": "2026-11-25T14:24:20.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/lark.js",
+      "sha256": "4577d125a4461c51688536ab0bf75778c27a66328814d9f903c27100f9a113ae",
+      "kind": "added",
+      "bytes": 5454,
+      "hostMtime": "2026-11-18T07:08:04.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/manager.js",
+      "sha256": "5ed7b13dd0ff87af462fa427c63100e2ab33a35f59e563b2c5941715de3159e0",
+      "kind": "added",
+      "bytes": 6669,
+      "hostMtime": "2026-11-25T14:24:20.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/prompts.js",
+      "sha256": "6822e6533140294531f25eae8fc7d5db919ed73acf8284675a45a4f8eed09768",
+      "kind": "added",
+      "bytes": 4865,
+      "hostMtime": "2026-11-25T14:24:20.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./core/store.js",
+      "sha256": "e5ad7169659580d490fc78e8756b5020cc7189fcd5c1350a4da2690afa53e96a",
+      "kind": "added",
+      "bytes": 2349,
+      "hostMtime": "2026-11-18T07:08:04.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./index.js",
+      "sha256": "2706f2637b11b5b4a6c1072ff0d7d771a0ff43e4bdec6fed8fef9a0a676b3f3b",
+      "kind": "added",
+      "bytes": 12811,
+      "hostMtime": "2026-11-25T14:24:20.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./openclaw.plugin.json",
+      "sha256": "3b35307d301845d09b85f8d3921ed8264c048ab201c3c7bb8d4b9e7477c6d044",
+      "kind": "added",
+      "bytes": 1701,
+      "hostMtime": "2026-11-18T07:08:04.000Z",
+      "alsoInRepo": null
+    },
+    {
+      "path": "./package.json",
+      "sha256": "a599b936eab4cfeb32f062c32b83818957dd8b244c3c35ea3067eab9ef08d0a4",
+      "kind": "added",
+      "bytes": 424,
+      "hostMtime": "2026-11-25T14:24:20.000Z",
+      "alsoInRepo": null
+    }
+  ],
+  "residue": []
+}

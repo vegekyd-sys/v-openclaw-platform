@@ -1,0 +1,16 @@
+{
+  "support": [
+    "lab/candidate/card-native-shell.mjs",
+    "lab/patch-card-native-shell.mjs",
+    "lab/patch-egress-loopback.mjs"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/card-native-shell.mjs"
+  ],
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity",
+  "env": {
+    "CNS_PATCH": "0"
+  }
+}

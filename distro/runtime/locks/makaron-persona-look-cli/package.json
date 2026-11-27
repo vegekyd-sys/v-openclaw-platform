@@ -1,0 +1,7 @@
+{
+  "name": "v-distro-makaron-persona-look-cli",
+  "private": true,
+  "dependencies": {
+    "makaron-persona-look-cli": "0.5.6"
+  }
+}

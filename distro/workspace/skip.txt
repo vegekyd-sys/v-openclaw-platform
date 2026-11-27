@@ -1,0 +1,205 @@
+# What V has but the installable V does not take, with the reason.
+# sync.mjs lists every skills/<name> and scripts/<entry> v-core changed since
+# the last sync; each must match carry.txt, this file or decide.txt, otherwise
+# the run stops with UNREVIEWED. Format: <glob> <reason>. Globs match
+# skills/<name>, scripts/<top-level entry> or a single file inside a carried directory.
+
+# --- the owner's personal life (V is one person's assistant) ---
+skills/tianyi-*                       主人个人设备与模板
+skills/voice-tianyi                   主人个人声音
+skills/eleme-takeout                  主人个人事务（外卖），带收货信息
+skills/local-life-ordering-sop        主人个人事务
+skills/didi-ride-skill-official       主人个人事务
+skills/home-assistant-*               主人家里的设备
+skills/remote-ha-*                    主人家里的设备
+skills/xiaomi-tv-control              主人家里的设备
+skills/mac-presentation-*             主人个人设备
+skills/v-story-illustrations          V 自己的形象故事
+skills/exam-prep-planning             主人家人的学习计划
+skills/investment-plan-reconciliation 主人个人财务
+scripts/voice-tianyi.sh               主人个人声音
+
+# --- V's own operations (V's hosts, accounts, runtime patches) ---
+skills/v-*                            V 自身运维（自我升级、配置、客户运维）
+skills/launch-mirror-v                V 开 Mirror 的运维技能
+skills/tencentcloud-infra             V 的云账号
+skills/frontend-deploy                V 的部署目标
+skills/cdn-upload                     V 的 CDN 账号
+skills/feishu-group-avatar            V 的飞书应用运维
+skills/feishu-standalone-*            V 的交付链接服务
+skills/feishu-voice-*                 V 的飞书语音链路
+skills/gateway-rpc-*                  V 的网关运维
+skills/openclaw-safe-downgrade        V 的运行时降级
+skills/gpt-live-talk-tuning           V 的语音账号
+skills/universal-memory-*             V 的 Universal Memory 服务
+skills/skillopt-*                     V 的技能优化实验
+skills/minimax-h3-4090                V 的 GPU 机器
+skills/agent-token-burn-triage        V 的额度排查
+skills/plugin-defect-verification     V 的插件排障
+skills/ssh-key-handoff                V 的主机接入
+skills/voice-v-user-guide             V 的语音入口
+skills/channel-message-delivery       OpenClaw 渠道开发
+skills/message-ir-contract            OpenClaw 渠道开发
+scripts/audit-git-hygiene.mjs         V Core 自己的检查
+scripts/sync-from-workspace.py        V Core 自己的同步
+scripts/x-mention-bridge              V 的 X 账号
+scripts/install-*.cjs                 V 运行时的 dist 补丁安装器（客户版运行时由 A 线发行包决定）
+scripts/README-feishu-card-patches.md V 运行时的补丁说明
+scripts/live-card-state-runner.cjs    V 的卡片 runner
+scripts/planmode-*                    V 的 PlanMode 卡片补丁
+scripts/material-summary-store.cjs    V 的卡片 runner
+scripts/mirror-v-*                    V 开 Mirror 的运维脚本
+scripts/feishu-drive-upload.py        V 的飞书应用与群
+scripts/feishu-group-roster.sh        V 的飞书群
+scripts/disk-status.sh                V 主机巡检
+scripts/knight-status.py              读 V 主机的服务状态
+scripts/skill-dashboard.py            V 的技能看板
+scripts/midnight-report.sh            V 的午夜报告投递（客户版用 schedules.json 的午夜报告）
+scripts/daily-session-review*         V 的会话复盘，读 V 主机日志并发 V 的卡片
+scripts/universal-memory-*            V 的 Universal Memory 服务
+scripts/memory-search-benchmark       V 的检索评测数据
+scripts/memory-bench                  V 的检索评测数据
+scripts/librarian-prompts             V 的编译提示词试验记录；客户版提示词在 schedules.json
+scripts/librarian-backlog-plan.py     V 的积压清理一次性计划
+scripts/librarian-group-digest.py     V 的群摘要（读 V 的群）
+scripts/retired-footage-rule.py       V 的客户素材下架规则
+scripts/preflight-proposal-check.py   V 的提案落地检查，依赖 V 的提案流程
+scripts/proposal-landing-audit.py     同上
+scripts/vsync-*                       VSync（见 decide.txt 的 skills/vsync）
+scripts/heartbeat-personal-assistant.py V 的 Heartbeat V2 引擎：主人个人的飞书 id、群和记忆授权；客户版用 heartbeat-assistant.py 重写
+scripts/heartbeat-v2-*                同上
+scripts/memory-graph-*                发布到 V 的公开 wiki 站点
+
+# --- Makaron / Scene product operations (V's job at the company) ---
+skills/makaron-app-*                  Makaron 产品运营（V 专职）
+skills/makaron-customer-profile       Makaron 产品运营
+skills/makaron-marketing-*            Makaron 产品运营
+skills/makaron-skill-homepage-ops     Makaron 产品运营
+skills/makaron-intermediate-continuation Makaron 产品内部流程
+skills/makaron-v1-9-*                 Makaron 产品内部流程
+skills/makaron-final-delivery-naming  依赖 V 的 Makaron 项目与交付命名规范
+skills/makaron/parts/feishu           V 的 Makaron 飞书卡片服务（依赖 V 的卡片 runner 与账号路由）
+skills/makaron/VERSION.md             V 的 Makaron 组合版本记录（客户版不带 parts/feishu）
+scripts/makaron-*                     V 的 Makaron 账号、key 与卡片 runner
+scripts/scene-*                       V 的 Scene 卡片与 key 路由
+scripts/skill-layer                   V 的技能分层实验
+scripts/apify-douyin-search.py        V 的抖音搜索包装（依赖 V 的 Apify actor 配额约定；通用搜索走 apify-search.mjs）
+skills/scene-beat-cut                 V 的 Scene 产线素材
+skills/scene-upload-project           V 的 Scene 项目
+
+# --- customers and business pipelines run on V ---
+skills/xingqing-*                     客户项目（星擎）
+skills/star-engine-*                  客户项目（星擎）
+skills/aochuang-*                     客户项目（奥创）
+skills/dealclaw-*                     DealClaw 业务
+skills/xiaoyuan-*                     DealClaw 业务
+skills/mio-*                          客户项目（米奥）
+skills/csm-*                          客户成功运营
+skills/wecom-customer-push            推送到客户群
+skills/sop-service-perception-card    客户服务感知卡
+skills/service-*                      客户服务运营
+skills/monthly-*                      客户服务运营
+skills/customer-*                     客户运营
+skills/client-*                       客户交付
+skills/lead-customer-profile          客户运营
+skills/geelark-*                      云手机矩阵运营
+skills/fcloud-*                       客户项目（FCloud）
+skills/tk-*                           TikTok 账号运营
+skills/tiktok-account-report          客户账号报表
+skills/tiktok-ads-launch              客户广告投放
+skills/tiktok-benchmark-collection    客户账号清单
+skills/tiktok-music-library           V 的周更曲库
+skills/tiktok-video-pin-delete        云机远控
+skills/bc-account-bind                云机 TikTok 授权
+skills/youtube-channel-publish        客户频道发布
+skills/youtube-schedule-publish       客户频道发布
+skills/wa-*                           WhatsApp 客户运营
+skills/waba-*                         WhatsApp 客户运营
+skills/zhongfang-*                    客户项目
+skills/ultron-*                       客户项目
+skills/qiancean-*                     客户项目
+skills/xiaoao-*                       客户项目（CRM）
+skills/miao-*                         客户项目
+skills/max-qijian-*                   客户项目
+skills/s2-*                           客户项目
+skills/account-*                      客户账号运营
+skills/material-*                     客户素材库
+skills/night-shift-*                  V 夜班（广告社媒批量生产）
+skills/nightshift-*                   V 夜班
+skills/ai-video-brief                 V 夜班 brief 规范
+skills/remix-video-brief              V 夜班
+skills/montage-script-writer          V 夜班
+skills/content-factory-*              V 内容工厂演示
+skills/creator-factory-tour           V 内容工厂
+skills/factory-*                      客户工厂短视频
+skills/expo-*                         客户展会项目
+skills/exhibitor-*                    客户展会项目
+skills/chinglish-factory-ad           客户广告
+skills/ecommerce-video                客户品类规范
+skills/product-video-brief            客户产品视频规范
+skills/enterprise-production-doc      客户制作文档
+skills/company-material-inventory     客户素材盘点
+skills/corporate-video-pipeline       客户企宣片链路（依赖 V 的 Scene 与卡片）
+skills/video-delivery-audit           客户交付审核
+skills/video-review-analysis          依赖 V 的视频下载 / ASR 管线与飞书输出目标
+skills/review-report-revision         客户复盘报告
+skills/*-planning*                    客户项目策划
+skills/presales-planning-doc          客户项目策划
+skills/b2b-tiktok-*                   客户项目策划
+skills/shooting-*                     客户拍摄项目
+skills/tron-openmontage-*             客户项目
+skills/talking-head-intro             客户项目
+skills/caption-treatment-form         客户项目
+skills/swatch-evolution-chain         客户项目
+skills/requirement-form-questions     客户项目
+skills/survey-alert                   客户项目
+skills/data-selection                 客户数据接口
+skills/budget-stats                   公司内部预算
+skills/contract-entitlement-bitable   客户合同权益
+skills/candidate-list-build           客户项目
+skills/dashboard-snapshot-backfill    客户看板
+skills/datasource-migration-fanout    DealClaw 开发
+skills/admin-web-endpoint-wiring      DealClaw 开发
+skills/ci-build-triage                DealClaw 开发
+skills/credit-*                       Makaron 计费内部
+skills/onboarding-failure-ux          DealClaw / Mirror 开通流程
+skills/prod-*                         DealClaw 生产库
+skills/tenant-page-error-triage       DealClaw 租户
+skills/send-window-timing             客户触达排期
+skills/jenkins-argocd-test-release    客户项目发布
+skills/loong*                         V 的代理账号
+skills/ai-hunter                      客户项目
+skills/overseas-*                     客户获客项目
+skills/enterprise-discovery-intake    客户项目
+skills/wechatpay-*                    支付账号
+skills/d12-*                          内部测试
+skills/autoflow-pipeline              V 夜班
+skills/auto-pipeline-skill            已废弃
+skills/3d-asset-ar-showcase           客户项目
+skills/figma-reference-replication    V 的 Figma 账号
+skills/landing-page-frontend-generation V 的部署目标
+skills/ppt-master-integration         V 的外部工具接入
+skills/volcano-voice-clone-workflow   V 的语音账号
+skills/11                             客户需求调研文档
+skills/tone-aesthetics                没有 SKILL.md，只有产出物
+skills/skills                         误建的空目录
+
+# --- decide.txt items not carried (decided 2026-11-27: same as V where it works for a customer) ---
+skills/browser-fast-run               写死 V 的 Chrome 端口和 V 的决策模型账号，客户机上跑不起来
+skills/youtube-video-download         V 上从未进 git（v-core 没有），写死 V 的浏览器 profile；先进 v-core 再带
+skills/meshy-image-to-3d              V 上从未进 git（v-core 没有）；要客户自己的 Meshy key
+skills/makaron-ad-creator             随 makaron-cli 装成全局 skill（global-skills.json），工作区不另带
+skills/openclaw-disk-full-recovery    V 上从未进 git；自托管机器由部署方运维
+skills/scene-*                        V 的 Scene 搜索站卡片与产线；通用的 Scene CLI 用 scene-cli 自带的 skill（global-skills.json）
+skills/meeting-co-pilot               依赖 V 自己的飞书会议接入服务
+skills/skill-inventory-export         V 上从未进 git；正文举例全是 V 的客户
+skills/lark-user-routing              多人共用一个 V 的身份路由（依赖 lark-users）；客户版只有一位主人
+
+# --- found on V 2026-11-27 after the first inventory ---
+skills/temeter-video                  V 的一个客户的固定节目形态
+skills/*.skill                        旧的单文件打包副本，正文已在对应 skill 目录里
+
+# --- single files inside carried directories ---
+skills/tiktok-publish-copy/references/cases.md 客户已发布的真实文案与账号；SKILL.md 在案例库为空时照常工作
+skills/feishu-channel-cards/references/nightshift-progress.md V 夜班的进度卡（依赖 V 的夜班仓库）
+skills/computer-use/references/session-evidence-2026-10-03.md  V 自己三次实测的记录（站点、账号、主人的 2FA），不是规则

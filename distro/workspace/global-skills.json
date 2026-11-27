@@ -1,0 +1,20 @@
+{
+ "schema": "v-distro-global-skills/1",
+ "note": "Skills V loads from outside its workspace (~/.agents/skills, ~/.openclaw/skills). They are third-party packs, not V's own text, so the workspace does not copy them; the installer (line A) installs the 'install' ones at pinned versions. Snapshot of V on 2026-11-27.",
+ "install": [
+  { "skills": "lark-* (approval, base, calendar, contact, doc, drive, event, im, mail, markdown, meeting, minutes, okr, openapi-explorer, shared, sheets, skill-maker, slides, task, vc, whiteboard, wiki, workflow-*)", "source": "the skill pack shipped with @larksuite/cli (same version as tools.json)", "why": "写飞书（文档、日程、任务、多维表、表格、知识库）和 V 一样；TOOLS.md 与 feishu-* skill 都调用它们" },
+  { "skills": "feishu-bitable, feishu-calendar, feishu-channel-rules, feishu-im-read, feishu-task, feishu-troubleshoot", "source": "bundled with the @openclaw/feishu channel plugin (comes with the runtime)", "why": "飞书渠道自带，无需另装；列出来只为核对" },
+  { "skills": "makaron, makaron-music-library, makaron-persona-look, makaron-ad-creator", "source": "makaron-cli and makaron-persona-look-cli npm packages", "why": "创作能力；没有 MAKARON_API_KEY 时 skill 会如实说没开通" },
+  { "skills": "scene-cli", "source": "scene-cli npm package (`scene skill install --target <skills root>`)", "why": "Scene 素材检索的官方 CLI skill；主人在 Scene 建个人 key（`scene auth set-key`）就能用，没有 key 时如实说没开通。V 的飞书搜索站部分不带" },
+  { "skills": "frontend-design, frontend-slides, pptx, remotion-best-practices", "source": "public third-party skills, pinned versions under their own licences", "why": "演示 / 网页类，和 V 一致（2026-11-27 定：能用就带）" },
+  { "skills": "hyperframes, hyperframes-*, media-use, reverse-any-video, style-sampling", "source": "heygen-com/hyperframes, pinned", "why": "视频动效创作，和 V 一致；需要 Chrome 和 ffmpeg，机器上没有时 skill 会报缺依赖" }
+ ],
+ "decide": [],
+ "skip": [
+  { "skills": "wecom-*, wecomcli-*, wecom-unified, wecom-webhook-bot, dws", "why": "企业微信 / 钉钉渠道；本客户只用飞书" },
+  { "skills": "alipay-*, skillpay-onboarding", "why": "支付；V 的支付宝钱包授权" },
+  { "skills": "v-browser-device, voice-cli, volcano-voice, large-file-transfer, universal-memory-contributor, social-search, video-analyze, video-review-analysis, report-web", "why": "依赖 V 自己的服务、主机或账号（V Browser、语音入口、跨境中转、Universal Memory、V 的报告站）" },
+  { "skills": "elder-weekly-planner, product-weekly-planner, fluxedup-4090, ssh-4090, kdl-agent, taobao-flash-sale-kv, manju-*, aochuang-*, customer-health-score, b2b-tiktok-planning-doc, ecommerce-video, ai-jian-koubo, agent-to-agent-protocol", "why": "主人个人设备、公司内部团队流程或客户项目（agent-to-agent-protocol 由 payload 自带一份）" },
+  { "skills": "image-generation, image-svg-pptx-pro, ppt-template-batch, explainer-video, unboxing-video, beautiful-feishu-whiteboard", "why": "V 自己的全局副本，从未进任何仓库；要带先进 v-core 并过脱敏（2026-11-27 仍未进）" }
+ ]
+}

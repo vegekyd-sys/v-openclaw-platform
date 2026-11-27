@@ -1,0 +1,4 @@
+# Generic enough to consider, but someone has to decide before a customer gets it.
+# Reviewed (the sync gate accepts them) and NOT carried until moved to carry.txt.
+# Format: <glob> <question to decide>. INVENTORY.md explains each.
+# 2026-11-27: all earlier entries decided (carry.txt / skip.txt, INVENTORY.md section 4). Empty for now.

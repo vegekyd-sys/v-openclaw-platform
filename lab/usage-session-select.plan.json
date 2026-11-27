@@ -1,0 +1,10 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/usage-session-select/usage-C3nh9kcO.js",
+      "target": "openclaw/dist/usage-C3nh9kcO.js",
+      "before": "44c5f048ed5bae4ed417a19a8d42962e6090bdfbc349b02b4fa37b73415c2e94"
+    }
+  ]
+}

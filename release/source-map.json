@@ -25,6 +25,10 @@
     "session-relay": {
       "exempt": true,
       "note": "our own plugin; source is this repo"
+    },
+    "meeting-bridge": {
+      "exempt": true,
+      "note": "our own plugin; source is apps/v-meeting-bridge/plugin in this repo"
     }
   },
   "entries": [
@@ -288,16 +292,16 @@
     {
       "layer": "core",
       "path": "db91-integrity-bootstrap.mjs",
-      "sha256": "87b7fa4767b0b7b56800e0163977778ee5da6999dfec6b5a07410208248dad84",
-      "source": "versa:35f7f06f225",
-      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending; restart carry as in db91-restart-carry.mjs"
+      "sha256": "f3c120788315f4e5b09f65b1f7347c12647342978f134bee4757aec2e5db2b6d",
+      "source": "versa:ca494f9134f",
+      "note": "PR #655 db91 lifecycle proof on versa/port-db91-lifecycle-proof-20261126 (parent 11670ce12b6, from port-backlog-20261029): Gateway children reuse the live lifecycle; missing receipts restored from admission.json; carry refuses when an alongside lifecycle in the same boot did not exit cleanly; versa tests 46 pass, new cases fail on parent"
     },
     {
       "layer": "core",
       "path": "db91-integrity-gate.mjs",
-      "sha256": "aa68547bbf63e027c81b135b351c8a979cd2f3c3b101d81014e48efbeafdff2e",
-      "source": "versa:7282274202a",
-      "note": "A9b shrink accepted when SQLite header records it; test in agent-db-integrity-gate.test.ts"
+      "sha256": "8e82bad02088e19fd86e89c81d8a81bf94cca64782304ece38ae7a59d655fa99",
+      "source": "versa:ca494f9134f",
+      "note": "PR #655 db91 lifecycle proof on versa/port-db91-lifecycle-proof-20261126 (parent 11670ce12b6, from port-backlog-20261029): Gateway children reuse the live lifecycle; missing receipts restored from admission.json; carry refuses when an alongside lifecycle in the same boot did not exit cleanly; versa tests 46 pass, new cases fail on parent"
     },
     {
       "layer": "core",
@@ -323,9 +327,9 @@
     {
       "layer": "core",
       "path": "db91-restart-carry.mjs",
-      "sha256": "5f18d635380c9d0d73ae30b4db0b2e9d5f7d6b19de46b69cdb2dd722e003ffca",
-      "source": "versa:35f7f06f225",
-      "note": "wave-1 backlog (turn group, versa/port-turn-20261029 @ ca0878fdd84; GPT Live slices from the voice group) merged into versa/port-backlog-20261029; unit tests fail without each change; source build splits chunks differently, key sections compared by hand; runtime A/B pending; carry checks match V, which does not re-verify a database changed in place while stopped (same identity, not shrunk), see team A turn report 4.2"
+      "sha256": "fe54e3fe8f274ff517b17878b4c469550d28f85a558002536c847a4b790cf103",
+      "source": "versa:ca494f9134f",
+      "note": "PR #655 db91 lifecycle proof on versa/port-db91-lifecycle-proof-20261126 (parent 11670ce12b6, from port-backlog-20261029): Gateway children reuse the live lifecycle; missing receipts restored from admission.json; carry refuses when an alongside lifecycle in the same boot did not exit cleanly; versa tests 46 pass, new cases fail on parent"
     },
     {
       "layer": "core",
@@ -1582,9 +1586,9 @@
     {
       "layer": "dingtalk",
       "path": "dist/connection-DCvu-l09.mjs",
-      "sha256": "397c42c3f66d0cd7898168de21be1607303723cd797d9174ad4b1d6694d44520",
-      "source": "pending:third-party-plugin",
-      "note": "third-party plugin: source belongs in this repo (lab/ patch + test), not in the fork"
+      "sha256": "78cf6f8540437d42d724c71b357365f3fba6422900be01ce3dcff04a13eb2ea2",
+      "source": "platform:apps/v-experience/dingtalk/patch-socket-guard.mjs",
+      "note": "dingtalk-connector 0.8.26 chunk patched by apps/v-experience/dingtalk/patch.mjs (patchDingtalkConnector, includes socket guard v-dingtalk-socket-guard-v1, PR #602; test tests/dingtalk-socket-guard.test.mjs)"
     },
     {
       "layer": "dingtalk",
@@ -1924,6 +1928,41 @@
     },
     {
       "layer": "core",
+      "path": "commands-session-cost.runtime-C4rqe689.js",
+      "sha256": "149a2dc591de52aba9ed2acbd8a591b18747923158a921b55c9556dd1cf46dc2",
+      "source": "versa:45b1333d152",
+      "note": "usage-offload-20261113 (#604): usage RPCs run whole in a low-priority child process, date-range trimmed, rollups read in chunks (versa/port-usage-offload-20261113)"
+    },
+    {
+      "layer": "core",
+      "path": "session-cost-usage-C_mE_GAE.js",
+      "sha256": "0581a16d57d01bd8e060d4f0867257422c85d52564e2d1b3cc82a564c4195123",
+      "source": "versa:45b1333d152",
+      "note": "usage-offload-20261113 (#604): usage RPCs run whole in a low-priority child process, date-range trimmed, rollups read in chunks (versa/port-usage-offload-20261113)"
+    },
+    {
+      "layer": "core",
+      "path": "usage-C3nh9kcO.js",
+      "sha256": "44c5f048ed5bae4ed417a19a8d42962e6090bdfbc349b02b4fa37b73415c2e94",
+      "source": "versa:45b1333d152",
+      "note": "usage-offload-20261113 (#604): usage RPCs run whole in a low-priority child process, date-range trimmed, rollups read in chunks (versa/port-usage-offload-20261113)"
+    },
+    {
+      "layer": "core",
+      "path": "usage-offload-child-v1.js",
+      "sha256": "19297dc3bfb4cdae3142da00db8bf2ec58d504d0bbc4a549fb34b2e5165c7f3f",
+      "source": "versa:45b1333d152",
+      "note": "usage-offload-20261113 (#604): usage RPCs run whole in a low-priority child process, date-range trimmed, rollups read in chunks (versa/port-usage-offload-20261113)"
+    },
+    {
+      "layer": "core",
+      "path": "usage-offload-v1.js",
+      "sha256": "f54e269de1bd7dc1e6d4cf4f72566f29f2c0767de4e35446263662bb5546496f",
+      "source": "versa:45b1333d152",
+      "note": "usage-offload-20261113 (#604): usage RPCs run whole in a low-priority child process, date-range trimmed, rollups read in chunks (versa/port-usage-offload-20261113)"
+    },
+    {
+      "layer": "core",
       "path": "session-accessor.sqlite-entry-BlklNPKQ.js",
       "sha256": "7cba57ac7e6c80bf741934f54211070977188892f9e888480a894d72c102da37",
       "source": "versa:13eee00de5c",
@@ -2096,6 +2135,202 @@
       "sha256": "ab84850dba95cf1bd54c3751eccc52869b22d91913d027c1dd0b46c46a1cf059",
       "source": "versa:1d013cb6c39",
       "note": "workboard-full-sweep (2026-11-17, Gateway): the Workboard lifecycle sweep's 10-minute full listing (sessions.list lifecycleOnly, no activeMinutes) reads and merges the durable session stores and the persisted subagent runs on a one-shot worker thread and hands back only the lifecycle fields; versa/port-workboard-full-sweep-20261117 on 3dfc7c4c4fb (#613's tip); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "supervisor-BuLJGQyc.js",
+      "sha256": "3fca1a79be535e4558f56f9d3e2efc364b62f405a07d2e1a19da8661b9d943e5",
+      "source": "versa:4b3ec9b69c8",
+      "note": "spawn-broker (2026-11-19, Gateway): service-child relays (every exec) are forked by a small long-lived helper (dist/v-spawn-broker.mjs, started lazily by the Gateway on first exec, exits with the Gateway's IPC) instead of the ~6 GB Gateway; a slow spawn falls back to a direct spawn without killing the helper; OPENCLAW_V_SPAWN_BROKER=0 turns it off per call; versa/spawn-broker-workboard-index on aea2dae23b4 (vegekyd-sys/openclaw-versa#1, unmerged); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "v-spawn-broker.mjs",
+      "sha256": "4d365d79b8b526dfd388cf49b10e05a8b56bc6eacc6f606adcfb91b4d90e3a21",
+      "source": "versa:4b3ec9b69c8",
+      "note": "spawn-broker (2026-11-19, Gateway): service-child relays (every exec) are forked by a small long-lived helper (dist/v-spawn-broker.mjs, started lazily by the Gateway on first exec, exits with the Gateway's IPC) instead of the ~6 GB Gateway; a slow spawn falls back to a direct spawn without killing the helper; OPENCLAW_V_SPAWN_BROKER=0 turns it off per call; versa/spawn-broker-workboard-index on aea2dae23b4 (vegekyd-sys/openclaw-versa#1, unmerged); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "sqlite-store-CH-caj1l.js",
+      "sha256": "9ff2826f52d522b5122e1542a3adb3b306d20bc13d673d4988050d5bef1e4168",
+      "source": "versa:5fed775dabf",
+      "note": "workboard-hotpath-index (2026-11-19, Gateway): ensureWorkboardSchema creates two covering indexes, (board_id, status, archived_at, updated_at) for listBoardAggregates and (created_at, id, archived_at, link columns) for the lifecycle match read; queries unchanged; built once at the first store open after the restart; versa/spawn-broker-workboard-index on aea2dae23b4 (vegekyd-sys/openclaw-versa#1, unmerged); needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "runtime-Cy2RRq4n.js",
+      "sha256": "e4690957affecbac32d049d778152850a0d69dca4d593145803a4b1e4e583a16",
+      "source": "versa:629bd9638ed",
+      "note": "egress-proxy-tls-reuse (2026-11-19, Gateway): the secret egress proxy builds its upstream SecureContext once instead of per forwarded request, and mints TLS leaves once per hostname for all run registrations (re-minted on CA file change, under 1 h left, or after a failed mint); versa/port-egress-proxy-tls-reuse-20261119 on e27869be125 (leaf cache in leaf-cache.ts on the fork, inline in the dist patch); PR #627; needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "ca-DsWeiCkK.js",
+      "sha256": "f8aa4896b6f7a4ee607bfd510c0ec03bb3ed77b7df3cb559b3dd0e537600a0fa",
+      "source": "versa:2743be41ed2",
+      "note": "egress-proxy-ca-30d (2026-11-19, Gateway): the secret egress proxy CA (one per Gateway start, never re-signed in place) is valid for 30 days instead of 1, so proxied exec HTTPS no longer fails once the Gateway has been up a day; debug CA (7 d) and leaves (1 d) unchanged; versa/port-egress-proxy-tls-reuse-20261119 on 629bd9638ed; PR #627; needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "extensions/workboard/index.js",
+      "sha256": "62a0a1b558563fc481bd7231fe2366feb6be1ea56a59b14e4afb4215c2c75590",
+      "source": "versa:e27869be125",
+      "note": "workboard-sweep-complete (2026-11-18, Gateway): the Workboard lifecycle sweep's 10-minute full listing requests the whole session catalog and is complete when sessions.list says hasMore=false (V lists ~22,900 sessions, so the fixed 10,000 page never was); a complete snapshot fails a prepared launch only when it was prepared before this process started or has had no accepted session for 30 minutes; OPENCLAW_V_WORKBOARD_SWEEP_COMPLETE=0 restores V's behavior; versa/port-workboard-sweep-complete-20261118 on 1d013cb6c39; needs a Gateway restart; not on V until promoted"
+    },
+    {
+      "layer": "core",
+      "path": "usage-C3nh9kcO.js",
+      "sha256": "a39d4ef674cb8b0f03f04962b55b1f49a4f5d94b698fb9cabfd74773bafdfff3",
+      "source": "versa:13747d7e018",
+      "note": "usage-session-select-v1 (2026-11-20, Gateway): sessions.usage reads only the session rows it needs (key match, list projection + loadUsageContextWeights) instead of the whole agent session table (25,866 rows / 2.4 GB on V), and read-scope callers without an operator role (openclaw gateway call) also run in the usage child process; PR #631; on V since usage-workboard-20261120"
+    },
+    {
+      "layer": "core",
+      "path": "manager-vector-warning-BHH19jrh.js",
+      "sha256": "505706a143843ddfbd13564dca7d04aa1fd4b501669c58f5b313b8a0c51a342f",
+      "source": "versa:b09039594d8",
+      "note": "memory-close-passive-v1 (2026-11-21, Gateway): a memory_search connection closes with a PASSIVE WAL checkpoint instead of TRUNCATE, so closing no longer holds the agent database writer lock and busy-waits 5 s on the Gateway thread while another connection has a read transaction open (V 2026-11-20 22:30-23:07: every tools.invoke memory_search +5.0 s); versa/memory-close-passive-checkpoint-20261120; PR #633; on V since memory-close-passive-20261121"
+    },
+    {
+      "layer": "core",
+      "path": "session-accessor-K0XuW6ln.js",
+      "sha256": "64b40f9cd7366e00f03ed726ec4f6eea92fc21f08921c214451497804773821a",
+      "source": "versa:ffd654e6b17",
+      "note": "session-create-narrow-v1 (2026-11-23, Gateway): sessions.create and visible sessions_spawn read only the session rows the new key resolves to (label check from the label column, lifecycle skips entry counts, store target reads seeds exactly) instead of JSON-parsing the whole agent session table (26,779 rows / 2.64 GB on V: +4.6 GiB heap and a 40-60 s Gateway freeze per visible spawn, 2026-11-23 14:52/15:08/15:25); versa/port-session-create-narrow-20261123 on 3dfc7c4c4fb; OPENCLAW_V_SESSION_CREATE_NARROW=0 turns it off; PR #640; on V since spawn-narrow-runstart-20261123"
+    },
+    {
+      "layer": "core",
+      "path": "session-create-service--hv2vsLh.js",
+      "sha256": "4587339aad56fb35c89684b97099b461001f887ee9a7266228c90baf40e0be3b",
+      "source": "versa:ffd654e6b17",
+      "note": "session-create-narrow-v1 (2026-11-23, Gateway): sessions.create and visible sessions_spawn read only the session rows the new key resolves to (label check from the label column, lifecycle skips entry counts, store target reads seeds exactly) instead of JSON-parsing the whole agent session table (26,779 rows / 2.64 GB on V: +4.6 GiB heap and a 40-60 s Gateway freeze per visible spawn, 2026-11-23 14:52/15:08/15:25); versa/port-session-create-narrow-20261123 on 3dfc7c4c4fb; OPENCLAW_V_SESSION_CREATE_NARROW=0 turns it off; PR #640; on V since spawn-narrow-runstart-20261123"
+    },
+    {
+      "layer": "core",
+      "path": "session-utils-store-Dlphca2N.js",
+      "sha256": "d3380fa54ce03530d4e8ead60e4bfcd82497474950feeca16ae02ed793ac730b",
+      "source": "versa:ffd654e6b17",
+      "note": "session-create-narrow-v1 (2026-11-23, Gateway): sessions.create and visible sessions_spawn read only the session rows the new key resolves to (label check from the label column, lifecycle skips entry counts, store target reads seeds exactly) instead of JSON-parsing the whole agent session table (26,779 rows / 2.64 GB on V: +4.6 GiB heap and a 40-60 s Gateway freeze per visible spawn, 2026-11-23 14:52/15:08/15:25); versa/port-session-create-narrow-20261123 on 3dfc7c4c4fb; OPENCLAW_V_SESSION_CREATE_NARROW=0 turns it off; PR #640; on V since spawn-narrow-runstart-20261123"
+    },
+    {
+      "layer": "core",
+      "path": "agent-runner.runtime-CAdsMsQt.js",
+      "sha256": "94b1522e19098deddd841ce1816b8ce63e45e50c38cddf5b40615aa976d2f0ab",
+      "source": "versa:a319451cdd5",
+      "note": "run-start-phases-v1 (2026-11-23): logs [run-start-phases.1] with the dispatch -> run start steps of each chat turn; logging only; versa/port-run-start-phases-20261123; PR #641; on V since spawn-narrow-runstart-20261123"
+    },
+    {
+      "layer": "core",
+      "path": "embedded-agent-DaSvA-Yk.js",
+      "sha256": "ca29ec5956491d7656dd296cdcd60b719acf4ca520652d4d69bf389302959769",
+      "source": "versa:a319451cdd5",
+      "note": "run-start-phases-v1 (2026-11-23): logs [run-start-phases.1] with the dispatch -> run start steps of each chat turn; logging only; versa/port-run-start-phases-20261123; PR #641; on V since spawn-narrow-runstart-20261123"
+    },
+    {
+      "layer": "core",
+      "path": "get-reply-CqW1y05D.js",
+      "sha256": "d7f3d744b1185133f2dd9bc3c9402b16a0f0b6e62dafc5623651bb66a12f6492",
+      "source": "versa:a319451cdd5",
+      "note": "run-start-phases-v1 (2026-11-23): logs [run-start-phases.1] with the dispatch -> run start steps of each chat turn; logging only; versa/port-run-start-phases-20261123; PR #641; on V since spawn-narrow-runstart-20261123; the earlier backlog-20261029 changes in this file are carried on the same port branch"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/run-attempt-D1hJO4fX.js",
+      "sha256": "84513c81c6f7e248afc6a39cb06608c4c636e490365e381dd76a5e296ac25761",
+      "source": "versa:a319451cdd5",
+      "note": "run-start-phases-v1 (2026-11-23): logs [run-start-phases.1] with the dispatch -> run start steps of each chat turn; logging only; versa/port-run-start-phases-20261123; PR #641; on V since spawn-narrow-runstart-20261123"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-control-scope-DA4oSvgr.js",
+      "sha256": "0a869f4cecdc2646618528fdf16beade62c21494ecbbfa8e7b9ca405e4fa785d",
+      "source": "versa:f565b832b7d",
+      "note": "subagent-tree-read-v1 (2026-11-24, Gateway): the subagents tool, /status, /subagents, the Active Subagents prompt section and descendant counts read only the caller's subagent tree through the requester/controller/child indexes instead of loading the whole subagent_runs table (27,776 runs / 322 MiB) and the agent session table (V 2026-11-24 01:12: a /vcc subagents list froze the Gateway 33.7 s, RSS 5.2 -> 10.3 GB); versa/port-subagents-scoped-read-20261124; OPENCLAW_V_SUBAGENT_TREE_READ=0 turns it off; PR #643; on V since v-batch-20261124"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-list-BS8F5xN_.js",
+      "sha256": "a729c17a033836e40bcfa70a8c8078f034b97105d54e16a312bf869d1f77f048",
+      "source": "versa:f565b832b7d",
+      "note": "subagent-tree-read-v1 (2026-11-24, Gateway): the subagents tool, /status, /subagents, the Active Subagents prompt section and descendant counts read only the caller's subagent tree through the requester/controller/child indexes instead of loading the whole subagent_runs table (27,776 runs / 322 MiB) and the agent session table (V 2026-11-24 01:12: a /vcc subagents list froze the Gateway 33.7 s, RSS 5.2 -> 10.3 GB); versa/port-subagents-scoped-read-20261124; OPENCLAW_V_SUBAGENT_TREE_READ=0 turns it off; PR #643; on V since v-batch-20261124"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-registry-read-UaDFTyfW.js",
+      "sha256": "3aafae432c4b09e6a7f47d674f277cf076df6bb28c79bfedbd174c696cc0795c",
+      "source": "versa:f565b832b7d",
+      "note": "subagent-tree-read-v1 (2026-11-24, Gateway): the subagents tool, /status, /subagents, the Active Subagents prompt section and descendant counts read only the caller's subagent tree through the requester/controller/child indexes instead of loading the whole subagent_runs table (27,776 runs / 322 MiB) and the agent session table (V 2026-11-24 01:12: a /vcc subagents list froze the Gateway 33.7 s, RSS 5.2 -> 10.3 GB); versa/port-subagents-scoped-read-20261124; OPENCLAW_V_SUBAGENT_TREE_READ=0 turns it off; PR #643; on V since v-batch-20261124"
+    },
+    {
+      "layer": "core",
+      "path": "subagent-registry.store.sqlite-hzGu4QSk.js",
+      "sha256": "113a34d2dcd3bce39285797988da183035b8d5b236377932922b483049cbaab9",
+      "source": "versa:f565b832b7d",
+      "note": "subagent-tree-read-v1 (2026-11-24, Gateway): the subagents tool, /status, /subagents, the Active Subagents prompt section and descendant counts read only the caller's subagent tree through the requester/controller/child indexes instead of loading the whole subagent_runs table (27,776 runs / 322 MiB) and the agent session table (V 2026-11-24 01:12: a /vcc subagents list froze the Gateway 33.7 s, RSS 5.2 -> 10.3 GB); versa/port-subagents-scoped-read-20261124; OPENCLAW_V_SUBAGENT_TREE_READ=0 turns it off; PR #643; on V since v-batch-20261124"
+    },
+    {
+      "layer": "core",
+      "path": "extensions/workboard/index.js",
+      "sha256": "c964e7306ad4229f698b452cf950a2da06d73d1c437fbf713b853a6d560b698d",
+      "source": "versa:30fd8f17e5d",
+      "note": "workboard-list-page-v1 (2026-11-24, Gateway): workboard_list reads the sort keys of the cards it can return and reads cards whole only up to limit, instead of store.list of the whole board with all child tables (29,105 cards; Night Shift calls froze the Gateway 19-30 s on 2026-11-23); versa/port-workboard-list-page-20261124; OPENCLAW_V_WORKBOARD_LIST_PAGE=0 restores the full read; PR #644; on V since v-batch-20261124"
+    },
+    {
+      "layer": "core",
+      "path": "runtime-api-1CCazqtv.js",
+      "sha256": "5a7bec4f9cd3b3e258cf4b1dc1845ba03e859cb1deae13119cf64b2f335a7663",
+      "source": "versa:30fd8f17e5d",
+      "note": "workboard-list-page-v1 (2026-11-24, Gateway): workboard_list reads the sort keys of the cards it can return and reads cards whole only up to limit, instead of store.list of the whole board with all child tables (29,105 cards; Night Shift calls froze the Gateway 19-30 s on 2026-11-23); versa/port-workboard-list-page-20261124; OPENCLAW_V_WORKBOARD_LIST_PAGE=0 restores the full read; PR #644; on V since v-batch-20261124"
+    },
+    {
+      "layer": "core",
+      "path": "sqlite-store-CH-caj1l.js",
+      "sha256": "b698bea4752f603c92a6c8ef06fa66e34f15ac34494669ab9ced34d34378f02d",
+      "source": "versa:30fd8f17e5d",
+      "note": "workboard-list-page-v1 (2026-11-24, Gateway): workboard_list reads the sort keys of the cards it can return and reads cards whole only up to limit, instead of store.list of the whole board with all child tables (29,105 cards; Night Shift calls froze the Gateway 19-30 s on 2026-11-23); versa/port-workboard-list-page-20261124; OPENCLAW_V_WORKBOARD_LIST_PAGE=0 restores the full read; PR #644; on V since v-batch-20261124"
+    },
+    {
+      "layer": "core",
+      "path": "runtime-Cy2RRq4n.js",
+      "sha256": "e417663baa8b375d18a6ceb2b48b769b68dc53a9479d8b7173eeb930977844ab",
+      "source": "versa:4e74266bff6",
+      "note": "egress-loopback-v1 (2026-11-24, Gateway): the secret egress proxy run env also sets NO_PROXY/no_proxy=localhost,127.0.0.1,::1, so OpenClaw exec children reach loopback services directly (the proxy only handles HTTPS; nightshiftctl to 127.0.0.1:24879 failed 2,525 of 2,546 times 11/22-24); versa/port-egress-loopback-20261124; PR #645; on V since v-batch-20261124"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/harness-DXVZ5II5.js",
+      "sha256": "dddb90ef9f77120611a78507669378675f7f693470644a7d77acd6fa08bbbcc0",
+      "source": "versa:0c988bb9d47",
+      "note": "card-native-shell-v1 (2026-11-24): OpenClaw-only session/agent tools that subagent and Workboard card runs deny by default join the Codex safe-deny list, so Night Shift cards keep the Codex native shell (exec_command) like chat; a sessions_spawn/subagents deny also turns Codex native delegation off; versa/port-card-native-shell-20261124; PR #645; on V since v-batch-20261124"
+    },
+    {
+      "layer": "codex",
+      "path": "dist/thread-lifecycle-DAcEJ_Om.js",
+      "sha256": "9a85767c5856b64a7252a6cd45a9771d35dfa29f819f4c9e00e362cc12ebc65d",
+      "source": "versa:0c988bb9d47",
+      "note": "card-native-shell-v1 (2026-11-24): OpenClaw-only session/agent tools that subagent and Workboard card runs deny by default join the Codex safe-deny list, so Night Shift cards keep the Codex native shell (exec_command) like chat; a sessions_spawn/subagents deny also turns Codex native delegation off; versa/port-card-native-shell-20261124; PR #645; on V since v-batch-20261124"
+    },
+    {
+      "layer": "core",
+      "path": "attachment-classify-1K-kUuWK.js",
+      "sha256": "f976aa9c6b11d9addec4ab29e1a4c94222668b9f3f6798ebd2a8f1a94c7c8140",
+      "source": "versa:001dbf28e7a",
+      "note": "binary-attachment-text-v1 (2026-11-25, Gateway): attachment classification no longer treats binary files (fonts and other known binary families, NUL bytes, invalid text past the sniff window) as text, so they are not inlined into the prompt; 2026-11-25 Feishu group V X Jessie: .otf/.ttf fonts were inlined as UTF-16 TSV / text/plain garbage, re-sent every turn via chat history and pushed the session to 7M tokens (no replies 10:36-16:40); versa/port-binary-attachment-text-20261125; PR #648; on V since v-batch-20261125"
+    },
+    {
+      "layer": "core",
+      "path": "cli-live-session-registry-Bux1JHPe.js",
+      "sha256": "83fe2b9f43ec2d5f98e95fe00db477e4f6a22e9f94e2ab5fed12cf2b301c9a98",
+      "source": "versa:bfcb8cbe429",
+      "note": "cli-subagent-progress-v1 (2026-11-25, Gateway): claude-cli turns report foreground Agent subagent activity (parent_tool_use_id records) as turn progress, so a /vcc turn waiting on working subagents is no longer reclaimed as stuck after the 900 s floor (2026-11-25 16:29 group oc_2ab0b5b3: two V Voice subagents killed mid-work); versa/port-cli-subagent-progress-20261125; PR #649; on V since v-batch-20261125"
+    },
+    {
+      "layer": "core",
+      "path": "execute.runtime-DRmvah87.js",
+      "sha256": "2cb9b0e9ba7706db85dd322a3b98e48740cfbe68c2db283a0046778ef6b419d5",
+      "source": "versa:bfcb8cbe429",
+      "note": "cli-subagent-progress-v1 (2026-11-25, Gateway): claude-cli turns report foreground Agent subagent activity (parent_tool_use_id records) as turn progress, so a /vcc turn waiting on working subagents is no longer reclaimed as stuck after the 900 s floor (2026-11-25 16:29 group oc_2ab0b5b3: two V Voice subagents killed mid-work); versa/port-cli-subagent-progress-20261125; PR #649; on V since v-batch-20261125"
     }
   ]
 }

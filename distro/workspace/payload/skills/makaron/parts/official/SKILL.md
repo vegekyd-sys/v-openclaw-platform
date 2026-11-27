@@ -1,0 +1,572 @@
+---
+name: makaron
+description: Use Makaron CLI to generate AI images, videos, music, and motion designs. Trigger when user needs creative media production — photo editing, video generation, video editing, music composition, or design creation. Requires `npx makaron-cli` and MAKARON_API_KEY env var.
+---
+
+# Makaron CLI — Agent Integration Skill
+
+> **makaron.app** is for humans. **makaron-cli** is for AI agents.
+
+Makaron is a multimodal AI creative agent. You talk to it via `makaron chat`, and it produces images, videos, music, and animated designs — all saved to a persistent project.
+
+## Setup
+
+### Get your API key
+
+**Option A: Human login**
+1. Go to [makaron.app](https://makaron.app) and log in
+2. Open the menu (top-right) → **Get API Key**
+3. Copy your `mk_live_...` key
+
+**Option B: Self-Registration (no human required)**
+```bash
+# Step 1: Get challenge
+npx makaron-cli register --json
+# → { "challenge_id": "...", "challenge": "...", "expected_format": "numeric, round to 2 decimal places" }
+
+# Step 2: Solve and verify
+npx makaron-cli register --verify --challenge-id <id> --answer 34.5
+# → Key saved to ~/.makaron/auth.json
+# → { "api_key": "mk_live_...", "credits": N, "claim_url": "..." }
+
+# (Optional) Let a human claim this account
+npx makaron-cli claim
+# → { "claim_url": "..." } — share with human to link key to their account (valid 7 days)
+```
+
+Discovery endpoint: `GET https://www.makaron.app/api/agent/register` — returns full registration flow + CLI usage as JSON.
+
+After self-registration the key is saved locally — no need to export `MAKARON_API_KEY`.
+
+```bash
+export MAKARON_API_KEY=mk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Verify: `npx makaron-cli list` should show projects.
+
+Check the current credit balance and subscription:
+```bash
+npx makaron-cli credits
+npx makaron-cli credits --json
+```
+
+Every `chat` prints the credits it used when it finishes (on stderr, e.g.
+`💳  43 credits used (agent 24 · generate_image 19) · balance 1157`), and
+`--json` results carry the same numbers in a `usage` object. To look it up later:
+```bash
+npx makaron-cli responses get <runId> --pick credits_used   # net credits of one run
+npx makaron-cli usage --run <runId>                         # per-tool breakdown of one run
+npx makaron-cli usage --limit 20                            # recent usage rows (all sources)
+```
+
+## Core Workflow
+
+```bash
+# One-shot: create project + upload image + submit prompt — all in one command
+RUN_ID=$(npx makaron-cli chat --project auto --image photo.jpg -b "make it cinematic and create a 5s video")
+
+# Wait for the final customer-ready result
+npx makaron-cli responses get $RUN_ID --wait --json
+```
+
+Or with an existing project:
+```bash
+RUN_ID=$(npx makaron-cli chat --project $PROJECT_ID -b "make a 5s video")
+npx makaron-cli responses get $RUN_ID --wait --json
+```
+
+## Primary: `chat` (Agent-driven creative work)
+
+Use `chat` for all creative tasks. Makaron Agent decides how to execute — it can edit images, generate videos, compose music, and create designs in a single conversation.
+
+For a new presenter or product video within the chosen model's single-call
+limit, pass the complete brief to `chat`: generate picture, speech, lip sync,
+music and ambience together. Naming Seedance 2.5 defaults to Eco. Do not split
+ordinary presenter work into a voice master, silent video and Studio recipe.
+Native subtitles can be generated in the same call. When exact or editable
+captions are required, retain the generated soundtrack and add only the text
+overlays through direct composition; subtitles do not require Studio. Inspect
+the final audible MP4 and caption spelling before delivery. ASR is fallible;
+a transcription typo alone is not a reason to regenerate speech. On moderation
+failure, inspect the actual inputs/error and recover with a revised prompt or
+compatible model when authorized; poll an accepted task instead of regenerating.
+
+For clearly adult, erotic, or NSFW requests, read `references/nsfw.md`
+([public copy](https://www.makaron.app/.well-known/agent-skills/makaron/references/nsfw.md))
+before submitting the job. It adds per-job routing exceptions only; do not load
+or apply it to ordinary SFW work.
+
+```bash
+npx makaron-cli chat --help
+```
+
+### Submit a request
+
+```bash
+# With existing project
+npx makaron-cli chat --project <id> --json -b "<prompt>"
+
+# Auto-create project (with or without images)
+npx makaron-cli chat --project auto --image photo.jpg --json -b "make it cinematic"
+npx makaron-cli chat --project auto --image img1.jpg --image img2.jpg --json -b "combine these"
+```
+
+`chat` routes image and video models automatically. Use `--agent-model` only when the user explicitly asks to select or compare the reasoning/tool-calling Agent LLM. Accepted values are `auto`, the base model IDs (`gpt-6-luna`, `gpt-6.1-sol`, `gpt-6-sol`, `gpt-5.6-terra`, `gpt-5.6-sol`, `gpt-5.6-luna`, `grok-4.6`, `deepseek-v4-pro`, `deepseek-flash`), and the personal-plan routes (`gpt-6-luna-codex-subscription`, `gpt-6.1-sol-codex-subscription`, `gpt-6-sol-codex-subscription`, `gpt-5.6-terra-codex-subscription`, `gpt-5.6-sol-codex-subscription`, `gpt-5.6-luna-codex-subscription`). `auto` defaults to DeepSeek Flash with native vision, following the server-configured Agent model; eligible accounts can use the Codex subscription when that default is a GPT model; base GPT-5.6, GPT-6 and GPT-6.1 IDs select Azure API, while suffixed IDs explicitly request the personal plan where authorized. Never put an image or video model ID in `--agent-model`.
+
+```bash
+npx makaron-cli chat --project auto --agent-model deepseek-v4-pro --json -b "make a 20s badminton video"
+npx makaron-cli chat --project auto --agent-model gpt-6-luna-codex-subscription --json -b "reply with the active model"
+```
+
+Returns immediately:
+```json
+{"runId": "xxx", "projectId": "...", "projectUrl": "https://www.makaron.app/projects/...", "status": "running"}
+```
+
+### Common workflows
+
+| What you want | Example |
+|--------------|---------|
+| Edit an image | `npx makaron-cli chat --project <id> --image photo.jpg "remove the person in the background"` |
+| Generate an image | `npx makaron-cli chat --project auto "generate a cinematic poster of a rainy Tokyo alley"` |
+| Make a video from the current project | `npx makaron-cli chat --project <id> "make this into a 5 second cinematic video"` |
+| Fix one moment in a video from a screenshot | `npx makaron-cli chat --project <id> --image screenshot.png "@4 this frame should be Paris; only fix this moment"` |
+| Cut or assemble video | `npx makaron-cli chat --project <id> --video clip.mp4 "cut out the dead air and keep the best 20 seconds"` |
+| Add music | `npx makaron-cli chat --project <id> "add calm piano background music"` |
+| Beat-sync video from audio | `npx makaron-cli chat --project auto --audio beat.mp3 "use Seedance Mini at 480p to make a beat-synced video"` |
+| Create motion design | `npx makaron-cli chat --project <id> "make an animated Instagram story with this image"` |
+
+### Built-in production skills
+
+Pass the complete brief, source roles, budget and granted review authority to
+`makaron chat` in natural language; the internal Agent selects a matching Skill.
+Use `--skill <name>` when explicitly selecting an entry below.
+Makaron's internal Agent reads the selected Skill and its dependencies and owns
+the production/review workflow. Let that Skill own the detailed procedure.
+
+<!-- makaron:workflow-directory:start -->
+| Request | `--skill` entry |
+| --- | --- |
+| Ordinary image editing/generation, music or single-clip video | Omit `--skill` for automatic routing |
+| Multi-part narrative with consistent characters/scenes | `long-video-director` |
+| Faithfully recreate reference shot structure with replacement content | `video-edit`; request the replication profile in the brief |
+| Explain a topic, product or process | `explainer-video` |
+| Trailer, teaser, brand film or cinematic short | `cinematic-video` |
+| Speech-led cuts, captions and B-roll | `talking-head` |
+| Translate/dub/localize an existing video | `video-translate` |
+| Package existing source footage for TikTok/Douyin | `tiktok-video` |
+| Whole-take multi-angle re-shoot preserving the performance/timebase | `multi-angle-video` |
+| Explicitly create progressive story images before video | `photo-to-video` |
+<!-- makaron:workflow-directory:end -->
+
+For a low-cost planning check, include: "Select the matching Skill and give a
+short production plan; stop before generating any image, video or audio."
+Planning still uses Agent inference. Detailed production remains internal.
+
+When a name or scope is uncertain, use `makaron skills list --built-in`,
+`makaron skills search "<request>" --built-in`, or
+`makaron skills show <name> --built-in`; the live list is authoritative.
+Built-in Skills need no marketplace installation. Supporting anchor/storyboard
+Skills are internal dependencies rather than separate production entrypoints.
+For invocation/status diagnostics, see [internal workflows](references/internal-workflows.md).
+
+### Marketplace skills
+
+Use marketplace skills when the user asks for a named Makaron effect, template, or skill such as "Football Captain", "足球队长", "World Cup MVP", or a marketplace UUID.
+
+External users only need `MAKARON_API_KEY`; no admin permissions are required for listing, searching, showing, installing, or using marketplace skills.
+
+```bash
+# Browse public marketplace skills
+npx makaron-cli skills list
+npx makaron-cli skills search "football"
+npx makaron-cli skills search "足球"
+npx makaron-cli skills show <marketplace-id-or-label>
+
+# Install a marketplace skill into the API key owner's workspace
+npx makaron-cli skills install <marketplace-id-or-label>
+
+# Use a marketplace skill. If the skill is not installed yet, chat auto-installs it,
+# then injects the installed skill name into the agent run.
+npx makaron-cli chat --project auto \
+  --image selfie.jpg \
+  --skill <marketplace-id-or-label> \
+  -b "make this with the selected skill"
+```
+
+`--skill` accepts an installed skill name, a marketplace UUID, or a unique marketplace label. Marketplace search matches every localized title, every localized default prompt, and category ids. If a marketplace skill is matched, the CLI installs or reuses it and sends `[Active skill: <installed-skill-name>]` to Makaron Agent. Do not call admin skill commands for ordinary users. There is intentionally no user-facing CLI delete command for marketplace skills.
+
+For an explicitly authorized administrator, `admin add-credits <email-or-user-id> <positive-integer> [--json]` adds credits to a user. Marketplace administrators can use `admin skills` to see category assignment and 4-locale title/prompt completeness, while `admin skill-categories` supports list/add/update/delete. New skills must include `en`, `zh`, `zh-Hant`, and `ja` in both `labels` and `prompts`, plus at least one existing `categories` id. Partial localized updates are safely merged server-side.
+
+### With additional images (existing project)
+
+```bash
+npx makaron-cli chat --project <id> --image ref1.jpg --image ref2.jpg -b "use these as style reference"
+```
+
+### Inspect existing timeline media
+
+Before starting a follow-up run on an existing project, list the current timeline media so you know what assets are available and which `<<<media_N>>>` references to use:
+
+```bash
+npx makaron-cli project media <projectId> --json
+```
+
+This is project-scoped. `responses get <runId> --pick output` only returns artifacts from one run; `project media` returns the whole project timeline: original uploads, references, generated images, video snapshots, and editable compositions.
+
+Publish typed external images and video intervals directly into that Media List without uploading the original media:
+
+```bash
+npx makaron-cli project media add <projectId> --type image --source-url "https://cdn.example.com/product.jpg" --description "Hero product image"
+npx makaron-cli project media add <projectId> --type video --source-url "https://cdn.example.com/source.mp4" --start 12.5 --end 19 --description "Racket frame molding"
+npx makaron-cli project media add <projectId> --input media.json --json
+```
+
+The JSON input may be an array or `{ "clips": [...] }`. Every item declares `type` as `image` or `video`. Images have `source_url + type + description` and no time range. Videos have `source_url + type + start + end + description`; `start` and `end` are seconds. Array order is edit order and `source_url` is opaque. Do not add or request provider-specific identity fields. Put existing media understanding (summary, editorial purpose, scene evidence, confidence, and limitations) in `description`. Makaron reads that provider-neutral Media List field before deciding whether any additional image/video analysis is needed.
+
+For one-call orchestration, use `chat --project auto --media-manifest plan.json`. Makaron validates the manifest, creates the project, imports its media, and starts the Agent. If an upstream service returns multiple plans, the caller should start one independent Makaron task per plan instead of passing the provider-specific batch response into Makaron.
+
+```bash
+npx makaron-cli chat --project auto --media-manifest set-01.json --json -b "Make a 30-second 9:16 TikTok with English VO and captions"
+```
+
+### With video input (edit, compose, extend)
+
+```bash
+# Upload a video and transform it — Agent understands video content natively
+npx makaron-cli chat --project auto --video selfie.mp4 -b "put Iron Man armor on me"
+
+# Combine a person's photo with a video scene
+npx makaron-cli chat --project <id> --video party.mp4 --image kid.jpg -b "make this kid join the party"
+
+# Multiple videos — compose or splice
+npx makaron-cli chat --project <id> --video clip1.mp4 --video clip2.mp4 -b "combine into one seamless video"
+
+# Video URL (public, downloadable)
+npx makaron-cli chat --project auto --video https://example.com/dance.mp4 -b "extend this to 15 seconds"
+```
+
+Supported formats: MP4, MOV, WebM. CLI local video uploads support max 500MB, max 900s (15 minutes) with 1s metadata tolerance, and <=1080p / 2,086,876 frame pixels. The CLI uploads files over 6MB directly to Storage in 6MB resumable chunks without loading the entire file into memory and rejects videos above those limits. Local `makaron analyze --video` uploads also support max 500MB; analysis provider limits still apply. Videos are uploaded to the project timeline. The Agent can analyze scenes, edit content, compose multiple clips, extend duration, and add effects — all via natural language. Seedance reference-video limits remain provider-specific, so longer uploaded videos should be split/prepared by the agent before model submission; Kling 4.0 supports direct edit for a 3-30s source.
+
+Use `chat --project <id|auto> --video ...` for any project/timeline video work. Direct video commands are standalone raw-tool calls.
+
+### With reference audio (MP3/WAV)
+
+Attach a short song, beat, or voice recording when the video should follow audio pacing:
+
+```bash
+npx makaron-cli chat --project auto \
+  --audio beat.mp3 \
+  -b "use Seedance Mini at 480p to make a 15s beat-synced video"
+```
+
+`--audio` accepts repeatable local files or public URLs. Local MP3/WAV files must be 2-15s and <=15MB; reference audio currently works with Seedance video generation.
+
+`chat` intentionally has no video model or resolution flags. State both in the chat message so the Agent selects a compatible provider and resolution together. Use `video create` only when you explicitly need direct provider controls.
+
+### Fix one video moment from a screenshot
+
+When a video is mostly good but one moment needs a local fix, attach a screenshot of the problem frame and describe the correction in normal language:
+
+```bash
+npx makaron-cli chat --project <id> \
+  --image screenshot.png \
+  "@4 this frame should be Paris, keep the same style and only fix this moment"
+```
+
+Makaron can locate the screenshot in the video, regenerate only the nearby segment, and then print a `Next steps` command when the new clip should be stitched back into the full MP4.
+
+### Check status (single query)
+
+```bash
+npx makaron-cli responses get <runId> --json
+```
+
+### Advanced: stream incremental events
+
+```bash
+npx makaron-cli responses watch <runId> --jsonl
+```
+
+Outputs one JSON per line as artifacts appear:
+```
+{"event":"output.added","item":{"id":"out_1","type":"image","status":"completed","url":"https://..."}}
+{"event":"output.added","item":{"id":"out_2","type":"video","status":"rendering","task_id":"xxx"}}
+{"event":"output.updated","item":{"id":"out_2","type":"video","status":"completed","url":"https://..."}}
+{"event":"done","status":"completed"}
+```
+
+### Extract specific results
+
+```bash
+npx makaron-cli responses get <runId> --pick first_image_url
+npx makaron-cli responses get <runId> --pick image_urls        # all images (JSON array)
+npx makaron-cli responses get <runId> --pick first_video_url
+npx makaron-cli responses get <runId> --pick video_urls        # all videos
+npx makaron-cli responses get <runId> --pick project_url
+npx makaron-cli responses get <runId> --pick text              # agent's text reply
+npx makaron-cli responses get <runId> --pick output            # full output array
+npx makaron-cli responses get <runId> --pick status
+npx makaron-cli responses get <runId> --pick credits_used      # net credits this run cost
+npx makaron-cli responses get <runId> --pick usage             # per-tool credit breakdown
+```
+
+## Fallback: Direct tool calls (no project context)
+
+Use these only when `chat` is unavailable or you need raw model access without project/conversation context.
+
+### `edit` — One-shot image editing
+
+```bash
+# Edit an existing image
+npx makaron-cli edit --image photo.jpg "add cinematic warm lighting"
+
+# Text-to-image (no input)
+npx makaron-cli edit "a cyberpunk cityscape at night"
+
+# With model/reference
+npx makaron-cli edit --image photo.jpg --ref style.jpg "match this style"
+
+# Output to file
+npx makaron-cli edit --image photo.jpg --out result.jpg "make it dramatic"
+
+# Strict transparent output through GPT Image 2.6 Flare
+npx makaron-cli edit --image-model gpt-image-2.6-flare --background transparent --out sticker.png "a magenta star sticker"
+```
+
+Options: `--image`, `--image-model gemini|gemini-2.1|gemini-lite|qwen-spicy|openai|gpt-image-2.6-flare|gpt-image-2.6-sunburst|wan2.7-image|mj-v8.2`, `--ref <file>` (model-specific limit), `--aspect <ratio>`, `--image-resolution 1K|2K|4K`, `--background auto|opaque|transparent`, `--nsfw`, `--out <path>`. Image Model Capability prefers matching requirements, then relaxes output conflicts to deliver an image: GPT Image 2.6 Flare → Nano Banana 2.1 → Qwen Spicy. Omit the model for Auto: an 8:1 banner or an explicit resolution tier selects Nano Banana 2.1. Native ratio presets do not promise exact mathematical ratios or user pixel dimensions. For Agent-assessed NSFW, pass `--nsfw` to route directly to Spicy; never probe another provider first. Unknown IDs use Flare-first Auto. Output conflicts relax before submission: transparent 8:1 normally keeps 8:1 with opaque output; NSFW always uses Spicy regardless of unsupported dimensions. Preserve input content first and explain actual adjustments. See current MCP tool descriptions for the generated capability table. Classic Nano Banana 2 (`gemini`), Lite, Sunburst and Wan are explicit routes; `openai` means Flare and legacy `qwen` means Spicy. Pony/WAI are retired. Transparent output prefers Flare or explicitly selected Sunburst, and may relax alpha when other requirements conflict. Supplier failures never trigger automatic image resubmission or model switching.
+
+Midjourney V8.2 (`mj-v8.2`) accepts natural-language briefs and prepares the English prompt automatically. Fast returns up to 4 images, Draft up to 24 smaller drafts, and HD regenerates up to 4 higher-resolution images. Every returned image is saved; `--out scene.png` produces `scene-1.png`, `scene-2.png`, etc. A single result keeps the requested filename. Provider filtering can reduce the batch size.
+
+```bash
+npx makaron-cli edit --image-model mj-v8.2 --aspect 16:9 --out scene.png "星空下被水淹没的宫殿走廊"
+npx makaron-cli edit --image-model mj-v8.2 --mj-quality hd --mj-stylize 400 --mj-chaos 10 --out hallway.png "A hallway flooded. A starry night sky with big puffy clouds above."
+npx makaron-cli edit --image-model mj-v8.2 --style-ref 2231018166 --style-ref 4162055066 --out city.png "A massive city skyline peeking through a sea of clouds."
+```
+
+Midjourney-only options: `--mj-speed fast|draft`, `--mj-quality standard|hd`, repeatable `--style-ref <public-HTTPS-url|numeric-sref-code>`, `--mj-style-weight 0..1000`, `--mj-stylize 0..1000`, `--mj-chaos 0..100`, `--mj-seed 0..4294967295`, and `--mj-raw`. Draft cannot be combined with HD. This is image generation: do not use `--image` for precise edits, promise identity preservation, request transparent output or 4K, or treat HD as lossless upscaling. Public URL content references use `--ref`; local/base64 references are unsupported for this route. Failures and unknown paid outcomes are not automatically retried or switched to another model; keep the returned task ID. One provider batch is billed once, not once per candidate.
+
+### `video` — Standalone video tools (no project timeline)
+
+```bash
+# 1. Write script from images
+npx makaron-cli video script --image img1.jpg "cinematic story"
+
+# 2. Analyze a video (standalone, no timeline write)
+npx makaron-cli analyze --video input.mp4 "describe the key actions and pacing"
+
+# 3a. Submit reference-to-video rendering (images must be public URLs from step 1 or uploaded)
+npx makaron-cli video create --script "Shot 1 (5s): <<<image_1>>> ..." --image https://...jpg --duration 5 --video-model kling-4
+npx makaron-cli video create --script "Shot 1 (20s): <<<image_1>>> ..." --image https://...jpg --duration 20 --video-model kling-4-flash
+npx makaron-cli video create --script "Shot 1 (15s): <<<image_1>>> and <<<image_2>>> build a neon one-person studio" --image https://...jpg --image https://...webp --duration 15 --video-model seedance-mini --video-resolution 480p --aspect 9:16
+
+# 3b. Native SeeDance, Wan 3.0, MiniMax H3, or fal H3 Turbo text-to-video (no image required)
+npx makaron-cli video create --script "Shot 1 (5s): A neon one-person studio wakes at dawn" --duration 5 --video-model seedance-fast --aspect 16:9
+npx makaron-cli video create --script "Shot 1 (15s): A premium creative editor comes alive" --duration 15 --video-model minimax-h3 --aspect 16:9
+npx makaron-cli video create --script "Shot 1 (5s): A tiny robot runs through a sunlit studio" --duration 5 --video-model minimax-h3-max
+
+# 3c. Edit a video from a local file or public URL
+npx makaron-cli video create --script "make it funny" --video input.mp4 --duration 5 --video-model seedance-fast
+npx makaron-cli video create --script "make it warmer and cinematic" --video https://example.com/input.mp4 --duration 5 --video-model seedance --video-resolution 1080p
+
+# 4. Check status
+npx makaron-cli video status <taskId>
+
+# Retake only a selected interval; publish the complete video to a project.
+npx makaron-cli video retake --video input.mp4 --start 2 --end 4 --prompt "Make the book red" --model seedance-2.5 --project <id> --wait --json
+```
+
+Video segment editing also works directly from natural-language chat, without a GUI selection:
+
+```bash
+npx makaron-cli chat --project <id> "把 @1 的 18–21 秒切成多机位，其余不变"
+npx makaron-cli chat --project <id> "把 @1 的最后三秒改成夜景"
+```
+
+Chat resolves the source/range, inspects the footage, expands the edit instruction, and delivers the complete video. It asks only when the source or scope remains ambiguous. Precise cuts, subtitles, dubbing and extension also start from chat. Local editing accepts a 0.1–15s range in a source up to 120s; longer scopes use the appropriate whole-video workflow rather than silently shortening the request.
+
+Segment edits have two intents: modify changes the inside of the existing sequence and preserves its opening/closing states; replace discards a shot and does not lock its original endpoints. A camera change alone does not mean replacement. A same-request model comparison reuses the original source and interval, not the last generated result.
+
+Chat segment inspection also reads source speech through ASR, reusing cached transcripts. It returns selected speech with source/output timecodes separately from adjacent speech, so the edit can follow the retained narration. Original audio is the default; Chat may select `audio_mode: generated` for requested new sound inside the selection. ASR does not guarantee music-beat or lip synchronization, and unavailable/untimed speech is reported rather than assigned invented timings. Direct `video retake` uses the caller's completed prompt and does not perform Agent interpretation or ASR planning.
+
+`video retake` uses original-source seconds, accepts a 0.1–15s range in a source up to 120s, and automatically replaces only that range while preserving duration. Audio defaults to original; `--audio-mode generated` uses synchronized new audio inside the selection and source audio outside. Models: `grok` (native edit, source >=1s, selection <=8.5s, max 720p, source video only), `google-omni` (native edit, source >=3s, selection <=15s), `minimax-h3` (reference-guided rebuilding, source >=2s), `wan-3.0` / `wan-3.0-prime` (reference-guided rebuilding, source >=1s, no native endpoint locks), `kling-4` (default, source >=3s, original audio only), `fal-h3-max`, `seedance-2.5-eco` (preferred Seedance option), and explicitly selected native `seedance-2.5`. For sources shorter than 3 seconds, explicitly select a compatible model: H3 for sources >=2s or Seedance for shorter sources. Generated audio requires an explicitly selected compatible model. Grok/Omni/MiniMax have no exact final/middle/corrected-frame controls in Retake. Local files require `--project`. Keep the root taskId and request ID; resume polling or replay the same request ID instead of paying for another generation.
+
+`video create` returns a provider task id and does not create or update a Makaron project timeline. For project/timeline video editing, use:
+
+```bash
+npx makaron-cli chat --project <id|auto> --video input.mp4 -b "make it funny"
+```
+
+Kling 4.0: use `--video-model kling-4` for native text-to-video or image/video feature references, integer 3–30s at 720p (default) or 1080p. Up to 10 images and 5 videos; source videos must each be 3s or longer, total at most 30s, 720–2160px per side, 24–60fps and at most 200MB each. `--video-operation edit` requires exactly one source video and preserves its canvas/audio. Explicit keyframe I2V, extension and replacement-audio controls are not exposed. Retake defaults to `kling-4` at 720p, original audio only, source at least 3s, no final/middle frame control. Kling 4.0 Flash (`kling-4-flash`) is the default when `--video-model` is omitted (omitting it with `--duration` above 20 uses `seedance-2.5`): the faster variant with the same inputs, edit route and Retake rules, but integer 3–20s at 720p only, scripts at most 2500 characters, and source/reference videos at most 20s total. Never silently substitute one Kling 4 variant for the other.
+
+Options for `video create`: `--script "..."`, `--script-file <path>`, `--image <url>` (repeatable, up to the selected model limit), `--video <file|url>` and `--audio <file|url>` (repeatable where supported), `--voice <xai-preset-id>` (repeatable, Grok only), `--duration <seconds>`, `--aspect 9:16|16:9|1:1`, `--video-model seedance-fast|seedance-mini|seedance|seedance-2.5|wan-3.0|wan-3.0-prime|kling-4|grok|google-omni|minimax-h3|minimax-h3-max|fal-h3-max|sync-lipsync-v3`, `--video-resolution auto|480p|720p|768p|1080p|2k|4k`. Default model is FAL H3 Max (`fal-h3-max`) at 768p (480p/1080p optional): native text-to-video or image/video/audio reference-to-video, integer 5-15s, up to 9 images + 3 videos + 3 audios (12 total). SeeDance accepts native text-to-video with no image and integer output duration 4-15s (default 5s); every Seedance image input uses reference-to-video, including one image. `seedance-mini` supports 480p/720p and is best for cheaper drafts/multi-size tests. Wan 3.0 and Wan 3.0 Prime both expose 480p/720p/1080p/2K/4K; 2K/4K automatically use the matching FlashVSR endpoint. MiniMax H3 accepts native text-to-video, 4-15s output, public 768p/2k resolution, and up to 9 image, up to 3 video, and up to 3 audio feature references through Makaron Agent/chat; a single image keeps the `reference_image` role. fal H3 Turbo (`minimax-h3-max`) accepts native text-to-video or exactly one start image for image-to-video, exact 5/10/15s duration, and 480p/768p; it does not accept reference video/audio or multiple images. `sync-lipsync-v3` requires exactly one video plus one MP3/WAV and preserves that replacement audio while aligning the mouth. H3 defaults to 768p; request 2k explicitly for maximum/final quality. Kling 4.0 supports integer 3-30s in one call. Grok text-only generation supports 480p/720p/1080p; any 1-7 image or preset voice input uses reference-to-video and is capped at 720p. Grok edit/extend uses `grok-imagine-video` internally. Gemini Omni image-only generation always uses `reference_to_video`, including one image, with up to 6 images when no video reference is provided.
+
+Provider integration contract: every image passed to video generation is a feature reference by default, even when there is exactly one image. Never infer image-to-video/first-frame mode from image count. The sole current exception is explicitly selected `minimax-h3-max`, whose declared capability maps exactly one selected image to native image-to-video; it does not accept reference video/audio or multiple images.
+
+fal H3 Turbo uses the `minimax-h3-max` selector, supports exactly 5/10/15 seconds at 480p/768p, and defaults to native 768p for faster-than-real-time T2V or one-start-image I2V.
+
+Seedance 2.5 uses `--video-model seedance-2.5` or `seedance-2.5-eco` for 4-30s videos: generate at 480p, then automatically upscale to 720p, 1080p (default), 2K or 4K in one task. This is upscaled output. Use `seedance-2.5-native` explicitly for unenhanced native output at 480p (default) or 720p; the native Evolink route does not expose 4K. All Seedance 2.5 routes accept up to 30 images + 10 videos + 10 audios, repeatable local/URL references, `--video-operation generate|edit|extend`, `--extend-direction`, and `--web-search`. Eco delivers MP4; native also supports `--output-format mov`. Use `makaron chat` to enhance an existing video without regeneration, or MCP `makaron_upscale_video` with one video URL and `resolution=720p|1080p|2k|4k` (up to 60s).
+
+Wan 3.0 exposes two model choices: `--video-model wan-3.0` and the faster `--video-model wan-3.0-prime`. Both support 2-30s generation, native audio, up to 10 images + 5 videos + 5 audios, and 480p/720p/1080p/2K/4K. Pass `--video-resolution 2k|4k` to select the matching FlashVSR/Pro endpoint automatically; Pro is not a separate model selector. Use generation mode with feature references; typed edit/extend and the relaxed content-filter flag are not supported.
+
+Video edit model behavior: `--video-model kling-4 --video --video-operation edit` uses Kling 4.0 direct edit and preserves source audio (`kling-4-flash` does the same for a 3–20s source at 720p); `--video-model seedance-fast --video`, `--video-model seedance-mini --video`, or `--video-model seedance --video` uses the SeeDance video-reference path and requires target <=15s, <=50MB with width/height 300-6000px, aspect ratio 0.4-2.5, and frame pixels 409,600-2,086,876. `--video-model minimax-h3 --video` uses H3 feature/reference mode: up to 3 video references totaling <=15s, each <=50MB with width/height 256-5760px and aspect ratio 0.4-2.5. `--video-model google-omni --video` uses Gemini Omni direct video editing and accepts one reference video in Makaron. `--video-model grok --video --video-operation edit` accepts one MP4 up to 8.7s and caps output at 720p; `--video-operation extend` accepts one 2-15s MP4 and adds 2-10s.
+
+### `music` — Music generation
+
+```bash
+npx makaron-cli music create --duration 30 "gentle piano, warm strings, cinematic"
+npx makaron-cli music create --vocals --style "lo-fi" "rainy day vibes"
+npx makaron-cli music status <taskId>
+```
+
+Options: `--duration N` (seconds, up to 120), `--vocals` (include vocals), `--style "genre"`. Music is generated by Seed Audio.
+
+## Response Schema
+
+```typescript
+type MakaronRunResponse = {
+  id: string
+  status: "in_progress" | "completed" | "failed" | "aborted"
+  incomplete: boolean                // true = keep polling
+  project_id: string
+  project_url: string
+  next_poll_after_ms?: number        // suggested poll interval
+  output: MakaronOutput[]
+  usage?: MakaronRunUsage            // credits this run cost; present once the agent has stopped
+}
+
+type MakaronRunUsage = {
+  credits_charged: number            // sum of debits
+  credits_refunded: number           // e.g. a failed video reservation
+  credits_net: number                // what the run actually cost (1 credit = $0.01)
+  input_tokens: number
+  output_tokens: number
+  entries: { tool_name: string; model: string | null; calls: number; credits: number }[]
+  balance?: number                   // account balance after this run
+}
+
+type MakaronOutput =
+  | { id: string; type: "text"; status: "completed"; content: string }
+  | { id: string; type: "image"; status: "completed"; url: string; snapshot_id: string }
+  | { id: string; type: "design"; status: "completed"; url: string; width: number; height: number; animated: boolean; duration?: number }
+  | { id: string; type: "video"; status: "queued"|"rendering"|"completed"|"failed"; task_id: string; snapshot_id?: string; url?: string; elapsed_seconds?: number; width?: number; height?: number; error?: string; completion_actions?: CompletionAction[] }
+  | { id: string; type: "music"; status: "queued"|"rendering"|"completed"|"failed"; task_id: string; url?: string; elapsed_seconds?: number }
+
+type CompletionAction = {
+  label: string
+  prompt: string
+  description?: string
+  policy?: "confirm" | "auto"
+}
+```
+
+## Polling Rules
+
+1. Poll while `incomplete: true` or `status` is `"in_progress"`
+2. Use `next_poll_after_ms` as interval (default 5000ms)
+3. Stop when `status` is `"completed"`, `"failed"`, or `"aborted"`
+4. Top-level `status: "completed"` means ALL artifacts are ready (including rendered videos)
+5. If an async video fails, top-level `status` is `"failed"` and the failed video may include `completion_actions` for a safe retry or diagnosis. Agents can surface these as the next user-confirmed step.
+6. `responses get --wait` reconciles pending video output against completed Project Media with the same `snapshot_id` or `task_id`. A lagging Run row therefore does not block delivery after the durable project video is ready.
+
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success (completed) or valid in-progress response |
+| 1 | Failed, aborted, or HTTP error |
+| 2 | Timeout (partial response still printed to stdout) |
+
+## What Makaron Agent Can Do
+
+| Task | Example prompt |
+|------|---------------|
+| Edit photo | "make it cinematic with warm tones" |
+| Style transfer | "convert to oil painting style" |
+| Add/remove elements | "add a cat on the table" / "remove background person" |
+| Text-to-image | "generate a cyberpunk cityscape" |
+| Video from image | "create a 5 second video of her walking" |
+| Video with model | "use seedance model, make a 5s video" |
+| Real MP4 edits | `--video clip.mp4 "trim this to the best 20 seconds and preserve audio"` |
+| Background music | "add calm piano music" |
+| Motion design | "create an Instagram story with animated text" |
+| Multi-step | "edit the photo then make a video from it" |
+
+## Export editable Remotion compositions
+
+Animated Remotion compositions are saved as editable timeline/code artifacts first. Use `materialize` as the preferred high-level Remotion-to-MP4 command:
+
+```bash
+npx makaron-cli materialize --project <projectId> --media <N> --pick url
+npx makaron-cli materialize --project <projectId> --design-json composition.json --pick url
+npx makaron-cli responses get <runId> --materialize --wait --pick first_video_url
+```
+
+`materialize` defaults to `--wait`, `--publish`, and `source`, preserving composition dimensions when the MP4 is added back to the timeline. Use `--no-publish` when you need only a file URL, or `--profile fast_720p` when a 720-short-side export is acceptable. The completed export reports `duration_seconds`, `render_seconds`, and `realtime_ratio`; use those metrics instead of provider-video ETA rules.
+
+For JSON-to-MP4, pass a Makaron/Remotion composition JSON with `--design-json`. This is the correct CLI path when another agent already has the composition JSON and only needs the exported video:
+
+```bash
+npx makaron-cli materialize --project <projectId> --design-json composition.json --pick url
+cat composition.json | npx makaron-cli materialize --project <projectId> --design-json - --pick url
+```
+
+Keep `--project` because exports are project-scoped and publish back to the timeline by default. Use `--no-publish` only when you want the MP4 URL without adding a timeline video.
+
+## Recommended Pattern: Service Flow (Feishu/OpenClaw/Group Chat)
+
+When serving end-users in a chat environment (Feishu, Slack, Discord), use this proactive message pattern:
+
+```bash
+# 1. Immediately acknowledge the user
+send_message "Got it! Working on it now..."
+
+# 2. Create project + submit (one command)
+RUN_ID=$(npx makaron-cli chat --project auto --image photo.jpg -b "make it cinematic and create a 5s video")
+
+# 3. Send project link proactively
+PROJECT_URL=$(npx makaron-cli responses get $RUN_ID --pick project_url)
+send_message "Project created: $PROJECT_URL"
+
+# 4. Wait for the final customer-ready result
+RESULT=$(npx makaron-cli responses get $RUN_ID --wait --json)
+IMAGE_URLS=$(echo "$RESULT" | jq -r '[.result.images[]?.imageUrl, .output[]? | select(.type == "image") | .url] | map(select(. != null)) | unique | .[]')
+VIDEO_URLS=$(echo "$RESULT" | jq -r '[.result.videos[]?.videoUrl, .output[]? | select(.type == "video") | .url] | map(select(. != null)) | unique | .[]')
+
+for URL in $IMAGE_URLS; do
+  send_image "$URL"
+done
+for URL in $VIDEO_URLS; do
+  send_video "$URL"
+done
+send_message "All done!"
+```
+
+**Key principles for service agents:**
+- **Proactive, not silent**: Acknowledge immediately, send the project link early, then send the final customer-ready media when the run completes.
+- **Media over links**: When possible, send images/videos as native media in the chat (download URL and upload as attachment), not just paste the URL.
+- **Immediate acknowledgment**: Reply within 1 second of receiving user request. Don't make users wait for project creation.
+- **Project link early**: Send the project URL right after creation so users can check anytime.
+- **Use `get --wait --json` as the default service path**: reserve `watch --jsonl` for advanced streaming or debugging integrations that explicitly need incremental events.
+
+## Important Notes
+
+- One project = one conversation thread. All history is preserved.
+- One active Agent Run at a time per project. A new message received while it is active is appended to that same Agent Run and processed at a durable work-unit boundary; it does not interrupt the execution or create a second owner for an in-progress Studio workflow.
+- Multi-image: `create --image a.jpg --image b.jpg` or `chat --image ref.jpg`.
+- Video timing depends on the selected model: Kling 4.0 Flash (default) usually finishes in about 1-2 minutes; fal H3 Turbo and fal H3 Max usually finish in tens of seconds; Max with video references may take around 1-2 minutes. Queue and saving time can vary; other providers may take 3-5 minutes; current Grok generation/edit probes are usually around 15-60 seconds; Gemini Omni is usually around 50-100 seconds plus Storage handoff. Remotion compositions should be converted with `materialize` / `responses get --materialize`, and timing should be read from `duration_seconds`, `render_seconds`, and `realtime_ratio`.
+- Music takes ~60 seconds. Appears in output when done.
+- Images are typically ready in 15-30 seconds.
+- stdout is always machine-readable JSON/text. Human-friendly logs go to stderr.
+- Always use `chat` as the primary interface — even for single image edits.
+- `edit`/`video`/`music` are fallback tools for when `chat` is unavailable or you need raw model access without project context.
+
+FAL video models: **fal H3 Turbo** uses `minimax-h3-max` for single-start-frame I2V/T2V. **FAL H3 Max** uses the new selector `fal-h3-max`: native T2V or image/video/audio reference-to-video, default 768p, optional 480p/1080p, integer 5–15s; at most 9 images / 3 videos / 3 audios / 12 total. Reference video/audio each 2–15s and each modality totals at most 15s. Source-video modifications use generation with feature references, not typed edit/extend. Reference input tokens are billed in addition to output video; query current pricing.
+
+For **new GIF art, mascot loops, and animated memes**, GPT Image 2.6 Flare is the go-to model. Use `makaron chat` with the complete request and reference images; the Agent uses native image generation. Do not select `animated-gif` for new generative animation. Retain that skill for assembling existing frames or explicit timing/export controls.
+
+GPT Image 2.6 Flare is the default; Sunburst is optional. `--quality auto|low|medium|high` and `--image-reasoning low|medium|high` are independent (defaults low quality, high reasoning). `--output-format png|jpeg|webp|gif|svg` preserves originals. GIF supports generation/editing; `--frame-count` (2–16) and `--frame-duration-ms` share one native sprite sheet: square frames are 960px up to 9 frames, 816px for 10–12, 720px for 13–16. For stickers/memes, describe one action with a numbered frame plan (rest → peak held 2–4 frames → back to rest), a locked camera, a solid background and an exact caption; the Agent follows its `gif-maker` Skill. SVG is experimental and not live-verified (provider acceptance returned 422), text-to-image only, no source/references; report a provider failure honestly, never flatten or replace. Exact active 2.6 pricing is required; final cost uses actual fal units. Legacy 2.5 IDs migrate to 2.6; historical media is unchanged. Administrator Codex Subscription Agents use the same image tool; image API cost is separate from Agent subscription usage.
+
+The legacy `openai` image-model parameter now resolves to GPT Image 2.6 Flare.
+
+Naming Seedance 2.5 in chat defaults to Seedance 2.5 Eco. Use `seedance-2.5-native` only when explicitly requesting native generation; Eco supports 720p/1080p/2K/4K final delivery.

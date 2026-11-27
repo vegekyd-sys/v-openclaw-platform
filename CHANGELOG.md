@@ -10,6 +10,352 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## db91-lifecycle-proof-20261127
+
+上线：2026-11-27 00:51 CST（promote-to-v 00:4x 装好文件；v-self-restart 00:45:52 提交、00:48:38 判定空闲停机，201 s 就绪，清掉 2 个 Codex 孤儿登记，workers 5/5、4 条渠道流全在）  ·  tag `db91-lifecycle-proof-20261127`
+
+**摘要**：11-26 停摆事故（`docs/incidents/2026-11-26-gateway-tasks-max-crash-loop.md`）的 DB91 两处根治，和同批的 #652/#653/#654 一起上线。
+- #655：Gateway 的子进程（agent 在 exec 里起的 `core/dist/index.js gateway…`）沿用运行中的生命周期，不再新建 epoch、改写 `last-lifecycle.json`，所以干净重启能沿用上一轮的完整校验；收据缺失时按同样的规则从 `admission.json` 补回，不再在主线程整库校验（11-26 makaron 49 GB 卡 22.7 分钟）；有并行生命周期未干净退出时拒绝沿用。源码 versa `ca494f9134f`。
+- 同一次重启带上 #654 的令牌：`V_TV_MCP_TOKEN` 随 Gateway 启动进入环境，00:57 切到共享桥接。#652（TasksMax 16384 等）11-26 已用安装脚本上线，#653 是 Mac 上的采集任务，不在 V 的字节里。
+
+V 验收（重启后）：
+- 3 个文件线上字节与发版一致。启动预检 `clean-restart carry: 8/8 databases reuse the previous lifecycle's full check (c4f9600e…)`，**79 ms 通过**（11-26 非正常退出后是 716 s），admission proofs 8/8。
+- 启动窗口主线程停顿 22 s / 30 s（上一版 20.3/22.4 s），飞书长连接 00:53:09 才重连；这期间 Tianyi 00:52 的一条私聊没被收到，重连后的补收为 0 条，00:56 起正常。
+- 重启空闲判定漏掉了群 `oc_e0714165` 正在跑命令的回合（00:43 起批量替换素材），重启后被记为已回复、没有续跑，Tianyi 00:56 说「继续」后正常完成。
+- 电视桥接（#654）：`plan` 令牌一致、副本试写只动这一条；`switch` 00:57:04 写入。**V 上 `mcp.*` 变更会触发 telegram/钉钉/飞书渠道重载**（VLab candidate 未暴露），等在跑的回合 300 s 后强制重载，01:02:15 飞书重连。之后新会话全部走桥接（转发 11 次、0 失败、只有 1 条上游 ssh），不再新起每会话 ssh；切换前已有的 17 条随 Codex 线程结束退出。
+
+相对上一版 `v-batch-20261125`：3 个文件变化。
+
+**经 VLab 发版 `db91-lifecycle-proof-20261127`**（monitor-v-production-70a57a，dev `4d4b6737`）
+> 验收：Shared VLab release db91-lifecycle-proof-20261127 (PR #655, dev 4d4b6737, versa ca494f9134f), Gateway pid 3452690->386580. Startup: [db91-integrity] clean-restart carry 8/8 reuse previous lifecycle 9d1e4d94, full check 0, preflight passed 3054ms, admission proofs 8/8; admission.json + lifecycle.json written in epoch 339f604d, last-lifecycle points at it. Real turn agent:makaron:explicit:vlab-dev-d…
+- `core` db91-integrity-bootstrap.mjs  87b7fa47 → f3c12078
+- `core` db91-integrity-gate.mjs  aa68547b → 8e82bad0
+- `core` db91-restart-carry.mjs  5f18d635 → fe54e3fe
+
+## v-batch-20261125
+
+上线：2026-11-25 22:44 CST（promote-to-v 22:24 装好文件；等 oc_2ab0b5b3 的 V Voice 子 agent 22:22 完成后提交 v-self-restart，22:39:49 空闲停机，206 s 就绪，清掉 2 个 Codex 孤儿登记，workers 5/5、4 条渠道流全在）  ·  tag `v-batch-20261125`
+
+**摘要**：三处改动一次重启上线。
+- #648：附件判断不再把二进制文件当文本内联。11/25 Jessie 群发的几个字体（.otf/.ttf）被判成 UTF-16 TSV / text/plain，乱码每轮随群聊记录重发，会话涨到 700 万 token，10:36–16:40 一条都没回（16:40 已用 sessions.reset 解开）。
+- #649：/vcc（claude-cli）回合在等正在干活的前台 Agent 子 agent 时，子 agent 的活动算作回合进展，不再在 900 s 后被当成卡死中止（11/25 16:29 oc_2ab0b5b3 两路 V Voice 工作被一起杀掉）。VLab 用假 claude 回放：线上字节 916 s 被回收，补丁 1126 s 跑完。
+- #650：会议插件在 `NO_REPLY` 之后、或模型编出 `<system>`/「会议桥接」轮次时不再往会议和群里发字（11/23、11/25 两场会 54 段）；附带 `vmeeting.reload` 热更新 `core/`，以后改插件逻辑不用重启 Gateway。
+
+V 验收（重启后）：9 个文件线上字节与发版一致；`vmeeting.list` 正常、`vmeeting.reload` 存在并返回 core unchanged（新 index.js 已加载）；无 Cannot reap；夜班 22:46:28 自动恢复（1 个实例恢复、0 转人工）；启动窗口心跳延迟 20.3/22.4 s，之后 1.5/3.8 s。共享 VLab 未启用会议插件，#650 的证据是 20/20 单测与 128 条历史回复回放，加上面 V 上的方法核对。
+
+V 线上实测（11/25 23:56–11/26 00:12，Tianyi 授权，在「V 生产发布验收 0910」群，群里只有 Tianyi 和 V）：
+- /vds 普通回合：shell 跑 hostname，16 s 回复 `VB1125_OK VM-8-2-ubuntu`。
+- #648：发一个 .ttf 字体，V 识别为 `font/ttf`、标注「Unsupported document format」并只给文件路径，不再内联乱码，该轮输入 1–6 KB；回复 `VB1125_FONT 收到`。
+- #649：切到 /vcc（Claude Code 2.1.280），前台 `Agent` 子 agent 依次跑三次 `sleep 70`（子 agent 记录 00:07:41/00:08:53/00:10:04），回合 222 s 正常完成并回复 `VB1125_VCC 三步都完成`；期间 Gateway 没有一条 stalled/blocked_tool_call 告警（修复前同类回合 120 s 起每 30 s 告警一次，900 s 被中止）。之后群已切回 /vds。
+
+相对上一版 `v-batch-20261124`：9 个文件变化。
+
+**经 VLab 发版 `v-batch-20261125`**（monitor-v-production-70a57a，dev `c9635591`）
+> 验收：Shared VLab, release v-batch-20261125 (#648 #649 #650, dev c9635591), Gateway pid 3452690. Bytes: attachment-classify f976aa9c, cli-live-session-registry 83fe2b9f, execute.runtime 2cb9b0e9, meeting-bridge core-loader a7d1d62f / index 2706f263 installed. Real turn: session agent:makaron:explicit:vlab-dev-batch1125-accept-1795615857414 on vds-deepseek-flash (codex harness), run vlab-dev-179561585741…
+- `core` attachment-classify-1K-kUuWK.js  60734dc7 → f976aa9c
+- `core` cli-live-session-registry-Bux1JHPe.js  c296fab8 → 83fe2b9f
+- `core` execute.runtime-DRmvah87.js  1c8902ac → 2cb9b0e9
+- `meeting-bridge` core/bridge.js  6dbfca12 → d77cc990
+- `meeting-bridge` core/manager.js  b8e9a32d → 5ed7b13d
+- `meeting-bridge` core/prompts.js  7818e125 → 6822e653
+- `meeting-bridge` index.js  4dcfff6b → 2706f263
+- `meeting-bridge` package.json  121341ce → a599b936
+- `meeting-bridge` core-loader.js  — → a7d1d62f
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #649 fix: /vcc 等待正在干活的 Agent 子 agent 时不再被当成卡死中止
+- #648 fix: 二进制附件不再被当成文本内联（字体被判 UTF-16 TSV）
+- #650 fix(v-meeting-bridge): block text after NO_REPLY / leaked scaffolding; real pacing for V
+
+## v-batch-20261124
+
+上线：2026-11-24 21:46 CST（promote-to-v 21:31 装好文件、21:40 对齐 VLab；v-self-restart 21:40 提交，21:41:18 空闲停机，206 s 就绪，清掉 3 个 Codex 孤儿登记，workers 5/5、4 条渠道流全在）  ·  tag `v-batch-20261124`
+
+**摘要**：三处改动一次重启上线。
+- #643：subagents 工具、/status、/subagents 和后代计数只读调用者自己的子 agent 树，不再整表读取 subagent_runs 和会话表。11/24 01:12 一次 /vcc subagents list 曾让 Gateway 冻结 33.7 s。
+- #644：workboard_list 只读它要返回的卡，不再把整个夜班看板连同子表全部读出（11/23 两次 19–30 s 冻结）。上线后 V 上首次调用 0.75 s。
+- #645：夜班卡和普通对话用同一套工具。卡在 /vds 上恢复 Codex 原生 shell；OpenClaw exec 访问本机服务不再走密钥出口代理。V 上重启后 70 分钟：135 个卡线程 `exec_command` 4,541 次、OpenClaw exec 0 次；nightshiftctl 313 次，0 次 fetch failed（11/22–24 失败 2,525/2,546）。
+
+V 验收（重启后到 22:55）：Gateway 心跳延迟除启动窗口外最大 7.2 s，与前几小时同量级；无 Cannot reap；夜班 21:48 自动恢复 18 个实例、1 个转人工；抽查 Codex 两个文件和 core runtime 文件，线上字节与发版一致。
+
+相对上一版 `spawn-narrow-runstart-20261123`：10 个文件变化。
+
+**经 VLab 发版 `v-batch-20261124`**（monitor-v-production-70a57a，dev `e5b75fa7`）
+> 验收：Shared VLab, release v-batch-20261124 (#643 #644 #645, dev e5b75fa7), Gateway pid 2399802 restarted after the two Codex files were also copied into the Gateway copy under state/npm (runtime-components: the release channel writes only runtime/npm). Session agent:makaron:explicit:vlab-dev-batch-accept-1795524800940 on vds-deepseek-flash (codex harness): (1) run vlab-dev-1795524800940: workboard_list…
+- `core` extensions/workboard/index.js  62a0a1b5 → c964e730
+- `core` runtime-Cy2RRq4n.js  e4690957 → e417663b
+- `core` runtime-api-1CCazqtv.js  b1bdba86 → 5a7bec4f
+- `core` sqlite-store-CH-caj1l.js  9ff2826f → b698bea4
+- `core` subagent-control-scope-DA4oSvgr.js  feb68aa7 → 0a869f4c
+- `core` subagent-list-BS8F5xN_.js  41610a02 → a729c17a
+- `core` subagent-registry-read-UaDFTyfW.js  4c88db9c → 3aafae43
+- `core` subagent-registry.store.sqlite-hzGu4QSk.js  27cf50a0 → 113a34d2
+- `codex` dist/harness-DXVZ5II5.js  2903634b → dddb90ef
+- `codex` dist/thread-lifecycle-DAcEJ_Om.js  bdb000d5 → 9a85767c
+
+**这期间合入 dev 的 PR**（3 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #645 fix: 夜班卡拿到和普通对话一样的工具（原生 shell、exec 访问本机）
+- #644 perf(workboard): workboard_list 只读它返回的卡（夜班调用卡 Gateway 19–30 秒）
+- #643 fix(subagents): read only the caller's subagent tree, not whole tables
+
+## spawn-narrow-runstart-20261123
+
+上线：2026-11-23 22:00 CST（20:3x 文件经 vrelay 装到 V；v-self-restart 21:50 提交，等空闲到 21:56:18 停机，166 s 就绪，workers 5、5 条渠道流全在）  ·  tag `spawn-narrow-runstart-20261123`
+
+**摘要**：#640 修掉 11/23 14:52、15:08、15:25 三次 40–60 s 的 Gateway 冻结。原因是 `sessions_spawn(visible=true)` → `sessions.create` 在主线程上把整张会话表（V 上 26,779 行 / 2.64 GB）读出来逐行 JSON 解析，堆一次涨 4.6 GiB；11/16 起每次可见子会话之后都跟着 17 s 以上的停顿。现在只读新 key 解析到的那几行，candidate 对照 sessions.create 22.9 s → 0.44 s、分配 6.9 GB → 40 MB；`OPENCLAW_V_SESSION_CREATE_NARROW=0` 可关。#641 只加日志：每个对话回合打一行 `[run-start-phases.1]`，把派发到开跑之间的 1.2 s（/vds p50）拆成各步耗时，过几天用 `lab/run-start-phases-report.py` 出分步表。
+
+相对上一版 `memory-close-passive-20261121`：7 个文件变化。
+
+**经 VLab 发版 `spawn-narrow-runstart-20261123`**（monitor-v-production-70a57a，dev `98248401`）
+> 验收：Shared VLab after deploy (pid 1284125), session agent:makaron:explicit:vlab-dev-spawn-narrow-runstart-accept-1795429442554 on vds-deepseek-flash (codex harness): (1) run vlab-dev-1795429457671 real model -> exec tool (date/uname) -> tool result VM-0-4-ubuntu read back -> reply; journal [run-start-phases.1] line for that runId with ordered steps, totalMs 2031. (2) run vlab-dev-1795429499923: model …
+- `core` agent-runner.runtime-CAdsMsQt.js  ec866319 → 94b1522e
+- `core` embedded-agent-DaSvA-Yk.js  182c175c → ca29ec59
+- `core` get-reply-CqW1y05D.js  a22a84a9 → d7f3d744
+- `core` session-accessor-K0XuW6ln.js  13af5e83 → 64b40f9c
+- `core` session-create-service--hv2vsLh.js  83b8f923 → 4587339a
+- `core` session-utils-store-Dlphca2N.js  b566c7e9 → d3380fa5
+- `codex` dist/run-attempt-D1hJO4fX.js  23705af0 → 84513c81
+
+**这期间合入 dev 的 PR**（10 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #641 lab: run-start-phases, time /vds dispatch -> run start per turn
+- #640 fix(sessions): visible 子会话创建不再在主线程整读会话表（11/23 三次 40–60 s 停顿 + 堆 +4.6 GiB）
+- #639 恢复公开用量看板的真实群聊名称
+- #638 开放 V 用量看板的直接访问链接
+- #637 上线 V 用户与夜班 Token 用量看板
+- #636 docs: let agents merge record-only PRs of approved V changes
+- #635 ci: raise the offline suite timeout to 240 s
+- #634 fix(memory): raise v-memory-vector-pin LimitMEMLOCK to 3200M
+- #632 release: capture usage-workboard-20261120 (#631 #617) and memory-close-passive-20261121 (#633)
+- #633 fix(memory): memory_search 关闭连接时不再同步等 5 s（TRUNCATE→PASSIVE checkpoint）
+
+V 上验收（22:00–22:03）：
+- 文件：7 个文件的 sha 等于发版后的值；`session-create-service`、`session-accessor` 含 `session-create-narrow-v1`。
+- 重启：NRestarts 0，没有 `Main process exited`；`restart recovery claim changed` 和 `ended during restart recovery` 都是 0；自动清理了 6 条 Codex 旧登记。
+- #641：22:02 起真实回合打出 `[run-start-phases.1]`。重启后第一回合 totalMs 30232（冷启动：ensure_workspace 8.2 s、codex-connection 6.0 s、codex-context 7.9 s），第二回合 8032。
+- 冷启动停顿：11.1 s、20.0 s，都在启动期内。
+- #640 的生产正向路径要等下一次真实的可见子会话；VLab 实测可见 spawn 1.78 s 内受理，子会话正常回复。
+- 传输：这晚 Mac→V 上行约 5 KB/s，ssh 长连接会断（255）。promote-to-v 用一个临时 ssh 包装，把大于 64 KB 的输入输出改走 vrelay；脚本本身没改。
+
+
+---
+## memory-close-passive-20261121
+
+上线：2026-11-21 02:02 CST（01:5x 文件装到 V；v-self-restart 01:59 提交，等一个 cron 回合 36 s 后 02:00:48 停机，106 s 就绪，workers 5、4 个渠道流全在）  ·  tag `memory-close-passive-20261121`
+
+**摘要**：#633 memory_search 关闭时不再同步等 5 s。11/20 22:30–23:07，V 上每次 `tools.invoke` memory_search 都要 6.1–7.5 s（平时 1.0–1.3 s）。原因是 memory_search 每次调用都临时开一个连接，关闭时在 Gateway 主线程上同步做 `wal_checkpoint(TRUNCATE)`，busy_timeout 5000。只要别的连接开着读事务，它就拿着写锁等满 5 s：期间主线程卡住，其他进程写 agent 库被拒，而且不打日志。现在关闭时改用 PASSIVE，不等读者；WAL 仍由 Gateway 的 agent 库连接定期维护。语音和所有走 memory_search 的回合都不会再无故多 5 s。
+
+相对上一版 `usage-workboard-20261120`：1 个文件变化。
+
+**经 VLab 发版 `memory-close-passive-20261121`**（monitor-v-production-70a57a，dev `0382a84c`）
+> 验收：共享 VLab 01:49 部署后，文件含 `memory-close-passive-v1`。故障路径实测：另一进程持有读事务，之后有一次不改数据的写入（WAL 16512 字节）。此时对照的 TRUNCATE 等满 2000 ms、返回 busy=1；同一状态下 Gateway 内 `tools.invoke` memory_search 只要 61–68 ms，没有 liveness 延迟。candidate 对照（7.1 GB makaron 库副本）：原版关闭 5006–5011 ms、事件循环卡约 5 s、他进程写入 4/4 被拒；补丁关闭 1 ms、写入 4/4 成功。
+- `core` manager-vector-warning-BHH19jrh.js  8e513488 → 505706a1
+
+**这期间合入 dev 的 PR**：
+- #633 fix(memory): memory_search 关闭连接时不再同步等 5 s（TRUNCATE→PASSIVE checkpoint）
+
+V 上验收（02:03–02:05，凌晨无真实流量）：
+- 文件：sha 等于发版后的值 505706a1，含 marker。
+- 实测：以 openclaw 用户经 Gateway 调用两次 `tools.invoke` memory_search（只读），都 ok。Gateway 内分别 1392 ms 和 2139 ms（重启后冷缓存），没有 5 s 平台，没有 liveness 延迟。
+- 冷启动停顿：02:03:17 一次 17.7 s，在启动期内（与前两次重启的 15.5 s、18.4 s 同级）。
+- 重启时自动清理了 3 条 Codex 旧登记。
+
+---
+## usage-workboard-20261120
+
+上线：2026-11-20 23:30 CST（23:06 文件装到 V；等 /vcc 的曲库长任务跑完后，v-self-restart 23:28 提交，2 s 判定空闲后停机，121 s 就绪，workers 5、4 个渠道流全在）  ·  tag `usage-workboard-20261120`
+
+**摘要**：两件事一次上线。
+- **#631 sessions.usage 只读需要的会话行**：11/20 17:51 V 两次 `openclaw gateway call sessions.usage` 把主线程卡了 29.8 s 和 65.9 s。原因是 CLI 调用只带 operator.read，没走 #604 的子进程，在主线程上整表读了 makaron 的 25,866 行会话（2.4 GB）。现在按 key 只读匹配的行，列表只取投影加上下文权重；没有 operator 角色的只读调用也进 usage 子进程。
+- **#617 Workboard 全量巡检重新完整**：V 的会话超过 1 万后，每 10 分钟一次的全量列表其实一直不完整。现在请求整个会话目录，以 `hasMore=false` 判定完整；prepared 状态的启动要超过 30 分钟没有接收会话才判失败。关闭：`OPENCLAW_V_WORKBOARD_SWEEP_COMPLETE=0`。
+
+相对上一版 `spawnbroker-egress-20261119`：2 个文件变化。
+
+**经 VLab 发版 `usage-workboard-20261120`**（monitor-v-production-70a57a，dev `a119dd51`）
+> 验收：共享 VLab 21:19 部署后文件已就位。用 `openclaw gateway call sessions.usage`（operator.read，与 V 17:51 同一路径）实测：按 key 4.4 s，key+当天 0.24 s，makaron 30 天 5.2 s 返回 490 个会话，期间没有 liveness 延迟。一次真实回合（先说明、exec 两次）输出正确；12 分钟内没有 lifecycle sync failed。缺口：VLab 上没有看到巡检完成的正向日志。
+- `core` extensions/workboard/index.js  448d3ae8 → 62a0a1b5
+- `core` usage-C3nh9kcO.js  44c5f048 → a39d4ef6
+
+**这期间合入 dev 的 PR**（V 上实际变化以上面的文件为准）：
+- #617 fix(workboard): 全量巡检在会话超过 1 万后重新完整（含 prepared 宽限）
+- #631 fix(usage): sessions.usage 只读需要的会话行，CLI 只读调用也进 usage 子进程
+
+V 上验收（23:31–23:43，只看真实流量，没有在业务群发测试消息，也没有在 V 上调用 sessions.usage）：
+- 文件：两个文件的 sha 都等于发版后的值（a39d4ef6 / 62a0a1b5）。
+- 冷启动停顿：23:31:42 一次 18.4 s，在启动期内（上一次 11-19 21:39 重启同期 15.5 s）。之后稳态只有一次 1.8 s。
+- 真实回复：23:33–23:37 飞书 4 张卡片都流式出字并正常收尾，sendMs 530–690 ms。
+- Workboard：重启后只有 4 张卡片状态变化（2 张完成进入 review，2 张 running），都是正常进展，没有成批判失败，也没有 `lifecycle sync failed`。
+- 重启时 v-self-restart 自动清理了 3 条 Codex 旧登记。
+
+---
+## spawnbroker-egress-20261119
+
+上线：2026-11-19 21:41 CST（21:0x 文件装到 V；v-self-restart 21:30 提交，等 cron 跑完后停机，111 s 就绪，workers 5，postChecks 全 0、无告警）  ·  tag `spawnbroker-egress-20261119`
+
+**摘要**：两件事一次上线。
+- **#625 exec 子进程交给常驻 spawn broker + Workboard 两个索引**：服务模式下 exec/relay 子进程不再由 Gateway 主线程同步 fork，改由常驻的 `v-spawn-broker.mjs` 代为启动，省掉主线程上每次 fork 的停顿；Workboard 建表时补 `workboard_cards_board_agg_idx`、`workboard_cards_lifecycle_link_idx`，看板聚合和生命周期链接不再全表扫。关闭：drop-in `Environment=OPENCLAW_V_SPAWN_BROKER=0` 后重启。说明见 `lab/spawn-broker-workboard-index.md`。
+- **#627 secret egress 代理复用 TLS + 根证书 30 天**：代理的叶子证书按主机缓存，剩不到 1 小时才重签；根 CA 有效期从 1 天改为 30 天，子进程信任包不再每天过期（V 工作区里的续期脚本随之变成空操作）。
+
+相对上一版 `meeting-bridge-20261118-e`：5 个文件变化（`meeting-bridge-20261118-e` 的捕获还没进 dev，以下按发版计划列出，前后哈希已由 promote-to-v 在 V 上核对）。
+
+**经 VLab 发版 `spawnbroker-egress-20261119`**（release-20261119，dev `fc0ca1ac`）
+> 验收：共享 VLab 上新字节加载正常，exec 输出/错误输出/退出码、HTTPS 请求正常，日志无新增错误。共享 VLab 没有 `OPENCLAW_SERVICE_MARKER`、没开 egressProxy，走不到 broker 和代理两条路径；这两条的证据来自 candidate：exec 对照 3021 次全部经 broker，HTTPS 代理真实文件 240 次全部成功，新 CA 30 天。
+- `core` supervisor-BuLJGQyc.js  3dcf2b54 → 3fca1a79
+- `core` sqlite-store-CH-caj1l.js  d06ee044 → 9ff2826f
+- `core` v-spawn-broker.mjs  （新增）→ 4d365d79
+- `core` runtime-Cy2RRq4n.js  f39ed2a4 → e4690957
+- `core` ca-DsWeiCkK.js  e8b1b1ed → f8aa4896
+
+**这期间合入 dev 的 PR**（V 上实际变化以上面的文件为准）：
+- #625 exec 子进程走常驻 spawn broker + Workboard 两个索引
+- #627 secret egress 代理复用 TLS 证书、根 CA 30 天
+
+V 上验收（21:41–22:00，只看真实流量，未在业务群发测试消息）：
+- broker：`[v-spawn-broker.1] {"event":"start","pid":2567683,"starts":1}`；`service-child-relay.js` 子进程的父进程是 broker，不再是 Gateway。
+- 索引：`workboard_cards_board_agg_idx`、`workboard_cards_lifecycle_link_idx` 都在（只读查询）。重启前已只读预热 workboard 库。
+- 证书：新 `secret-egress-proxy/gateway-*/root-ca.pem` notBefore 11-19 13:39 GMT，notAfter 12-19 13:39 GMT（30 天）。
+- 重启：Codex 旧登记被 v-self-restart 自动清理，cannotReap=0；夜班 holding → resuming 自动接上。
+- 冷启动停顿：21:41:45 一次 event loop 最大 14.4 s（active=0，启动期，上一次 11-18 重启同期 9.5 s）。
+- 稳态（21:43–22:00）：liveness 告警 0 次（重启前一小时 4 次）；经新代理的 secret egress 请求 148 次，证书/TLS 类错误 0；broker 只启动 1 次、RSS 58 MB；Cannot reap 0。这段时间没有用户消息，首字前后对比留待真实流量。
+
+## workboard-full-sweep-20261117
+
+上线：2026-11-18 00:09 CST 生效（00:06 promote-to-v，漂移哨兵 0 发现，VLab 已 align；00:06:39 v-self-restart 等空闲 2 s，00:07:43 停机并清掉 1 条 Codex 孤儿登记，90 s 后就绪，00:09:16 settle：stream 4/4、worker 5/5，postChecks 全 0，NRestarts 0）  ·  tag `workboard-full-sweep-20261117`
+
+**摘要**：Workboard 每 10 分钟一次的全量生命周期巡检不再卡 Gateway 主线程（V 上改前每 ~613 s 一次 6.8–8.6 s 的 liveness 停顿，用户侧表现为那几秒消息、卡片、语音全部停住）。
+- **#614（7 个 core 文件）**：只对 Workboard 全量巡检那种 `sessions.list`（lifecycleOnly、不带 activeMinutes、参数白名单）起一次性 worker 线程，读会话库 list 投影和 `subagent_runs`，只把 12 个生命周期字段传回主线程；数据和读取代码不变，结果逐字节相同。每分钟那轮和其他所有 `sessions.list` 不变。worker 失败/超时 120 s 回到主线程原路径并记 warn；`OPENCLAW_V_WORKBOARD_FULL_SWEEP_WORKER=0` 一键关闭（需重启）。
+- 源码：openclaw-versa `versa/port-workboard-full-sweep-20261117` @ `1d013cb6c39`。
+
+V 上核对（00:09–00:36）：7 个文件哈希与 after 一致。两轮全量巡检 00:19:33 与 00:29:46 都起了 worker 线程（Gateway 线程 14→15→14，各约 6 s，在后台），同时段 liveness 延迟 0 次（改前 22:56–23:44 每轮 6,764–8,629 ms）；`lifecycle snapshot worker failed` / `Cannot reap` / SqliteError / TypeError 均 0；`workboard.cards.list` 104–140 ms 正常；/vds（codex harness，deepseek/vds-deepseek-flash）显式会话 3 回合 21.2 s（重启后冷）/5.1 s/4.2 s 正常；RSS 2.6 GB。启动阶段 00:09:52 一次 11.8 s 停顿，同前几次重启后的启动停顿，非本次范围。
+
+相对上一版 `infer-latency-20261117`：7 个文件变化。
+
+**经 VLab 发版 `workboard-full-sweep-20261117`**（claude-monitor，dev `fa21ed98`）
+> 验收：shared VLab 2026-11-17 23:35-23:48 CST, dev fa21ed98 (#614; 7 core dist files, all before-hashes equal V live bytes after infer-latency-20261117): Gateway pid 380392 ready. Worker path proven: every lifecycle full-sweep sessions.list (3 RPC calls with the exact Workboard params, 457 rows, 2.2 s each, and the plugin own full sweep at 23:45:27) spawned the one-shot worker thread (Gateway threads 14-…
+- `core` combined-store-gateway-BwDhjbIt.js  0cbe8b81 → a2c37612
+- `core` session-accessor.sqlite-transcript-state-Cz9g7S9v.js  2583a789 → 42478a61
+- `core` session-utils-list-BUP03AzS.js  5392dd65 → bbceee57
+- `core` sessions-read-C6mAMxyQ.js  5044b9b0 → 153342c9
+- `core` subagent-registry-read-UaDFTyfW.js  142bb515 → 4c88db9c
+- `core` subagent-registry.store.sqlite-hzGu4QSk.js  23154eac → 27cf50a0
+- `core` v-session-lifecycle-snapshot-worker.mjs  — → ab84850d
+
+## infer-latency-20261117
+
+上线：2026-11-17 21:59 CST 生效（21:48 promote-to-v，漂移哨兵 0 发现，VLab 已 align；21:48 v-self-restart 因 21:00 两个记忆整理 cron 回合在跑等空闲 500 s，21:58:12 停机并清掉 Codex 孤儿登记，100 s 后就绪，22:00:44 settle：stream 4/4、worker 5/5，NRestarts 0）  ·  tag `infer-latency-20261117`
+
+**摘要**：`openclaw infer` 从十几秒降到三四秒，`--gateway` 不再比普通 `openclaw agent` 回合慢。
+- **#613 CLI（6 个文件）**：infer 不再跑状态迁移预检（子进程整库 `sqlite.backup()` 862 MB + integrity check）；`--gateway` 只做 core 配置校验；`--local` 只加载所选 provider 的插件。
+- **#613 Gateway（3 个文件）**：model run 的隐藏会话创建不触发全库维护，结束清理时不做全库引用读取和计数（只对 internal-session-effects key 生效）。11/17 11:25 那次 29.9 s 停顿就是一次 `infer --gateway` 的隐藏会话创建。
+- 源码：openclaw-versa `versa/port-infer-latency-20261117`，CLI `9168f454254`、Gateway `3dfc7c4c4fb`。
+
+V 上核对（22:01–22:05，各 5 轮交替，第 1 轮是重启后冷启动）：9 个文件哈希与 after 一致。`infer model providers --json` 3.5–3.8 s（改前 11.5 s）；`infer model run --local` 3.0–3.95 s（冷 5.7 s，改前 12.2 s）；`infer model run --gateway` 4.4–5.4 s（冷 71.8 s：工作区沙箱冷启动 15.9 s、回复后约 34 s 的首次清理，改前 13.6–31.1 s）；同模型同 prompt 的 `openclaw agent` 4.2–4.8 s（冷 11.3 s）。重启后 22:00:45 起 liveness 延迟 0 次；`Cannot reap` / SqliteError / UNIQUE / TypeError 均 0；每次 `--gateway` 结束仍有一次约 1.3 s 的 session 写（`slow SQLite session write`），低于 liveness 阈值，待查。启动阶段 22:00:39 一次 20.6 s 停顿，同 07:03、03:23 几次重启后的启动停顿，非本次范围。
+
+相对上一版 `session-ref-index-20261117`：9 个文件变化。
+
+**经 VLab 发版 `infer-latency-20261117`**（claude-monitor，dev `084deec0`）
+> 验收：shared VLab 2026-11-17 20:15-20:19 CST, dev 084deec0 (#613; 9 core dist files, all before-hashes equal V live bytes): Gateway pid 271224 NRestarts 0. 5 alternating rounds: infer model providers --json 3.7-6.8 s (first cold); infer model run --gateway deepseek-flash 2.8-3.0 s after the first (10.3 s cold) vs openclaw agent same model/prompt 3.5-8.6 s; infer model run --local (service secrets.env lo…
+- `core` command-path-policy-qUeic05b.js  4b1ccc0e → 8a9bd264
+- `core` config-guard--4cC6uJU.js  8a221eb3 → 62e6c438
+- `core` internal-session-effects-C8FWqbuL.js  ec7c324e → bfa63770
+- `core` model-fXXfAcf8.js  e24d0391 → 154ad5bb
+- `core` prepared-model-runtime.facts-CEW6RO02.js  5035f0bb → a2ea22ff
+- `core` runtime-plugin-load-plan-Bm46qisR.js  132c9ec9 → 8cc6c598
+- `core` session-accessor-K0XuW6ln.js  a854b511 → 13af5e83
+- `core` session-accessor.sqlite-lifecycle-state-CrB_K2kA.js  c21306fa → c06721d5
+- `core` simple-completion-runtime-D9F09LT6.js  13c43a6d → ed3c4e2a
+
+## session-ref-index-20261117
+
+上线：2026-11-17 07:02 CST 生效（03:58 promote-to-v，漂移哨兵 0 发现，VLab 已 align；前两次 v-self-restart 都因 FCloud daily refresh 04:00 连续超时重试、V 一直不空闲而在等满 1 小时后放弃，V 未被改动；第三次 07:01:17 空闲后停机，启动前清掉 2 条 Codex 孤儿登记，07:02:44 就绪，07:02:53 settle：stream 4/4、worker 5/5，NRestarts 0）  ·  tag `session-ref-index-20261117`
+
+**摘要**：删会话不再把 Gateway 主线程卡住约 3 秒。旧代码每删一个会话，都要在写事务里整表扫一遍 session_nodes 找引用它的行（2.2 万行、每行解析 entry JSON），V 上每次 2.9–3.0 s，约每 25 分钟一次（主要是定时任务结束后清理 run 会话）。
+- **#611**：每个数据库连接维护一份会话引用索引（按 rowid、current_session_id、updated_at、entry 长度做指纹，用 TEMP 触发器和 `PRAGMA data_version` 感知本连接和其他进程的写入），删除时只查索引。开关 `OPENCLAW_V_SESSION_REFERENCE_INDEX=0`（需重启生效）。
+- 剩余风险：其他进程改了某行的引用却恰好没改变指纹四项时，索引不会察觉；按现有写入路径没有这种写法。
+- VLab 候选：删除 15–25 s → 0.18–0.32 s。
+
+V 上核对（07:03–08:38）：3 个文件哈希与 after 一致；`Cannot reap` / UNIQUE / SqliteError / 未捕获异常均 0。重启前当天 03:23–07:01 有 8 次删除事务 2.9–3.0 s（`runSqliteSessionDeletionTransaction`）。重启后 08:34:51–08:37:53 真实删除 3 个 cron run 会话（只读比对 session_nodes 键集合确认），这段时间没有超过 1 s 的事务、没有 liveness 告警；重启后再没有出现删除类慢事务。同期仍有三类停顿，与本次无关：启动阶段 44.6 s（同前几次重启）；每约 10 分钟一次 1–7 s 的心跳延迟（重启前同样存在）；08:34 两次 1.1/2.6 s 的大会话 transcript 整读。
+
+相对上一版 `sessions-stall-20261117`：3 个文件变化。
+
+**经 VLab 发版 `session-ref-index-20261117`**（claude-monitor，dev `ecf059ac`）
+> 验收：shared VLab 2026-11-17 03:52-03:56 CST, dev ecf059ac (#611; 3 core dist files): Gateway pid 3795029 NRestarts 0. Real turns deleted two subagent sessions through the patched deletion path: sessions_spawn cleanup=delete -> agent:makaron:subagent:85f4ffdb-... deleted (sessions.delete 5209 ms, first deletion in the process builds the reference index while another candidate pid 3781755 was saturating …
+- `core` session-accessor.sqlite-entry-store-VfW3gyuj.js  455037c6 → 6aa9f488
+- `core` session-accessor.sqlite-lifecycle-dtL0ZEAl.js  efa4604b → acaa5309
+- `core` session-accessor.sqlite-lifecycle-state-CrB_K2kA.js  4f4cce65 → c21306fa
+
+## sessions-stall-20261117
+
+上线：2026-11-17 03:23 CST 生效（03:16 promote-to-v，漂移哨兵 0 发现，VLab 已 align；03:17 v-self-restart 等空闲 208 s 后 03:21:25 停机，启动前清掉 2 条 Codex 孤儿登记，03:23:11 就绪，03:24:24 settle：stream 4/4、worker 5/5，NRestarts 0）  ·  tag `sessions-stall-20261117`
+
+**摘要**：`sessions_search` 不再把 Gateway 主线程卡住几十秒。11/16 19:18 的 CPU profile 抓到 27 s 停顿全在这个工具里：它在 Gateway 进程内运行，一次搜索把 2.2 万个会话的整库读 6 遍，再分约 110 批逐批跑「找需要重建索引的会话」（扫 26,913 个窗口），中间从不让出主线程。
+- **#608**：落后检查挪到只读 worker 线程（每库每分钟最多一次），每次调用 Gateway 前让出事件循环，候选列表每个范围只取一页（整库读 6 → 2 次）。开关 `OPENCLAW_V_TRANSCRIPT_SEARCH_LAG_OFFTHREAD=0`、`OPENCLAW_V_SESSIONS_SEARCH_YIELD=0`。
+- **#609**：`sessions.list visibilityRowsOnly` 改读 session_nodes 的提升列和覆盖索引，不再整读 1.98 GB entry JSON；有歧义的行（entry_valid≠1、置顶、parent=spawned_by）仍按 JSON 解析。V 只读核对 21,913 行 0 处不一致。开关 `OPENCLAW_V_SESSIONS_VISIBILITY_COLUMNS=0`。
+- VLab V 规模候选：一次搜索主线程最长阻塞，热 31.4 s → 0.89 s，清页缓存 83.7 s → 8.2 s；三组结果 hash 一致。
+- 同批合入但不在 V 的 dist 里：**#607 vrelay**（Cloudflare R2 跨境大文件中转），03:20 用 `apps/v-relay/install.mjs` 装到 Mac、Air、V（V 上同时装技能 `large-file-transfer`）。
+
+V 上核对（03:23–03:28）：6 个文件的哈希与 after 一致；`Cannot reap` / restart recovery / 未捕获异常 / OOM 均 0；启动阶段两次 liveness 停顿（03:23:10 40.8 s、03:24:01 20.7 s，同 11/14 重启后的启动停顿，非本次范围）。私聊会话 `agent:makaron:explicit:monitor-sessions-stall-20261117` 一轮 /vds（deepseek/vds-deepseek-flash）调用 sessions_search「卡顿」→ 14 条 / 7 个会话，整轮 38.6 s，期间无 liveness 停顿。vrelay：V put 191 MB 37.3 s（5.11 MiB/s），Mac get 23 s，sha256 一致，测试对象已删。V 主私聊收到更新说明并回复。
+
+相对上一版 `startup-stall-usage-20261114`：6 个文件变化。
+
+**经 VLab 发版 `sessions-stall-20261117`**（claude-monitor，dev `157db0cb`）
+> 验收：shared VLab 2026-11-17 03:11-03:14 CST, dev 157db0cb (#607 #608 #609; 6 core dist files): Gateway pid 3766226 NRestarts 0. sessions.list {agentId:makaron,visibilityRowsOnly:true,configuredAgentsOnly:true} returned rows in 2.5 s round trip (server 269-320 ms). Real agent turns: agent:makaron:explicit:vlab-dev-sessions-stall-20261117-1794856334435 called sessions_search("验收") -> 25 results (answered…
+- `core` combined-store-gateway-BwDhjbIt.js  9cb53296 → 0cbe8b81
+- `core` openclaw-tools-BODVdJQD.js  0b8b6233 → 693e19be
+- `core` session-accessor.sqlite-entry-BlklNPKQ.js  258aa1be → 7cba57ac
+- `core` session-transcript-reconcile-j5qhAafV.js  85455fa4 → 468372b5
+- `core` session-transcript-search-pRB2YScP.js  399b50e6 → 649662cd
+- `core` sessions-read-C6mAMxyQ.js  5c84c606 → 5044b9b0
+
+## startup-stall-usage-20261114
+
+上线：2026-11-14 00:30 CST 生效（00:25 promote-to-v，漂移哨兵已更新，VLab 已 align；00:29 v-self-restart 等到空闲后停机，carry 8/8、预检 20 ms，00:30:23 listen、00:30:31 飞书就绪，NRestarts 0）  ·  tag `startup-stall-usage-20261114`
+
+**摘要**：两处 Gateway 主线程长时间卡死。
+- **#604 用量查询移出主线程**：11/12 22:00 一次「查 1 天」的 `usage.cost` 卡死 Gateway 468 s（9.1 不看日期范围，主线程同步统计 2.5 万会话、整读 457 MB 旧 rollup，回复后还整读转录），连带钉钉断线、Gateway 崩溃，断服约 18 分钟。现在 4 个 usage RPC 整个在低优先级子进程里跑，只读日期范围内有变动的会话，rollup 分批读。
+- **#605 Dreaming 清理不再整表解析会话**：每次启动后 memory-core 的 Dreaming 清理（Dreaming 关着也跑）两次在主线程、写锁内解析全部 2 万条会话条目（1.85 GB）并整读 608 MB 转录，造成两次 35–50 s 停顿、堆冲到 7.6–8.4G，11/11 连续 OOM 也是它。回移上游修复，只看 dreaming 条目，判断放进 SQLite。
+
+V 上核对（00:30–00:38）：
+- 约 +350 s 那次停顿消失；启动后堆峰值 4.87 GiB（原来 7.6–8.4），之后常驻 RSS 1.9G（原来 5.3G）。
+- **启动后约 1 分钟仍有两段停顿**（00:30:48–00:31:24 overdue 36 s，00:31:36–00:32:11 stalled 39 s），不是这两个修复覆盖的范围，已交 vds-bigsession-stall 继续查。
+- 钉钉 `connected:true`（停顿后自己重连，无崩溃）、企业微信已认证、5 个 worker；`restart recovery claim changed` 0、`ended during restart recovery` 0、`Cannot reap` 0、未捕获异常 0。
+- VLab 上 `usage.cost {agentId:makaron,days:1}` 6.7 s，在 nice 19 的 `usage-offload-child` 子进程里执行，主线程无停顿；一轮真实 /vds 正常。
+
+相对上一版 `dingtalk-socket-guard-20261113`：7 个文件变化。
+
+**经 VLab 发版 `startup-stall-usage-20261114b`**（claude-monitor，dev `b66fb271`）
+> 验收：shared VLab 2026-11-14 00:15-00:23 CST, dev b66fb271 (#604 + #605): Gateway pid 922236 listen 00:15:44, NRestarts 0; through both Dreaming-cleanup windows (+55 s, +350 s) liveness/stall lines 0, RSS 0.77-0.78G (shared VLab session table is small, so this is no-regression; the V-scale benefit is from #605 candidate: stalls 71+60 s -> 4.5 s, RSS 6.4G -> 0.85G). #604: usage.cost {agentId:makaron,days…
+- `core` commands-session-cost.runtime-C4rqe689.js  ad936731 → 149a2dc5
+- `core` session-accessor.sqlite-lifecycle-dtL0ZEAl.js  f3f6fdfa → efa4604b
+- `core` session-accessor.sqlite-lifecycle-state-CrB_K2kA.js  ea381f9d → 4f4cce65
+- `core` session-cost-usage-C_mE_GAE.js  0514592d → 0581a16d
+- `core` usage-C3nh9kcO.js  5b614d0a → 44c5f048
+- `core` usage-offload-child-v1.js  — → 19297dc3
+- `core` usage-offload-v1.js  — → f54e269d
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #605 fix(sessions): Gateway 启动后 Dreaming 清理不再整表解析会话（两次 35–50 s 停顿 + 堆 8G）
+- #604 fix(usage): usage 报表移出 Gateway 主线程并按日期范围裁剪（11/12 卡死 8 分钟）
+
+## dingtalk-socket-guard-20261113
+
+上线：2026-11-13 12:42 CST 生效（09:55 文件装到 V，promote-to-v，漂移哨兵 0 发现，VLab 已 align；12:32 v-self-restart 重启，断服约 10 分钟，见下）  ·  tag `dingtalk-socket-guard-20261113`
+
+**摘要**：钉钉断线重连时不再把整个 Gateway 打崩。11/08 10:08 和 11/12 22:08 两次 `uncaught_exception: Unexpected server response: 400` 都是钉钉插件 `stop()` 删掉了握手中连接唯一的错误监听，钉钉随后用 400 拒绝旧 ticket，没人接住；健康检查重启钉钉 6 s / 16 s 后崩溃，加上不干净退出后的全量库检查，每次断服约 9 分钟。现在 `stop()` 会补一个只记日志的错误监听并中止握手中的连接。上游 issue DingTalk-Real-AI/dingtalk-openclaw-connector#670 仍未修。11/12 那次的源头是 `usage.cost` 卡死 Gateway 8 分钟，另案处理。
+
+重启经过：12:32:46 第一次启动 DB91 carry 8/8、22 ms 通过，但启动时 doctor 自动安装了配置里有、磁盘上没有的 `vercel-ai-gateway` 插件（该 provider 是 11/12 23:48–23:51 在 V 上直接加进 openclaw.json 的），随后按设计报 `plugin migration inputs changed during startup convergence` 退出 1；第二次启动因「上次退出不干净」做 8 库全量检查，300 s 超时退出；第三次 137 s 通过，12:42:07 飞书就绪。NRestarts=2。
+
+V 上核对（12:45）：钉钉 `connection-DCvu-l09.mjs` = 78cf6f85；钉钉 `connected:true`、企业微信已认证；`restart recovery claim changed` 0、`ended during restart recovery` 0；12:45:23 一轮真实 /vds（codex + deepseek）完成；启动后堆峰值 7.66 GiB（12:44），随后 RSS 回落到 5.3G，无 OOM。
+
+相对上一版 `remote-node-stable-20261111`：1 个文件变化。
+
+**经 VLab 发版 `dingtalk-socket-guard-20261113`**（claude-monitor，dev `4c3b183e`）
+> 验收：shared VLab 2026-11-13 09:50-09:53 CST: only DingTalk connection chunk under runtime npm project = 78cf6f85 (patched, loaded by Gateway pid 430482, NRestarts=0); dingtalk-connector[__default__] started and connected:true at 09:51:03; real /vds turn agent:makaron:explicit:vlab-dev-dingtalk-socket-guard-1794534784517 answered '收到 602' by vds-deepseek-flash. stop() crash path proven in candidate (old…
+- `dingtalk` dist/connection-DCvu-l09.mjs  397c42c3 → 78cf6f85
+
+**这期间合入 dev 的 PR**（2 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #602 fix(dingtalk): stopped Stream reconnect no longer crashes the Gateway (Unexpected server response: 400)
+- #600 release: capture remote-node-stable-20261111
+
 ## remote-node-stable-20261111
 
 上线：2026-11-11 15:05 CST 文件装到 V（promote-to-v，漂移哨兵 0 发现，VLab 已 align）；生效要等 Gateway 重启：V 上一次性 timer `remote-node-stable-idle-restart` 21:30 起走 v-self-restart 等空闲（最多 30 min，仍忙则放弃不重启）  ·  tag `remote-node-stable-20261111`

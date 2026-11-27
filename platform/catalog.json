@@ -361,6 +361,7 @@
         "lab/gpt-live-voice-exec-lifetime.test.mjs",
         "lab/gpt-live-voice-tool-order.test.mjs",
         "lab/db91-shrink-reuse.test.mjs",
+        "lab/db91-lifecycle-proof.test.mjs",
         "lab/placement-evidence-absence.test.mjs",
         "lab/placement-sweep-lists.test.mjs",
         "lab/transcript-index-preflight.test.mjs",
@@ -379,11 +380,17 @@
         "lab/patch-subagent-lazy-session-store.test.mjs",
         "lab/codex-bounded-history.test.mjs",
         "lab/codex-turn-tail.test.mjs",
+        "lab/run-start-phases.test.mjs",
         "lab/worker-prewarm2-v.test.mjs",
         "lab/feishu-firsttext-e2e.test.mjs",
         "lab/feishu-codex-early-card.test.mjs",
         "lab/feishu-card-precreate.test.mjs",
         "lab/early-tool-status.test.mjs",
+        "lab/patch-interactive-priority.test.mjs",
+        "lab/patch-spawn-broker.test.mjs",
+        "lab/spawn-broker/v-spawn-broker.test.mjs",
+        "lab/patch-workboard-hotpath-index.test.mjs",
+        "lab/spawn-broker-workboard-index.test.mjs",
         "lab/restart-recovery-claim-release.test.mjs",
         "lab/history-image-resize-skip.test.mjs",
         "lab/no-reply-after-tool.test.mjs",
@@ -504,6 +511,8 @@
         "lab/openclaw-tool-safe-deny.test.mjs",
         "lab/skill-workshop-agent-apply.test.mjs",
         "scripts/v-skills-catalog.test.mjs",
+        "scripts/v-tv-mcp-bridge.test.mjs",
+        "scripts/v-tv-mcp-switch.test.mjs",
         "lab/model-switch-thinking.test.mjs",
         "lab/luna-fallback-takeover.test.mjs",
         "lab/feishu-card-images.test.mjs",
@@ -529,11 +538,36 @@
         "lab/sessions-search-stall.test.mjs",
         "lab/session-reference-index.test.mjs",
         "lab/infer-latency.test.mjs",
-        "lab/workboard-full-sweep.test.mjs"
+        "lab/workboard-full-sweep.test.mjs",
+        "lab/egress-proxy-tls-reuse.test.mjs",
+        "lab/usage-session-select.test.mjs",
+        "lab/workboard-sweep-complete.test.mjs",
+        "lab/memory-close-passive.test.mjs",
+        "lab/session-create-narrow.test.mjs",
+        "lab/subagent-tree-read.test.mjs",
+        "lab/card-native-shell.test.mjs",
+        "lab/cli-subagent-progress.test.mjs",
+        "lab/workboard-list-page.test.mjs",
+        "lab/binary-attachment-text.test.mjs"
+      ]
+    },
+    {
+      "id": "v-distro",
+      "purpose": "可安装发行包（distro/）：构建可复现、捕获字节校验、个人标识脱敏、安装覆盖层失败即停、整包替换、配置只写环境变量引用、回滚 schema 规则；全部离线，用临时 git 仓库",
+      "files": [
+        "distro/build/build.test.mjs",
+        "distro/install/lib/release.test.mjs",
+        "distro/install/config/openclaw-config.test.mjs",
+        "distro/install/lib/v-asr-volcengine.test.mjs",
+        "distro/install/lib/skills.test.mjs"
       ]
     }
   ],
   "deferredTestFiles": [
+    {
+      "file": "lab/candidate/binary-attachment-text.test.mjs",
+      "reason": "Candidate test: imports attachment-classify and V's real mime chunk / file-type from $VLAB_CANDIDATE_RUNTIME; run with lab/binary-attachment-text.candidate.plan.json"
+    },
     {
       "file": "tests/bootstrap-memory-everywhere.test.mjs",
       "reason": "Candidate test: imports the OpenClaw core and Codex plugin from $VLAB_CANDIDATE_RUNTIME; run with lab/release-files/bootstrap-memory-everywhere/candidate.*.plan.json"

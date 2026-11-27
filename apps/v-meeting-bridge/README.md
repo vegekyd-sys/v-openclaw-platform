@@ -27,7 +27,18 @@ V 只在有人明确让它进会时才进。插件不监听会议邀请，也不
 
 ## Gateway 方法
 
-`vmeeting.start`、`vmeeting.say`、`vmeeting.screenshot`、`vmeeting.stop`（operator.write），`vmeeting.list`（operator.read）。参数和对应的工具一样，另外可以显式传 `sessionKey`、`agentId`、`delivery {channel,to,accountId}`、`workspaceDir`，方便不经过工具、直接由运维发起。
+`vmeeting.start`、`vmeeting.say`、`vmeeting.screenshot`、`vmeeting.stop`、`vmeeting.reload`（operator.write），`vmeeting.list`（operator.read）。参数和对应的工具一样，另外可以显式传 `sessionKey`、`agentId`、`delivery {channel,to,accountId}`、`workspaceDir`，方便不经过工具、直接由运维发起。
+
+## 热更新（2026-11-25 起，不用重启 Gateway）
+
+`core/` 里的代码（会议轮询、给 V 的提示词、回复过滤、lark-cli 调用、会议管理）可以热更新：
+
+1. 把新的 `core/*.js` 装到插件目录（生产：`~/.openclaw/extensions/v-meeting-bridge/core/`）。
+2. `openclaw gateway call vmeeting.reload --json --timeout 150000`
+
+reload 按文件内容算版本号，复制到 `<stateDir>/v-meeting-bridge/core-versions/<版本>/` 后 import（ESM 按 URL 缓存，新版本必须换路径）。正在开的会不会断：每场会先跑完手上那一轮、存盘，新代码再从同一份记录接着听。文件没变就什么也不做。有会正在写会后纪要时会拒绝，过一会再试。超过 120 秒还没空闲就放弃，继续用旧代码。新代码起不来，会自动退回旧版本。
+
+`index.js`、`core-loader.js` 和 `openclaw.plugin.json`（工具定义、Gateway 方法、服务本身）还是 Gateway 启动时加载的，改这几个文件仍然要重启。
 
 ## 飞书应用权限
 

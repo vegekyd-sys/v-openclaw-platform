@@ -1,0 +1,11 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/workboard-sweep-complete/extensions/workboard/index.js",
+      "target": "openclaw/dist/extensions/workboard/index.js",
+      "before": "448d3ae80781a98bc7b55ec14394c52f44e3247dc512d4e5aaef4a13c8a71466",
+      "after": "62a0a1b558563fc481bd7231fe2366feb6be1ea56a59b14e4afb4215c2c75590"
+    }
+  ]
+}

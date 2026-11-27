@@ -1,0 +1,99 @@
+# V-owned paths that sync.mjs merges from v-core into payload/ (file or directory,
+# exact paths, no globs). Everything else in payload/ belongs to the distro
+# (identity docs, onboarding, memory skeleton, schedules, feishu-docs.py,
+# onboard-*.py, v-schedule.py, heartbeat-assistant.py, proactive-heartbeat,
+# memory-cold-start, ...) and is never overwritten by a sync.
+# Adding a path here ships it to every customer: check it works for any owner,
+# needs no V host, account or customer project, and say why in INVENTORY.md.
+
+# Librarian / memory system
+memory/SCHEMA.md
+scripts/librarian-adopt-untracked.py
+scripts/librarian-reachability.py
+scripts/librarian-relations.py
+scripts/librarian-daily-queue.py
+scripts/librarian-corrections.py
+scripts/librarian-move-check.py
+scripts/librarian-reconcile.py
+scripts/librarian-rule-sources.py
+scripts/memory-graph.py
+scripts/memory-graph.template.html
+scripts/memory-auto-index.py
+scripts/compress-memory.py
+scripts/wiki-maintenance.py
+scripts/tests/test_librarian_corrections.py
+scripts/tests/test_librarian_reconcile.py
+skills/librarian-semantic-reconcile
+skills/long-term-memory-update
+skills/memory-promotion-audit
+
+# Knight heartbeat / self-evolution
+scripts/heartbeat.py
+scripts/heartbeat-dispatch.py
+scripts/write-reflection.py
+scripts/reflection-analyzer.py
+scripts/reflection-capture.py
+scripts/write-skill-candidate.py
+scripts/skill-candidate-rollback.py
+skills/proactive-agent
+skills/skill-creation-coach
+skills/skill-gate
+skills/openclaw-harness-evaluation
+
+# Feishu: cards and writing on the owner's behalf
+skills/feishu-channel-cards
+skills/lark-cli-permission-issue-troubleshooting
+skills/feishu-base-schedule-write
+skills/feishu-bitable-deliver
+skills/feishu-doc-append-batch
+skills/feishu-doc-permissions
+skills/feishu-doc-rewrite-audit
+skills/feishu-large-file-fetch
+skills/feishu-send-image
+skills/feishu-sheet-deliver
+skills/feishu-sheet-to-doc
+
+# Search and research
+skills/social-search-apify-first
+skills/image-search-apify-first
+skills/technical-project-research
+scripts/apify-client.mjs
+scripts/apify-search.mjs
+scripts/apify-worker-io.mjs
+
+# Creative, documents and presentation
+skills/auto-travel-vlog
+skills/corporate-video-script
+skills/creative-production-orchestrator
+skills/html-executive-pitch-deck-iteration
+skills/html-poster-design
+skills/image-production-routing-qc
+skills/makaron-video
+skills/makaron-remotion-materialize
+skills/makaron-long-video-production
+skills/meshy-3d-agent
+skills/tiktok-publish-copy
+skills/viral-absurd-demo-video
+skills/viral-extreme-product-demo
+skills/viral-impossible-test-video
+skills/makaron/SKILL.md
+skills/makaron/COMPOSITE.json
+skills/makaron/parts/official
+skills/pdf-deck-localization
+skills/qr-image-decode
+skills/deterministic-frame-animation
+skills/video-flicker-judder-qc
+skills/video-text-removal
+skills/log-footage-restore
+skills/interview-film-cut
+skills/shortvideo-packaging
+skills/jianying-subtitle-audio
+skills/brand-logo-film
+skills/ai-visibility-audit
+
+# --- decided 2026-11-27 (Tianyi: VSync, desktop handoff and daily review like V; the rest "same as V where it works") ---
+skills/vsync
+skills/agent-to-agent-protocol-feishu-a2a-defaults
+skills/computer-use
+skills/background-worker-contract
+skills/qcc-company-lookup

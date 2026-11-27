@@ -1,0 +1,10 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/binary-attachment-text/attachment-classify-1K-kUuWK.js",
+      "target": "openclaw/dist/attachment-classify-1K-kUuWK.js",
+      "before": "60734dc70c4e3a0f1a9e32736f244c85d6544cbb234ecbef77ee9e7c56946439"
+    }
+  ]
+}

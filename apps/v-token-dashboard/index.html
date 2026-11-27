@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>用户用量 · V Platform</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script defer src="/ui.js"></script>
+  </head>
+  <body>
+    <main>
+      <header class="hero">
+        <div class="mast">
+          <div class="wordmark"><b>V</b><span>Platform</span></div>
+          <button id="refresh">刷新</button>
+        </div>
+        <div class="mast-title">
+          <h1>用量总览</h1>
+          <p id="status" role="status">正在载入数据…</p>
+        </div>
+      </header>
+      <div id="content" hidden>
+        <nav id="views" aria-label="用量视图">
+          <button data-view="people" aria-pressed="true">用户用量</button>
+          <button data-view="night" aria-pressed="false">夜班模式</button>
+        </nav>
+        <section class="window" aria-label="统计时间区间">
+          <div class="periods" id="periods">
+            <button data-days="1">单日</button
+            ><button data-days="7">近一周</button
+            ><button data-days="30">近一月</button>
+          </div>
+          <details id="calendar">
+            <summary>自选日期</summary>
+            <div id="dates">
+              <label
+                >开始<input type="date" id="from" aria-label="开始日期"
+              /></label>
+              <label
+                >结束<input type="date" id="to" aria-label="结束日期"
+              /></label>
+            </div>
+          </details>
+          <span id="range-caption"></span>
+        </section>
+        <section
+          class="metrics"
+          aria-label="所选用量摘要"
+          id="metrics"
+        ></section>
+        <p id="supplement" role="status" hidden>正在载入夜班和全平台明细…</p>
+        <div class="dashboard-body" id="dashboard-body">
+          <section class="sheet" id="people">
+            <div class="sectionHead">
+              <div>
+                <button class="back" id="back" hidden>‹ 返回用户榜</button>
+                <h2 id="heading">用户排行</h2>
+                <p class="note" id="subtitle"></p>
+              </div>
+              <div class="controls">
+                <input
+                  type="search"
+                  id="search"
+                  placeholder="搜索用户"
+                  aria-label="搜索用户"
+                />
+                <details id="refine">
+                  <summary>筛选</summary>
+                  <div id="selectors"></div>
+                </details>
+              </div>
+            </div>
+            <div id="listhead" class="grid listhead"></div>
+            <div id="list"></div>
+            <div class="pager">
+              <span id="count"></span>
+              <div>
+                <button id="prev" aria-label="上一页">‹</button
+                ><button id="next" aria-label="下一页">›</button>
+              </div>
+            </div>
+          </section>
+          <aside class="insights">
+            <section class="sheet chart-card" aria-labelledby="trend-title">
+              <div class="chart-heading">
+                <h2 id="trend-title">每日用量</h2>
+                <span class="scope" id="trend-scope"></span>
+              </div>
+              <div id="trend-key" class="trend-key" hidden>
+                <span>已识别夜班</span><span>其余平台用量</span>
+              </div>
+              <figure id="trend"></figure>
+              <div class="trend-readout">
+                <output id="trend-value"></output>
+                <div class="step-day" hidden id="step-day">
+                  <button id="day-prev" aria-label="前一天">‹</button>
+                  <button id="day-next" aria-label="后一天">›</button>
+                </div>
+              </div>
+            </section>
+            <div class="chart-pair">
+              <section class="sheet chart-card" id="analysis">
+                <div class="chart-heading">
+                  <h2>用量分布</h2>
+                  <select id="groupby" aria-label="分布维度">
+                    <option value="channel">按渠道</option>
+                    <option value="model">按模型</option>
+                    <option value="session">按会话</option>
+                    <option value="workload">按任务类型</option>
+                    <option value="token">按 Token 类型</option>
+                  </select>
+                </div>
+                <p class="scope" id="dist-scope"></p>
+                <div id="technical"></div>
+                <div id="dist-pages" class="pager" hidden>
+                  <span id="dist-count"></span>
+                  <div>
+                    <button id="dist-prev" aria-label="分布上一页">‹</button
+                    ><button id="dist-next" aria-label="分布下一页">›</button>
+                  </div>
+                </div>
+              </section>
+            </div>
+            <section class="sheet chart-card" id="attribution">
+              <div class="chart-heading">
+                <h2>用量归属</h2>
+                <span class="scope">全平台 · 所选范围</span>
+              </div>
+              <div id="coverage"></div>
+              <details class="more" id="why">
+                <summary>未归属原因</summary>
+                <div id="reasons"></div>
+              </details>
+            </section>
+            <section class="night-note" id="night-note" hidden>
+              <h2>夜班识别口径</h2>
+              <p>
+                夜班派工卡关联执行会话，按模型响应日期累计。重试产生的实际用量也计入。
+              </p>
+              <p>仅展示有派工证据的用量。当前无可核实的账单金额。</p>
+            </section>
+          </aside>
+        </div>
+        <details class="more audit">
+          <summary>统计口径与采集质量</summary>
+          <p>
+            群聊按触发模型调用的发送人计量。同一会话可关联多人，响应只计一次。占比按所选时间和筛选条件计算。
+          </p>
+          <p id="audit"></p>
+        </details>
+      </div>
+    </main>
+  </body>
+</html>

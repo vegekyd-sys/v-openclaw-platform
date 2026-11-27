@@ -1,0 +1,12 @@
+{
+  "support": ["lab/candidate/db91-lifecycle-proof.mjs"],
+  "command": ["/opt/vlab/node-v22.23.1-linux-x64/bin/node", "lab/candidate/db91-lifecycle-proof.mjs"],
+  "timeoutSeconds": 7200,
+  "user": "lab-db91-parity",
+  "env": {"MAKARON": "meta", "SCENARIOS": "child,crash,missing,revoked"},
+  "files": [
+    {"source": "lab/release-files/restart-speed/dist/db91-integrity-bootstrap.mjs", "target": "openclaw/dist/db91-integrity-bootstrap.mjs"},
+    {"source": "lab/release-files/restart-speed/dist/db91-restart-carry.mjs", "target": "openclaw/dist/db91-restart-carry.mjs"},
+    {"source": "lab/release-files/db91-shrink-reuse/db91-integrity-gate.mjs", "target": "openclaw/dist/db91-integrity-gate.mjs"}
+  ]
+}
