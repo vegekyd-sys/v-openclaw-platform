@@ -25,3 +25,8 @@ feishu-auth.png
 memory/heartbeat/runs/
 onboarding/owner.json
 links.json
+
+# 临时预览链接的记录和日志（scripts/temp-preview.py）
+.v/previews.json
+.v/previews/
+.v/*.tmp

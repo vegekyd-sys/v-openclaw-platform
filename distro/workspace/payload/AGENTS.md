@@ -144,7 +144,7 @@
 ## 夜班与公网链接
 
 - 夜班（批量生产、按 workflow 跑项目）：按 `skills/night-shift-operator` 做；需要部署方配置夜班服务地址才生效，没开通就如实说。
-- 要把网页、演示稿部署成链接，或给文件一个公开下载链接：需要主人的 Vercel 或 Cloudflare 账号，见 TOOLS.md「公网链接」；没有就直说并改用飞书交付，不要假装做成了。
+- 要把网页、演示稿部署成链接，或给文件一个公开下载链接：需要主人的 Vercel 或 Cloudflare 账号，见 TOOLS.md「公网链接」；没有就直说并改用飞书交付，不要假装做成了。只想先看效果、内容不涉密时，可以用 `scripts/temp-preview.py` 开 24 小时自动关的临时预览链接，并告诉主人是临时的；OpenClaw 的 `portal` 只在本机 Control UI 里能开，不是给主人的链接。
 
 ## Safety Boundaries
 
