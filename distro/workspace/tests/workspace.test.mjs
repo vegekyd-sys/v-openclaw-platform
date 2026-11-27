@@ -394,3 +394,14 @@ test("comments and messages that would show as the owner are never sent as the o
     if (m) assert.ok(Buffer.byteLength(m[1]) <= 1024, `${rel}: description is ${Buffer.byteLength(m[1])} bytes`);
   }
 });
+
+test("VSync: the broker client ships, says when it has no identity, and the skill's receiving side covers any installed V", () => {
+  const s = fs.readFileSync(path.join(PAYLOAD, "skills/vsync/SKILL.md"), "utf8");
+  assert.match(s, /## On an installed V \(receiving side\)/);
+  assert.match(s, /NEXUS_VSYNC_URL/);
+  assert.match(s, /mirror-vsync\.py whoami/);
+  assert.doesNotMatch(s, /keeps lark-cli read-only/);
+  const r = spawnSync("python3", [path.join(PAYLOAD, "scripts/mirror-vsync.py"), "whoami"], { encoding: "utf8",
+    env: { ...process.env, NEXUS_VSYNC_URL: "", NEXUS_VSYNC_AGENT: "", NEXUS_VSYNC_TOKEN: "" } });
+  assert.equal(r.status, 3, r.stderr);
+});
