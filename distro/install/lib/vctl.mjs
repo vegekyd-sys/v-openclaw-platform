@@ -67,26 +67,60 @@ const SECRET_KEY = /(_KEY|_SECRET|_TOKEN|_PASSWORD)$/;
 // that way shows as the owner writing. Those must go as the bot (or as V's final reply, which the
 // Feishu plugin posts as the bot). Reading, and editing documents as the owner, stay allowed.
 export const SHIM_GUARDS = {
-  'owner-voice': String.raw`v_guard_owner_voice() {
-  area=""; speak=""; as=""; method=""; prev=""
+  // Owner-voice: lark-cli runs with the owner's user login, and a comment, reply, message or reaction
+  // sent that way shows as the owner writing.
+  //  - Document comments and replies to them: only --as bot (the Feishu plugin posts V's final reply
+  //    in a comment session as the bot); never as the owner, not even when asked.
+  //  - Messages and reactions: --as bot, or --owner-approved "<summary of the owner's request in this
+  //    conversation>" for "send this as me". The flag is removed before lark-cli runs, and each use
+  //    leaves one audit line (time, operation, recipient, summary; never the text sent).
+  // Reading, editing documents as the owner, creating a chat and reading messages are not touched.
+  'owner-voice': String.raw`v_owner_approved=""; v_skip=0
+for v_a do
+  shift
+  if [ "$v_skip" = 1 ]; then v_owner_approved="$v_a"; v_skip=0; continue; fi
+  case "$v_a" in
+    --owner-approved) v_skip=1; continue ;;
+    --owner-approved=*) v_owner_approved="@@APPROVED_VALUE@@"; continue ;;
+  esac
+  set -- "$@" "$v_a"
+done
+v_guard_owner_voice() {
+  area=""; speak=""; kind=""; as=""; method=""; prev=""; to=""
   for a in "$@"; do
     case "$a" in drive|im|api) [ -z "$area" ] && area="$a" ;; esac
     if [ "$area" = "api" ]; then
       case "$a" in POST|PUT|PATCH|post|put|patch) method="$a" ;; esac
-      case "$a" in */comments*|*/replies*|/open-apis/im/v1/messages*) [ -n "$method" ] && speak="$a" ;; esac
+      case "$a" in
+        */comments*|*/replies*) [ -n "$method" ] && { speak="$a"; kind=comment; } ;;
+        /open-apis/im/v1/messages*) [ -n "$method" ] && { speak="$a"; kind=message; } ;;
+      esac
     fi
     case "$a" in
-      +add-comment|+add-reply|+reply-comment|+comment-*|+messages-send|+messages-reply|+message-send|+reply|+send|+messages-forward|+messages-update|+reactions-*|+reaction-*) speak="$a" ;;
+      +add-comment|+add-reply|+reply-comment|+comment-*) speak="$a"; kind=comment ;;
+      +messages-send|+messages-reply|+message-send|+reply|+send|+messages-forward|+messages-update|+reactions-*|+reaction-*) speak="$a"; kind=message ;;
     esac
-    [ "$prev" = "--as" ] && as="$a"
+    case "$prev" in --as) as="$a" ;; --chat-id|--user-id|--receive-id|--open-id|--email|--message-id) to="$prev=$a" ;; esac
     case "$a" in --as=*) as="@@AS_VALUE@@" ;; esac
     prev="$a"
   done
   [ -n "$area" ] && [ -n "$speak" ] && [ "$as" != "bot" ] || return 0
-  echo "{\"ok\":false,\"error\":{\"type\":\"policy\",\"code\":\"V_OWNER_VOICE_BLOCKED\",\"message\":\"不以主人名义发言：$area $speak 只能用 --as bot。在文档评论会话里不要自己发评论，把回复直接写成最终回复，飞书插件会用机器人身份贴回原评论。\"}}"
+  if [ "$kind" = message ] && [ -n "$v_owner_approved" ]; then
+    v_log="\${V_OWNER_VOICE_AUDIT:-$HOME/.openclaw/audit/lark-owner-voice.log}"
+    mkdir -p "\$(dirname "$v_log")" 2>/dev/null
+    printf '%s\t%s %s\t%s\t%s\n' "\$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$area" "$speak" "\${to:-?}" "\$(printf '%s' "$v_owner_approved" | tr '\t\n' '  ' | cut -c1-200)" >> "$v_log"
+    return 0
+  fi
+  if [ "$kind" = comment ]; then
+    echo "{\"ok\":false,\"error\":{\"type\":\"policy\",\"code\":\"V_OWNER_VOICE_BLOCKED\",\"message\":\"文档评论只能用机器人身份（--as bot）。在文档评论会话里不要自己发评论，把回复直接写成最终回复，飞书插件会用机器人身份贴回原评论。\"}}"
+  else
+    echo "{\"ok\":false,\"error\":{\"type\":\"policy\",\"code\":\"V_OWNER_VOICE_BLOCKED\",\"message\":\"不以主人名义发言：$area $speak 请改用 --as bot。只有主人在当前对话里明确要求代他发时，才加 --owner-approved '<主人原话摘要>'；发完在单聊里告诉主人发了什么。\"}}"
+  fi
   exit 3
 }
-v_guard_owner_voice "$@"`.replace('@@AS_VALUE@@', '${a#--as=}'),
+v_guard_owner_voice "$@"`
+    // String.raw keeps \$ as written (needed so JS does not read ${...}); the shell wants a bare $.
+    .replace(/\\\$/g, '$').replace('@@AS_VALUE@@', '${a#--as=}').replace('@@APPROVED_VALUE@@', '${v_a#--owner-approved=}'),
 };
 
 export function toolShim(bin, env, { unset = [], unsetPrefixes = [], guards = [] } = {}) {
