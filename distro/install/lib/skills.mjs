@@ -1,7 +1,7 @@
 // Global skills V loads from outside its workspace (line B's distro/workspace/global-skills.json),
 // installed into ~/.openclaw/skills/<name>. Three kinds, all at the versions V runs:
 //   - from the skill CLIs in tools.json: a skills/<name> directory in the npm package, or the
-//     CLI's own installer (scene skill install --target);
+//     CLI's own installer when a tool declares skillCommand (none does today: Scene is not installed);
 //   - lark-*: written out from the skills embedded in the lark-cli binary (lark-cli skills list/read);
 //   - from GitHub at a pinned commit (runtime/skills.json), checked file by file against sha256s.
 // Only skills this installer wrote are ever replaced (.v-distro-skills.json); the owner's own stay.

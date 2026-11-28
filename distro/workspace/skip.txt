@@ -124,7 +124,7 @@ skills/max-qijian-*                   客户项目
 skills/s2-*                           客户项目
 skills/account-*                      客户账号运营
 skills/material-*                     客户素材库
-skills/night-shift-*                  V 夜班（广告社媒批量生产）
+skills/night-shift-*                  V 夜班的版本不随 V 同步（不在 v-core）：通用的 night-shift-operator 是工作区自带的改写版；night-shift-d 是 V 客户的开工入口
 skills/nightshift-*                   V 夜班
 skills/ai-video-brief                 V 夜班 brief 规范
 skills/remix-video-brief              V 夜班
@@ -190,7 +190,7 @@ skills/youtube-video-download         V 上从未进 git（v-core 没有），�
 skills/meshy-image-to-3d              V 上从未进 git（v-core 没有）；要客户自己的 Meshy key
 skills/makaron-ad-creator             随 makaron-cli 装成全局 skill（global-skills.json），工作区不另带
 skills/openclaw-disk-full-recovery    V 上从未进 git；自托管机器由部署方运维
-skills/scene-*                        V 的 Scene 搜索站卡片与产线；通用的 Scene CLI 用 scene-cli 自带的 skill（global-skills.json）
+skills/scene-*                        不带 Scene（Tianyi 2026-11-28 定）
 skills/meeting-co-pilot               依赖 V 自己的飞书会议接入服务
 skills/skill-inventory-export         V 上从未进 git；正文举例全是 V 的客户
 skills/lark-user-routing              多人共用一个 V 的身份路由（依赖 lark-users）；客户版只有一位主人
