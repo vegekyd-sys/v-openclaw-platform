@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Update an installed V to this package (run from the NEW package, unpacked).
 #
-#   sudo v-distro-<new>/install/update.sh [--registry URL] [--env-file FILE] [--probe] [--no-auto-rollback]
+#   sudo v-distro-<new>/install/update.sh [--registry URL] [--kit DIR] [--env-file FILE] [--probe] [--no-auto-rollback]
+#
+# --registry defaults to install.env V_NPM_REGISTRY (set by install.sh --registry). --kit: the new
+# package's deployment kit (distro/build/offline-kit.sh); without it, the kit recorded at install
+# time (V_KIT_DIR) is used if it is still there (its skills may then be older than this package's).
 #
 # Order: verify -> install the new release next to the old one (service still up)
 # -> stop -> snapshot state to /var/backups/v -> switch current -> regenerate
@@ -11,15 +15,16 @@
 set -euo pipefail
 PKG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PREFIX="${V_PREFIX:-/opt/v}"
-REGISTRY="" ENV_FILE="" PROBE=0 AUTO_ROLLBACK=1 SKIP_TOOLS=0
+REGISTRY="" ENV_FILE="" PROBE=0 AUTO_ROLLBACK=1 SKIP_TOOLS=0 KIT=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --registry) REGISTRY="$2"; shift 2 ;;
+    --kit) KIT="$(cd "$2" && pwd)"; shift 2 ;;
     --env-file) ENV_FILE="$2"; shift 2 ;;
     --probe) PROBE=1; shift ;;
     --skip-tools) SKIP_TOOLS=1; shift ;;
     --no-auto-rollback) AUTO_ROLLBACK=0; shift ;;
-    -h|--help) sed -n '2,11p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,14p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -38,6 +43,15 @@ OLD_PREV="$(readlink "$PREFIX/previous" 2>/dev/null || true)"
 [ "$NEW" != "$OLD" ] || die "$NEW is already the current release"
 NEED_NODE="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["node"]["version"])' "$PKG_DIR/runtime/tools.json")"
 [ -x "$PREFIX/node/v$NEED_NODE/bin/node" ] || die "this package needs Node $NEED_NODE; run its install.sh instead (it keeps state)"
+
+[ -n "$REGISTRY" ] || REGISTRY="$(sed -n 's/^V_NPM_REGISTRY=//p' /etc/v/install.env 2>/dev/null | tail -1)"
+. "$PKG_DIR/install/lib/kit.sh"
+[ -n "$KIT" ] || KIT="$(v_recorded_kit)"
+if [ -n "$KIT" ]; then
+  say "Deployment kit"
+  v_use_kit "$KIT"
+  sed -i '/^V_KIT_DIR=/d' /etc/v/install.env; echo "V_KIT_DIR=$KIT" >> /etc/v/install.env
+fi
 
 say "Install $NEW next to $OLD (service keeps running)"
 args=(install-release "$PKG_DIR")

@@ -273,15 +273,6 @@ test("the 2026-11-27 decisions hold: VSync, A2A and computer use ship and follow
   assert.ok(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8").includes("skills/computer-use"));
 });
 
-test("task room: the skill ships, takes the owner and app from this machine, and AGENTS.md points at it", () => {
-  const s = fs.readFileSync(path.join(PAYLOAD, "skills/feishu-task-room-router/SKILL.md"), "utf8");
-  assert.match(s, /agent:@@AGENT_ID@@:feishu:group:<chat_id>/);
-  assert.match(s, /v-schedule\.py owner/);
-  assert.match(s, /feishu-docs\.py status/);
-  assert.doesNotMatch(s, /\b(ou|cli)_[0-9a-f]{6,}/);
-  assert.ok(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8").includes("skills/feishu-task-room-router"));
-});
-
 test("2026-11-28: no Scene; Night Shift ships generic and says it needs the service; public links say they need Vercel or Cloudflare", () => {
   const read = (rel) => fs.readFileSync(path.join(PAYLOAD, rel), "utf8");
   for (const rel of lib.walk(PAYLOAD)) {
@@ -312,6 +303,15 @@ test("temporary previews: one script, closed automatically, said to be temporary
     if (!/\.md$/.test(rel)) continue;
     assert.doesNotMatch(read(rel), /通过 ?Portal|Portal 生成/, rel);
   }
+});
+
+test("task room: the skill ships, takes the owner and app from this machine, and AGENTS.md points at it", () => {
+  const s = fs.readFileSync(path.join(PAYLOAD, "skills/feishu-task-room-router/SKILL.md"), "utf8");
+  assert.match(s, /agent:@@AGENT_ID@@:feishu:group:<chat_id>/);
+  assert.match(s, /v-schedule\.py owner/);
+  assert.match(s, /feishu-docs\.py status/);
+  assert.doesNotMatch(s, /\b(ou|cli)_[0-9a-f]{6,}/);
+  assert.ok(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8").includes("skills/feishu-task-room-router"));
 });
 
 function renderedWorkspace() {
@@ -465,4 +465,25 @@ test("every script in the payload still parses after sanitising (node --check, p
     }
   }
   assert.deepEqual(bad, []);
+});
+
+test("v-capabilities.py: switched-off capabilities become one plain sentence for the owner; the technical part stays for the deployer", () => {
+  const dir = tmp("caps");
+  const file = path.join(dir, "v-capabilities.json");
+  fs.writeFileSync(file, JSON.stringify({ at: "2026-11-28T10:00:00Z",
+    memoryVectorSearch: { on: false, reason: "google is unreachable from this machine (preflight)", howTo: "semantic memory search: needs a network path to google" },
+    makaron: { on: true }, groupChats: { on: false, reason: "owner open_id not set", howTo: "v-ctl feishu-owner --mobile <phone> --write" },
+    feishu: { on: true }, unreachable: ["google"] }));
+  const script = path.join(PAYLOAD, "scripts/v-capabilities.py");
+  const r = spawnSync("python3", [script], { encoding: "utf8", env: { ...process.env, V_CAPABILITIES_FILE: file } });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.deepEqual(out.off, ["memoryVectorSearch", "groupChats"]);
+  assert.deepEqual(out.on, ["makaron", "feishu"]);
+  assert.match(out.tellOwner, /按关键词找/);
+  assert.match(out.tellOwner, /群聊还没打开/);
+  assert.doesNotMatch(out.tellOwner, /[A-Za-z]{4,}/, "no technical words for the owner");
+  assert.equal(out.forDeployer[1].howTo, "v-ctl feishu-owner --mobile <phone> --write");
+  const missing = spawnSync("python3", [script], { encoding: "utf8", env: { ...process.env, V_CAPABILITIES_FILE: path.join(dir, "none.json") } });
+  assert.equal(missing.status, 3);
 });

@@ -9,6 +9,8 @@
 #   --registry URL        npm registry, e.g. https://registry.npmmirror.com (mainland China)
 #   --node-mirror URL     base URL holding node-v<ver>-linux-<arch>.tar.xz (default: tools.json mirrors in order)
 #   --node-tarball FILE   use this Node tarball instead of downloading (checked against tools.json)
+#   --kit DIR             deployment kit from distro/build/offline-kit.sh: Node, GitHub skills, Chrome and
+#                         cloudflared from DIR instead of the internet (checked; recorded as V_KIT_DIR)
 #   --skip-apt            do not apt-get the system packages (already present)
 #   --skip-tools          do not install codex / makaron-cli / lark-cli
 #   --no-start            install and configure, but do not start the services
@@ -28,7 +30,7 @@ PKG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PREFIX="${V_PREFIX:-/opt/v}"
 V_USER="${V_USER:-openclaw}"
 V_HOME="${V_HOME:-/home/openclaw}"
-ENV_FILE="" REGISTRY="" NODE_MIRROR="" NODE_TARBALL="" SKIP_APT=0 SKIP_TOOLS=0 START=1 PROBE=0 VSYNC_ENV=""
+ENV_FILE="" REGISTRY="" NODE_MIRROR="" NODE_TARBALL="" KIT="" SKIP_APT=0 SKIP_TOOLS=0 START=1 PROBE=0 VSYNC_ENV=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -36,6 +38,7 @@ while [ $# -gt 0 ]; do
     --registry) REGISTRY="$2"; shift 2 ;;
     --node-mirror) NODE_MIRROR="$2"; shift 2 ;;
     --node-tarball) NODE_TARBALL="$2"; shift 2 ;;
+    --kit) KIT="$(cd "$2" && pwd)"; shift 2 ;;
     --skip-apt) SKIP_APT=1; shift ;;
     --skip-tools) SKIP_TOOLS=1; shift ;;
     --no-start) START=0; shift ;;
@@ -73,6 +76,12 @@ if [ "$SKIP_APT" -eq 0 ]; then
 fi
 for bin in curl xz git python3 tar; do command -v "$bin" >/dev/null || die "$bin is missing"; done
 
+if [ -n "$KIT" ]; then
+  say "Deployment kit"
+  . "$PKG_DIR/install/lib/kit.sh"
+  v_use_kit "$KIT"
+fi
+
 say "Node"
 # tools.json is plain JSON; read the few fields with python3 (Node is not here yet).
 read -r NODE_VERSION NODE_FILE NODE_SHA < <(python3 - "$PKG_DIR/runtime/tools.json" "$NODE_ARCH" <<'PY'
@@ -85,6 +94,7 @@ PY
 NODE_DIR="$PREFIX/node/v$NODE_VERSION"
 if [ ! -x "$NODE_DIR/bin/node" ]; then
   tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+  if [ -z "$NODE_TARBALL" ] && [ -n "$KIT" ] && [ -f "$KIT/node/$NODE_FILE" ]; then NODE_TARBALL="$KIT/node/$NODE_FILE"; fi
   if [ -n "$NODE_TARBALL" ]; then
     cp "$NODE_TARBALL" "$tmp/$NODE_FILE"
   else
@@ -123,6 +133,8 @@ if [ -n "$ENV_FILE" ]; then "${VCTL[@]}" split-env "$ENV_FILE"; fi
 # Agent-side npm installs (and OpenClaw's own plugin installs) use the same registry.
 if [ -n "$REGISTRY" ] && ! grep -q '^V_NPM_REGISTRY=' /etc/v/install.env; then echo "V_NPM_REGISTRY=$REGISTRY" >> /etc/v/install.env; fi
 if [ -n "$VSYNC_ENV" ]; then "${VCTL[@]}" vsync-env "$VSYNC_ENV"; fi
+# update.sh and reconfigure.sh use the same kit later (Chrome when V_DESKTOP is turned on, skills).
+if [ -n "$KIT" ]; then sed -i '/^V_KIT_DIR=/d' /etc/v/install.env; echo "V_KIT_DIR=$KIT" >> /etc/v/install.env; fi
 DESKTOP=0; grep -qx 'V_DESKTOP=1' /etc/v/install.env && DESKTOP=1
 TUNNEL=0; grep -q '^CLOUDFLARE_TUNNEL_TOKEN=.' /etc/v/secrets.env && TUNNEL=1
 if [ "$TUNNEL" -eq 1 ]; then

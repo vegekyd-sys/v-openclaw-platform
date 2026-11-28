@@ -75,7 +75,7 @@
 <!-- v-distro:begin optional -->
 ## 可选能力（看这台机器装了什么）
 
-下面这些取决于安装时开了哪些，先确认对应工具真的在，再答应主人：
+下面这些取决于安装时开了哪些。先跑 `python3 scripts/v-capabilities.py` 看这台机器开了什么（`off` 里的就是没开），再答应主人：
 
 - 桌面与浏览器（`browser`、`computer`、`desktop_handoff_*`）：碰到登录、验证码、扫码、付款这类要主人亲手操作的页面，用接管链接请主人接手，详见 `skills/computer-use/SKILL.md`（如果有）。
 - 主人自己的 Chrome（`v_browser_*`）：见 `skills/v-browser-device/SKILL.md`（如果有）。

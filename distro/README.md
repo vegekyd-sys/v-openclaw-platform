@@ -44,6 +44,11 @@ sudo v-distro-<ver>/install/install.sh --env-file ./v.env --probe
 # 国内网络：--registry https://registry.npmmirror.com --node-mirror https://npmmirror.com/mirrors/node/v22.23.1/
 ```
 
+到客户现场部署按 [DEPLOY.md](DEPLOY.md)（总纲）和 [RUNBOOK.md](RUNBOOK.md)（逐步执行）做。装之前先跑 `install/preflight.sh`。
+连不上 GitHub、nodejs.org、dl.google.com 的机器：
+- 用 `distro/build/offline-kit.sh` 生成部署包，安装时加 `--kit`；
+- 连不上的服务写进 `V_UNREACHABLE`，它们的 key 不会被用上。
+
 装好后：`v-ctl status`、`v-ctl health`、`v-ctl probe`、`v-ctl openclaw <命令>`（以服务用户和服务环境跑 OpenClaw CLI）、
 `v-ctl pair <code>`（老板第一次私聊机器人时批准配对）。
 
@@ -60,7 +65,7 @@ sudo v-distro-<ver>/install/install.sh --env-file ./v.env --probe
 | 语音消息转文字 | `VOLCENGINE_API_KEY` | 火山新版控制台的 key，并开通「录音文件识别极速版」；能访问 openspeech.bytedance.com | — |
 | VSync | `install.sh --vsync-env <file>` | Portal 签发的身份文件，由人带外交付；能用 HTTPS 访问 mirror-v-portal.vercel.app | 要等 Portal 那边启用；启用前 `mirror-vsync.py whoami` 返回 `VSYNC_DISABLED` |
 
-VSync 身份文件也可以直接放到 `/etc/v/vsync.env`（root 0600，只含 `NEXUS_VSYNC_URL`、`NEXUS_VSYNC_AGENT`、`NEXUS_VSYNC_TOKEN`），之后 `sudo systemctl restart openclaw-gateway` 才会进 agent 的环境。不要放进 `secrets.env`：那份文件每次 install/update 都会按 env 文件重写。验收：以 openclaw 用户、在网关环境里运行 `python3 <工作区>/scripts/mirror-vsync.py whoami`，应返回自己的 agent id 和 counterparts `["private-v"]`。
+VSync 身份文件也可以直接放到 `/etc/v/vsync.env`（root 0600，只含 `NEXUS_VSYNC_URL`、`NEXUS_VSYNC_AGENT`、`NEXUS_VSYNC_TOKEN`），之后 `sudo systemctl restart openclaw-gateway` 才会进 agent 的环境。不要放进 `secrets.env`：那份文件只放以 `_KEY`、`_SECRET`、`_TOKEN` 结尾的密钥。验收：以 openclaw 用户、在网关环境里运行 `python3 <工作区>/scripts/mirror-vsync.py whoami`，应返回自己的 agent id 和 counterparts `["private-v"]`。
 
 - 控制链接是不记名的，谁拿到都能接管桌面。所以客户版用 `controlAnywhere:false`：主人在群里要链接时，链接通过私聊发给他（V 本身是 true）。
 - Chrome 只从 Google 官方 apt 源装：先核对签名钥主指纹 `EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796`，apt 用 `signed-by` 只信这把钥匙。机器上已有的 chromium 和 playwright 浏览器不会被用到。
@@ -110,7 +115,7 @@ V 上依赖 Cloudflare 或 Vercel、但不在客户版里的：
    - 云文档新增评论 `drive.notice.comment_add_v1`
    - 审批评论新增、删除 `approval.instance.comment.created_v4`、`approval.instance.comment.deleted_v4`
 3. **事件与回调 → 回调配置**：同样用长连接，订阅卡片回传交互 `card.action.trigger`。
-4. **权限管理 → 批量处理 → 批量导入/导出权限**：导入包里的 `install/feishu-app-scopes.json`，一次开通应用身份 170 项、用户身份 257 项。
+4. **权限管理 → 批量处理 → 批量导入/导出权限**：导入包里的 `install/feishu-app-scopes.json`，一次开通应用身份 171 项、用户身份 257 项。
    这份清单是 V 自己的应用（V - Makaron）2026-11-27 导出的权限，再加上两种身份的 `bitable:app`、`sheets:spreadsheet`。用户身份覆盖了 V 本人授权过的 245 项（B 线的 `distro/workspace/feishu-user-scopes.txt`），只有 `auth:user.id:read` 不在里面：它是 OAuth 登录时默认附带的，后台批量导入不认它，放进去会让整份导入卡住。
    开齐之后，主人在上手引导里点一次授权，就能像 V 一样读写文档、日历、任务、多维表格和表格。应用上没有开通的权限，脚本不会去申请，也不会报错。
 5. **人事和薪酬类权限**（导入后会提示设置数据范围）：数据范围选「全部」。

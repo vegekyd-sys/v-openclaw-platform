@@ -194,3 +194,13 @@ test('image understanding is DeepSeek Flash by default; xAI only as a fallback w
 test('Skill Workshop as on V: auto-applied proposals, no autonomous review', () => {
   assert.deepEqual(make({}).skills.workshop, { approvalPolicy: 'auto', maxSkillBytes: 100000, autonomous: { mode: 'off' } });
 });
+
+test('V_UNREACHABLE: a key for a service preflight could not reach is left unused', () => {
+  const on = make({});
+  assert.equal(on.memory.search.provider, 'gemini');
+  assert.ok(on.models.providers.xai);
+  const off = make({ V_UNREACHABLE: 'google, XAI' });
+  assert.equal(off.memory.search.provider, 'none');
+  assert.ok(!off.models.providers.xai);
+  assert.ok(!JSON.stringify(off).includes('GOOGLE_API_KEY'));
+});

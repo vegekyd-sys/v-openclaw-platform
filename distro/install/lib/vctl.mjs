@@ -22,6 +22,7 @@
 //   vctl.mjs workspace-update [--target <releaseDir>] [--dry-run]   the workspace's system files to that release (three-way)
 //   vctl.mjs backup [--out-dir DIR] [--keep N]            online backup archive (state, lark-cli, /etc/v), 0600
 //   vctl.mjs restore-backup <archive> --root DIR | --live   unpack and verify; --live replaces this machine's state
+//   vctl.mjs fetch-skill-sources --out DIR                 download the pinned GitHub skill sources (offline bundle)
 //   vctl.mjs install-skills                                 global skills (runtime/skills.json, skill CLIs) -> ~/.openclaw/skills
 //   vctl.mjs vsync-env <issued.env>                         -> /etc/v/vsync.env (the Portal-issued VSync identity)
 
@@ -203,11 +204,24 @@ function requireKeys(env) {
   if (missing.length) throw new Error(`missing ${missing.join(', ')}: put it in the env file (or /etc/v/secrets.env for keys), then run configure again${preset === 'deepseek' && missing.includes('DEEPSEEK_API_KEY') ? ' (the default model is DeepSeek through /vds, as on V; V_MODEL_PRESET=vercel uses AI_GATEWAY_API_KEY instead)' : ''}`);
 }
 
+/**
+ * Secrets after an install/update: the env file's keys win, and a key already in /etc/v/secrets.env
+ * that the env file does not mention is kept. So the customer can write their keys straight into
+ * secrets.env and the operator's env file never has to hold them. (To remove a key, edit secrets.env.)
+ */
+export function mergeSecrets(fromFile, prior) {
+  const keys = new Set(fromFile.map((l) => l.split('=')[0]));
+  const kept = Object.entries(prior).filter(([k, v]) => !keys.has(k) && SECRET_KEY.test(k) && v !== '').map(([k, v]) => `${k}=${v}`);
+  return [...fromFile, ...kept];
+}
+
 function cmdSplitEnv(input) {
-  const { install, secrets } = splitEnv(fs.readFileSync(input, 'utf8'));
+  const parsed = splitEnv(fs.readFileSync(input, 'utf8'));
+  const { install } = parsed;
   const prior = readEnv(secretsEnvFile());
+  const secrets = mergeSecrets(parsed.secrets, prior);
   if (!secrets.some((l) => l.startsWith('OPENCLAW_GATEWAY_TOKEN='))) {
-    secrets.push(`OPENCLAW_GATEWAY_TOKEN=${prior.OPENCLAW_GATEWAY_TOKEN || crypto.randomBytes(24).toString('hex')}`);
+    secrets.push(`OPENCLAW_GATEWAY_TOKEN=${crypto.randomBytes(24).toString('hex')}`);
   }
   const merged = { ...Object.fromEntries(install.map((l) => l.split(/=(.*)/s).slice(0, 2))), ...Object.fromEntries(secrets.map((l) => l.split(/=(.*)/s).slice(0, 2))) };
   requireKeys(merged);
@@ -462,12 +476,31 @@ async function cmdDesktopServices(opts) {
   await cmdDesktopPair(opts);
 }
 
+// Run where GitHub is reachable (V itself), then copy DIR to the customer machine and install with
+// V_SKILLS_TARBALL_DIR=DIR. Works from an unpacked package; needs node and curl, not root.
+async function cmdFetchSkillSources(opts) {
+  const { skillSources } = await import('./skills.mjs');
+  const releaseDir = opts.release || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const spec = readJson(path.join(releaseDir, 'runtime', 'skills.json'));
+  const outDir = opts.out;
+  if (!outDir) throw new Error('fetch-skill-sources --out DIR');
+  fs.mkdirSync(outDir, { recursive: true });
+  const got = [];
+  for (const src of skillSources(spec)) {
+    const file = path.join(outDir, src.file);
+    if (!fs.existsSync(file)) run('curl', ['-fsSL', '--retry', '2', '--connect-timeout', '20', '-o', file, `https://codeload.github.com/${src.repo}/tar.gz/${src.commit}`]);
+    got.push({ file: src.file, bytes: fs.statSync(file).size, sha256: sha256FileOf(file) });
+  }
+  out({ step: 'fetch-skill-sources', dir: outDir, files: got });
+}
+const sha256FileOf = (f) => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+
 async function cmdInstallSkills() {
   if (!fs.existsSync(path.join(P.current, 'runtime', 'skills.json'))) { out({ step: 'install-skills', skipped: 'no runtime/skills.json in this release' }); return; }
   const { installSkills } = await import('./skills.mjs');
   const uid = Number(run('id', ['-u', P.user]).trim());
   const gid = Number(run('id', ['-g', P.user]).trim());
-  const r = installSkills({ releaseDir: fs.realpathSync(P.current), toolsRoot: P.tools, home: P.home, user: P.user, uid, gid,
+  const r = installSkills({ releaseDir: fs.realpathSync(P.current), toolsRoot: P.tools, home: P.home, user: P.user, uid, gid, tarballDir: process.env.V_SKILLS_TARBALL_DIR || null,
     nodeBin: path.dirname(process.execPath), run: (cmd, args, o = {}) => run(cmd, args, { maxBuffer: 64 * 1024 * 1024, ...o }), log });
   out({ step: 'install-skills', ...r });
 }
@@ -773,7 +806,41 @@ async function cmdConfigure(opts) {
   const tunnel = configureCloudflare(env);
   const aliases = configureAliases(env);
   const runtime = configureRuntimeEnv();
-  out({ step: 'configure', profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, larkCli: lark, desktop, tunnel, aliases, runtimeEnv: runtime, audio: !!cfg.tools.media, nightshift: !!cfg.plugins.entries['nightshift-feishu'], primary: cfg.agents.defaults.model.primary });
+  const { unreachableServices } = await import(path.join(fs.realpathSync(releaseDir), 'config/openclaw-config.mjs'));
+  const caps = capabilities(env, { unreachable: unreachableServices(env) });
+  const capsFile = path.join(P.state, 'v-capabilities.json');
+  fs.writeFileSync(capsFile, `${JSON.stringify({ at: new Date().toISOString(), ...caps }, null, 2)}\n`);
+  run('chown', [`${P.user}:${P.user}`, capsFile]);
+  const off = Object.entries(caps).filter(([k, v]) => k !== 'unreachable' && !v.on).map(([k]) => k);
+  out({ step: 'configure', capabilitiesOff: off, profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, larkCli: lark, desktop, tunnel, aliases, runtimeEnv: runtime, audio: !!cfg.tools.media, nightshift: !!cfg.plugins.entries['nightshift-feishu'], primary: cfg.agents.defaults.model.primary });
+}
+
+/**
+ * What this install can and cannot do, and why: written to ~/.openclaw/v-capabilities.json on every
+ * configure, so the onboarding can tell the owner what is off (and what would turn it on).
+ */
+export function capabilities(env, { unreachable = new Set() } = {}) {
+  const has = (k) => typeof env[k] === 'string' && env[k].length > 0;
+  const cap = (on, offReason, howTo) => (on ? { on: true } : { on: false, reason: offReason, howTo });
+  const keyed = (keys, service, what) => {
+    const names = [keys].flat();
+    const present = names.some(has);
+    if (present && unreachable.has(service)) return cap(false, `${service} is unreachable from this machine (preflight)`, `${what}: needs a network path to ${service}; then remove ${service} from V_UNREACHABLE and run v-ctl reconfigure`);
+    return cap(present, `no ${names.join(' or ')}`, `${what}: put ${names[0]} into /etc/v/secrets.env (sudo v-ctl put-secrets), then v-ctl reconfigure`);
+  };
+  return {
+    memoryVectorSearch: keyed('GOOGLE_API_KEY', 'google', 'semantic memory search (keyword search works without it)'),
+    imageUnderstandingXai: keyed('XAI_API_KEY', 'xai', 'xAI image understanding and generation (DeepSeek Flash still reads images)'),
+    makaron: keyed('MAKARON_API_KEY', 'makaron', 'Makaron image/video creation'),
+    socialSearch: keyed(['APIFY_API_KEY', 'APIFY_TOKEN'], 'apify', 'social-media and image search skills'),
+    voiceTranscription: keyed('VOLCENGINE_API_KEY', 'volcengine', 'voice messages to text'),
+    feishu: cap(has('FEISHU_APP_ID') && has('FEISHU_APP_SECRET'), 'no Feishu app', 'FEISHU_APP_ID in install.env, FEISHU_APP_SECRET in secrets.env'),
+    groupChats: cap(has('V_OWNER_FEISHU_OPEN_ID'), 'owner open_id not set', 'v-ctl feishu-owner --mobile <phone> --write, then v-ctl reconfigure'),
+    desktop: cap(env.V_DESKTOP === '1', 'V_DESKTOP is off', 'V_DESKTOP=1 in install.env (amd64, about 1 GB more memory), then v-ctl reconfigure'),
+    publicLinks: cap(has('V_PUBLIC_ORIGIN'), 'no V_PUBLIC_ORIGIN', 'a tunnel or reverse proxy (CLOUDFLARE_TUNNEL_TOKEN + V_PUBLIC_ORIGIN); takeover links open only on this machine until then'),
+    nightshift: cap(has('V_NIGHTSHIFT_URL'), 'no Night Shift service', 'V_NIGHTSHIFT_URL in install.env'),
+    unreachable: [...unreachable].sort(),
+  };
 }
 
 // lark-cli talks to Feishu as the same app as the channel (line B's skills and scripts use it).
@@ -833,6 +900,88 @@ function configureLarkCli(env, bin) {
     'LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1', 'LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1', bin, ...larkCliInitArgs(env.FEISHU_APP_ID, env.FEISHU_DOMAIN)], { input: env.FEISHU_APP_SECRET, stdio: ['pipe', 'pipe', 'pipe'] });
   if (!fs.existsSync(cfgFile)) throw new Error(`lark-cli config init did not write ${cfgFile}`);
   return { configured: 'written', reason: need.reason };
+}
+
+/** Set (or add) one KEY=VALUE line in an env file's text; other lines, comments and order are kept. */
+export function setEnvLine(text, key, value) {
+  const lines = (text ?? '').replace(/\n+$/, '').split('\n').filter((l, i, a) => a.length > 1 || l !== '');
+  const at = lines.findIndex((l) => l.trim().startsWith(`${key}=`));
+  if (at >= 0) lines[at] = `${key}=${value}`;
+  else lines.push(`${key}=${value}`);
+  return `${lines.join('\n')}\n`;
+}
+
+// ---- Feishu checks that use the App Secret without showing it ----
+const feishuBase = (env) => (env.FEISHU_DOMAIN === 'lark' ? 'https://open.larksuite.com' : 'https://open.feishu.cn');
+
+async function feishuCall(env, method, url, { body, token } = {}) {
+  const r = await fetch(`${feishuBase(env)}${url}`, {
+    method,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: body == null ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(20000),
+  });
+  const data = await r.json().catch(() => ({}));
+  return { http: r.status, code: data.code, msg: data.msg, data: data.data, bot: data.bot };
+}
+
+/** A tenant token for this app, or the reason Feishu refused it. The secret never leaves this process. */
+async function feishuTenantToken(env) {
+  if (!env.FEISHU_APP_ID) return { error: 'FEISHU_APP_ID is not set in /etc/v/install.env' };
+  if (!env.FEISHU_APP_SECRET) return { error: 'FEISHU_APP_SECRET is not set in /etc/v/secrets.env (the customer writes it there)' };
+  const r = await fetch(`${feishuBase(env)}/open-apis/auth/v3/tenant_access_token/internal`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({ app_id: env.FEISHU_APP_ID, app_secret: env.FEISHU_APP_SECRET }), signal: AbortSignal.timeout(20000),
+  }).then((x) => x.json()).catch((e) => ({ code: -1, msg: String(e.message || e) }));
+  if (r.code !== 0) return { error: `Feishu refused App ID ${env.FEISHU_APP_ID} with this App Secret: code ${r.code} ${r.msg ?? ''}` };
+  return { token: r.tenant_access_token };
+}
+
+/** v-ctl feishu-check: App ID + Secret accepted, bot enabled. Prints names and ids only. */
+async function cmdFeishuCheck() {
+  const env = allEnv();
+  const t = await feishuTenantToken(env);
+  if (t.error) { out({ step: 'feishu-check', ok: false, appId: env.FEISHU_APP_ID ?? null, error: t.error }); process.exitCode = 1; return; }
+  const bot = await feishuCall(env, 'GET', '/open-apis/bot/v3/info', { token: t.token });
+  const ok = bot.code === 0 && bot.bot?.activate_status === 2;
+  out({ step: 'feishu-check', ok, appId: env.FEISHU_APP_ID, secretAccepted: true, bot: bot.code === 0 ? { name: bot.bot?.app_name, openId: bot.bot?.open_id, activateStatus: bot.bot?.activate_status } : { error: `code ${bot.code} ${bot.msg ?? ''}` },
+    ...(ok ? {} : { hint: 'bot not usable: add the Bot capability, then create and publish a version (activate_status 2 = published)' }) });
+  if (!ok) process.exitCode = 1;
+}
+
+/**
+ * v-ctl feishu-owner --mobile 138... | --email a@b | --user-id <admin-console id> | --union-id on_... [--write]
+ * The owner's open_id under THIS app (open_ids differ per app). --write puts it into install.env
+ * as V_OWNER_FEISHU_OPEN_ID; then `v-ctl reconfigure`.
+ */
+async function cmdFeishuOwner(opts) {
+  const env = allEnv();
+  const t = await feishuTenantToken(env);
+  if (t.error) throw new Error(`${t.error} (run v-ctl feishu-check)`);
+  const { token } = t;
+  let openId = null;
+  let name = null;
+  // --user-id: the "用户 ID" an admin sees in the Feishu admin console (成员与部门 -> 成员详情).
+  const byId = opts['union-id'] ? ['union_id', opts['union-id']] : opts['user-id'] ? ['user_id', opts['user-id']] : null;
+  if (byId) {
+    const u = await feishuCall(env, 'GET', `/open-apis/contact/v3/users/${encodeURIComponent(byId[1])}?user_id_type=${byId[0]}&department_id_type=open_department_id`, { token });
+    if (u.code !== 0) throw new Error(`lookup by ${byId[0]} failed: code ${u.code} ${u.msg ?? ''}.${byId[0] === 'union_id' ? ' A union_id only works for apps of the same Feishu developer;' : ''} Check the owner is inside the app's availability range, or use --mobile / --email.`);
+    openId = u.data?.user?.open_id; name = u.data?.user?.name ?? null;
+  } else if (opts.mobile || opts.email) {
+    const body = opts.mobile ? { mobiles: [String(opts.mobile)], include_resigned: false } : { emails: [String(opts.email)], include_resigned: false };
+    const u = await feishuCall(env, 'POST', '/open-apis/contact/v3/users/batch_get_id?user_id_type=open_id', { token, body });
+    if (u.code !== 0) throw new Error(`lookup failed: code ${u.code} ${u.msg ?? ''}. The app needs the tenant scope contact:user.id:readonly (in install/feishu-app-scopes.json) and the owner inside its availability range; publish a new version after adding it.`);
+    openId = u.data?.user_list?.[0]?.user_id ?? null;
+    if (!openId) throw new Error('no Feishu user with that mobile/email is visible to this app (check the number, +86 prefix optional, and the app\'s availability range)');
+  } else {
+    throw new Error('usage: v-ctl feishu-owner --mobile <phone> | --email <addr> | --user-id <id> | --union-id <on_...> [--write]');
+  }
+  if (!/^ou_[0-9a-z]+$/.test(openId ?? '')) throw new Error(`unexpected open_id ${openId}`);
+  if (opts.write) {
+    const f = installEnvFile();
+    fs.writeFileSync(f, setEnvLine(fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '', 'V_OWNER_FEISHU_OPEN_ID', openId));
+  }
+  out({ step: 'feishu-owner', ok: true, openId, name, written: Boolean(opts.write), next: opts.write ? 'sudo v-ctl reconfigure' : `rerun with --write, or put V_OWNER_FEISHU_OPEN_ID=${openId} into /etc/v/install.env` });
 }
 
 async function cmdSeedWorkspace() {
@@ -1082,7 +1231,7 @@ function parseOpts(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--check-history' || a === '--history-only' || a === '--skip-tools' || a === '--force' || a === '--restart') opts[a.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = true;
-    else if (a === '--live' || a === '--dry-run') opts[a.slice(2)] = true;
+    else if (a === '--live' || a === '--dry-run' || a === '--write') opts[a.slice(2)] = true;
     else if (a.startsWith('--')) { opts[a.slice(2)] = argv[i + 1]; i += 1; }
     else opts._.push(a);
   }
@@ -1113,7 +1262,10 @@ async function main() {
     case 'desktop-pair': await cmdDesktopPair(opts); break;
     case 'vsync-env': cmdVsyncEnv(opts._[0]); break;
     case 'install-skills': await cmdInstallSkills(); break;
+    case 'fetch-skill-sources': await cmdFetchSkillSources(opts); break;
     case 'memory-check': cmdMemoryCheck(); break;
+    case 'feishu-check': await cmdFeishuCheck(); break;
+    case 'feishu-owner': await cmdFeishuOwner(opts); break;
     case 'workspace-update': await cmdWorkspaceUpdate(opts); break;
     case 'backup': await cmdBackup(opts); break;
     case 'restore-backup': await cmdRestoreBackup(opts._[0], opts); break;
