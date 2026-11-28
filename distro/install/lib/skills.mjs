@@ -51,6 +51,15 @@ export function larkSkillFiles(lark) {
   return out;
 }
 
+export const skillTarballName = (repo, commit) => `${repo.replace('/', '_')}-${commit}.tar.gz`;
+
+/** The (repo, commit) pairs a release fetches from GitHub, for preparing an offline bundle. */
+export function skillSources(spec) {
+  const seen = new Map();
+  for (const s of spec.github ?? []) seen.set(`${s.repo}@${s.commit}`, { repo: s.repo, commit: s.commit, file: skillTarballName(s.repo, s.commit) });
+  return [...seen.values()];
+}
+
 function replaceDir(staging, target) {
   fs.rmSync(target, { recursive: true, force: true });
   fs.renameSync(staging, target);
@@ -151,8 +160,16 @@ export function installSkills(o) {
         if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !/^[0-9a-f]{40}$/.test(commit)) throw new Error(`bad pin ${k}`);
         fs.mkdirSync(dir);
         const tgz = `${dir}.tgz`;
-        log(`fetching ${repo}@${commit.slice(0, 12)}`);
-        o.run('curl', ['-fsSL', '--retry', '2', '--connect-timeout', '20', '-o', tgz, `https://codeload.github.com/${repo}/tar.gz/${commit}`]);
+        // Offline bundle (mainland or no GitHub): V_SKILLS_TARBALL_DIR holds what `vctl fetch-skill-sources`
+        // downloaded elsewhere. Same pinned commit, and every file is still checked below.
+        const bundled = o.tarballDir ? path.join(o.tarballDir, skillTarballName(repo, commit)) : null;
+        if (bundled && fs.existsSync(bundled)) {
+          log(`using ${bundled}`);
+          fs.copyFileSync(bundled, tgz);
+        } else {
+          log(`fetching ${repo}@${commit.slice(0, 12)}`);
+          o.run('curl', ['-fsSL', '--retry', '2', '--connect-timeout', '20', '-o', tgz, `https://codeload.github.com/${repo}/tar.gz/${commit}`]);
+        }
         o.run('tar', ['-xzf', tgz, '-C', dir, '--strip-components=1', '--no-same-owner', '--no-same-permissions']);
       } catch (e) { for (const s of skills) failed[s.name] = `download ${k}: ${String(e.message ?? e).slice(0, 200)}`; continue; }
       for (const s of skills) {

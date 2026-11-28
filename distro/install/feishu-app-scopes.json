@@ -69,6 +69,7 @@
       "contact:user.base:readonly",
       "contact:user.basic_profile:readonly",
       "contact:user.employee_id:readonly",
+      "contact:user.id:readonly",
       "corehr:employee:read",
       "corehr:employee:write",
       "docs:doc",

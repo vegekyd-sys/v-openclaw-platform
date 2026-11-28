@@ -1,0 +1,95 @@
+# 部署非沙盒版 V：总纲
+
+这份是给人看的。执行部署的 agent 照着 [RUNBOOK.md](RUNBOOK.md) 一步步做，里面有每一步的命令、预期输出、判断标准和失败处理。
+发行包本身的结构和安装器的设计见 [README.md](README.md) 和 [CONTRACT.md](CONTRACT.md)。
+
+## 一句话
+
+在客户的一台 Ubuntu 24.04 机器上，用发行包装一个独立运行的 V：
+- 接客户自己的飞书应用，只为客户的老板一个人服务；
+- 默认模型是 DeepSeek Flash，主路径是 /vds（Codex），回落到 Worker，和 V 一样。
+
+## 谁做什么
+
+| 角色 | 做什么 | 不做什么 |
+| --- | --- | --- |
+| Tianyi | 指定版本号和包的 sha256；需要时提供 key（自己写进客户机） | — |
+| 执行部署的 agent（V） | 预检、送包、安装、接飞书、验收、写交接 | 不经手任何密钥原文；不替人输入密码或验证码；不在老板的会话和记忆里留测试内容 |
+| 客户飞书管理员 | 建企业自建应用、导入权限、配事件和回调、发布；把 App Secret 写进 `/etc/v/secrets.env` | 不把 Secret 发给任何人 |
+| 老板 | 第一次私聊机器人；在上手引导里点一次飞书授权 | — |
+
+## 阶段
+
+| # | 阶段 | 结果 | 大约用时 |
+| --- | --- | --- | --- |
+| 0 | 现场信息收集 | 一张信息表；能用专用 SSH 密钥免密 sudo 登录 | 15 分钟 |
+| 1 | 预检 | `preflight.sh` 给出：装的时候加什么参数、要不要部署包、哪些能力关掉 | 2 分钟 |
+| 2 | 送包 | 安装包（和部署包）在客户机上，sha256 与 Tianyi 给的一致 | 5–30 分钟，看网络 |
+| 3 | 客户飞书应用 | 应用发布；App ID 交给我们；Secret 和 key 由客户写进 secrets.env | 30 分钟，主要等管理员 |
+| 4 | 安装 | `install.sh --probe` 通过；能力清单 `v-capabilities.json` | 10–25 分钟 |
+| 5 | 接飞书和主人 | `feishu-check` 通过；老板的 open_id 已配置；`ws client ready`；老板私聊有回复 | 10 分钟 |
+| 6 | 老板上手 | 老板完成授权和上手引导，知道哪些能力没开 | 15–30 分钟 |
+| 7 | 验收 | 15 项当场验收清单 | 20 分钟 |
+| 8 | 收尾 | 每日备份、清理、交接记录、远程支持方式 | 10 分钟 |
+
+## 大陆网络
+
+客户机在中国大陆时，常见的情况是：
+- 连不上 Google、xAI、GitHub；
+- 能连 npmmirror、飞书、DeepSeek；
+- npmjs.org 和 nodejs.org 时通时不通。
+
+这些情况都有对应的做法，`preflight.sh` 会自动判断，并告诉你该用哪个：
+
+| 要的东西 | 正常来源 | 大陆做法 |
+| --- | --- | --- |
+| npm 包（OpenClaw、插件、工具） | registry.npmjs.org | `install.sh --registry https://registry.npmmirror.com`。同时记成 `V_NPM_REGISTRY`，agent 之后自己装 npm 包、升级时都沿用 |
+| Node 22.23.1 | nodejs.org | `--node-mirror https://npmmirror.com/mirrors/node/v22.23.1/`（同一个文件，按 tools.json 的 sha256 校验），或部署包里的 Node |
+| GitHub 上的全局技能 | codeload.github.com | 部署包里的 `skills/`：在能上 GitHub 的机器上按 skills.json 钉住的提交下载，安装时逐个文件按 sha256 校验 |
+| Google Chrome（桌面接管） | dl.google.com 的 apt 源 | 部署包里的 `chrome/`：在能访问的机器上核对 Google 签名钥指纹、apt 元数据签名和 .deb 的 sha256 后下载 |
+| cloudflared（公网链接） | GitHub releases | 部署包里的 `cloudflared/`：按 tools.json 的 sha256 校验 |
+| 记忆向量检索 | Google（Gemini embedding） | 连不上就关：写进 `V_UNREACHABLE=google`，配置不用这个 key，记忆只按关键词检索 |
+| xAI 看图、生图 | api.x.ai | 连不上就关：`V_UNREACHABLE=xai`。看图仍由 DeepSeek Flash 做 |
+| Makaron、火山语音、Apify | 各自的服务 | 连不上就记进 `V_UNREACHABLE`；对应 skill 会如实说没开通 |
+
+部署包由 `distro/build/offline-kit.sh` 在能访问上面这些站点的机器上生成：
+- 一个目录，带 `SHA256SUMS`；
+- 客户机上解到 `/opt/v-kit/<版本>`，安装时加 `--kit`；
+- 安装器先核对 `SHA256SUMS`，之后补开桌面、升级时都沿用同一个部署包。
+
+**「关掉了」怎么告诉老板**：
+- 每次 configure 都会写 `~/.openclaw/v-capabilities.json`，列出每项能力是开还是关；关的写了原因和打开办法。
+- 上手引导读它，用老板听得懂的话告诉他。
+- 部署的 agent 在第 6 步也要当面说一遍。
+
+## 密钥怎么走
+
+- 所有 `_KEY`、`_SECRET`、`_TOKEN` 只存在客户机的 `/etc/v/secrets.env` 里（root 0600），由客户或 Tianyi 自己写。
+- 执行部署的 agent 只用三种方式「用」它们，都不打印值：
+  - `awk` 核对有没有填；
+  - `v-ctl feishu-check` / `v-ctl feishu-owner` 用 App Secret 换一次令牌；
+  - 安装器读文件。
+- `install.sh` 和 `update.sh` 不会清掉 secrets.env 里已有的 key。所以安装用的 env 文件里可以完全不写 key。
+- 备份文件里有 secrets.env，只存本机或客户自己的加密存储。
+
+## 演练
+
+正式部署前，在一台全新的 Ubuntu 24.04 机器上，让一个只拿到本仓库和这两份文档的 agent 从第 0 步做到第 8 步。演练里遇到下面这些情况，都要补进 RUNBOOK：
+- 手册没写、要靠「之前知道」的事；
+- 命令和输出跟手册对不上的地方。
+
+## 这次新加的工具
+
+除 `offline-kit.sh` 在仓库的 `distro/build/` 里，其余都在发行包里。
+
+| 工具 | 做什么 |
+| --- | --- |
+| `install/preflight.sh [--out FILE] [--env-file v.env]` | 系统和出网预检；判断大陆；给出安装参数、需要的部署包、要关掉的能力；`--env-file` 把 `V_UNREACHABLE` 和 `V_NPM_REGISTRY` 写进 env 文件 |
+| `distro/build/offline-kit.sh <包> <目录>` | 生成部署包（Node、GitHub 技能、Chrome、cloudflared + SHA256SUMS） |
+| `install.sh --kit DIR` / `update.sh --kit DIR` | 用部署包代替联网下载；记成 `V_KIT_DIR`，reconfigure 和 update 沿用 |
+| `install/lib/fetch-chrome-deb.sh OUTDIR` | 不走 apt，按 Google 的签名元数据下载并核对 Chrome .deb |
+| `v-ctl fetch-skill-sources --out DIR` | 下载 skills.json 钉住的 GitHub 技能源码包 |
+| `v-ctl feishu-check` | App ID + Secret 能换到令牌、机器人已发布；不打印 Secret |
+| `v-ctl feishu-owner --mobile/--email/--user-id/--union-id … [--write]` | 用这个应用换出老板的 open_id，写进 install.env |
+| `v-ctl as-agent <命令>` | 以服务用户、在网关的环境里、在工作区目录跑一个命令（验收用） |
+| `~/.openclaw/v-capabilities.json` | 每次 configure 写：哪些能力开、哪些关、为什么、怎么打开 |

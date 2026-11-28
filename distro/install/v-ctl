@@ -3,7 +3,10 @@
 #   v-ctl status | health | probe [--check-history] | configure | units
 #   v-ctl openclaw <args...>      the installed OpenClaw CLI as the service user, with its environment
 #   v-ctl pair <code>             approve the owner's first Feishu DM (dmPolicy=pairing)
+#   v-ctl feishu-check            App ID + Secret accepted and the bot published (prints no secret)
+#   v-ctl feishu-owner --mobile N | --email A | --user-id ID | --union-id ID [--write]   the owner's open_id under this app
 #   v-ctl reconfigure             apply keys or options added to /etc/v/*.env after the install
+#   v-ctl as-agent <cmd...>       run a command as the service user in the Gateway's environment, in the workspace
 #   v-ctl workspace-update [--dry-run]   bring the workspace's system files to this release
 #   v-ctl backup [--keep N]       online backup to /var/backups/v/archives (0600); restore-backup <archive> --root DIR | --live
 set -euo pipefail
@@ -16,6 +19,15 @@ case "${1:-}" in
     [ "$sub" = pair ] && set -- pairing approve feishu "$@"
     exec python3 "$PREFIX/current/runtime/ops/v-memory-indexer-run.py" --cli "$@" ;;
   reconfigure) shift; exec bash "$(readlink -f "$PREFIX/current")/install/reconfigure.sh" "$@" ;;
-  ""|-h|--help) sed -n '2,8p' "$0" ;;
+  as-agent)
+    [ "$(id -u)" -eq 0 ] || { echo "v-ctl as-agent: run as root" >&2; exit 1; }
+    shift; [ $# -gt 0 ] || { echo "usage: v-ctl as-agent <command> [args...]" >&2; exit 2; }
+    # Exactly what the Gateway (and so the agent's exec) sees: its Environment= and EnvironmentFile= lines.
+    props=(); while IFS= read -r e; do [ -n "$e" ] && props+=(-p "Environment=$e"); done < <(systemctl show openclaw-gateway.service -p Environment --value | python3 -c 'import shlex,sys; [print(x) for x in shlex.split(sys.stdin.read())]')
+    # "/etc/v/lark.env (ignore_errors=yes)" -> "-/etc/v/lark.env" (optional, as in the unit)
+    while IFS= read -r f; do [ -n "$f" ] && props+=(-p "EnvironmentFile=$f"); done < <(systemctl show openclaw-gateway.service -p EnvironmentFiles --value | sed -n 's#^\(/[^ ]*\) (ignore_errors=yes)$#-\1#p; s#^\(/[^ ]*\) (ignore_errors=no)$#\1#p')
+    u="$(systemctl show openclaw-gateway.service -p User --value)"; h="$(getent passwd "$u" | cut -d: -f6)"
+    exec systemd-run --quiet --wait --pipe --collect --uid="$u" --gid="$u" -p WorkingDirectory="$h/.openclaw/workspace" "${props[@]}" -- "$@" ;;
+  ""|-h|--help) sed -n '2,11p' "$0" ;;
   *) exec "$NODE" "$PREFIX/current/install/lib/vctl.mjs" "$@" ;;
 esac

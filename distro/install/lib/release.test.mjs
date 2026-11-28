@@ -8,8 +8,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { applyOverlay, replacePackage, verifyCapture, verifyPackage, linkNpmProjects, overlayStatePlugins, installRelease, installTools, installLibs } from './release.mjs';
-import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, keyAliases, memoryNeedsRebuild, parseCliJson, larkInitNeeded, runtimeEnv } from './vctl.mjs';
+import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, keyAliases, memoryNeedsRebuild, parseCliJson, larkInitNeeded, runtimeEnv, setEnvLine, mergeSecrets } from './vctl.mjs';
 import { spawnSync, execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 
@@ -463,4 +464,67 @@ for (const [k, files] of Object.entries(lock.fake || {})) for (const [f, d] of O
   const real = JSON.parse(fs.readFileSync(new URL('../../runtime/locks/sharp/package-lock.json', import.meta.url), 'utf8')).packages;
   assert.equal(real['node_modules/sharp'].version, '0.34.5', 'same version as V');
   assert.match(real['node_modules/@img/sharp-linux-x64'].integrity, /^sha512-/);
+});
+
+test('setEnvLine: replaces the key in place, keeps comments and order, appends when missing', () => {
+  const text = '# who\nV_OWNER_NAME=老板\nV_OWNER_FEISHU_OPEN_ID=\nTZ=Asia/Shanghai\n';
+  assert.equal(setEnvLine(text, 'V_OWNER_FEISHU_OPEN_ID', 'ou_abc'), '# who\nV_OWNER_NAME=老板\nV_OWNER_FEISHU_OPEN_ID=ou_abc\nTZ=Asia/Shanghai\n');
+  assert.equal(setEnvLine('A=1\n\n', 'B', '2'), 'A=1\nB=2\n');
+  assert.equal(setEnvLine('', 'B', '2'), 'B=2\n');
+  assert.equal(setEnvLine('# B=old\nB=x\n', 'B', 'y'), '# B=old\nB=y\n', 'a commented-out line is not the key');
+});
+
+test('preflight.sh: valid bash, and every bundle it names has a real switch in the installer', () => {
+  const sh = fs.readFileSync(new URL('../preflight.sh', import.meta.url), 'utf8');
+  const r = spawnSync('bash', ['-n', fileURLToPath(new URL('../preflight.sh', import.meta.url))], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  const lib = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
+  for (const [name, where] of [['V_SKILLS_TARBALL_DIR', './vctl.mjs'], ['V_CLOUDFLARED_DEB', './cloudflared-package.sh'], ['V_CHROME_DEB', './desktop-packages.sh'], ['--node-tarball', '../install.sh'], ['--node-mirror', '../install.sh'], ['--registry', '../install.sh']]) {
+    assert.ok(sh.includes(name), `preflight names ${name}`);
+    assert.ok(lib(where).includes(name), `${where} handles ${name}`);
+  }
+  assert.ok(fs.existsSync(new URL('./fetch-chrome-deb.sh', import.meta.url)));
+  // The Node mirror preflight suggests carries the same release tools.json pins.
+  const tools = JSON.parse(fs.readFileSync(new URL('../../runtime/tools.json', import.meta.url), 'utf8'));
+  assert.ok(sh.includes(`v${tools.node.version}/`), `preflight probes Node ${tools.node.version}`);
+});
+
+test('kit.sh: a deployment kit is used only when its SHA256SUMS holds', { skip: spawnSync('sh', ['-c', 'command -v sha256sum']).status !== 0 && 'no sha256sum here' }, (t) => {
+  const kit = fs.mkdtempSync(path.join(os.tmpdir(), 'v-kit-'));
+  t.after(() => fs.rmSync(kit, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(kit, 'skills'));
+  fs.writeFileSync(path.join(kit, 'skills/o_r-abc.tar.gz'), 'x');
+  fs.mkdirSync(path.join(kit, 'chrome'));
+  fs.writeFileSync(path.join(kit, 'chrome/google-chrome-stable.deb'), 'deb');
+  const sum = (f) => createHash('sha256').update(fs.readFileSync(path.join(kit, f))).digest('hex');
+  fs.writeFileSync(path.join(kit, 'SHA256SUMS'), ['skills/o_r-abc.tar.gz', 'chrome/google-chrome-stable.deb'].map((f) => `${sum(f)}  ${f}\n`).join(''));
+  const lib = fileURLToPath(new URL('./kit.sh', import.meta.url));
+  const use = () => spawnSync('bash', ['-c', `set -euo pipefail; . "${lib}"; v_use_kit "$1"; echo "S=$V_SKILLS_TARBALL_DIR C=$V_CHROME_DEB F=\${V_CLOUDFLARED_DEB:-}"`, 'x', kit], { encoding: 'utf8' });
+  const ok = use();
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.match(ok.stdout, new RegExp(`S=${kit}/skills C=${kit}/chrome/google-chrome-stable.deb F=$`, 'm'));
+  fs.writeFileSync(path.join(kit, 'chrome/google-chrome-stable.deb'), 'tampered');
+  const bad = use();
+  assert.notEqual(bad.status, 0);
+  assert.match(bad.stderr, /do not match/);
+});
+
+test('capabilities: off with a reason and how to turn it on; an unreachable service wins over a present key', async () => {
+  const { capabilities } = await import('./vctl.mjs');
+  const c = capabilities({ GOOGLE_API_KEY: 'k', XAI_API_KEY: 'k', FEISHU_APP_ID: 'cli_x', FEISHU_APP_SECRET: 's' }, { unreachable: new Set(['xai']) });
+  assert.deepEqual(c.memoryVectorSearch, { on: true });
+  assert.equal(c.imageUnderstandingXai.on, false);
+  assert.match(c.imageUnderstandingXai.reason, /unreachable/);
+  assert.equal(c.makaron.on, false);
+  assert.match(c.makaron.howTo, /MAKARON_API_KEY/);
+  assert.equal(c.feishu.on, true);
+  assert.equal(c.groupChats.on, false);
+  assert.deepEqual(c.unreachable, ['xai']);
+  assert.ok(!JSON.stringify(c).includes('"k"'), 'no key values');
+});
+
+test('mergeSecrets: keys the customer wrote into secrets.env survive an env file that does not carry them', () => {
+  const prior = { DEEPSEEK_API_KEY: 'customer', FEISHU_APP_SECRET: 'customer2', OPENCLAW_GATEWAY_TOKEN: 'gw', EMPTY_KEY: '', TZ: 'Asia/Shanghai' };
+  const merged = mergeSecrets(['XAI_API_KEY=new', 'DEEPSEEK_API_KEY=override'], prior);
+  assert.deepEqual(merged, ['XAI_API_KEY=new', 'DEEPSEEK_API_KEY=override', 'FEISHU_APP_SECRET=customer2', 'OPENCLAW_GATEWAY_TOKEN=gw']);
 });
