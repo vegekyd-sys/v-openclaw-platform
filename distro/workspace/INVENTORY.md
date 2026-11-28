@@ -75,7 +75,7 @@ Mirror 已带：`makaron`（只带官方部分）、`makaron-video`、`makaron-r
 |---|---|---|
 | 主人个人生活 | `tianyi-*`、`voice-tianyi`、外卖 / 打车 / 本地生活、家里设备、个人财务、家人学习计划 | V 是一个人的助手，这些是那个人的 |
 | V 自身运维 | `v-*`、`launch-mirror-v`、云账号、CDN、部署目标、网关 / 运行时运维、语音账号、Universal Memory、技能优化实验、GPU 机器 | 依赖 V 的主机和账号；客户机的运行时由发行包管 |
-| Makaron / Scene 产品运营 | `makaron-app-*`、`makaron-marketing-*`、Makaron 飞书卡片服务（`skills/makaron/parts/feishu`）、`scripts/makaron-*`、`scripts/scene-*` | V 在公司里的专职工作，依赖 V 的卡片 runner 与账号路由 |
+| Makaron / Scene 产品运营 | `makaron-app-*`、`makaron-marketing-*`、`scripts/makaron-key-*`、`makaron-register.sh`、`scripts/scene-*` | V 在公司里的专职工作和多账号 key 管理。Makaron 飞书卡片 2026-11-28 改为带上，见下 |
 | 客户与业务管线 | 星擎、奥创、米奥、DealClaw / 小元、GeeLark / FCloud 云机、WhatsApp/WABA、夜班、内容工厂、展会、拍摄、客户策划 / 报表 / 素材 | 客户数据、客户账号、客户端点 |
 | 开发与排障 | DealClaw 开发、渠道开发、Makaron 计费、生产库查询 | 针对 V 维护的代码库 |
 | V 的脚本 | V 工作区 `scripts/` 下 676 个条目（约 2,300 个文件）里，除上面带走的 25 个，全部不带：客户批处理（`xq-*`、`render-*-cards.js`、`zhicheng-*` 等）、V 主机巡检、V 的复盘与看板 | 客户项目或 V 主机专用；被带走的 skill 若提到没带的脚本，`sync.mjs` 会报 MISSING DEPENDENCY |
@@ -150,6 +150,22 @@ V 的 Heartbeat V2（「V 先知」）由三个从未提交的脚本加一个放
 | 全局 `frontend-slides` | 「部署成链接」一步用 Vercel CLI（第三方技能，不改它，按 TOOLS.md 的规则处理） |
 
 V 上依赖 Vercel / Cloudflare、客户版没带的：`frontend-deploy`（部署到某客户自己的系统）、`cdn-upload`（Makaron 的存储）、`report-web`（V 的报告站）、`3d-asset-ar-showcase`、各个客户看板和报告。
+
+## Makaron 飞书任务卡片（Tianyi 2026-11-28：要和 V 一样）
+
+原来不带的理由是「依赖 V 的卡片 runner 与账号路由」。现在改为带上，V 专属的部分改写：
+
+| 部分 | 处理 |
+|---|---|
+| `skills/makaron/parts/feishu`（单卡片体验、后台 worker、回复锚定、交付） | **带**（carry，随 v-core 同步）。`VERSION.md`（70 KB 的 V 版本史）和早期整份 skill 存档不带；「V 的头像 `assets/v-avatar.jpg`」改成「主人放了 `assets/avatar.jpg` 就用，没有就问」；账号一节改成单主人 |
+| `scripts/makaron-card-runner`（39 个文件，`visible-parent-flow.cjs`、`restart-task-worker.cjs`、worker 等） | **带**（carry）。`tests/` 不带 |
+| `account-routing.cjs` | **工作区改写**：V 每个群一个 key、新群自动注册；客户机只有一位主人，所有会话都用主人的 key（`~/.makaron/chat-keys.json` 里主人那条 → OpenClaw 凭据库 `MAKARON_API_KEY` → 安装时的 `MAKARON_API_KEY`），主人取 `onboarding/owner.json`，不按群注册，key 不进输出 |
+| `scripts/makaron-key-*`、`makaron-register.sh`、`makaron-default-key-guard.py`、`makaron-native-subagent` | 不带：V 的多账号绑定、群注册和全局 key 守护 |
+| V 的每日 Makaron 自迭代复盘定时任务 | 不带：V 自己的产品运营 |
+
+运行时（A 线）：`MAKARON_CLI_ROOT` 指向一个有 `bin/makaron` 和 `.makaron-release.json`（`{"schemaVersion":1,"cliVersion":"0.17.30"}`）的目录；`OPENCLAW_LARK_SDK_PATH` 指向飞书插件自带的 `@larksuiteoapi/node-sdk/lib/index.js`；超大图片压缩要 `sharp`（`NODE_PATH` 能找到即可，没有时只影响超过上限的图片）。飞书应用的卡片权限、`FEISHU_APP_ID` / `FEISHU_APP_SECRET` 环境变量已经有了。
+
+**和 V 的差距**：带的是 V 已提交、进了 v-core 的版本（2026-11-09）。V 现场 runner 在 11-13 到 11-24 之间还有没提交的改动（6 个文件改过、新增 `delivery-identity.cjs`、`review-rework-policy.cjs`），`skills/makaron` 的 feishu 部分和 `COMPOSITE.json` 也有未提交修改。这些要等主人决定在 V 上提交、进 v-core 后，才能随同步带过来。
 
 ## 七、已知缺口
 

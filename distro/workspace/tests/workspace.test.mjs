@@ -58,6 +58,10 @@ test("the scanner really fires: planted samples of every shape are caught", () =
   assert.ok(lib.scanDir(dir, lib.loadDenyFile(deny)).some((h) => h.file === "b.md" && h.label === "private deny list"));
 });
 
+test("sanitise leaves identifiers that contain the owner's name alone (rewriting them breaks code)", () => {
+  assert.equal(lib.sanitise("if (job.allowTianyiOverride) x = 'Tianyi';"), "if (job.allowTianyiOverride) x = 'the owner';");
+});
+
 test("sanitise rewrites V's paths, ids, names and doc links into neutral text", () => {
   const out = lib.sanitise([
     "cd /home/openclaw/makaron-openclaw/.openclaw-local/workspace && ls /home/openclaw/.openclaw/logs",
@@ -421,4 +425,44 @@ test("speaking as the owner: only with --owner-approved and the owner's own word
   assert.match(tools, /lark-owner-voice\.log/);
   assert.match(tools, /发完在单聊里告诉主人发了什么、发给了谁/);
   assert.match(tools, /文档评论和回复评论不能这样发/);
+});
+
+test("Makaron cards: the Feishu part and the card runner ship; one owner's key serves every chat, never printed", () => {
+  for (const rel of ["skills/makaron/parts/feishu/SKILL.md", "scripts/makaron-card-runner/visible-parent-flow.cjs", "scripts/makaron-card-runner/run.cjs"])
+    assert.ok(fs.existsSync(path.join(PAYLOAD, rel)), rel);
+  const ws = tmp("mk");
+  fs.mkdirSync(path.join(ws, "onboarding"), { recursive: true });
+  fs.writeFileSync(path.join(ws, "onboarding/owner.json"), JSON.stringify({ open_id: "ou_ownerownerowner" }));
+  const home = tmp("mkhome");
+  const route = path.join(PAYLOAD, "scripts/makaron-card-runner/account-routing.cjs");
+  const run = (chat, key) => spawnSync("node", [route, chat], { encoding: "utf8",
+    env: { PATH: process.env.PATH, HOME: home, OPENCLAW_WORKSPACE_DIR: ws, ...(key ? { MAKARON_API_KEY: key } : {}) } });
+  for (const chat of ["ou_ownerownerowner", "oc_someroomsomeroom", "user:ou_ownerownerowner"]) {
+    const r = run(chat, "mk-test-key-123");
+    assert.equal(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.ok, true);
+    assert.equal(out.action, "use_key");
+    assert.doesNotMatch(r.stdout, /mk-test-key-123/, "the key never reaches stdout");
+  }
+  const none = run("oc_someroomsomeroom", "");
+  assert.equal(none.status, 3);
+  assert.match(none.stdout, /owner_key_unavailable/);
+  const skill = fs.readFileSync(path.join(PAYLOAD, "skills/makaron/parts/feishu/SKILL.md"), "utf8");
+  assert.doesNotMatch(skill, /v-avatar|makaron-key-bind-secret|VERSION\.md\]/);
+});
+
+test("every script in the payload still parses after sanitising (node --check, python compile)", () => {
+  const bad = [];
+  for (const rel of lib.walk(PAYLOAD)) {
+    const abs = path.join(PAYLOAD, rel);
+    if (/\.(cjs|mjs)$/.test(rel) || (/\.js$/.test(rel) && !rel.includes("/vendor/"))) {
+      const r = spawnSync("node", ["--check", abs], { encoding: "utf8" });
+      if (r.status !== 0) bad.push(`${rel}: ${r.stderr.split("\n").slice(0, 2).join(" ")}`);
+    } else if (rel.endsWith(".py")) {
+      const r = spawnSync("python3", ["-c", "import ast,sys; ast.parse(open(sys.argv[1],encoding='utf-8').read())", abs], { encoding: "utf8" });
+      if (r.status !== 0) bad.push(`${rel}: ${r.stderr.trim().split("\n").pop()}`);
+    }
+  }
+  assert.deepEqual(bad, []);
 });

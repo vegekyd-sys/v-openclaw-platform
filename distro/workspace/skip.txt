@@ -78,9 +78,11 @@ skills/makaron-skill-homepage-ops     Makaron 产品运营
 skills/makaron-intermediate-continuation Makaron 产品内部流程
 skills/makaron-v1-9-*                 Makaron 产品内部流程
 skills/makaron-final-delivery-naming  依赖 V 的 Makaron 项目与交付命名规范
-skills/makaron/parts/feishu           V 的 Makaron 飞书卡片服务（依赖 V 的卡片 runner 与账号路由）
 skills/makaron/VERSION.md             V 的 Makaron 组合版本记录（客户版不带 parts/feishu）
-scripts/makaron-*                     V 的 Makaron 账号、key 与卡片 runner
+scripts/makaron-key-*                 V 的多账号 Makaron key 绑定（客户版只有主人一个 key）
+scripts/makaron-register.sh           V 的群账号自动注册（客户版不按群注册）
+scripts/makaron-native-subagent       V 的 Makaron 原生子 agent 实验
+scripts/makaron-default-key-guard.py  V 的全局 key 守护（cron）
 scripts/scene-*                       V 的 Scene 卡片与 key 路由
 scripts/skill-layer                   V 的技能分层实验
 scripts/apify-douyin-search.py        V 的抖音搜索包装（依赖 V 的 Apify actor 配额约定；通用搜索走 apify-search.mjs）
@@ -200,6 +202,9 @@ skills/temeter-video                  V 的一个客户的固定节目形态
 skills/*.skill                        旧的单文件打包副本，正文已在对应 skill 目录里
 
 # --- single files inside carried directories ---
+skills/makaron/parts/feishu/VERSION.md V 的 Makaron 飞书部分版本记录（70 KB 历史），客户版不需要
+skills/makaron/parts/feishu/references/original-makaron-skill-* V 早期整份 skill 的存档
+scripts/makaron-card-runner/tests/** runner 的单元测试（依赖 V 的夹具，不在客户机上跑）
 skills/tiktok-publish-copy/references/cases.md 客户已发布的真实文案与账号；SKILL.md 在案例库为空时照常工作
 skills/feishu-channel-cards/references/nightshift-progress.md V 夜班的进度卡（依赖 V 的夜班仓库）
 skills/computer-use/references/session-evidence-2026-10-03.md  V 自己三次实测的记录（站点、账号、主人的 2FA），不是规则
