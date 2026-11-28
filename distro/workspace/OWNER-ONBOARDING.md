@@ -9,6 +9,8 @@
 - DEPLOY.md 的安装和飞书接入都做完，健康检查通过。
 - 飞书应用的用户身份权限按 [`feishu-user-scopes.txt`](feishu-user-scopes.txt) 开通，并且应用已经发布了新版本。没开的权限上手时不会申请，之后用到那一类就要老板再点一次补授权。
 - 老板本人在场，手机上登着自己的飞书。
+- 机器默认在海外、经 SSH 连接（网络照 DEPLOY.md 的海外默认）。主人的时区按老板所在地，不按机器所在地。
+- key 的口径（Tianyi 2026-11-28）：**先全部用我们的，之后逐步换成客户自己的**。任何密钥（我们的、客户的）都不显示原文，只在服务器之间用管道传；核对只看有没有、有几行、文件权限。具体做法见 V 的 `launch-mirror-v` 技能和 DEPLOY.md。
 
 ## 1. 记下主人
 
@@ -84,7 +86,7 @@ python3 scripts/v-schedule.py list       # 9 条 distro: 开头的后台任务�
 | 后台任务没登记上 | `v-schedule.py list` | `python3 scripts/v-schedule.py install`；报「record the owner first」就先做第 1 节 |
 | 文档读得很少 | `python3 scripts/feishu-docs.py scopes` | 缺读文档的权限：补开、发版、让 V 补授权；老板的文档大多在别人空间里的，让老板把空间分享给自己或机器人 |
 | V 以老板的名义发了消息或评论 | 不应该发生：`lark-cli` 会拦下以主人身份发言（`V_OWNER_VOICE_BLOCKED`） | 截图发给 Tianyi；只有老板亲口要求「替我发」时才允许，并记审计 `~/.openclaw/audit/lark-owner-voice.log` |
-| 出图没有 Makaron 任务卡片 | 环境里有没有 `MAKARON_API_KEY` | 没有就让老板提供 Makaron key，按 DEPLOY.md 写入 |
+| 出图没有 Makaron 任务卡片 | `MAKARON_API_KEY` 在不在（只看有没有：`sudo grep -c '^MAKARON_API_KEY=' <密钥文件>`） | 不在就按 DEPLOY.md 用管道补上我们的 key；不要让老板把 key 发到聊天里 |
 | 要网页或公网链接 | 环境里有没有 Vercel / Cloudflare 凭据 | 没有时 V 会直说「需要补账号」，先发文件，这是预期行为 |
 | 夜班说「没开通」 | `nightshiftctl health` | 夜班服务按 DEPLOY.md 另装；没装就是预期行为 |
 
@@ -120,7 +122,7 @@ python3 scripts/v-schedule.py list       # 9 条 distro: 开头的后台任务�
 2. **刚开始的几天，主动推进的提醒可能不准或偏多**，中午那次复盘就是用来调的；觉得没用、太频繁，直接说，V 会改。
 3. V 能替他读写飞书（建文档、日程、任务、表格），但**以他的名义给别人发消息之前会先问**；文档评论里的回复是机器人发的，不会显示成他本人。
 4. 数据只在他们自己部署的这台机器上，可以随时让 V 导出或删除。
-5. 需要他另外提供才能用的：Makaron key（出图出视频）、Vercel 或 Cloudflare 账号（网页和公网链接）、Apify key（社媒检索）、夜班服务（批量生产，另外部署）。没有时 V 会直说，不会假装做成了。
+5. **现在用的是我们的 key 和账号**（模型、Makaron、Apify 等，具体哪几个写在部署报告里），以后会逐步换成他们自己的；换的时候由他们自己把 key 写进去，不经过聊天。Vercel 或 Cloudflare（网页和公网链接）、夜班服务（批量生产，另外部署）这次没开的，V 用到时会直说，不会假装做成了。
 6. 有问题找谁：部署方的联系人和方式（现场写上）。
 
 ## 6. 现场验收（交付前过一遍）
@@ -130,5 +132,5 @@ python3 scripts/v-schedule.py list       # 9 条 distro: 开头的后台任务�
 - [ ] 引导进度是 done，`v-schedule.py list` 有 9 条后台任务。
 - [ ] 老板在私聊里让 V 建一个飞书文档、建一个日程，都不再要求补授权。
 - [ ] 老板在一份文档上评论 @V，回复显示为机器人。
-- [ ] （有 Makaron key 时）让 V 出一张图，看到任务卡片开出、进度更新、交付。
-- [ ] 把以上结果写进给 Tianyi 的部署报告（见 V 的 `launch-mirror-v` 技能）。
+- [ ] 让 V 出一张图，看到 Makaron 任务卡片开出、进度更新、交付。
+- [ ] 部署报告（见 V 的 `launch-mirror-v` 技能）写上这些结果，以及这次用了哪几个我们的 key（只写名字和用途），作为以后换成客户 key 的清单。
