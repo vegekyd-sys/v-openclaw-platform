@@ -1,0 +1,119 @@
+{
+  "schema": "2.0",
+  "config": {
+    "update_multi": true,
+    "width_mode": "default",
+    "summary": {
+      "content": "群回顾：3 条竖版广告，2 条待确认"
+    }
+  },
+  "header": {
+    "title": {
+      "tag": "plain_text",
+      "content": "群回顾"
+    },
+    "subtitle": {
+      "tag": "plain_text",
+      "content": "最近 24 小时 · 4 人参与"
+    },
+    "text_tag_list": [
+      {
+        "tag": "text_tag",
+        "text": {
+          "tag": "plain_text",
+          "content": "仅你可见"
+        },
+        "color": "blue"
+      },
+      {
+        "tag": "text_tag",
+        "text": {
+          "tag": "plain_text",
+          "content": "样例"
+        },
+        "color": "neutral"
+      }
+    ],
+    "template": "default"
+  },
+  "body": {
+    "elements": [
+      {
+        "tag": "markdown",
+        "content": "**在做 3 条 15 秒竖版广告。1 条已交付，2 条等确认文案。**"
+      },
+      {
+        "tag": "markdown",
+        "content": "**进展**\n<font color='grey'>☑️ 第 1 条「通勤」已交付（馨仪 昨天 18:20 确认）</font>\n▶️ 第 2、3 条成片已出，等文案定稿再配字幕"
+      },
+      {
+        "tag": "markdown",
+        "content": "**待办**\n**天懿**：确认第 2 条结尾用「立即下载」还是「限时免费」\n**馨仪**：补第 3 条的产品截图（V 昨天 21:05 问过，还没回）"
+      },
+      {
+        "tag": "markdown",
+        "content": "<font color='orange'>⚠️ 投放排期是周五，文案周四中午前要定</font>"
+      },
+      {
+        "tag": "column_set",
+        "flex_mode": "flow",
+        "horizontal_spacing": "8px",
+        "columns": [
+          {
+            "tag": "column",
+            "width": "auto",
+            "elements": [
+              {
+                "tag": "button",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "发到群里"
+                },
+                "type": "primary_filled",
+                "size": "small",
+                "behaviors": [
+                  {
+                    "type": "callback",
+                    "value": {
+                      "a": "v.recap.publish",
+                      "s": "SAMPLE"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "tag": "column",
+            "width": "auto",
+            "elements": [
+              {
+                "tag": "button",
+                "text": {
+                  "tag": "plain_text",
+                  "content": "刷新"
+                },
+                "type": "default",
+                "size": "small",
+                "behaviors": [
+                  {
+                    "type": "callback",
+                    "value": {
+                      "a": "v.recap.refresh",
+                      "s": "SAMPLE"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "tag": "markdown",
+        "content": "<font color='grey'>基于最近 24 小时 31 条消息 · 只总结本群内容 · 刚刚生成</font>",
+        "text_size": "notation"
+      }
+    ]
+  }
+}
