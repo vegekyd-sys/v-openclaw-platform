@@ -19,6 +19,7 @@
 //   vctl.mjs desktop-pair [--deadline-ms N]                 approve the host cua node (V_DESKTOP=1)
 //   vctl.mjs desktop-services                               (re)start the desktop units on the current release, then pair
 //   vctl.mjs workspace-update [--target <releaseDir>] [--dry-run]   the workspace's system files to that release (three-way)
+//   vctl.mjs memory-check                                   rebuild a memory index built for another embedding provider
 //   vctl.mjs install-skills                                 global skills (runtime/skills.json, skill CLIs) -> ~/.openclaw/skills
 //   vctl.mjs vsync-env <issued.env>                         -> /etc/v/vsync.env (the Portal-issued VSync identity)
 
@@ -207,6 +208,41 @@ function placeVPlugins(dest) {
   }
 }
 
+// Keys that tools read under different names: when only one name is set, the Gateway (and the
+// agent's exec through it) also gets the other, from /etc/v/aliases.env (0600). Line B's skills
+// read both APIFY_API_KEY and APIFY_TOKEN.
+export const KEY_ALIASES = [['APIFY_API_KEY', 'APIFY_TOKEN']];
+export function keyAliases(env) {
+  const out = {};
+  for (const names of KEY_ALIASES) {
+    const have = names.find((n) => typeof env[n] === 'string' && env[n].length > 0);
+    if (!have) continue;
+    for (const n of names) if (!env[n]) out[n] = env[have];
+  }
+  return out;
+}
+
+function configureAliases(env) {
+  const file = path.join(P.etc, 'aliases.env');
+  const a = keyAliases(env);
+  if (!Object.keys(a).length) { fs.rmSync(file, { force: true }); return []; }
+  fs.writeFileSync(file, `# v-distro configure: the same keys under the other names some tools read\n${Object.entries(a).map(([k, v]) => `${k}=${v}`).join('\n')}\n`, { mode: 0o600 });
+  fs.chmodSync(file, 0o600);
+  return Object.keys(a);
+}
+
+export const cloudflareEnabled = (env) => typeof env.CLOUDFLARE_TUNNEL_TOKEN === 'string' && env.CLOUDFLARE_TUNNEL_TOKEN.length > 0;
+
+/** cloudflared reads its token from TUNNEL_TOKEN; it never goes on a command line. */
+function configureCloudflare(env) {
+  const file = path.join(P.etc, 'cloudflared.env');
+  if (!cloudflareEnabled(env)) { fs.rmSync(file, { force: true }); return false; }
+  if (/\s/.test(env.CLOUDFLARE_TUNNEL_TOKEN)) throw new Error('CLOUDFLARE_TUNNEL_TOKEN must be the token alone (the long string after --token)');
+  fs.writeFileSync(file, `# v-distro configure: the Cloudflare tunnel token for v-cloudflared.service\nTUNNEL_TOKEN=${env.CLOUDFLARE_TUNNEL_TOKEN}\n`, { mode: 0o600 });
+  fs.chmodSync(file, 0o600);
+  return true;
+}
+
 export const DESKTOP_UNITS = ['openclaw-desktop.service', 'v-desktop-handoff.service', 'openclaw-cua-node.service'];
 export const desktopEnabled = (env) => env.V_DESKTOP === '1';
 
@@ -262,11 +298,20 @@ function configureDesktop(env) {
 }
 
 // The OpenClaw CLI as the service user with the service environment (same path as `v-ctl openclaw`).
-function openclawCli(args) {
-  const r = spawnSync('python3', [path.join(P.current, 'runtime', 'ops', 'v-memory-indexer-run.py'), '--cli', ...args], { encoding: 'utf8', timeout: 60000 });
+function openclawCli(args, { timeoutMs = 60000 } = {}) {
+  const r = spawnSync('python3', [path.join(P.current, 'runtime', 'ops', 'v-memory-indexer-run.py'), '--cli', ...args], { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 });
   if (r.status !== 0) throw new Error(`openclaw ${args.slice(0, 2).join(' ')} failed (${r.status}): ${(r.stderr || r.stdout || '').trim().slice(-300)}`);
-  const text = r.stdout.slice(r.stdout.search(/[[{]/));
-  return JSON.parse(text);
+  return parseCliJson(r.stdout);
+}
+
+/** The JSON a CLI printed, skipping log lines before it (some start with "[tag]"). */
+export function parseCliJson(stdout) {
+  const lines = stdout.split('\n');
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!/^\s*[[{]/.test(lines[i])) continue;
+    try { return JSON.parse(lines.slice(i).join('\n')); } catch { /* a log line; keep looking */ }
+  }
+  throw new Error(`no JSON in CLI output: ${stdout.slice(0, 200)}`);
 }
 
 export const CUA_NODE_NAME = 'V host desktop';
@@ -461,6 +506,35 @@ async function cmdWorkspaceUpdate(opts) {
   }
 }
 
+/**
+ * Which agents' memory index needs a rebuild: built for another embedding model (a key was added
+ * or removed: fts-only <-> gemini), vector index incomplete, or dirty. OpenClaw then pauses vector
+ * search and has the agent ask the owner to run a command; the installer does it instead.
+ */
+export function memoryNeedsRebuild(statusJson) {
+  const list = Array.isArray(statusJson) ? statusJson : [statusJson];
+  return list.filter((a) => {
+    const s = a?.status ?? {};
+    const identity = s.custom?.indexIdentity?.status;
+    const vector = s.vector?.enabled ? s.vector?.index?.state : 'complete';
+    return (identity && identity !== 'valid') || (vector && vector !== 'complete') || s.dirty === true;
+  }).map((a) => ({ agentId: a.agentId, identity: a?.status?.custom?.indexIdentity?.status ?? null, vector: a?.status?.vector?.index?.state ?? null, dirty: a?.status?.dirty ?? null }));
+}
+
+function cmdMemoryCheck() {
+  const stale = memoryNeedsRebuild(openclawCli(['memory', 'status', '--json']));
+  const rebuilt = [];
+  for (const a of stale) {
+    log(`memory index of ${a.agentId} needs a rebuild (identity ${a.identity}, vector ${a.vector}, dirty ${a.dirty}); rebuilding`);
+    // Embeds every memory chunk again; a large memory takes minutes.
+    openclawCli(['memory', 'status', '--index', '--json', '--agent', a.agentId], { timeoutMs: 30 * 60 * 1000 });
+    rebuilt.push(a.agentId);
+  }
+  const still = memoryNeedsRebuild(openclawCli(['memory', 'status', '--json']));
+  out({ step: 'memory-check', rebuilt, ok: still.length === 0, still });
+  if (still.length) throw new Error(`memory index still not current for ${still.map((a) => a.agentId).join(', ')}`);
+}
+
 function readLink(link) {
   try { return fs.readlinkSync(link); } catch { return null; }
 }
@@ -513,7 +587,9 @@ async function cmdConfigure(opts) {
   run('chown', ['-R', `${P.user}:${P.user}`, path.join(P.home, '.npm-global')]);
   const lark = configureLarkCli(env, tools['lark-cli']);
   const desktop = configureDesktop(env);
-  out({ step: 'configure', profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, larkCli: lark, desktop, audio: !!cfg.tools.media, primary: cfg.agents.defaults.model.primary });
+  const tunnel = configureCloudflare(env);
+  const aliases = configureAliases(env);
+  out({ step: 'configure', profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, larkCli: lark, desktop, tunnel, aliases, audio: !!cfg.tools.media, nightshift: !!cfg.plugins.entries['nightshift-feishu'], primary: cfg.agents.defaults.model.primary });
 }
 
 // lark-cli talks to Feishu as the same app as the channel (line B's skills and scripts use it).
@@ -628,8 +704,20 @@ function cmdUnits() {
     fs.rmSync(dropIn, { force: true });
     if (!process.env.V_NO_SYSTEMCTL) for (const name of DESKTOP_UNITS) spawnSync('systemctl', ['disable', '--now', name], { stdio: 'ignore' });
   }
+  // The Cloudflare tunnel exists only while CLOUDFLARE_TUNNEL_TOKEN is set.
+  const tunnel = cloudflareEnabled(allEnv());
+  const tunnelTpl = path.join(tpl, 'cloudflare', 'v-cloudflared.service');
+  if (tunnel && fs.existsSync(tunnelTpl)) {
+    let text = fs.readFileSync(tunnelTpl, 'utf8');
+    for (const [k, v] of Object.entries(vars)) text = text.split(k).join(v);
+    fs.writeFileSync(path.join(P.units, 'v-cloudflared.service'), text, { mode: 0o644 });
+    written.push('v-cloudflared.service');
+  } else if (fs.existsSync(path.join(P.units, 'v-cloudflared.service'))) {
+    if (!process.env.V_NO_SYSTEMCTL) spawnSync('systemctl', ['disable', '--now', 'v-cloudflared.service'], { stdio: 'ignore' });
+    fs.rmSync(path.join(P.units, 'v-cloudflared.service'), { force: true });
+  }
   if (!process.env.V_NO_SYSTEMCTL) run('systemctl', ['daemon-reload']);
-  out({ step: 'units', written, desktop, heapMb: vars['@HEAP_MB@'] });
+  out({ step: 'units', written, desktop, tunnel, heapMb: vars['@HEAP_MB@'] });
 }
 
 function gatewayOpts() {
@@ -812,6 +900,7 @@ async function main() {
     case 'vsync-env': cmdVsyncEnv(opts._[0]); break;
     case 'install-skills': await cmdInstallSkills(); break;
     case 'workspace-update': await cmdWorkspaceUpdate(opts); break;
+    case 'memory-check': cmdMemoryCheck(); break;
     case 'desktop-services': await cmdDesktopServices(opts); break;
     default: throw new Error(`unknown command ${cmd ?? ''}; see the header of ${path.relative(process.cwd(), fileURLToPath(import.meta.url))}`);
   }

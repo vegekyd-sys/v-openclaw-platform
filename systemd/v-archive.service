@@ -1,0 +1,24 @@
+[Unit]
+Description=Move cold V data down the tiers: system disk -> data disk -> COS
+Documentation=file:/opt/v-storage/archive.py
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/srv/openclaw-data/disk1
+
+[Service]
+Type=oneshot
+# TENCENTCLOUD_SECRET_ID/KEY: the Gateway's account (QcloudCOSFullAccess since 2026-11-28,
+# Tianyi's call: V owns its storage). This program itself never deletes in COS.
+EnvironmentFile=/home/openclaw/.openclaw/gateway.systemd.env
+StateDirectory=v-archive
+StateDirectoryMode=0700
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/v-storage/archive.py
+Nice=19
+# best-effort 7, not idle: idle IO starves behind Night Shift on the data disk.
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+CPUWeight=20
+MemoryHigh=1G
+MemoryMax=2G
+TimeoutStartSec=6h

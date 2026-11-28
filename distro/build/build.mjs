@@ -188,12 +188,19 @@ export function buildPackage(opts) {
     const target = f.rel.startsWith('config/') ? f.rel : `install/${f.rel}`;
     add(target, f.data, f.mode);
   }
-  // V's own plugins kept as source in this repo (byte-identical to V's /opt copies):
-  // v-deepseek-web gives web_search / web_fetch the 'deepseek' provider V uses.
-  const vPlugins = { 'deepseek-web': 'apps/v-deepseek-web/plugin' };
-  for (const [name, dir] of Object.entries(vPlugins)) {
-    const files = filesUnder(repo, sourceCommit, dir, { exclude: (p) => /(^|\/)(tests|node_modules)\//.test(p) });
-    if (!files.length) throw new Error(`${dir}/ is missing at the source commit`);
+  // V's own plugins kept as source in this repository (components.json "vplugins"). A plugin may be
+  // pinned to an older commit of this repository with per-file sha256s (nightshift-feishu predates
+  // Night Shift's move to its own repository); tests stay behind.
+  for (const [name, v] of Object.entries(components.vplugins ?? {})) {
+    const at = v.commit ? resolveCommit(repo, v.commit) : sourceCommit;
+    const files = filesUnder(repo, at, v.dir, { exclude: (p) => /(^|\/)(tests|node_modules)\//.test(p) || /\.test\.m?js$/.test(p) });
+    if (!files.length) throw new Error(`vplugin ${name}: ${v.dir}/ is missing at ${at}`);
+    if (v.sha256) {
+      const got = Object.fromEntries(files.map((f) => [f.rel, sha256(f.data)]));
+      const want = v.sha256;
+      const bad = [...new Set([...Object.keys(got), ...Object.keys(want)])].filter((f) => got[f] !== want[f]);
+      if (bad.length) throw new Error(`vplugin ${name}: files differ from the pinned sha256s: ${bad.join(', ')}`);
+    }
     for (const f of files) add(`vplugins/${name}/${f.rel}`, f.data, f.mode);
   }
 
