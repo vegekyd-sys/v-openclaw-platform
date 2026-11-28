@@ -53,7 +53,10 @@
         "OPENCLAW_",
         "HERMES_"
       ],
-      "note": "lark-cli runs as a standalone tool on its own config (configure writes it with config init). With LARKSUITE_CLI_APP_* in env it disables auth and never fetches a tenant token; with OPENCLAW_* in env it demands `config bind`. Line B's feishu-docs.py strips the same variables."
+      "note": "lark-cli runs as a standalone tool on its own config (configure writes it with config init). With LARKSUITE_CLI_APP_* in env it disables auth and never fetches a tenant token; with OPENCLAW_* in env it demands `config bind`. Line B's feishu-docs.py strips the same variables.",
+      "guards": [
+        "owner-voice"
+      ]
     },
     "makaron-ad-creator-cli": {
       "package": "makaron-ad-creator-cli",
