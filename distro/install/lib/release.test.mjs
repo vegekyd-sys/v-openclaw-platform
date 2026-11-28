@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { applyOverlay, replacePackage, verifyCapture, verifyPackage, linkNpmProjects, overlayStatePlugins, installRelease, installTools, installLibs } from './release.mjs';
-import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, keyAliases, memoryNeedsRebuild, parseCliJson, larkInitNeeded, runtimeEnv, setEnvLine, mergeSecrets } from './vctl.mjs';
+import { busyReasons, splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, keyAliases, memoryNeedsRebuild, parseCliJson, larkInitNeeded, runtimeEnv, setEnvLine, mergeSecrets } from './vctl.mjs';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -557,4 +557,11 @@ test('uninstall.sh: valid bash; refuses without --yes or --dry-run; never remove
   const sh = fs.readFileSync(file, 'utf8');
   for (const p of ['/opt/v-kit', '/root/pre-distro-state', '/etc/default/google-chrome']) assert.ok(!new RegExp(`rm -rf[^\\n]*${p.replace(/[/-]/g, '\\$&')}`).test(sh), `does not remove ${p}`);
   assert.match(sh, /--yes to remove V/);
+});
+
+test('busyReasons: Worker turns running or queued and cron runs in flight keep an update waiting; errors do not', () => {
+  assert.deepEqual(busyReasons({ workers: { workers: [{ active: [], queued: 0 }] }, cron: { jobs: [{ name: 'a' }] } }), []);
+  assert.deepEqual(busyReasons({ workers: { pending: 1, workers: [{ active: [{ sessionKey: 'k' }], queued: 2 }] }, cron: { jobs: [] } }), ['1 Worker turn(s) running', '3 Worker turn(s) queued']);
+  assert.deepEqual(busyReasons({ workers: { workers: [{ activeCount: 2 }] }, cron: { jobs: [{ name: 'Memory 导入补编', state: { runningAtMs: 1 } }] } }), ['2 Worker turn(s) running', 'cron running: Memory 导入补编']);
+  assert.deepEqual(busyReasons({ workers: { error: 'unknown method' }, cron: { error: 'x' } }), [], 'cannot ask: do not wait forever');
 });

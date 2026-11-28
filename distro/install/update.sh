@@ -69,6 +69,11 @@ if grep -qx 'V_DESKTOP=1' /etc/v/install.env && ! command -v Xtigervnc >/dev/nul
   v_desktop_packages
 fi
 
+say "Wait until no turn or scheduled run is in flight (at most ${V_UPDATE_IDLE_TIMEOUT_S:-900} s)"
+# Stopping mid-run interrupts it, and a Gateway still draining a run after 45 s is killed (TimeoutStopSec,
+# same as V). The result lists what was waited for and what this stop interrupts anyway.
+"${NEW_VCTL[@]}" wait-idle --timeout-s "${V_UPDATE_IDLE_TIMEOUT_S:-900}" || true
+
 say "Stop and snapshot"
 systemctl stop v-memory-indexer.service 2>/dev/null || true
 systemctl stop openclaw-gateway.service

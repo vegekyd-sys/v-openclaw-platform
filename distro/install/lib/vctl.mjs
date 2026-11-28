@@ -1093,6 +1093,52 @@ async function cmdHealth(opts) {
   out({ step: 'health', ok: true, elapsedMs: r.elapsedMs, healthOk: r.health?.ok ?? null, workers: w.error ? { error: w.error } : { version: w.integration?.workerIsolationVersion ?? null, live: w.workers?.length ?? w.live ?? null } });
 }
 
+/**
+ * Why the Gateway is not idle: Worker turns running or queued, cron runs in flight. [] = idle.
+ * Same signals as V's own restart gate (scripts/v-self-restart.py): vlab.workers.status, cron.list.
+ */
+export function busyReasons({ workers, cron }) {
+  const out = [];
+  if (workers && !workers.error) {
+    let active = 0;
+    let queued = Number(workers.pending || 0);
+    for (const w of workers.workers ?? []) {
+      queued += Number(w.queued || 0);
+      active += (w.active ?? []).length || Number(w.activeCount || 0);
+    }
+    if (active) out.push(`${active} Worker turn(s) running`);
+    if (queued) out.push(`${queued} Worker turn(s) queued`);
+  }
+  const running = (cron?.jobs ?? []).filter((j) => j.runningAtMs || j.state?.runningAtMs).map((j) => j.name || j.id);
+  if (running.length) out.push(`cron running: ${running.slice(0, 3).join(', ')}`);
+  return out;
+}
+
+/** v-ctl wait-idle [--timeout-s N]: wait until no turn or cron run is in flight (before stopping the Gateway). */
+async function cmdWaitIdle(opts) {
+  const { connect } = await import('./gateway.mjs');
+  const timeoutS = Number(opts['timeout-s'] ?? 900);
+  const start = Date.now();
+  let reasons = ['not asked yet'];
+  let waitedFor = [];
+  let gw;
+  try { gw = await connect(gatewayOpts()); } catch (e) { out({ step: 'wait-idle', idle: null, error: `Gateway not reachable: ${e.message ?? e}` }); return; }
+  try {
+    for (;;) {
+      let workers; let cron;
+      try { workers = await gw.call('vlab.workers.status', {}, 20000); } catch (e) { workers = { error: String(e.message ?? e) }; }
+      try { cron = await gw.call('cron.list', { includeDisabled: true, limit: 200 }, 20000); } catch (e) { cron = { error: String(e.message ?? e) }; }
+      reasons = busyReasons({ workers, cron });
+      if (!reasons.length) break;
+      waitedFor = [...new Set([...waitedFor, ...reasons])];
+      if ((Date.now() - start) / 1000 >= timeoutS) break;
+      log(`waiting for: ${reasons.join('; ')}`);
+      await new Promise((r) => setTimeout(r, 10000));
+    }
+  } finally { gw.stop(); }
+  out({ step: 'wait-idle', idle: reasons.length === 0, waitedS: Math.round((Date.now() - start) / 1000), waitedFor, interrupting: reasons });
+}
+
 async function cmdProbe(opts) {
   const { connect, probe, checkHistory } = await import('./gateway.mjs');
   const manifest = readJson(path.join(P.current, 'manifest.json'));
@@ -1253,6 +1299,7 @@ async function main() {
     case 'units': cmdUnits(); break;
     case 'health': await cmdHealth(opts); break;
     case 'probe': await cmdProbe(opts); break;
+    case 'wait-idle': await cmdWaitIdle(opts); break;
     case 'snapshot': cmdSnapshot(opts._[0]); break;
     case 'restore': cmdRestore(opts._[0]); break;
     case 'status': cmdStatus(); break;

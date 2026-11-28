@@ -796,12 +796,16 @@ cd /opt/v-kit/<版本> && sha256sum -c --quiet SHA256SUMS && echo kit-ok
    - 停网关（升级、`reconfigure`、重启）时，如果有回合或 Worker 在跑，45 秒内没退出，systemd 会 SIGKILL。
    - 测试机上出现过一次，之后启动正常、探针通过，数据没有损坏。
    - 代价是正在跑的回合被打断。所以升级、重启选老板不用的时间做。
-   - 日志特征：`journalctl -u openclaw-gateway | grep -iE "timed out|SIGKILL"`。在修，见 `TODO-after-observation.md`。
+   - 日志特征：`journalctl -u openclaw-gateway | grep -iE "timed out|SIGKILL"`。
+   - update.sh 现在会先等空闲（`v-ctl wait-idle`，最多 `V_UPDATE_IDLE_TIMEOUT_S` 秒，默认 900），输出里 `interrupting` 列出仍被打断的回合。
+   - 手动重启前也可以先跑 `sudo v-ctl wait-idle`。
 
 8. **定时任务记成「⚠️ Terminal failed」，其实做完了（终端工具误报失败）。**
    - 机器上没有共享终端，agent 第一次调 `terminal` 工具会失败，随后改用 `exec` 完成。但 OpenClaw 把那次失败记成了整轮的结果。
    - 看那一轮的记录（`sudo v-ctl openclaw cron list --json --all --agent makaron` 找到任务 id，再 `sudo v-ctl openclaw cron runs --id <id> --json`），再看对应会话：最后有正常回复，或者在静默时段回复了 `NO_REPLY`，就是误报。
-   - 不是部署问题。在修，见 `TODO-after-observation.md`。
+   - 不是部署问题。
+   - 发行包现在默认禁用 `terminal` 工具（客户机上本来就没有共享终端），这类误报不应再出现。
+   - 「中途失败、后来恢复」仍记成 error 的判定是 OpenClaw 自己的，见 `TODO-after-observation.md`。
 
 9. **老板私聊收到配对码。** 没配 `V_OWNER_FEISHU_OPEN_ID`，走第 5.2 步。临时可以 `sudo v-ctl pair <码>`。
 
