@@ -312,6 +312,15 @@ export function installTools(releaseDir, toolsRoot, { npm, registry, log = () =>
       npmCi(dir, lockDir, { npm, registry, log });
       fs.writeFileSync(marker, `${lockSha}\n`);
     }
+    // An "activated" CLI root, as V lays them out (bin/<name> plus a release manifest), for tools
+    // whose callers look for one (line B's makaron-card-runner).
+    if (t.activate) {
+      fs.mkdirSync(path.join(dir, 'bin'), { recursive: true });
+      const link = path.join(dir, 'bin', t.activate.bin);
+      fs.rmSync(link, { force: true });
+      fs.symlinkSync(path.relative(path.join(dir, 'bin'), path.join(dir, t.activate.from)), link);
+      fs.writeFileSync(path.join(dir, t.activate.manifest), `${JSON.stringify({ schemaVersion: 1, cliVersion: t.version })}\n`);
+    }
     const platform = `linux-${arch === 'arm64' ? 'arm64' : 'x64'}`;
     const bin = t.native?.[platform] ? path.join(dir, t.native[platform]) : path.join(dir, 'node_modules/.bin', t.bin);
     if (!fs.existsSync(bin)) throw new Error(`tool ${name}: ${bin} missing after install`);

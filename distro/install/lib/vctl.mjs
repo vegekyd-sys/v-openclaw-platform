@@ -205,6 +205,34 @@ function placeVPlugins(dest) {
   }
 }
 
+/**
+ * Paths that scripts in the workspace look up at run time, as the Gateway's environment
+ * (/etc/v/runtime.env, an optional EnvironmentFile; the agent's exec inherits it).
+ * MAKARON_CLI_ROOT: the activated makaron-cli (line B's makaron-card-runner).
+ * OPENCLAW_LARK_SDK_PATH: the Lark SDK shipped with this release's Feishu plugin; the runner
+ * otherwise only looks under ~/.openclaw/npm.
+ */
+export function runtimeEnv({ toolsRoot, tools, currentDir, exists = fs.existsSync }) {
+  const out = {};
+  for (const [name, t] of Object.entries(tools.npm ?? {})) {
+    if (name === 'makaron-cli' && t.activate) {
+      const root = path.join(toolsRoot, `${name}-${t.version}`);
+      if (exists(path.join(root, t.activate.manifest))) out.MAKARON_CLI_ROOT = root;
+    }
+  }
+  const sdk = path.join(currentDir, 'plugins', 'feishu', 'node_modules', '@openclaw', 'feishu', 'node_modules', '@larksuiteoapi', 'node-sdk', 'lib', 'index.js');
+  if (exists(sdk)) out.OPENCLAW_LARK_SDK_PATH = sdk;
+  return out;
+}
+
+function configureRuntimeEnv() {
+  const file = path.join(P.etc, 'runtime.env');
+  const tools = readJson(path.join(P.current, 'runtime', 'tools.json'));
+  const env = runtimeEnv({ toolsRoot: P.tools, tools, currentDir: P.current });
+  fs.writeFileSync(file, `# v-distro configure: paths scripts look up at run time\n${Object.entries(env).map(([k, v]) => `${k}=${v}`).join('\n')}\n`, { mode: 0o644 });
+  return Object.keys(env);
+}
+
 export const DESKTOP_UNITS = ['openclaw-desktop.service', 'v-desktop-handoff.service', 'openclaw-cua-node.service'];
 export const desktopEnabled = (env) => env.V_DESKTOP === '1';
 
@@ -397,7 +425,8 @@ async function cmdConfigure(opts) {
   run('chown', ['-R', `${P.user}:${P.user}`, path.join(P.home, '.npm-global')]);
   const lark = configureLarkCli(env, tools['lark-cli']);
   const desktop = configureDesktop(env);
-  out({ step: 'configure', profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, larkCli: lark, desktop, audio: !!cfg.tools.media, primary: cfg.agents.defaults.model.primary });
+  const runtime = configureRuntimeEnv();
+  out({ step: 'configure', profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, larkCli: lark, desktop, runtimeEnv: runtime, audio: !!cfg.tools.media, primary: cfg.agents.defaults.model.primary });
 }
 
 // lark-cli talks to Feishu as the same app as the channel (line B's skills and scripts use it).

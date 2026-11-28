@@ -34,6 +34,12 @@
       "bin": "makaron",
       "skills": {
         "makaron": "skills/makaron"
+      },
+      "activate": {
+        "bin": "makaron",
+        "from": "node_modules/makaron-cli/bin/makaron.mjs",
+        "manifest": ".makaron-release.json",
+        "note": "Line B's makaron-card-runner only uses an activated CLI: $MAKARON_CLI_ROOT/bin/makaron and $MAKARON_CLI_ROOT/.makaron-release.json, the layout of V's /opt/makaron-cli-<version>."
       }
     },
     "lark-cli": {
