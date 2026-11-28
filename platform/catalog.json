@@ -198,7 +198,9 @@
         "scripts/configure-v-luna-context.test.mjs",
         "scripts/align-vlab-model-config.test.mjs",
         "scripts/configure-v-announce-timeout.test.mjs",
-        "scripts/gpt62-aliases.test.mjs"
+        "scripts/gpt62-aliases.test.mjs",
+        "scripts/gemini-neon-alias.test.mjs",
+        "tests/v-antigravity.test.mjs"
       ]
     },
     {
@@ -546,7 +548,8 @@
         "lab/card-native-shell.test.mjs",
         "lab/cli-subagent-progress.test.mjs",
         "lab/workboard-list-page.test.mjs",
-        "lab/binary-attachment-text.test.mjs"
+        "lab/binary-attachment-text.test.mjs",
+        "lab/v-identity-line.test.mjs"
       ]
     },
     {

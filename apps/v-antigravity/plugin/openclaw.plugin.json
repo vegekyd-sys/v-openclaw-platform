@@ -1,0 +1,80 @@
+{
+  "id": "v-antigravity",
+  "name": "V Antigravity CLI",
+  "description": "Runs agent turns on the Antigravity CLI with V's system prompt and OpenClaw's tools over MCP.",
+  "activation": {
+    "onStartup": true
+  },
+  "cliBackends": [
+    "antigravity-cli"
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "agyBin": {
+        "type": "string"
+      },
+      "agyHome": {
+        "type": "string"
+      },
+      "runRoot": {
+        "type": "string"
+      },
+      "defaultEffort": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      },
+      "modelProvider": {
+        "type": "string"
+      },
+      "idleTimeoutMs": {
+        "type": "integer",
+        "minimum": 1000
+      },
+      "followOnTimeoutMs": {
+        "type": "integer",
+        "minimum": 1000
+      },
+      "workspaceDir": {
+        "type": "string"
+      },
+      "liveness": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Keep a quiet turn alive while agy still receives its model stream (defaults in runtime.js LIVENESS).",
+        "properties": {
+          "sampleMs": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "quietMs": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "everyMs": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minBytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "recentMs": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxQuietMs": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    }
+  }
+}
