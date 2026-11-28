@@ -142,9 +142,62 @@ export function composePrompt({ prompt, promptContext, images = [] }) {
 }
 
 /** Writes the run directory agy starts in: the custom agent and the MCP config. */
-export async function prepareRunDir({ runRoot, systemPrompt, hostArgs, fetchImpl }) {
+// agy puts its working directory into the prompt prefix, so a conversation
+// resumed by a new process in a different directory misses the model's prompt
+// cache entirely (VLab 2026-11-28, 53k-token prompt: same directory 51k
+// cached, another directory 0). Each conversation therefore keeps one
+// directory: runRoot/index/<conversation id> names it, a new process for that
+// conversation reuses it, and only the files the runtime wrote (agent prompt,
+// MCP bearer config) are removed when a process ends.
+export const RUN_DIR_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const CONVERSATION_ID = /^[A-Za-z0-9-]{8,80}$/u;
+
+function indexPath(runRoot, conversation) {
+  return CONVERSATION_ID.test(String(conversation ?? '')) ? path.join(runRoot, 'index', conversation) : undefined;
+}
+
+/** The directory an earlier process of this conversation used, if it is still there. */
+export function knownRunDir(runRoot, conversation) {
+  const file = indexPath(runRoot, conversation);
+  if (!file) return undefined;
+  try {
+    const dir = fs.readFileSync(file, 'utf8').trim();
+    const inside = path.relative(runRoot, dir);
+    if (!inside || inside.startsWith('..') || path.isAbsolute(inside) || !fs.statSync(dir).isDirectory()) return undefined;
+    return dir;
+  } catch { return undefined; }
+}
+
+export function rememberRunDir(runRoot, conversation, runDir) {
+  const file = indexPath(runRoot, conversation);
+  if (!file || knownRunDir(runRoot, conversation) === runDir) return;
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(file, `${runDir}\n`, { mode: 0o600 });
+}
+
+/** Removes what the runtime wrote into a run directory (prompt, MCP bearer); the directory stays for the next process. */
+export function clearRunDir(runDir) {
+  for (const f of [path.join('.agents', 'mcp_config.json'), path.join('.agents', 'agents', `${AGENT_NAME}.md`)]) fs.rmSync(path.join(runDir, f), { force: true });
+}
+
+function pruneRunDirs(runRoot, keep, now = Date.now()) {
+  let entries = [];
+  try { entries = fs.readdirSync(runRoot, { withFileTypes: true }); } catch { return; }
+  for (const e of entries) {
+    if (!e.isDirectory() || !e.name.startsWith('session-')) continue;
+    const dir = path.join(runRoot, e.name);
+    try { if (dir !== keep && now - fs.statSync(dir).mtimeMs > RUN_DIR_TTL_MS) fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+  }
+  try {
+    for (const name of fs.readdirSync(path.join(runRoot, 'index'))) if (!knownRunDir(runRoot, name)) fs.rmSync(path.join(runRoot, 'index', name), { force: true });
+  } catch {}
+}
+
+export async function prepareRunDir({ runRoot, systemPrompt, hostArgs, fetchImpl, conversation }) {
   fs.mkdirSync(runRoot, { recursive: true, mode: 0o700 });
-  const runDir = fs.mkdtempSync(path.join(runRoot, 'session-'));
+  let runDir = knownRunDir(runRoot, conversation);
+  if (runDir) { const now = new Date(); fs.utimesSync(runDir, now, now); } else runDir = fs.mkdtempSync(path.join(runRoot, 'session-'));
+  pruneRunDirs(runRoot, runDir);
   fs.chmodSync(runDir, 0o700);
   fs.mkdirSync(path.join(runDir, '.agents', 'agents'), { recursive: true, mode: 0o700 });
   fs.writeFileSync(path.join(runDir, '.agents', 'agents', `${AGENT_NAME}.md`), agentFile(systemPrompt), { mode: 0o600 });
@@ -301,10 +354,14 @@ function completeTurn(session) {
 
 function acceptEvent(session, event) {
   session.lastEventAt = Date.now();
-  if (event.event === 'init' && event.conversation_id) session.conversationId = event.conversation_id;
+  if (event.event === 'init' && event.conversation_id) {
+    session.conversationId = event.conversation_id;
+    if (session.runRoot && session.runDir) { try { rememberRunDir(session.runRoot, event.conversation_id, session.runDir); } catch {} }
+  }
   const turn = session.currentTurn;
   if (!turn) return;
   const step = event.step_update;
+  markTurn(turn, event);
   if (event.event === 'step_update' && step?.step_type === 'user_input' && step.state === 'DONE') {
     // The first user_input of a turn is its own prompt; later ones are steers.
     if (turn.inputsSeen > 0 && turn.pendingSteers > 0) turn.pendingSteers -= 1;
@@ -331,6 +388,29 @@ function acceptEvent(session, event) {
       return;
     }
     completeTurn(session);
+  }
+}
+
+// One line per turn, so first-token time can be split without a trace:
+// prep (agent file + MCP tools/list) and spawn->init only on a fresh process;
+// then prompt written -> agy took it (user_input) -> first text -> first step
+// done -> result; and the model usage of the turn (cache read vs input).
+function markTurn(turn, event) {
+  const t = turn.timing; if (!t) return;
+  const now = Date.now();
+  const step = event.step_update;
+  if (event.event === 'init') t.init ??= now;
+  if (step?.step_type === 'user_input' && step.state === 'DONE') t.input ??= now;
+  if (step?.step_type === 'agent_response' && step.text_delta?.trim()) t.firstText ??= now;
+  if (step?.step_type === 'tool') t.firstTool ??= now;
+  if (step?.step_type === 'agent_response' && step.state === 'DONE') t.firstStepDone ??= now;
+  if (step?.step_type === 'agent_response' && step.state === 'DONE' && step.usage && t.firstStepUsage === undefined) t.firstStepUsage = step.usage;
+  if (event.event === 'result' && t.result === undefined) {
+    t.result = now;
+    const u = event.result?.usage ?? {};
+    const ms = (a, b) => (a !== undefined && b !== undefined ? `${a - b}` : '-');
+    const fu = t.firstStepUsage ?? {};
+    process.stderr.write(`[v-antigravity] turn timing: fresh=${t.fresh ? 'yes' : 'no'} prep=${ms(t.prepped, t.start)} spawn->init=${ms(t.init, t.spawned)} write->input=${ms(t.input, t.written)} write->firstText=${ms(t.firstText, t.written)} write->firstTool=${ms(t.firstTool, t.written)} write->firstStepDone=${ms(t.firstStepDone, t.written)} write->result=${ms(t.result, t.written)} start->write=${ms(t.written, t.start)} first-call in=${fu.input_tokens ?? '-'} cache=${fu.cache_read_tokens ?? '-'} think=${fu.thinking_tokens ?? '-'} out=${fu.output_tokens ?? '-'} turn in=${u.input_tokens ?? '-'} cache=${u.cache_read_tokens ?? '-'} out=${u.output_tokens ?? '-'} think=${u.thinking_tokens ?? '-'}\n`);
   }
 }
 
@@ -391,7 +471,7 @@ function createSession(capability, options) {
       }
       capability.remove?.(session.handle);
     }
-    if (session.runDir) fs.rmSync(session.runDir, { recursive: true, force: true });
+    if (session.runDir) clearRunDir(session.runDir);
     resolveExit();
   };
   session.finish = finish;
@@ -472,7 +552,7 @@ export function createAntigravityExecutor(config = {}, deps = {}) {
     if (fresh) session = createSession(capability, { conversation, idleTimeoutMs: config.idleTimeoutMs, followOnTimeoutMs: config.followOnTimeoutMs });
     if (session.currentTurn) throw new Error('Antigravity live session is already handling another turn.');
     clearTimeout(session.idleTimer);
-    const turn = { events: new PushQueue(), translator: createClaudeStreamTranslator(), pendingSteers: 0, inputsSeen: 0, results: 0, aborted: false };
+    const turn = { events: new PushQueue(), translator: createClaudeStreamTranslator(), pendingSteers: 0, inputsSeen: 0, results: 0, aborted: false, timing: { start: Date.now(), fresh } };
     session.currentTurn = turn;
     let stopLiveness = () => {};
     const abort = () => session.handle.close('abort');
@@ -481,16 +561,21 @@ export function createAntigravityExecutor(config = {}, deps = {}) {
       if (ctx.abortSignal?.aborted) throw ctx.abortSignal.reason ?? new Error('Antigravity turn was aborted.');
       capability.activate?.(session.handle);
       if (fresh) {
-        const runDir = await prepareRunDir({ runRoot, systemPrompt: ctx.systemPrompt, hostArgs, fetchImpl });
+        const runDir = await prepareRunDir({ runRoot, systemPrompt: ctx.systemPrompt, hostArgs, fetchImpl, conversation });
+        session.runRoot = runRoot;
+        if (conversation) rememberRunDir(runRoot, conversation, runDir);
+        turn.timing.prepped = Date.now();
         const argv = buildAgyArgv({ model, effort, conversation, workspaceDir: ctx.cwd ?? config.workspaceDir, runDir });
-        if (session.closed) { fs.rmSync(runDir, { recursive: true, force: true }); throw new Error('Antigravity live session closed before its process started.'); }
+        if (session.closed) { clearRunDir(runDir); throw new Error('Antigravity live session closed before its process started.'); }
         spawnSession(session, { command, argv, env, runDir });
+        turn.timing.spawned = Date.now();
         process.stderr.write(`[v-antigravity] process start: reason=${why || 'new'} resume=${conversation ? 'yes' : 'no'} model=${accountModel(model, effort)}\n`);
       }
       // A resumed conversation has no init event: tell the host its id first.
       if (session.conversationId) yield* turn.translator.translate({ event: 'init', conversation_id: session.conversationId });
       session.lastEventAt = Date.now();
       writeUser(session, prompt);
+      turn.timing.written = Date.now();
       stopLiveness = startLiveness(session, turn, { ...(deps.readRchar ? { readRchar: deps.readRchar } : {}), ...(config.liveness ?? {}) });
       let sawResult = false;
       for await (const record of turn.events) {

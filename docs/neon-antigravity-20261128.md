@@ -73,6 +73,29 @@ Google 的账号接口（relay 用的同一个）会精确匹配 OpenClaw 默认
 - 787 s 跑完，产出 `makaron-deck.html`（709 KB 单文件，内联 Three.js，10 页，每页一个 3D 场景，agent 自己用无头 Chrome 渲染核对过）。卡片最终显示完整的总结。
 - **附件没发出去：** 卡片最后一行是「⚠️ makaron-deck.html: Delivery failed」。原因是 core 的本地读取策略（`hostReadCapability permits only … trusted generated HTML reports`）：回复里的 `MEDIA:` 只放行 OpenClaw 临时目录里的 HTML，或者带来源记录的 outbound 暂存文件，workspace 里的 HTML 一律拒绝。这和 runtime 无关：不经过任何 harness、直接调用 core 的 `createReplyMediaPathNormalizer`，用同一个文件也是同样的失败，`/vcc`、`/deepseek` 也会遇到。本 PR 不改这条策略，作为后续单独处理。
 
+**首字对标 /vds、/vcodex（11/28 18:30–19:12 CST，同一台 VLab，同一个飞书 bot）：**
+
+口径：飞书 create_time → 卡片首次推出正文（`[firsttext-e2e.1]`）；每条都按会话库核对过回复成功才计入。每组 5 条，问题固定。/vds、/vcodex 在共享 VLab（V 的配置，有效登录，「VLab 压测 23/22」），/neon 在 live candidate（「VLab 压测 21/20」）。candidate 关了 codex 插件，也不能复制 ChatGPT 登录，所以 /vds、/vcodex 只能在共享 VLab 测。冷的定义按各自真实的冷路径：/vds、/vcodex 是 `/new` 后的第一条（新会话、新线程）；/neon 是 agy 进程被回收（空闲 10 min 或重启）之后续接的第一条。candidate 里不能用 `/new`：之后会报 legacy transcript，这是已知的 VLab 问题，V 上不出现。
+
+| | 冷 首字 P50（范围） | 热·短回复 首字 P50 | 热·带工具 首字 P50 / 首次可见 P50 | 热·短回复 agent 段 P50 |
+|---|---|---|---|---|
+| /vds（codex + DeepSeek Flash） | 4.7 s（3.7–15.2，15.2 是 Gateway 重启后第一条） | 3.5 s（3.2–5.5） | 5.8 / 4.9 s | 1.4 s |
+| /vcodex（codex + gpt-6.2-sol high） | 4.9 s（3.6–9.6） | 3.2 s（2.9–3.6） | 3.1 / 3.1 s | 1.6 s |
+| /neon 改前 | 11.4 s（9.2–27.9） | 7.0 s（6.4–10.3） | 10.6 / 6.2 s | 5.8 s |
+| /neon 改后（固定工作目录） | 12.0 s（10.0–22.9） | 7.7 s（7.0–11.4） | 11.2 / 6.3 s（4/5，第 5 条撞上额度） | 6.4 s |
+
+入站（飞书 → Gateway）三者都是 0.5 s；首字之后建卡片和推送约 1.2 s，三者相同。差距全在 agent 段。
+
+**/neon 的 agent 段拆开（runtime 每轮一行 `turn timing`）：**
+- 热回合：Gateway 交给插件 → 写入 agy < 5 ms；agy 收下输入 0.10–0.16 s；之后到第一段文字 4.3–7.6 s，全部是模型；文字出来到这一步结束 0.1–2.0 s（卡片要等这一步结束才知道这段是答案还是过程说明，和 /vcc 一样）。
+- 每轮不会重发未缓存的 5 万 token：热回合第一轮调用的输入是 2.7–4.5k 未缓存 + 55–90k 缓存命中。未缓存部分是上一轮的回答、工具输出和这轮的消息。其中约 1–1.5k 是 OpenClaw 给 CLI 的提示上下文里重复的最近几轮（`#session:… User/Assistant…`），agy 自己已经有这些历史。这一项属于 OpenClaw 的 CLI 提示上下文，对首字的影响约 0.1–0.3 s，本 PR 不动。
+- 冷回合 = 热回合 + agy 启动约 2.3 s（spawn → init 1.9–2.5 s，工具清单 tools/list 0.1–0.2 s）。
+- **缓存在新进程上失效（已修）：** agy 把工作目录写进提示前缀，而每个新进程都用一个新的随机目录，续接时 5 万 token 全部未命中（改前 5 次冷回合缓存都是 0）。单独实测：同一会话、5.3 万 token 的提示，同目录续接命中 51k，换目录 0。改成每个 agy 会话固定一个目录（`runRoot/index/<conversation id>` 记录），进程结束时只删我们写的两个文件（提示和带 bearer 的 MCP 配置），目录保留，14 天未用才清掉。改后第 3–5 次冷回合命中 48–53k。但首字基本没变：Neon 在这个量级上，命中缓存主要省额度，不怎么省时间。
+- **思考档位不是原因：** 同样 5.3 万 token 已缓存，high / medium / low 的热回合首字中位 3.8 / 3.5 / 4.2 s，思考都只有 35–100 token。保持 high。
+- **工具调用多一次 Flash-Lite 审核：** agy 自带的安全监控（`agy_tool_safety` → `sir_flash_lite`）遇到不认识的命令（如 `nproc`）和每一次 MCP 工具都会额外调一次 LLM，约 1–1.5 s。这是 Google 管的安全控制，我们不关它，也不绕开它。
+- **剩下的差距是模型：** 单独测 agy + Neon（5.3 万 token、无 MCP 工具）热回合首字 3.3–4.5 s；candidate 里真实会话是 4.3–7.6 s，多了 123 个 OpenClaw 工具和更长的历史。工具清单裁剪的效果还没测：测到一半 Tianyi 的 Google AI Pro 额度用完了（19:11 CST，「Individual quota reached … Resets in 2h36m」）。
+- 对比：/vds、/vcodex 热回合的 agent 段是 1.4–1.6 s。
+
 **首字为什么之前慢、现在为什么是这个数：**
 - 11/19 量到的 12–33 s，大部分来自测试隧道（VLab → 上海 → V）上传 188 KB 请求体的时间，不是 Google 慢。同一条真实请求（5 万 token、129 个工具）在 V 上直接重放，首字 medium 3.8–4.2 s，high 5.8 s。
 - agy 路线下，同一进程上的热回合首字 3.4–4.3 s，基本就是 Neon high 处理 5 万 token 上下文的时间。首轮多出约 2 s 的 agy 启动和冷缓存。

@@ -170,7 +170,24 @@ test('agy exiting mid-turn fails the turn and removes its run directory', async 
   const { ctx, run, dir } = setup(t);
   await assert.rejects(run(ctx({ prompt: 'EXIT now' })), /exited during a turn/);
   await new Promise((r) => setTimeout(r, 50));
-  assert.deepEqual(fs.readdirSync(path.join(dir, 'runs')), [], 'run directory (MCP bearer) removed');
+  const left = fs.readdirSync(path.join(dir, 'runs'), { recursive: true }).map(String);
+  assert(!left.some((f) => f.endsWith('mcp_config.json') || f.endsWith('v.md')), `no MCP bearer or prompt left behind: ${left}`);
+});
+
+test('a new process for a known conversation reuses its directory, so the prompt cache still matches', async (t) => {
+  const { ctx, run, logs, handles, dir } = setup(t);
+  const first = await run(ctx());
+  const conv = view(first).sessions[0];
+  let h = handles.get('k'); h.close('idle'); await h.waitForExit();
+  assert(!fs.existsSync(path.join(logs()[0].cwd, '.agents', 'mcp_config.json')), 'bearer removed when the process ends');
+  await run(ctx({ useResume: true, sessionId: conv, prompt: 'after idle' }));
+  assert.equal(logs()[1].args[logs()[1].args.indexOf('--conversation') + 1], conv);
+  assert.equal(logs()[1].cwd, logs()[0].cwd, 'same working directory as the first process');
+  h = handles.get('k'); h.close('idle'); await h.waitForExit();
+  await run(ctx({ useResume: true, sessionId: 'conv-other-123', prompt: 'another conversation' }));
+  assert.notEqual(logs()[2].cwd, logs()[0].cwd, 'another conversation gets its own directory');
+  assert.equal(fs.realpathSync(fs.readFileSync(path.join(dir, 'runs', 'index', conv), 'utf8').trim()), logs()[0].cwd);
+  h = handles.get('k'); h.close('test'); await h.waitForExit();
 });
 
 test('a changed fingerprint (prompt, model, tools) restarts the process', async (t) => {
