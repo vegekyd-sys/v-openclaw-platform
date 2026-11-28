@@ -7,8 +7,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { applyOverlay, replacePackage, verifyCapture, verifyPackage, linkNpmProjects, overlayStatePlugins, installRelease } from './release.mjs';
-import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, keyAliases, memoryNeedsRebuild, parseCliJson, larkInitNeeded } from './vctl.mjs';
+import { applyOverlay, replacePackage, verifyCapture, verifyPackage, linkNpmProjects, overlayStatePlugins, installRelease, installTools } from './release.mjs';
+import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, keyAliases, memoryNeedsRebuild, parseCliJson, larkInitNeeded, runtimeEnv } from './vctl.mjs';
 import { spawnSync } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
 
@@ -406,4 +406,31 @@ test('lark-cli shim never speaks as the owner: comments, replies, messages and r
   assert.equal(callA('drive', '+add-comment', '-h').status, 0);
   assert.equal(fs.readFileSync(audit, 'utf8').trim().split('\n').length, 4);
   assert.throws(() => toolShim(fake, {}, { guards: ['nope'] }), /unknown shim guard/);
+});
+
+test('makaron-cli gets an activated root (bin/makaron and a release manifest), and runtime.env points scripts at it and the Lark SDK', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v-distro-activate-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const rel = path.join(root, 'release');
+  const toolsRoot = path.join(root, 'tools');
+  fs.mkdirSync(path.join(rel, 'runtime/locks/mk'), { recursive: true });
+  fs.writeFileSync(path.join(rel, 'runtime/locks/mk/package.json'), '{}');
+  fs.writeFileSync(path.join(rel, 'runtime/locks/mk/package-lock.json'), JSON.stringify({ fake: { 'node_modules/makaron-cli': { 'bin/makaron.mjs': '#!/usr/bin/env node\n' }, 'node_modules/.bin': { makaron: '#!/bin/sh\n' } } }));
+  fs.writeFileSync(path.join(rel, 'runtime/tools.json'), JSON.stringify({ npm: { 'makaron-cli': { package: 'makaron-cli', version: '0.17.30', lock: 'mk', bin: 'makaron',
+    activate: { bin: 'makaron', from: 'node_modules/makaron-cli/bin/makaron.mjs', manifest: '.makaron-release.json' } } } }));
+  const npm = path.join(root, 'fake-npm');
+  fs.writeFileSync(npm, `#!/usr/bin/env node
+const fs = require('fs'), path = require('path');
+const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+for (const [k, files] of Object.entries(lock.fake || {})) for (const [f, d] of Object.entries(files)) { const p = path.join(k, f); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, d); }
+`, { mode: 0o755 });
+  const bins = installTools(rel, toolsRoot, { npm });
+  const dir = path.join(toolsRoot, 'makaron-cli-0.17.30');
+  assert.equal(bins['makaron-cli'], path.join(dir, 'node_modules/.bin/makaron'));
+  assert.equal(fs.realpathSync(path.join(dir, 'bin/makaron')), fs.realpathSync(path.join(dir, 'node_modules/makaron-cli/bin/makaron.mjs')));
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, '.makaron-release.json'), 'utf8')), { schemaVersion: 1, cliVersion: '0.17.30' });
+  const tools = JSON.parse(fs.readFileSync(path.join(rel, 'runtime/tools.json'), 'utf8'));
+  assert.deepEqual(runtimeEnv({ toolsRoot, tools, currentDir: '/opt/v/current', exists: (p) => p.startsWith(toolsRoot) && fs.existsSync(p) }), { MAKARON_CLI_ROOT: dir });
+  const withSdk = runtimeEnv({ toolsRoot, tools, currentDir: '/opt/v/current', exists: () => true });
+  assert.equal(withSdk.OPENCLAW_LARK_SDK_PATH, '/opt/v/current/plugins/feishu/node_modules/@openclaw/feishu/node_modules/@larksuiteoapi/node-sdk/lib/index.js');
 });
