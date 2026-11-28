@@ -1,0 +1,20 @@
+{
+  "support": [
+    "lab/candidate/quota-router.mjs",
+    "apps/v-quota-router/quota-router.mjs",
+    "apps/v-quota-router/lib/pacing.mjs",
+    "apps/v-quota-router/lib/quota.mjs",
+    "apps/v-quota-router/lib/importance.mjs",
+    "apps/v-quota-router/lib/decide.mjs",
+    "apps/v-quota-router/lib/gateway.mjs",
+    "apps/v-quota-router/tests/quota-router.test.mjs"
+  ],
+  "command": [
+    "/bin/sh",
+    "-c",
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node --test apps/v-quota-router/tests/quota-router.test.mjs && /opt/vlab/node-v22.23.1-linux-x64/bin/node lab/candidate/quota-router.mjs"
+  ],
+  "timeoutSeconds": 1800,
+  "user": "lab-db91-parity",
+  "env": {"QR_SCOPE": "effective"}
+}
