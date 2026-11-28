@@ -76,6 +76,8 @@ rollback() {
   "$NODE" "$PREFIX/current/install/lib/vctl.mjs" probe --check-history --history-only
   # Releases before the desktop part have no desktop-services; the units they wrote are enough then.
   "$NODE" "$PREFIX/current/install/lib/vctl.mjs" desktop-services 2>/dev/null || true
+  # The snapshot brought the workspace back; record that it is the old release's again.
+  "${NEW_VCTL[@]}" workspace-update --target "$PREFIX/current" >/dev/null 2>&1 || true
   # The failed release must not become the rollback target.
   if [ -n "$OLD_PREV" ]; then ln -sfn "$OLD_PREV" "$PREFIX/previous"; else rm -f "$PREFIX/previous"; fi
   systemctl start v-memory-indexer.service
@@ -100,6 +102,8 @@ systemctl start openclaw-gateway.service || fail "start failed"
 "${VCTL[@]}" desktop-services || fail "desktop services did not come back"
 "${VCTL[@]}" probe --check-history --history-only || fail "earlier sessions are not readable"
 "${VCTL[@]}" fingerprint --compare "$SNAP/fingerprint.json" || fail "workspace or databases changed"
+# Then the workspace's system files follow the release (three-way; the owner's files and edits stay).
+"${VCTL[@]}" workspace-update || echo "warning: workspace not updated; rerun: v-ctl workspace-update" >&2
 if [ "$PROBE" -eq 1 ]; then "${VCTL[@]}" probe --check-history || fail "probe failed"; fi
 systemctl start v-memory-indexer.service || echo "warning: memory indexer did not start" >&2
 # A key added or removed since the last configure changes the embedding provider; rebuild the index now.

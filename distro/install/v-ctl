@@ -4,6 +4,7 @@
 #   v-ctl openclaw <args...>      the installed OpenClaw CLI as the service user, with its environment
 #   v-ctl pair <code>             approve the owner's first Feishu DM (dmPolicy=pairing)
 #   v-ctl reconfigure             apply keys or options added to /etc/v/*.env after the install
+#   v-ctl workspace-update [--dry-run]   bring the workspace's system files to this release
 set -euo pipefail
 PREFIX="${V_PREFIX:-/opt/v}"
 NODE="$PREFIX/node/current/bin/node"
