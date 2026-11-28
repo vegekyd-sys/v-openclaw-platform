@@ -1,0 +1,10 @@
+{
+  "baseRelease": "REPLACE_AT_STAGE",
+  "files": [
+    {
+      "source": "lab/release-files/workspace-html-attach/web-media-BGCgwB8q.js",
+      "target": "openclaw/dist/web-media-BGCgwB8q.js",
+      "before": "432442da9fae4748dd0efa32ef2f8a8cee26fbe7189017a9b3c0c8a50d8febeb"
+    }
+  ]
+}
