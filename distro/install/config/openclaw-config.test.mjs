@@ -148,6 +148,29 @@ test('desktop only with V_DESKTOP=1: host display, headed Chrome, takeover plugi
   assert.equal(h.adminTokenFile, '/etc/v/desktop-handoff/admin-token');
 });
 
+test('Skill Workshop as on V: auto-applied proposals, no autonomous review', () => {
+  assert.deepEqual(make({}).skills.workshop, { approvalPolicy: 'auto', maxSkillBytes: 100000, autonomous: { mode: 'off' } });
+});
+
+test('image understanding is DeepSeek Flash by default; xAI only as a fallback when its key exists', () => {
+  assert.deepEqual(make({ XAI_API_KEY: '' }).agents.defaults.imageModel, { primary: 'deepseek/deepseek-flash' });
+  assert.deepEqual(make({}).agents.defaults.imageModel, { primary: 'deepseek/deepseek-flash', fallbacks: ['xai/grok-4.7'] });
+  const flash = make({}).models.providers.deepseek.models.find((m) => m.id === 'deepseek-flash');
+  assert.deepEqual(flash.input, ['text', 'image']);
+  assert.match(make({ V_MODEL_PRESET: 'vercel', XAI_API_KEY: '' }).agents.defaults.imageModel.primary, /^aigw\//);
+});
+
+test('Night Shift only with V_NIGHTSHIFT_URL: workboard and nightshift-feishu pointed at the service', () => {
+  const off = make({});
+  assert.ok(!off.plugins.allow.includes('nightshift-feishu') && !off.plugins.allow.includes('workboard'));
+  assert.equal(off.plugins.entries['nightshift-feishu'], undefined);
+  const on = make({ V_NIGHTSHIFT_URL: 'http://127.0.0.1:24879' });
+  for (const id of ['workboard', 'nightshift-feishu']) assert.ok(on.plugins.allow.includes(id), id);
+  assert.ok(on.plugins.load.paths.includes('/opt/v/current/plugins/nightshift-feishu'));
+  assert.deepEqual(on.plugins.entries['nightshift-feishu'], { enabled: true, config: { baseUrl: 'http://127.0.0.1:24879' } });
+  assert.throws(() => make({ V_NIGHTSHIFT_URL: 'ftp://x' }), /http or https/);
+});
+
 test('Feishu app scope import file: the console\'s batch-import format, both identities, covers line B\'s user list', async () => {
   const fs = await import('node:fs');
   const file = JSON.parse(fs.readFileSync(new URL('../feishu-app-scopes.json', import.meta.url), 'utf8'));
@@ -170,23 +193,4 @@ test('Feishu app scope import file: the console\'s batch-import format, both ide
     for (const s of oauthDefault) assert.ok(!file.scopes.user.includes(s), `${s} must not be in the import`);
     assert.deepEqual(want.filter((s) => !file.scopes.user.includes(s) && !oauthDefault.includes(s)), [], 'every user scope V was granted is in the import');
   }
-});
-
-test('Night Shift only with V_NIGHTSHIFT_URL: workboard and nightshift-feishu pointed at the service', () => {
-  const off = make({});
-  assert.ok(!off.plugins.allow.includes('nightshift-feishu') && !off.plugins.allow.includes('workboard'));
-  assert.equal(off.plugins.entries['nightshift-feishu'], undefined);
-  const on = make({ V_NIGHTSHIFT_URL: 'http://127.0.0.1:24879' });
-  for (const id of ['workboard', 'nightshift-feishu']) assert.ok(on.plugins.allow.includes(id), id);
-  assert.ok(on.plugins.load.paths.includes('/opt/v/current/plugins/nightshift-feishu'));
-  assert.deepEqual(on.plugins.entries['nightshift-feishu'], { enabled: true, config: { baseUrl: 'http://127.0.0.1:24879' } });
-  assert.throws(() => make({ V_NIGHTSHIFT_URL: 'ftp://x' }), /http or https/);
-});
-
-test('image understanding is DeepSeek Flash by default; xAI only as a fallback when its key exists', () => {
-  assert.deepEqual(make({ XAI_API_KEY: '' }).agents.defaults.imageModel, { primary: 'deepseek/deepseek-flash' });
-  assert.deepEqual(make({}).agents.defaults.imageModel, { primary: 'deepseek/deepseek-flash', fallbacks: ['xai/grok-4.7'] });
-  const flash = make({}).models.providers.deepseek.models.find((m) => m.id === 'deepseek-flash');
-  assert.deepEqual(flash.input, ['text', 'image']);
-  assert.match(make({ V_MODEL_PRESET: 'vercel', XAI_API_KEY: '' }).agents.defaults.imageModel.primary, /^aigw\//);
 });

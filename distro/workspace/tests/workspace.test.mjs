@@ -269,15 +269,6 @@ test("the 2026-11-27 decisions hold: VSync, A2A and computer use ship and follow
   assert.ok(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8").includes("skills/computer-use"));
 });
 
-test("task room: the skill ships, takes the owner and app from this machine, and AGENTS.md points at it", () => {
-  const s = fs.readFileSync(path.join(PAYLOAD, "skills/feishu-task-room-router/SKILL.md"), "utf8");
-  assert.match(s, /agent:@@AGENT_ID@@:feishu:group:<chat_id>/);
-  assert.match(s, /v-schedule\.py owner/);
-  assert.match(s, /feishu-docs\.py status/);
-  assert.doesNotMatch(s, /\b(ou|cli)_[0-9a-f]{6,}/);
-  assert.ok(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8").includes("skills/feishu-task-room-router"));
-});
-
 test("2026-11-28: no Scene; Night Shift ships generic and says it needs the service; public links say they need Vercel or Cloudflare", () => {
   const read = (rel) => fs.readFileSync(path.join(PAYLOAD, rel), "utf8");
   for (const rel of lib.walk(PAYLOAD)) {
@@ -308,6 +299,15 @@ test("temporary previews: one script, closed automatically, said to be temporary
     if (!/\.md$/.test(rel)) continue;
     assert.doesNotMatch(read(rel), /通过 ?Portal|Portal 生成/, rel);
   }
+});
+
+test("task room: the skill ships, takes the owner and app from this machine, and AGENTS.md points at it", () => {
+  const s = fs.readFileSync(path.join(PAYLOAD, "skills/feishu-task-room-router/SKILL.md"), "utf8");
+  assert.match(s, /agent:@@AGENT_ID@@:feishu:group:<chat_id>/);
+  assert.match(s, /v-schedule\.py owner/);
+  assert.match(s, /feishu-docs\.py status/);
+  assert.doesNotMatch(s, /\b(ou|cli)_[0-9a-f]{6,}/);
+  assert.ok(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8").includes("skills/feishu-task-room-router"));
 });
 
 function renderedWorkspace() {

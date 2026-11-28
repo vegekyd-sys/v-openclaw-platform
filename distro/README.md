@@ -60,6 +60,8 @@ sudo v-distro-<ver>/install/install.sh --env-file ./v.env --probe
 | 语音消息转文字 | `VOLCENGINE_API_KEY` | 火山新版控制台的 key，并开通「录音文件识别极速版」；能访问 openspeech.bytedance.com | — |
 | VSync | `install.sh --vsync-env <file>` | Portal 签发的身份文件，由人带外交付；能用 HTTPS 访问 mirror-v-portal.vercel.app | 要等 Portal 那边启用；启用前 `mirror-vsync.py whoami` 返回 `VSYNC_DISABLED` |
 
+VSync 身份文件也可以直接放到 `/etc/v/vsync.env`（root 0600，只含 `NEXUS_VSYNC_URL`、`NEXUS_VSYNC_AGENT`、`NEXUS_VSYNC_TOKEN`），之后 `sudo systemctl restart openclaw-gateway` 才会进 agent 的环境。不要放进 `secrets.env`：那份文件每次 install/update 都会按 env 文件重写。验收：以 openclaw 用户、在网关环境里运行 `python3 <工作区>/scripts/mirror-vsync.py whoami`，应返回自己的 agent id 和 counterparts `["private-v"]`。
+
 - 控制链接是不记名的，谁拿到都能接管桌面。所以客户版用 `controlAnywhere:false`：主人在群里要链接时，链接通过私聊发给他（V 本身是 true）。
 - Chrome 只从 Google 官方 apt 源装：先核对签名钥主指纹 `EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796`，apt 用 `signed-by` 只信这把钥匙。机器上已有的 chromium 和 playwright 浏览器不会被用到。
 
@@ -124,6 +126,39 @@ V 上依赖 Cloudflare 或 Vercel、但不在客户版里的：
 - 群聊（主人的 task room）：填了 `V_OWNER_FEISHU_OPEN_ID` 时，群里只有主人的消息会进来，不用 @（`groupPolicy: open` + `groupSenderAllowFrom: [主人]` + `requireMention: false`）。
   注意：这个插件里 `groupAllowFrom` 按群的 chat_id 放行、`groupSenderAllowFrom` 按发送人放行，把 open_id 写进 `groupAllowFrom` 会挡住所有群。没填主人时群聊关闭。
 - 卡片页脚显示的名字来自 `V_AGENT_NAME`（默认 `V`）。内部 agent id 仍是 makaron（见 CONTRACT 第 4 节）；`V_OWNER_NAME` 等配置不受影响。
+
+## 备份与恢复
+
+`sudo v-ctl backup` 在 V 运行中做一次完整备份，不停服务：
+
+- 内容：`~/.openclaw`（工作区和记忆、agent 与会话数据库、配置）、lark-cli 的配置和令牌（`~/.lark-cli`、`~/.local/share/lark-cli`）、`/etc/v`（包括 `secrets.env`）、`/var/lib/v-distro`。
+  不包括能重新生成的部分：OpenClaw 自己从 npm 装的插件、缓存、日志、临时锁，以及浏览器的缓存目录（浏览器的登录资料在备份里）。
+- 数据库用 SQLite 的在线备份复制，运行中的网关不会读到写了一半的文件；每个库都做 `integrity_check`，并记录各表行数。
+- 结果是一个文件 `/var/backups/v/archives/v-backup-<版本>-<时间>.tar.gz`，权限 0600 root，旁边有 `.sha256`。里面的 `v-backup-manifest.json` 记了每个文件的 sha256。
+  **这个文件包含密钥**，只存本机或客户自己的加密存储，不要发到聊天或公共位置。
+
+**定时备份**（例：每天 03:17，保留最近 7 份）：
+
+```bash
+echo '17 3 * * * root /usr/local/bin/v-ctl backup --keep 7 >> /var/log/v-backup.log 2>&1' | sudo tee /etc/cron.d/v-backup
+```
+
+想放到别的盘：`v-ctl backup --out-dir /mnt/backup/v --keep 14`。
+
+**核对一份备份**（不碰正在运行的 V）：
+
+```bash
+sudo v-ctl restore-backup /var/backups/v/archives/v-backup-….tar.gz --root /tmp/v-restore-check
+```
+
+它会把备份解到那个目录，逐个文件核对 sha256，每个数据库做 integrity_check 并核对行数，通过才算成功。
+
+**在新机器上恢复**：
+
+1. 用同一个版本的发行包装好 V：`install.sh --env-file <备份里的 etc/v/install.env 和 secrets.env 合在一起>`。新机器的 env 也可以重新填写。
+2. 停服务：`sudo systemctl stop openclaw-gateway v-memory-indexer`。
+3. 恢复：`sudo v-ctl restore-backup <备份文件> --live`。它先核对，再把现在的 `~/.openclaw` 移到 `~/.openclaw.replaced-<时间>`（不删除），然后放回备份里的所有内容。
+4. 让配置和服务对齐：`sudo v-ctl reconfigure`（会重新生成配置、启动网关、装回插件和技能、检查记忆索引）。
 
 ## 依赖与 V 一致的证据（2026-11-27）
 

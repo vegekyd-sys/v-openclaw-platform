@@ -208,7 +208,9 @@ export function createConfig(o) {
       // One owner's own machine: no approval prompt the channel could not answer.
       exec: { host: 'gateway', security: 'full', ask: 'off' },
     },
-    skills: { install: { nodeManager: 'npm' } },
+    // As on V: Skill Workshop applies approved proposals itself, but never runs its own review on a
+    // timer (autonomous off); with it on, V Clone's reviews failed on over-long skill descriptions.
+    skills: { install: { nodeManager: 'npm' }, workshop: { approvalPolicy: 'auto', maxSkillBytes: 100000, autonomous: { mode: 'off' } } },
     plugins: {
       enabled: true,
       allow: pluginAllow,
