@@ -201,6 +201,8 @@ skills/lark-user-routing              多人共用一个 V 的身份路由（依
 skills/temeter-video                  V 的一个客户的固定节目形态
 skills/*.skill                        旧的单文件打包副本，正文已在对应 skill 目录里
 
+skills/v-distro-deploy                V 自己去客户那里部署一套 V 时用的流程和现场规则；装好的 V 不部署别的 V
+
 # --- single files inside carried directories ---
 skills/makaron/parts/feishu/VERSION.md V 的 Makaron 飞书部分版本记录（70 KB 历史），客户版不需要
 skills/makaron/parts/feishu/references/original-makaron-skill-* V 早期整份 skill 的存档
