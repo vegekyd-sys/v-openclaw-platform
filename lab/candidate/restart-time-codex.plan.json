@@ -1,0 +1,30 @@
+{
+  "support": [
+    "lab/candidate/restart-time.mjs",
+    "lab/candidate/v-scale-session-fixture.mjs"
+  ],
+  "databases": [
+    "state/openclaw.sqlite"
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/restart-time.mjs"
+  ],
+  "timeoutSeconds": 3600,
+  "user": "lab-db91-parity",
+  "env": {
+    "LABEL": "codex-cron-activate-settled",
+    "WORKERS": "2",
+    "WINDOW_SECONDS": "480",
+    "CODEX": "1",
+    "CRON": "1"
+  },
+  "files": [
+    {
+      "source": "lab/release-files/subagent-activate-settled/subagent-registry-C24yr_PF.js",
+      "target": "openclaw/dist/subagent-registry-C24yr_PF.js",
+      "before": "52b3b5717199f3d60bc600c2d5dbadbcd8af5dcfdb6943ac50f9412a23c86557",
+      "after": "4b2d1abcfa0b980353b428046e308bb56e0fb2d785079a90a3e3cdc59f73f418"
+    }
+  ]
+}
