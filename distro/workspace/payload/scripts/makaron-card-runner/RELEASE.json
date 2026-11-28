@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "component": "v-makaron-card-runner",
+  "version": "1.28.16",
+  "releaseId": "card-runner-v1.28.16-20261023",
+  "releasedAt": "2026-10-23",
+  "previousServiceRelease": "v1.28.15",
+  "compatibleCliVersion": "0.17.5",
+  "change": "Deterministic owner-binding account routing and authorized override resolution",
+  "validationRecord": "work/personal-key-repair-20261023/verification.json",
+  "activation": "New launches/restarts only; in-flight workers unchanged"
+}

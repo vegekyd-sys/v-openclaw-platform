@@ -30,3 +30,6 @@ links.json
 .v/previews.json
 .v/previews/
 .v/*.tmp
+
+# 运行时装的 node 依赖（例如 sharp），不进 git
+node_modules/
