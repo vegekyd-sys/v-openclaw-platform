@@ -27,7 +27,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { verifyPackage, installRelease, installTools, readJson, copyTree, overlayStatePlugins } from './release.mjs';
+import { verifyPackage, installRelease, installTools, installLibs, readJson, copyTree, overlayStatePlugins } from './release.mjs';
 
 export const PATHS = {
   prefix: process.env.V_PREFIX || '/opt/v',
@@ -162,6 +162,7 @@ function cmdInstallRelease(pkgDir, opts) {
     ? (verifyPackage(dest), readJson(path.join(dest, '.installed.json')))
     : installRelease(dest, env);
   const tools = opts.skipTools ? {} : installTools(dest, P.tools, env);
+  if (!opts.skipTools) installLibs(dest, P.tools, env);
   fs.mkdirSync(P.bin, { recursive: true });
   for (const [name, bin] of Object.entries(tools)) {
     const t = readJson(path.join(dest, 'runtime/tools.json')).npm[name];
@@ -222,6 +223,9 @@ export function runtimeEnv({ toolsRoot, tools, currentDir, exists = fs.existsSyn
   }
   const sdk = path.join(currentDir, 'plugins', 'feishu', 'node_modules', '@openclaw', 'feishu', 'node_modules', '@larksuiteoapi', 'node-sdk', 'lib', 'index.js');
   if (exists(sdk)) out.OPENCLAW_LARK_SDK_PATH = sdk;
+  // Libraries scripts require (sharp): Node consults NODE_PATH only after the usual node_modules lookup.
+  const libs = Object.entries(tools.libs ?? {}).map(([name, l]) => path.join(toolsRoot, 'node-libs', `${name}-${l.version}`, 'node_modules')).filter((d) => exists(d));
+  if (libs.length) out.NODE_PATH = libs.join(':');
   return out;
 }
 

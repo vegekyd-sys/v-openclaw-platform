@@ -103,5 +103,13 @@
         "scene-cli"
       ]
     }
+  },
+  "libs": {
+    "sharp": {
+      "package": "sharp",
+      "version": "0.34.5",
+      "lock": "sharp",
+      "note": "The version V's workspace uses (node_modules/sharp 0.34.5, @img/sharp-linux-x64 0.34.5, libvips 1.2.4). Prebuilt platform packages from npm, each pinned by its sha512 integrity in the lock; npm ci takes only the one for this machine. Line B's makaron-card-runner requires it to shrink images over Feishu's limit; found through NODE_PATH (runtime.env)."
+    }
   }
 }
