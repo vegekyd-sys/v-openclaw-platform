@@ -62,8 +62,9 @@
  {
   "key": "memory-import-catchup",
   "name": "Memory 导入补编",
-  "cron": "0 3,5,7 * * *",
+  "cron": "15 0-7 * * *",
   "timeoutSeconds": 900,
-  "prompt": "【Memory 导入补编】按 skills/memory-cold-start/references/import-catchup.md 做一轮：先看队列，空的就只回复 NO_REPLY；不空就编译最多 30 片并提交。还有剩的话 05:00、07:00 还会各跑一轮，今晚 21:00 也会接着编；这一轮做完只回复 NO_REPLY。"
+  "prompt": "【Memory 导入补编】按 skills/memory-cold-start/references/import-catchup.md 做一轮：先看队列，空的就只回复 NO_REPLY；不空就编译最多 60 片、写运行记录并提交。还有剩的话下一个整点（到 07:00 为止）和今晚 21:00 会接着编；这一轮做完只回复 NO_REPLY。",
+  "description": "新装的头几个晚上，把上手时读进来的资料尽快整理成记忆：凌晨 0:15–7:15 每小时一轮，每轮最多 60 片；队列空了就只看一眼。"
  }
 ]

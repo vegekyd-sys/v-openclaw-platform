@@ -466,3 +466,31 @@ test("every script in the payload still parses after sanitising (node --check, p
   }
   assert.deepEqual(bad, []);
 });
+
+test("size gate: attachments already in the workspace do not block a text batch; a batch carrying binaries does", () => {
+  const ws = tmp("budget");
+  fs.writeFileSync(path.join(ws, "AGENTS.md"), "x");
+  fs.mkdirSync(path.join(ws, "media/inbound"), { recursive: true });
+  fs.writeFileSync(path.join(ws, "media/inbound/photo.png"), Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0]), Buffer.alloc(2048)]));
+  const text = tmp("batch-text"); fs.writeFileSync(path.join(text, "doc.md"), "正文".repeat(200));
+  const bin = tmp("batch-bin"); fs.writeFileSync(path.join(bin, "scan.pdf"), Buffer.concat([Buffer.from("%PDF-1.4\0"), Buffer.alloc(1024)]));
+  const gate = (pending) => JSON.parse(spawnSync("python3", [path.join(PAYLOAD, "scripts/onboard-budget.py"), "--workspace", ws, "--pending", pending], { encoding: "utf8" }).stdout);
+  const t1 = gate(text);
+  assert.equal(t1.batch_verdict, "ok");
+  assert.ok(t1.advisories.length > 0, "the existing attachment is still reported");
+  assert.equal(gate(bin).batch_verdict, "stop");
+});
+
+test("cold start pace: catch-up runs every hour 0:15–7:15 with 60 slices, records each run, and keeps tables whole", () => {
+  const items = JSON.parse(fs.readFileSync(path.join(PAYLOAD, "schedules.json"), "utf8"));
+  const c = items.find((s) => s.key === "memory-import-catchup");
+  assert.equal(c.cron, "15 0-7 * * *");
+  assert.match(c.prompt, /最多 60 片、写运行记录/);
+  const ref = fs.readFileSync(path.join(PAYLOAD, "skills/memory-cold-start/references/import-catchup.md"), "utf8");
+  assert.match(ref, /--limit 60/);
+  assert.match(ref, /librarian\/runs\/<今天>\.json/);
+  assert.match(ref, /表格和清单不许截断/);
+  assert.match(fs.readFileSync(path.join(PAYLOAD, "skills/memory-cold-start/SKILL.md"), "utf8"), /import_pending ÷ 450/);
+  assert.ok(fs.existsSync(path.join(PAYLOAD, "memory/projects/_TEMPLATE/history.md")), "the template's history link resolves");
+  assert.match(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8"), /不为了通过体积检查或腾空间去挪、删主人的文件/);
+});
