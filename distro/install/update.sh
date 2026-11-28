@@ -45,6 +45,10 @@ args=(install-release "$PKG_DIR")
 [ "$SKIP_TOOLS" -eq 0 ] || args+=(--skip-tools)
 "${NEW_VCTL[@]}" "${args[@]}"
 [ -z "$ENV_FILE" ] || "${NEW_VCTL[@]}" split-env "$ENV_FILE"
+if grep -q '^CLOUDFLARE_TUNNEL_TOKEN=.' /etc/v/secrets.env; then
+  . "$PKG_DIR/install/lib/cloudflared-package.sh"
+  v_cloudflared_package "$PKG_DIR"
+fi
 if grep -qx 'V_DESKTOP=1' /etc/v/install.env && ! command -v Xtigervnc >/dev/null; then
   say "Desktop packages (V_DESKTOP=1 is new on this machine)"
   . "$PKG_DIR/install/lib/desktop-packages.sh"
@@ -99,5 +103,6 @@ systemctl start openclaw-gateway.service || fail "start failed"
 if [ "$PROBE" -eq 1 ]; then "${VCTL[@]}" probe --check-history || fail "probe failed"; fi
 systemctl start v-memory-indexer.service || echo "warning: memory indexer did not start" >&2
 "${VCTL[@]}" install-skills || echo "warning: global skills were not all installed; rerun: v-ctl install-skills" >&2
+if [ -f /etc/systemd/system/v-cloudflared.service ]; then systemctl enable -q v-cloudflared.service; systemctl restart v-cloudflared.service || echo "warning: Cloudflare tunnel did not start" >&2; fi
 "${VCTL[@]}" status
 say "Updated $OLD -> $NEW. Snapshot kept at $SNAP; rollback.sh goes back."

@@ -73,3 +73,8 @@ If the user says the result feels cheap, imprecise, or poorly designed:
 
 - Editorial/family archive diptych: Cormorant Garamond for title + Inter or another restrained sans for metadata; minimal decoration; precise spacing.
 - Cute/playful Chinese newborn card: a characterful Chinese display font such as ZCOOL KuaiLe or Ma Shan Zheng, plus Noto Sans SC for labels; tag/badge elements under the title; playful but controlled cards, speech bubbles, and stickers.
+
+## 公网链接（需要主人的 Vercel 或 Cloudflare 账号）
+
+主人要一个能直接打开的网页链接时，这台机器默认没有公网托管：部署成网址要主人自己的 Vercel（`VERCEL_TOKEN`）或 Cloudflare（`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`）账号，见 TOOLS.md「公网链接」。
+没有凭据时直接告诉主人「这项需要你补 Vercel 或 Cloudflare 账号」，先把海报的 PNG / PDF 和 HTML 文件发到飞书；不要静默跳过，也不要编一个链接说已经部署好了。部署了就先用 `curl -sI` 核对返回 200 再发。

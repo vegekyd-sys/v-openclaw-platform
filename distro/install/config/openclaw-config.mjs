@@ -268,6 +268,18 @@ export function createConfig(o) {
     };
   }
 
+  // Night Shift, only when its service is known: the Gateway's workboard (bundled with core) and
+  // V's nightshift-feishu plugin, which turns Feishu review-card clicks into calls to the service.
+  if (has('V_NIGHTSHIFT_URL')) {
+    let url;
+    try { url = new URL(env.V_NIGHTSHIFT_URL); } catch { throw new Error('V_NIGHTSHIFT_URL must be a URL such as http://127.0.0.1:24879'); }
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('V_NIGHTSHIFT_URL must use http or https');
+    pluginAllow.push('workboard', 'nightshift-feishu');
+    loadPaths.push(plugin('plugins/nightshift-feishu'));
+    cfg.plugins.entries.workboard = { enabled: true };
+    cfg.plugins.entries['nightshift-feishu'] = { enabled: true, config: { baseUrl: env.V_NIGHTSHIFT_URL } };
+  }
+
   // Desktop takeover and computer use (V's v-desktop-handoff + cua node), only when asked for:
   // headed Chrome on the host display :99, the share-link plugin, and the computer tool.
   if (env.V_DESKTOP === '1') {

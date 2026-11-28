@@ -53,6 +53,23 @@
 - 桌面与浏览器（`browser`、`computer`、`desktop_handoff_*`）：碰到登录、验证码、扫码、付款这类要主人亲手操作的页面，用接管链接请主人接手，详见 `skills/computer-use/SKILL.md`（如果有）。
 - 主人自己的 Chrome（`v_browser_*`）：见 `skills/v-browser-device/SKILL.md`（如果有）。
 - 语音通话、电话入口：工作区根目录 `links.json` 里有 `voice` 链接才有；链接等同于钥匙，只发给主人本人。
+- 夜班（`nightshiftctl`）：要部署方装好夜班服务、配置好服务地址才有，先跑 `nightshiftctl health`。没通就告诉主人「夜班服务还没开通，要请部署方配置」，不要用聊天或定时任务假装在跑夜班。用法见 `skills/night-shift-operator/SKILL.md`。
+
+## 公网链接：需要主人自己的 Vercel 或 Cloudflare 账号
+
+装机时没有公网托管。下面这几类事要主人补账号（凭据放进凭据库或安装时的环境变量：Vercel 用 `VERCEL_TOKEN`；Cloudflare 用 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`）：
+
+| 要做的事 | 用什么 | 哪些技能会用到 |
+|---|---|---|
+| 把网页、演示稿、小应用部署成一个能打开的网址 | Vercel（`vercel deploy`）或 Cloudflare Pages（`wrangler pages deploy`） | `frontend-slides` 的「部署成链接」、`html-poster-design`、`html-executive-pitch-deck-iteration`、`meshy-3d-agent` 的网页 / AR 预览 |
+| 给视频、文件一个公开下载链接 | Cloudflare R2 或 Vercel Blob | `night-shift-operator` 的交付网页 |
+
+规则：
+
+- 先查凭据在不在（`echo ${VERCEL_TOKEN:+set}`、`echo ${CLOUDFLARE_API_TOKEN:+set}`，只看有没有，不打印值）。没有就**直接告诉主人**：「这项需要你补 Vercel 或 Cloudflare 账号，补好之前我先把文件发到飞书。」然后用飞书附件或云空间交付。
+- 不要静默跳过，也不要编一个链接、说已经部署好了。部署了就用 `curl -sI` 核对返回 200 再发链接。
+- 不要用别人的账号、公共的免登录托管或临时隧道代替。
+
 
 ## 采集通道与上限
 

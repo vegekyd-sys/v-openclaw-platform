@@ -228,6 +228,18 @@ function configureAliases(env) {
   return Object.keys(a);
 }
 
+export const cloudflareEnabled = (env) => typeof env.CLOUDFLARE_TUNNEL_TOKEN === 'string' && env.CLOUDFLARE_TUNNEL_TOKEN.length > 0;
+
+/** cloudflared reads its token from TUNNEL_TOKEN; it never goes on a command line. */
+function configureCloudflare(env) {
+  const file = path.join(P.etc, 'cloudflared.env');
+  if (!cloudflareEnabled(env)) { fs.rmSync(file, { force: true }); return false; }
+  if (/\s/.test(env.CLOUDFLARE_TUNNEL_TOKEN)) throw new Error('CLOUDFLARE_TUNNEL_TOKEN must be the token alone (the long string after --token)');
+  fs.writeFileSync(file, `# v-distro configure: the Cloudflare tunnel token for v-cloudflared.service\nTUNNEL_TOKEN=${env.CLOUDFLARE_TUNNEL_TOKEN}\n`, { mode: 0o600 });
+  fs.chmodSync(file, 0o600);
+  return true;
+}
+
 export const DESKTOP_UNITS = ['openclaw-desktop.service', 'v-desktop-handoff.service', 'openclaw-cua-node.service'];
 export const desktopEnabled = (env) => env.V_DESKTOP === '1';
 
@@ -420,8 +432,9 @@ async function cmdConfigure(opts) {
   run('chown', ['-R', `${P.user}:${P.user}`, path.join(P.home, '.npm-global')]);
   const lark = configureLarkCli(env, tools['lark-cli']);
   const desktop = configureDesktop(env);
+  const tunnel = configureCloudflare(env);
   const aliases = configureAliases(env);
-  out({ step: 'configure', profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, larkCli: lark, desktop, aliases, audio: !!cfg.tools.media, primary: cfg.agents.defaults.model.primary });
+  out({ step: 'configure', profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, larkCli: lark, desktop, tunnel, aliases, audio: !!cfg.tools.media, nightshift: !!cfg.plugins.entries['nightshift-feishu'], primary: cfg.agents.defaults.model.primary });
 }
 
 // lark-cli talks to Feishu as the same app as the channel (line B's skills and scripts use it).
@@ -535,8 +548,20 @@ function cmdUnits() {
     fs.rmSync(dropIn, { force: true });
     if (!process.env.V_NO_SYSTEMCTL) for (const name of DESKTOP_UNITS) spawnSync('systemctl', ['disable', '--now', name], { stdio: 'ignore' });
   }
+  // The Cloudflare tunnel exists only while CLOUDFLARE_TUNNEL_TOKEN is set.
+  const tunnel = cloudflareEnabled(allEnv());
+  const tunnelTpl = path.join(tpl, 'cloudflare', 'v-cloudflared.service');
+  if (tunnel && fs.existsSync(tunnelTpl)) {
+    let text = fs.readFileSync(tunnelTpl, 'utf8');
+    for (const [k, v] of Object.entries(vars)) text = text.split(k).join(v);
+    fs.writeFileSync(path.join(P.units, 'v-cloudflared.service'), text, { mode: 0o644 });
+    written.push('v-cloudflared.service');
+  } else if (fs.existsSync(path.join(P.units, 'v-cloudflared.service'))) {
+    if (!process.env.V_NO_SYSTEMCTL) spawnSync('systemctl', ['disable', '--now', 'v-cloudflared.service'], { stdio: 'ignore' });
+    fs.rmSync(path.join(P.units, 'v-cloudflared.service'), { force: true });
+  }
   if (!process.env.V_NO_SYSTEMCTL) run('systemctl', ['daemon-reload']);
-  out({ step: 'units', written, desktop, heapMb: vars['@HEAP_MB@'] });
+  out({ step: 'units', written, desktop, tunnel, heapMb: vars['@HEAP_MB@'] });
 }
 
 function gatewayOpts() {
