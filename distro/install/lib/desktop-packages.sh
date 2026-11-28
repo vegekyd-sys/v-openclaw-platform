@@ -18,6 +18,24 @@ GOOGLE_LIST="/etc/apt/sources.list.d/v-distro-google-chrome.list"
 v_desktop_packages() {
   export DEBIAN_FRONTEND=noninteractive
   [ "$(dpkg --print-architecture)" = amd64 ] || { echo "desktop: Google Chrome for Linux is amd64 only; this host is $(dpkg --print-architecture)" >&2; return 1; }
+  # Offline bundle (no dl.google.com here): a .deb that install/lib/fetch-chrome-deb.sh verified against
+  # Google's signed repository, with its .sha256 beside it.
+  if [ -n "${V_CHROME_DEB:-}" ]; then
+    [ -f "$V_CHROME_DEB" ] && [ -f "$V_CHROME_DEB.sha256" ] || { echo "desktop: V_CHROME_DEB needs the .deb and its .sha256 (from fetch-chrome-deb.sh)" >&2; return 1; }
+    (cd "$(dirname "$V_CHROME_DEB")" && sha256sum -c --quiet "$(basename "$V_CHROME_DEB").sha256") || { echo "desktop: $V_CHROME_DEB does not match its sha256" >&2; return 1; }
+    # Before the package: its install script reads this and then adds no repository entry of its own.
+    printf 'repo_add_once="false"\nrepo_reenable_on_distupgrade="false"\n' > /etc/default/google-chrome
+    apt-get update -qq
+    apt-get install -y -qq --no-install-recommends \
+      tigervnc-standalone-server tigervnc-tools xfce4-session xfwm4 xfce4-panel xfdesktop4 dbus dbus-x11 \
+      x11-utils x11-xserver-utils wmctrl xdotool xinput novnc ffmpeg fonts-noto-cjk "$V_CHROME_DEB" >/dev/null
+    rm -f /etc/apt/sources.list.d/google-chrome.list
+    for bin in Xtigervnc tigervncpasswd xfce4-session dbus-daemon xdpyinfo google-chrome xdotool; do
+      command -v "$bin" >/dev/null || { echo "desktop: $bin missing after install" >&2; return 1; }
+    done
+    echo "desktop packages ready (offline Chrome): $(google-chrome --version)"
+    return 0
+  fi
   apt-get install -y -qq --no-install-recommends gnupg ca-certificates curl >/dev/null
   if [ ! -s "$GOOGLE_KEYRING" ]; then
     local tmp; tmp="$(mktemp -d)"

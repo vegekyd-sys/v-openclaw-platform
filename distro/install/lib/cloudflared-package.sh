@@ -16,7 +16,9 @@ PY
 )
   if command -v cloudflared >/dev/null && cloudflared --version 2>/dev/null | grep -q "version $want "; then return 0; fi
   local tmp; tmp="$(mktemp -d)"
-  curl -fsSL --retry 3 -o "$tmp/cloudflared.deb" "$url"
+  # Offline bundle (no GitHub here): the same pinned .deb, still checked against the sha256 below.
+  if [ -n "${V_CLOUDFLARED_DEB:-}" ]; then cp "$V_CLOUDFLARED_DEB" "$tmp/cloudflared.deb"; else
+  curl -fsSL --retry 3 -o "$tmp/cloudflared.deb" "$url"; fi
   echo "$sha  $tmp/cloudflared.deb" | sha256sum -c --quiet - || { rm -rf "$tmp"; echo "cloudflared: sha256 mismatch for $url" >&2; return 1; }
   dpkg -i "$tmp/cloudflared.deb" >/dev/null
   rm -rf "$tmp"
