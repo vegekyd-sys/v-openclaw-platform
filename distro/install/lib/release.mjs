@@ -299,6 +299,26 @@ export function overlayStatePlugins(releaseDir, stateDir) {
 }
 
 /** npm CLIs from tools.json, each into its own prefix; returns { name: binPath }. */
+/** Node libraries scripts require at run time (tools.json "libs"), each in its own pinned tree. */
+export function installLibs(releaseDir, toolsRoot, { npm, registry, log = () => {} } = {}) {
+  const tools = readJson(path.join(releaseDir, 'runtime/tools.json'));
+  const out = {};
+  for (const [name, l] of Object.entries(tools.libs ?? {})) {
+    const dir = path.join(toolsRoot, 'node-libs', `${name}-${l.version}`);
+    const lockDir = path.join(releaseDir, 'runtime/locks', l.lock);
+    const marker = path.join(dir, '.v-distro-lock.sha256');
+    const lockSha = sha256File(path.join(lockDir, 'package-lock.json'));
+    if (!(fs.existsSync(marker) && fs.readFileSync(marker, 'utf8').trim() === lockSha)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+      npmCi(dir, lockDir, { npm, registry, log });
+      fs.writeFileSync(marker, `${lockSha}\n`);
+    }
+    if (!fs.existsSync(path.join(dir, 'node_modules', l.package, 'package.json'))) throw new Error(`lib ${name}: ${l.package} missing after install`);
+    out[name] = path.join(dir, 'node_modules');
+  }
+  return out;
+}
+
 export function installTools(releaseDir, toolsRoot, { npm, registry, log = () => {}, arch = process.arch } = {}) {
   const tools = readJson(path.join(releaseDir, 'runtime/tools.json'));
   const out = {};
@@ -311,6 +331,15 @@ export function installTools(releaseDir, toolsRoot, { npm, registry, log = () =>
       fs.rmSync(dir, { recursive: true, force: true });
       npmCi(dir, lockDir, { npm, registry, log });
       fs.writeFileSync(marker, `${lockSha}\n`);
+    }
+    // An "activated" CLI root, as V lays them out (bin/<name> plus a release manifest), for tools
+    // whose callers look for one (line B's makaron-card-runner).
+    if (t.activate) {
+      fs.mkdirSync(path.join(dir, 'bin'), { recursive: true });
+      const link = path.join(dir, 'bin', t.activate.bin);
+      fs.rmSync(link, { force: true });
+      fs.symlinkSync(path.relative(path.join(dir, 'bin'), path.join(dir, t.activate.from)), link);
+      fs.writeFileSync(path.join(dir, t.activate.manifest), `${JSON.stringify({ schemaVersion: 1, cliVersion: t.version })}\n`);
     }
     const platform = `linux-${arch === 'arm64' ? 'arm64' : 'x64'}`;
     const bin = t.native?.[platform] ? path.join(dir, t.native[platform]) : path.join(dir, 'node_modules/.bin', t.bin);

@@ -31,7 +31,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { verifyPackage, installRelease, installTools, readJson, copyTree, overlayStatePlugins } from './release.mjs';
+import { verifyPackage, installRelease, installTools, installLibs, readJson, copyTree, overlayStatePlugins } from './release.mjs';
 
 export const PATHS = {
   prefix: process.env.V_PREFIX || '/opt/v',
@@ -243,6 +243,7 @@ function cmdInstallRelease(pkgDir, opts) {
     ? (verifyPackage(dest), readJson(path.join(dest, '.installed.json')))
     : installRelease(dest, env);
   const tools = opts.skipTools ? {} : installTools(dest, P.tools, env);
+  if (!opts.skipTools) installLibs(dest, P.tools, env);
   fs.mkdirSync(P.bin, { recursive: true });
   for (const [name, bin] of Object.entries(tools)) {
     const t = readJson(path.join(dest, 'runtime/tools.json')).npm[name];
@@ -319,6 +320,37 @@ function configureCloudflare(env) {
   fs.writeFileSync(file, `# v-distro configure: the Cloudflare tunnel token for v-cloudflared.service\nTUNNEL_TOKEN=${env.CLOUDFLARE_TUNNEL_TOKEN}\n`, { mode: 0o600 });
   fs.chmodSync(file, 0o600);
   return true;
+}
+
+/**
+ * Paths that scripts in the workspace look up at run time, as the Gateway's environment
+ * (/etc/v/runtime.env, an optional EnvironmentFile; the agent's exec inherits it).
+ * MAKARON_CLI_ROOT: the activated makaron-cli (line B's makaron-card-runner).
+ * OPENCLAW_LARK_SDK_PATH: the Lark SDK shipped with this release's Feishu plugin; the runner
+ * otherwise only looks under ~/.openclaw/npm.
+ */
+export function runtimeEnv({ toolsRoot, tools, currentDir, exists = fs.existsSync }) {
+  const out = {};
+  for (const [name, t] of Object.entries(tools.npm ?? {})) {
+    if (name === 'makaron-cli' && t.activate) {
+      const root = path.join(toolsRoot, `${name}-${t.version}`);
+      if (exists(path.join(root, t.activate.manifest))) out.MAKARON_CLI_ROOT = root;
+    }
+  }
+  const sdk = path.join(currentDir, 'plugins', 'feishu', 'node_modules', '@openclaw', 'feishu', 'node_modules', '@larksuiteoapi', 'node-sdk', 'lib', 'index.js');
+  if (exists(sdk)) out.OPENCLAW_LARK_SDK_PATH = sdk;
+  // Libraries scripts require (sharp): Node consults NODE_PATH only after the usual node_modules lookup.
+  const libs = Object.entries(tools.libs ?? {}).map(([name, l]) => path.join(toolsRoot, 'node-libs', `${name}-${l.version}`, 'node_modules')).filter((d) => exists(d));
+  if (libs.length) out.NODE_PATH = libs.join(':');
+  return out;
+}
+
+function configureRuntimeEnv() {
+  const file = path.join(P.etc, 'runtime.env');
+  const tools = readJson(path.join(P.current, 'runtime', 'tools.json'));
+  const env = runtimeEnv({ toolsRoot: P.tools, tools, currentDir: P.current });
+  fs.writeFileSync(file, `# v-distro configure: paths scripts look up at run time\n${Object.entries(env).map(([k, v]) => `${k}=${v}`).join('\n')}\n`, { mode: 0o644 });
+  return Object.keys(env);
 }
 
 export const DESKTOP_UNITS = ['openclaw-desktop.service', 'v-desktop-handoff.service', 'openclaw-cua-node.service'];
@@ -740,7 +772,8 @@ async function cmdConfigure(opts) {
   const desktop = configureDesktop(env);
   const tunnel = configureCloudflare(env);
   const aliases = configureAliases(env);
-  out({ step: 'configure', profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, larkCli: lark, desktop, tunnel, aliases, audio: !!cfg.tools.media, nightshift: !!cfg.plugins.entries['nightshift-feishu'], primary: cfg.agents.defaults.model.primary });
+  const runtime = configureRuntimeEnv();
+  out({ step: 'configure', profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, larkCli: lark, desktop, tunnel, aliases, runtimeEnv: runtime, audio: !!cfg.tools.media, nightshift: !!cfg.plugins.entries['nightshift-feishu'], primary: cfg.agents.defaults.model.primary });
 }
 
 // lark-cli talks to Feishu as the same app as the channel (line B's skills and scripts use it).

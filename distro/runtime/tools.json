@@ -34,6 +34,12 @@
       "bin": "makaron",
       "skills": {
         "makaron": "skills/makaron"
+      },
+      "activate": {
+        "bin": "makaron",
+        "from": "node_modules/makaron-cli/bin/makaron.mjs",
+        "manifest": ".makaron-release.json",
+        "note": "Line B's makaron-card-runner only uses an activated CLI: $MAKARON_CLI_ROOT/bin/makaron and $MAKARON_CLI_ROOT/.makaron-release.json, the layout of V's /opt/makaron-cli-<version>."
       }
     },
     "lark-cli": {
@@ -96,6 +102,14 @@
     "linux-arm64": {
       "url": "https://github.com/cloudflare/cloudflared/releases/download/2026.7.2/cloudflared-linux-arm64.deb",
       "sha256": "ddd7d2a0d55a1879485ac34354e936424f1df92e306bfa6428a81908aaddbe87"
+    }
+  },
+  "libs": {
+    "sharp": {
+      "package": "sharp",
+      "version": "0.34.5",
+      "lock": "sharp",
+      "note": "The version V's workspace uses (node_modules/sharp 0.34.5, @img/sharp-linux-x64 0.34.5, libvips 1.2.4). Prebuilt platform packages from npm, each pinned by its sha512 integrity in the lock; npm ci takes only the one for this machine. Line B's makaron-card-runner requires it to shrink images over Feishu's limit; found through NODE_PATH (runtime.env)."
     }
   }
 }

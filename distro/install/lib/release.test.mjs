@@ -7,10 +7,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { applyOverlay, replacePackage, verifyCapture, verifyPackage, linkNpmProjects, overlayStatePlugins, installRelease } from './release.mjs';
-import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, larkInitNeeded, memoryNeedsRebuild, parseCliJson, keyAliases } from './vctl.mjs';
-import { spawnSync } from 'node:child_process';
-import { execFileSync } from 'node:child_process';
+import { applyOverlay, replacePackage, verifyCapture, verifyPackage, linkNpmProjects, overlayStatePlugins, installRelease, installTools, installLibs } from './release.mjs';
+import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, runtimeEnv, larkInitNeeded, memoryNeedsRebuild, parseCliJson, keyAliases } from './vctl.mjs';
+import { execFileSync, spawnSync } from 'node:child_process';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
 
@@ -298,6 +297,64 @@ test('probe reads tool output from both Worker text items and Codex toolResult i
   assert.ok(messageText(worker).includes('MARK_TOOL'));
   assert.ok(messageText(codex).includes('MARK_TOOL'));
   assert.ok(!messageText(thinking).includes('MARK_TOOL'), 'reasoning that merely mentions the marker does not count');
+});
+
+test('makaron-cli gets an activated root (bin/makaron and a release manifest), and runtime.env points scripts at it and the Lark SDK', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v-distro-activate-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const rel = path.join(root, 'release');
+  const toolsRoot = path.join(root, 'tools');
+  fs.mkdirSync(path.join(rel, 'runtime/locks/mk'), { recursive: true });
+  fs.writeFileSync(path.join(rel, 'runtime/locks/mk/package.json'), '{}');
+  fs.writeFileSync(path.join(rel, 'runtime/locks/mk/package-lock.json'), JSON.stringify({ fake: { 'node_modules/makaron-cli': { 'bin/makaron.mjs': '#!/usr/bin/env node\n' }, 'node_modules/.bin': { makaron: '#!/bin/sh\n' } } }));
+  fs.writeFileSync(path.join(rel, 'runtime/tools.json'), JSON.stringify({ npm: { 'makaron-cli': { package: 'makaron-cli', version: '0.17.30', lock: 'mk', bin: 'makaron',
+    activate: { bin: 'makaron', from: 'node_modules/makaron-cli/bin/makaron.mjs', manifest: '.makaron-release.json' } } } }));
+  const npm = path.join(root, 'fake-npm');
+  fs.writeFileSync(npm, `#!/usr/bin/env node
+const fs = require('fs'), path = require('path');
+const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+for (const [k, files] of Object.entries(lock.fake || {})) for (const [f, d] of Object.entries(files)) { const p = path.join(k, f); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, d); }
+`, { mode: 0o755 });
+  const bins = installTools(rel, toolsRoot, { npm });
+  const dir = path.join(toolsRoot, 'makaron-cli-0.17.30');
+  assert.equal(bins['makaron-cli'], path.join(dir, 'node_modules/.bin/makaron'));
+  assert.equal(fs.realpathSync(path.join(dir, 'bin/makaron')), fs.realpathSync(path.join(dir, 'node_modules/makaron-cli/bin/makaron.mjs')));
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, '.makaron-release.json'), 'utf8')), { schemaVersion: 1, cliVersion: '0.17.30' });
+  const tools = JSON.parse(fs.readFileSync(path.join(rel, 'runtime/tools.json'), 'utf8'));
+  assert.deepEqual(runtimeEnv({ toolsRoot, tools, currentDir: '/opt/v/current', exists: (p) => p.startsWith(toolsRoot) && fs.existsSync(p) }), { MAKARON_CLI_ROOT: dir });
+  const withSdk = runtimeEnv({ toolsRoot, tools, currentDir: '/opt/v/current', exists: () => true });
+  assert.equal(withSdk.OPENCLAW_LARK_SDK_PATH, '/opt/v/current/plugins/feishu/node_modules/@openclaw/feishu/node_modules/@larksuiteoapi/node-sdk/lib/index.js');
+});
+
+test('sharp is a pinned lib on NODE_PATH: a script outside any node_modules can require it', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v-distro-libs-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const rel = path.join(root, 'release');
+  const toolsRoot = path.join(root, 'tools');
+  fs.mkdirSync(path.join(rel, 'runtime/locks/sharp'), { recursive: true });
+  fs.writeFileSync(path.join(rel, 'runtime/locks/sharp/package.json'), '{}');
+  fs.writeFileSync(path.join(rel, 'runtime/locks/sharp/package-lock.json'), JSON.stringify({ fake: { 'node_modules/sharp': { 'package.json': '{"name":"sharp","version":"0.34.5","main":"index.js"}', 'index.js': 'module.exports = { versions: { sharp: "0.34.5" } };' } } }));
+  fs.writeFileSync(path.join(rel, 'runtime/tools.json'), JSON.stringify({ npm: {}, libs: { sharp: { package: 'sharp', version: '0.34.5', lock: 'sharp' } } }));
+  const npm = path.join(root, 'fake-npm');
+  fs.writeFileSync(npm, `#!/usr/bin/env node
+const fs = require('fs'), path = require('path');
+const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+for (const [k, files] of Object.entries(lock.fake || {})) for (const [f, d] of Object.entries(files)) { const p = path.join(k, f); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, d); }
+`, { mode: 0o755 });
+  const libs = installLibs(rel, toolsRoot, { npm });
+  assert.equal(libs.sharp, path.join(toolsRoot, 'node-libs/sharp-0.34.5/node_modules'));
+  const env = runtimeEnv({ toolsRoot, tools: JSON.parse(fs.readFileSync(path.join(rel, 'runtime/tools.json'), 'utf8')), currentDir: path.join(root, 'none') });
+  assert.equal(env.NODE_PATH, libs.sharp);
+  // The runner sits in the workspace, which has no node_modules of its own.
+  const runner = path.join(root, 'workspace/scripts/makaron-card-runner');
+  fs.mkdirSync(runner, { recursive: true });
+  const r = spawnSync(process.execPath, ['-e', "process.stdout.write(require('sharp').versions.sharp)"], { cwd: runner, encoding: 'utf8', env: { PATH: process.env.PATH, NODE_PATH: env.NODE_PATH } });
+  assert.equal(r.stdout, '0.34.5', r.stderr);
+  const without = spawnSync(process.execPath, ['-e', "require('sharp')"], { cwd: runner, encoding: 'utf8', env: { PATH: process.env.PATH } });
+  assert.notEqual(without.status, 0, 'without NODE_PATH it is not found: the env is what makes it work');
+  const real = JSON.parse(fs.readFileSync(new URL('../../runtime/locks/sharp/package-lock.json', import.meta.url), 'utf8')).packages;
+  assert.equal(real['node_modules/sharp'].version, '0.34.5', 'same version as V');
+  assert.match(real['node_modules/@img/sharp-linux-x64'].integrity, /^sha512-/);
 });
 
 test('lark-cli shim never speaks as the owner: comments, replies, messages and reactions need --as bot; reads and doc edits pass', (t) => {
