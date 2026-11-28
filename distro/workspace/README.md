@@ -15,6 +15,7 @@
 | `render.mjs` | 装机时替换占位符（无依赖，可单独打进安装器） |
 | `lib.mjs` | 共享规则：清单、脱敏、泄漏扫描、占位符 |
 | `global-skills.json` | V 从工作区外加载的第三方 skill 包：装哪些、不装哪些 |
+| `OWNER-ONBOARDING.md` | 部署后老板上手、授权、出问题怎么办、交付后头几天的预期（部署手册里工作区那一章） |
 | `update-policy.json` | 升级时工作区里哪些是系统文件（可以换新版）、哪些归主人（永远不动）；A 线的 update / rollback 按它三方比较 |
 | `feishu-user-scopes.txt` | V 自己的账号授权过的飞书用户权限（建机器人应用时照着开） |
 | `tests/` | `node --test distro/workspace/tests/*.test.mjs` |
