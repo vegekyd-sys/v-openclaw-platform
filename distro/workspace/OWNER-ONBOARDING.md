@@ -131,4 +131,4 @@ python3 scripts/v-schedule.py list       # 9 条 distro: 开头的后台任务�
 - [ ] 老板在私聊里让 V 建一个飞书文档、建一个日程，都不再要求补授权。
 - [ ] 老板在一份文档上评论 @V，回复显示为机器人。
 - [ ] （有 Makaron key 时）让 V 出一张图，看到任务卡片开出、进度更新、交付。
-- [ ] 把以上结果写进给 Tianyi 的部署报告（见 V 的 `v-distro-deploy` 技能）。
+- [ ] 把以上结果写进给 Tianyi 的部署报告（见 V 的 `launch-mirror-v` 技能）。
