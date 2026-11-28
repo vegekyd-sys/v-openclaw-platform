@@ -546,7 +546,8 @@
         "lab/card-native-shell.test.mjs",
         "lab/cli-subagent-progress.test.mjs",
         "lab/workboard-list-page.test.mjs",
-        "lab/binary-attachment-text.test.mjs"
+        "lab/binary-attachment-text.test.mjs",
+        "lab/browser-lifecycle-unwedge.test.mjs"
       ]
     },
     {
