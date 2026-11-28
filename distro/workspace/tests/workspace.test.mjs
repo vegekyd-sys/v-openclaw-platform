@@ -285,6 +285,22 @@ test("2026-11-28: no Scene; Night Shift ships generic and says it needs the serv
     assert.match(read(rel), /这项需要你补 Vercel 或 Cloudflare 账号/, rel);
 });
 
+test("temporary previews: one script, closed automatically, said to be temporary, never for private material; portal is not a link for the owner", () => {
+  const read = (rel) => fs.readFileSync(path.join(PAYLOAD, rel), "utf8");
+  const tools = read("TOOLS.md");
+  assert.match(tools, /scripts\/temp-preview\.py start/);
+  assert.match(tools, /默认 24 小时后自动关掉/);
+  assert.match(tools, /含客户资料、内部资料或任何私密内容的页面，不能用临时隧道/);
+  assert.match(tools, /`portal` 工具不是给主人的链接/);
+  assert.ok(fs.existsSync(path.join(PAYLOAD, "scripts/temp-preview.py")));
+  assert.match(read("skills/night-shift-operator/SKILL.md"), /不能用临时预览链接/);
+  assert.match(read(".gitignore"), /^\.v\/previews\.json$/m);
+  for (const rel of lib.walk(PAYLOAD)) {
+    if (!/\.md$/.test(rel)) continue;
+    assert.doesNotMatch(read(rel), /通过 ?Portal|Portal 生成/, rel);
+  }
+});
+
 test("task room: the skill ships, takes the owner and app from this machine, and AGENTS.md points at it", () => {
   const s = fs.readFileSync(path.join(PAYLOAD, "skills/feishu-task-room-router/SKILL.md"), "utf8");
   assert.match(s, /agent:@@AGENT_ID@@:feishu:group:<chat_id>/);
@@ -327,4 +343,32 @@ test("v-schedule owner: records one owner and refuses a second", () => {
   assert.equal(py(ws, "v-schedule.py", ["owner", "--set", "ou_bbbbbbbbbbbbbbbb"]).status, 2);
   assert.equal(py(ws, "v-schedule.py", ["owner", "--set", "not-an-id"]).status, 2);
   assert.equal((fs.statSync(path.join(ws, "onboarding/owner.json")).mode & 0o777), 0o600);
+});
+
+test("update policy: every payload file is system, sectioned or the owner's; the system ones stay managed; sections are well formed", () => {
+  const pol = JSON.parse(fs.readFileSync(path.join(WS, "update-policy.json"), "utf8"));
+  assert.equal(pol.schema, "v-distro-workspace-policy/1");
+  const re = (g) => new RegExp("^" + g.split("**").map((s) => s.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*")).join(".*") + "$");
+  const any = (list, rel) => list.some((g) => re(g).test(rel));
+  const managed = (rel) => (any(pol.system, rel) || pol.sections.includes(rel)) && !any(pol.owner, rel);
+  for (const rel of lib.walk(PAYLOAD)) {
+    if (rel.endsWith(".gitkeep")) continue;
+    assert.ok(any(pol.system, rel) || pol.sections.includes(rel) || any(pol.owner, rel), `unclassified: ${rel}`);
+  }
+  for (const rel of ["memory/SCHEMA.md", "memory/projects/_TEMPLATE/TODO.md", "scripts/feishu-docs.py", "skills/computer-use/SKILL.md",
+                     "schedules.json", "AGENTS.md", "TOOLS.md", "artifacts/memory-graph/vendor/force-graph.min.js"])
+    assert.ok(managed(rel), `should be managed: ${rel}`);
+  for (const rel of ["USER.md", "IDENTITY.md", "MEMORY.md", "memory/index.md", "memory/projects/acme/main.md", "onboarding/owner.json"])
+    assert.ok(!managed(rel), `must never be overwritten: ${rel}`);
+  for (const f of pol.sections) {
+    const text = fs.readFileSync(path.join(PAYLOAD, f), "utf8");
+    const begins = [...text.matchAll(/<!-- v-distro:begin ([a-z0-9-]+) -->/g)].map((m) => m[1]);
+    const ends = [...text.matchAll(/<!-- v-distro:end ([a-z0-9-]+) -->/g)].map((m) => m[1]);
+    assert.deepEqual(begins, ends, f);
+    assert.equal(new Set(begins).size, begins.length, `${f}: section ids are unique`);
+    const outside = text.replace(/<!-- v-distro:begin ([a-z0-9-]+) -->[\s\S]*?<!-- v-distro:end \1 -->/g, "");
+    assert.doesNotMatch(outside, /v-distro:(begin|end)/, `${f}: no nested or stray markers`);
+    assert.match(outside, /^## /m, `${f}: an owner area after the system sections`);
+  }
+  assert.match(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8"), /系统文件不要直接改/);
 });

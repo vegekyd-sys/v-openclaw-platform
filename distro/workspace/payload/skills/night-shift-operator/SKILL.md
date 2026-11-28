@@ -113,6 +113,7 @@ A download project ends in a delivery web page, not a zip. The page is a templat
 
 - 直接告诉主人「交付网页需要你补 Vercel 或 Cloudflare 账号（以及一个放视频的存储），补好之前我先把成片发到飞书」，然后用飞书云空间或聊天附件交付；
 - 不要静默跳过这一步，也不要编一个链接、说交付页已经好了。
+- 交付的是客户的成片，**不能用临时预览链接（`temp-preview.py` 或任何临时隧道）代替交付网页**；没有托管就发飞书。
 
 有了托管之后：
 
