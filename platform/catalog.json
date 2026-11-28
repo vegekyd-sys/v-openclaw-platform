@@ -548,7 +548,8 @@
         "lab/workboard-list-page.test.mjs",
         "lab/binary-attachment-text.test.mjs",
         "lab/workspace-html-attach.test.mjs",
-        "lab/feishu-block-media.test.mjs"
+        "lab/feishu-block-media.test.mjs",
+        "lab/browser-lifecycle-unwedge.test.mjs"
       ]
     },
     {
