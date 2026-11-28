@@ -92,7 +92,7 @@ Tianyi 定了三条：VSync 要带、桌面接管要带、每日复盘要开；�
 | `computer-use` | **带**（carry） | Tianyi 定。判断和流程原样随 V；V 自己的环境（V 的 Chrome 与主人 Mac Chrome 的分流表、profile 名、V 的邮箱、支付宝 AI 付）改写成通用说法；V 的实测记录 `references/session-evidence-*` 不带。AGENTS.md 指向它 |
 | `background-worker-contract` | **带**（carry） | A 线的客户运行时带 Worker 池；夜班一节和 V 的客户 CLI 例子去掉 |
 | `qcc-company-lookup` | **带**（carry） | 通用，主人自己配企查查 token 就能用，没配会说明怎么配 |
-| `scene-*` | 官方 `scene-cli` 作为**全局 skill 装**（`global-skills.json`）；工作区的 `scene-*` 不带 | Scene CLI 是公开的，主人建个人 key 就能用；V 的飞书搜索站卡片、产线 helper 依赖 V 的服务 |
+| `scene-*`（含官方 `scene-cli`） | **不带**（Tianyi 2026-11-28 定） | 工作区和全局都不装；Makaron 技能里转交 Scene 的那句已删 |
 | `makaron-ad-creator` | 作为**全局 skill 装**（随 makaron-cli） | 和其余 makaron 全局 skill 一起 |
 | `browser-fast-run` | 不带 | 写死 V 的 Chrome 端口和 V 的决策模型账号，客户机上跑不起来 |
 | `meeting-co-pilot` | 不带 | 依赖 V 自己的飞书会议接入服务 |
@@ -123,6 +123,33 @@ V 的 Heartbeat V2（「V 先知」）由三个从未提交的脚本加一个放
 2. 仍未提交、等 Tianyi 定：`scripts/heartbeat-dispatch.py`（回执文件是列表时的兼容）、`skills/makaron`（COMPOSITE.json、feishu / official 两部分、nsfw 参考）、`skills/tiktok-publish-copy`（7 个文件）。
 3. **Heartbeat V2 本体**（`heartbeat-personal-assistant.py`、`heartbeat-v2-choice.py`、`heartbeat-v2-stream-guard*.mjs` 和记忆目录里的引擎）属于 V 的个人部分，进不进 V 自己的 git 由用户定；客户版不依赖它们。
 4. `skills/tiktok-publish-copy/references/cases.md` 是客户真实文案，建议加进 V 服务器上 v-core 同步的私有排除表（本线看不到也不改那个文件）。
+
+## 夜班（Tianyi 2026-11-28 定：可以装）
+
+工作区这边带通用的部分，服务和插件由 A 线装；**需要部署方配置夜班服务地址才生效**。
+
+| V 上的东西 | 客户版 |
+|---|---|
+| `night-shift-operator`（夜班对话入口兼操作手册，含 4 份参考） | **带，工作区自带的通用改写版**：开头先 `nightshiftctl health`，没通就如实说「要请部署方开通」；去掉星擎的正式线、V 的记忆路径、V 的代码维护流程、`base-buffer-contract`（星擎的 Base 表）；交付网页改成「要主人的 Vercel / Cloudflare 账号，没有就先发飞书」；agent id 用占位符。V 上这份不在 v-core，不随 V 同步 |
+| `night-shift-d` | 不带：V 客户的开工入口 |
+| `nightshift-audit-canary` | 不带：夜班引擎自己的测试夹具 |
+| `cdn-upload` | 不带：用的是 Makaron 的存储服务密钥。客户版改成 TOOLS.md「公网链接」的规则 |
+| AGENTS.md / TOOLS.md | V 上没有夜班专节；客户版在 AGENTS.md「夜班与公网链接」和 TOOLS.md「可选能力」各加一句 |
+| 定时任务 | 不带：V 上和夜班有关的都是 V 自己的（某同事的客户停机提醒、GeeLark、星擎看板）。「需要你」和完工通知由夜班引擎自己发 |
+| `nightshift-feishu`、`workboard` 插件和夜班服务 | A 线负责 |
+
+## 公网链接（Vercel / Cloudflare，Tianyi 2026-11-28：之后让客户自己补）
+
+装机时没有公网托管。下面这些要主人补 Vercel 或 Cloudflare 账号；技能里都写明了：缺凭据时直接告诉主人「这项需要你补 Vercel 或 Cloudflare 账号」，先用飞书交付，不静默失败、不编链接。规则统一在 TOOLS.md「公网链接」。
+
+| 技能 | 要公网的地方 |
+|---|---|
+| `night-shift-operator` | 交付网页、视频的公开下载链接 |
+| `html-poster-design`、`html-executive-pitch-deck-iteration` | 主人要一个能直接打开的网页 / 演示链接 |
+| `meshy-3d-agent` | 网页 / iPhone AR 预览 |
+| 全局 `frontend-slides` | 「部署成链接」一步用 Vercel CLI（第三方技能，不改它，按 TOOLS.md 的规则处理） |
+
+V 上依赖 Vercel / Cloudflare、客户版没带的：`frontend-deploy`（部署到某客户自己的系统）、`cdn-upload`（Makaron 的存储）、`report-web`（V 的报告站）、`3d-asset-ar-showcase`、各个客户看板和报告。
 
 ## 七、已知缺口
 

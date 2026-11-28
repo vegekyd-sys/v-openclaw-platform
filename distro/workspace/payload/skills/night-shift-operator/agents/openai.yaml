@@ -1,0 +1,4 @@
+interface:
+  display_name: "Night Shift Operator"
+  short_description: "通过对话管理 Workflow、项目和 Workboard"
+  default_prompt: "使用夜班模式创建或更新 Workflow 与项目，并通过原生 Workboard 安全推进。"
