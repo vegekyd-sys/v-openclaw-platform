@@ -148,6 +148,14 @@ test('desktop only with V_DESKTOP=1: host display, headed Chrome, takeover plugi
   assert.equal(h.adminTokenFile, '/etc/v/desktop-handoff/admin-token');
 });
 
+test('image understanding is DeepSeek Flash by default; xAI only as a fallback when its key exists', () => {
+  assert.deepEqual(make({ XAI_API_KEY: '' }).agents.defaults.imageModel, { primary: 'deepseek/deepseek-flash' });
+  assert.deepEqual(make({}).agents.defaults.imageModel, { primary: 'deepseek/deepseek-flash', fallbacks: ['xai/grok-4.7'] });
+  const flash = make({}).models.providers.deepseek.models.find((m) => m.id === 'deepseek-flash');
+  assert.deepEqual(flash.input, ['text', 'image']);
+  assert.match(make({ V_MODEL_PRESET: 'vercel', XAI_API_KEY: '' }).agents.defaults.imageModel.primary, /^aigw\//);
+});
+
 test('Night Shift only with V_NIGHTSHIFT_URL: workboard and nightshift-feishu pointed at the service', () => {
   const off = make({});
   assert.ok(!off.plugins.allow.includes('nightshift-feishu') && !off.plugins.allow.includes('workboard'));
