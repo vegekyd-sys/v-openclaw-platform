@@ -263,3 +263,8 @@ When the user asks for a deliverable:
 The durable lesson to remember:
 
 > The most important part is the relationship between illustration and text, and the overall tone. The artifact succeeds only when those two feel intentionally composed.
+
+## 公网链接（需要主人的 Vercel 或 Cloudflare 账号）
+
+主人要一个能在手机上直接打开的演示链接时，这台机器默认没有公网托管：部署成网址要主人自己的 Vercel（`VERCEL_TOKEN`）或 Cloudflare（`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`）账号，见 TOOLS.md「公网链接」。
+没有凭据时直接告诉主人「这项需要你补 Vercel 或 Cloudflare 账号」，先把PDF 和 HTML 文件发到飞书；不要静默跳过，也不要编一个链接说已经部署好了。部署了就先用 `curl -sI` 核对返回 200 再发。

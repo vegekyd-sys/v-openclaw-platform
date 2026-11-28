@@ -5,7 +5,7 @@
     "max_month_cny": 200,
     "trigger_free_ratio": 0.25,
     "trigger_growth_days": 21,
-    "target_free_ratio": 0.30,
+    "target_free_ratio": 0.3,
     "target_growth_days": 45,
     "min_free_gib": 30,
     "balance_reserve_cny": 50
@@ -16,7 +16,72 @@
     "mover_stale_hours": 48,
     "budget_cny": 450,
     "weekly_report": true,
-    "movers": {},
+    "movers": {
+      "v-archive": {
+        "unit": "v-archive.service"
+      }
+    },
     "drain": {}
+  },
+  "archive": {
+    "bucket": "",
+    "prefix": "archive/v",
+    "cool_hours": 24,
+    "rate_mb_s": 40,
+    "max_bytes_per_run": 300000000000,
+    "max_seconds_per_run": 18000,
+    "categories": [
+      {
+        "name": "work",
+        "root": "/home/openclaw/makaron-openclaw/.openclaw-local/workspace/work",
+        "action": "to-t1",
+        "dest": "/srv/openclaw-data/disk1/work-archive",
+        "min_age_days": 14
+      },
+      {
+        "name": "output-alt",
+        "root": "/srv/openclaw-data/output-alt",
+        "action": "to-t1",
+        "dest": "/srv/openclaw-data/disk1/openclaw/output-alt",
+        "min_age_days": 30
+      },
+      {
+        "name": "output-alt-cold",
+        "root": "/srv/openclaw-data/disk1/openclaw/output-alt",
+        "action": "to-t2",
+        "min_age_days": 90,
+        "link_roots": [
+          "/srv/openclaw-data/output-alt"
+        ],
+        "age_by": "mtime"
+      },
+      {
+        "name": "work-cold",
+        "root": "/srv/openclaw-data/disk1/work-archive",
+        "action": "to-t2",
+        "min_age_days": 180,
+        "link_roots": [
+          "/home/openclaw/makaron-openclaw/.openclaw-local/workspace/work"
+        ],
+        "age_by": "mtime"
+      },
+      {
+        "name": "recovery",
+        "root": "/srv/openclaw-data/disk1/openclaw/recovery",
+        "action": "to-t2",
+        "min_age_days": 30,
+        "link_roots": [
+          "/var/backups"
+        ],
+        "age_by": "mtime"
+      },
+      {
+        "name": "media-inbound",
+        "root": "/home/openclaw/.openclaw/media/inbound",
+        "action": "to-t2",
+        "group": "month",
+        "min_age_days": 30
+      }
+    ]
   }
 }
