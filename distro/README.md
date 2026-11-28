@@ -95,6 +95,26 @@ V 上依赖 Cloudflare 或 Vercel、但不在客户版里的：
 - 夜班看板的公网地址加 basic auth（nightshift.tianyi.live）。
 - Mirror V 的 Portal（Vercel）：沙盒版用，客户单独部署不需要。
 
+## 客户自己建飞书应用
+
+安装器不建应用。客户在飞书开发者后台（open.feishu.cn）建一个企业自建应用，然后：
+
+1. **添加应用能力**：机器人。
+2. **事件与回调 → 事件配置**：订阅方式选「使用长连接接收事件」，订阅以下事件：
+   - 接收消息 `im.message.receive_v1`
+   - 用户进入与机器人的会话 `im.chat.access_event.bot_p2p_chat_entered_v1`
+   - 机器人进群 `im.chat.member.bot.added_v1`、机器人被移出群 `im.chat.member.bot.deleted_v1`
+   - 消息被添加、取消表情回复 `im.message.reaction.created_v1`、`im.message.reaction.deleted_v1`
+   - 云文档新增评论 `drive.notice.comment_add_v1`
+   - 审批评论新增、删除 `approval.instance.comment.created_v4`、`approval.instance.comment.deleted_v4`
+3. **事件与回调 → 回调配置**：同样用长连接，订阅卡片回传交互 `card.action.trigger`。
+4. **权限管理 → 批量处理 → 批量导入/导出权限**：导入包里的 `install/feishu-app-scopes.json`，一次开通应用身份 170 项、用户身份 257 项。
+   这份清单是 V 自己的应用（V - Makaron）2026-11-27 导出的权限，再加上两种身份的 `bitable:app`、`sheets:spreadsheet`。用户身份覆盖了 V 本人授权过的 245 项（B 线的 `distro/workspace/feishu-user-scopes.txt`），只有 `auth:user.id:read` 不在里面：它是 OAuth 登录时默认附带的，后台批量导入不认它，放进去会让整份导入卡住。
+   开齐之后，主人在上手引导里点一次授权，就能像 V 一样读写文档、日历、任务、多维表格和表格。应用上没有开通的权限，脚本不会去申请，也不会报错。
+5. **人事和薪酬类权限**（导入后会提示设置数据范围）：数据范围选「全部」。
+6. **版本管理与发布**：创建版本并发布（企业内部应用一般由管理员审核）。
+7. 把 App ID、App Secret 写进安装用的 env 文件（`FEISHU_APP_ID`、`FEISHU_APP_SECRET`）。主人的 open_id 不知道也没关系，私聊时会走配对码。
+
 ## 飞书、lark-cli 与 agent 名字
 
 - lark-cli 用 `~/.lark-cli/config.json` 独立运行；configure 用 `config init --app-secret-stdin` 写这个文件，运行时不带任何 OpenClaw 环境变量。

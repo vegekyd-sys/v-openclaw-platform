@@ -302,6 +302,9 @@ def check_scopes() -> dict:
         "ok": not missing,
         "appId": app_id,
         "optionalEnabled": [k for k in OPTIONAL_SCOPES if k in enabled],
+        # 上手时一次申请：应用上开通了的全部用户身份权限（和 V 一样，V 的默认账号授权的就是它应用上的全部用户权限）。
+        # 只取应用开通了的，没开通的不申请，也就不会在授权页报错。
+        "loginScopes": login_scopes(enabled),
         "missing": {k: REQUIRED_SCOPES[k] for k in missing},
         "optionalMissing": {k: v for k, v in OPTIONAL_SCOPES.items() if k not in enabled},
     }
@@ -317,6 +320,12 @@ def check_scopes() -> dict:
     else:
         out["next"] = "python3 scripts/feishu-docs.py login"
     return out
+
+
+def login_scopes(enabled) -> list[str]:
+    """登录时要申请的用户身份权限：读文档必需的几项在前，其余是应用上开通了的全部用户身份权限。"""
+    enabled = {s for s in enabled if s}
+    return [*[k for k in REQUIRED_SCOPES if k in enabled], *sorted(enabled - set(REQUIRED_SCOPES))]
 
 
 def cmd_scopes(_a) -> None:
@@ -353,11 +362,12 @@ def finish_login() -> dict:
     return {"ok": True, "status": status()}
 
 
-def start_login(optional: list[str] | None = None) -> dict:
-    """optional：应用已经开通的可选权限，一起申请；不传就先查一次。"""
-    if optional is None:
-        optional = check_scopes().get("optionalEnabled", [])
-    scope = " ".join([*REQUIRED_SCOPES, *optional])
+def start_login(scopes: list[str] | None = None) -> dict:
+    """scopes：要申请的用户身份权限，即应用上开通了的全部（check_scopes 的 loginScopes）；不传就先查一次。
+    一次申请全，主人只点一次；之后某个写飞书的 skill 仍缺权限时，走它自己的补授权兜底。"""
+    if scopes is None:
+        scopes = check_scopes().get("loginScopes") or []
+    scope = " ".join(dict.fromkeys([*REQUIRED_SCOPES, *scopes]))
     data, err = lark("auth", "login", "--no-wait", "--json", "--scope", scope, timeout=60)
     if err:
         return {"ok": False, "detail": err, "hint": "权限没开全会在这一步报错：先跑 scopes"}
@@ -372,7 +382,7 @@ def start_login(optional: list[str] | None = None) -> dict:
                            capture_output=True, text=True, env=lark_env()).returncode == 0
     return {"ok": True, "url": url, "qrcode": str(QR) if qr_ok and QR.exists() else None,
             "expiresIn": _find(data, "expires_in"),
-            "tellOwner": "点这个链接（或者扫二维码），用你的飞书账号确认授权。我只申请了读文档的几项权限。点完回我「好了」。",
+            "tellOwner": "点这个链接（或者扫二维码），用你的飞书账号确认授权。这一次就把你的飞书应用上开通的权限都申请了（读写文档、日程、任务、多维表、表格、云空间、消息等），以后替你做事不用再一项项补。点完回我「好了」。",
             "next": "主人回「好了」之后：python3 scripts/feishu-docs.py login --finish"}
 
 
@@ -414,7 +424,7 @@ def cmd_connect(a) -> None:
         say({**sc, "do": "grant"}); sys.exit(2)
     if not sc["ok"]:
         say({**sc, "do": "retry"}); sys.exit(1)
-    out = start_login(sc.get("optionalEnabled", []))
+    out = start_login(sc.get("loginScopes") or [])
     out["do"] = "login" if out["ok"] else "retry"
     say(out)
     sys.exit(0 if out["ok"] else 1)
