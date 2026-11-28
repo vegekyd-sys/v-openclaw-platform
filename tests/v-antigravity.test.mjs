@@ -26,7 +26,7 @@ const run = async () => {
   const msg = queue.shift();
   out({ event: 'step_update', step_update: { conversation_id: conv, step_index: step++, state: 'DONE', step_type: 'user_input' } });
   if (msg.includes('EXIT')) process.exit(3);
-  await new Promise((r) => setTimeout(r, msg.includes('SLOW') ? 300 : 20));
+  await new Promise((r) => setTimeout(r, msg.includes('QUIET') ? 1500 : msg.includes('SLOW') ? 300 : 20));
   out({ event: 'step_update', step_update: { conversation_id: conv, step_index: step++, state: 'DONE', step_type: 'agent_response', text_delta: 'ANS<' + msg + '>' } });
   out({ event: 'result', result: { conversation_id: conv, status: 'SUCCESS', response: 'ANS<' + msg + '>', usage: { input_tokens: 10, output_tokens: 2 } } });
   busy = false; run();
@@ -34,7 +34,7 @@ const run = async () => {
 require('node:readline').createInterface({ input: process.stdin }).on('line', (l) => { queue.push(JSON.parse(l).message.content); run(); });
 `;
 
-function setup(t) {
+function setup(t, { config: extra = {}, deps: extraDeps = {} } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-test-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const fake = path.join(dir, 'agy');
@@ -58,7 +58,7 @@ function setup(t) {
     const result = body.method === 'tools/list' ? { tools: [{ name: 'memory_search' }, { name: 'message' }] } : {};
     return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }), { headers: { 'content-type': 'application/json' } });
   };
-  const backend = buildAntigravityCliBackend({ agyBin: fake, agyHome: dir, runRoot: path.join(dir, 'runs'), idleTimeoutMs: 60_000, followOnTimeoutMs: 2_000 }, { fetchImpl });
+  const backend = buildAntigravityCliBackend({ agyBin: fake, agyHome: dir, runRoot: path.join(dir, 'runs'), idleTimeoutMs: 60_000, followOnTimeoutMs: 2_000, ...extra }, { fetchImpl, ...extraDeps });
   const execute = backend.prepareExecution().execute;
   const ctx = (over = {}) => ({
     args: backend.resolveExecutionArgs({ baseArgs: ['--strict-mcp-config', '--mcp-config', mcpConfig, '--disallowedTools', 'mcp__openclaw__message'], thinkingLevel: 'high' }),
@@ -253,4 +253,22 @@ test('the backend is parsed as Claude stream-json', () => {
   assert.equal(backend.config.jsonlDialect, 'claude-stream-json');
   assert.equal(backend.parseJsonlEvent, undefined, 'no custom parser: core\'s Claude parser classifies commentary');
   assert.deepEqual(backend.config.sessionIdFields, ['session_id']);
+});
+
+test('a long silent step stays alive only while agy is still receiving its model stream', async (t) => {
+  const liveness = { sampleMs: 50, quietMs: 300, everyMs: 300, recentMs: 200, minBytes: 1024, maxQuietMs: 60_000 };
+  const status = (records) => records.filter((r) => r.type === 'system' && r.subtype === 'status');
+  let bytes = 0;
+  const receiving = setup(t, { config: { liveness }, deps: { readRchar: () => (bytes += 3000) } });
+  const alive = await receiving.run(receiving.ctx({ prompt: 'QUIET deck' }));
+  assert(status(alive).length >= 2, `keepalive records while generating (${status(alive).length})`);
+  assert.equal(status(alive)[0].status, 'agy_generating');
+  assert.equal(alive.at(-1).type, 'result');
+  assert.deepEqual(view(alive).results, ['ANS<QUIET deck>']);
+  const h1 = receiving.handles.get('k'); h1.close('test'); await h1.waitForExit();
+
+  const stalled = setup(t, { config: { liveness }, deps: { readRchar: () => 5_000_000 } });
+  const quiet = await stalled.run(stalled.ctx({ prompt: 'QUIET stuck' }));
+  assert.equal(status(quiet).length, 0, 'no incoming bytes: no keepalive, so the host watchdog still applies');
+  const h2 = stalled.handles.get('k'); h2.close('test'); await h2.waitForExit();
 });

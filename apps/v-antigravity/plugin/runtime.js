@@ -24,6 +24,14 @@ export const AGENT_NAME = 'v';
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh'];
 export const LIVE_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 export const STEER_FOLLOW_ON_TIMEOUT_MS = 120 * 1000;
+// agy prints nothing while the model streams one long step (a tool call that
+// writes a whole HTML deck took 176 s of silent stdout on VLab, 2026-11-28),
+// and OpenClaw stops a plugin turn after 180 s without a record. While agy is
+// quiet but still receiving its model stream (bytes read, /proc/<pid>/io
+// rchar: ~2-3 KB per 5 s generating, ~90 B idle), the runtime yields a status
+// record so the turn stays alive; a silence longer than maxQuietMs, or one
+// without incoming bytes, still ends in the watchdog.
+export const LIVENESS = Object.freeze({ sampleMs: 5000, quietMs: 30_000, everyMs: 30_000, minBytes: 1024, recentMs: 15_000, maxQuietMs: 15 * 60 * 1000 });
 
 const sessions = new WeakMap();
 
@@ -292,6 +300,7 @@ function completeTurn(session) {
 }
 
 function acceptEvent(session, event) {
+  session.lastEventAt = Date.now();
   if (event.event === 'init' && event.conversation_id) session.conversationId = event.conversation_id;
   const turn = session.currentTurn;
   if (!turn) return;
@@ -323,6 +332,39 @@ function acceptEvent(session, event) {
     }
     completeTurn(session);
   }
+}
+
+/** Bytes agy has read so far (sockets included), or null where /proc is unavailable. */
+export function readProcessRchar(pid) {
+  try {
+    const m = /^rchar:\s*(\d+)/mu.exec(fs.readFileSync(`/proc/${pid}/io`, 'utf8'));
+    return m ? Number(m[1]) : null;
+  } catch { return null; }
+}
+
+function startLiveness(session, turn, { readRchar = readProcessRchar, ...opts } = {}) {
+  const o = { ...LIVENESS, ...opts };
+  const pid = session.child?.pid;
+  let last = pid ? readRchar(pid) : null;
+  if (last === null) return () => {};
+  let receivedAt = 0;
+  let sentAt = 0;
+  let loggedAt = 0;
+  const timer = setInterval(() => {
+    if (session.currentTurn !== turn || session.closed) { clearInterval(timer); return; }
+    const now = Date.now();
+    const cur = readRchar(pid);
+    if (cur === null) return;
+    if (cur - last >= o.minBytes) receivedAt = now;
+    last = cur;
+    const quiet = now - (session.lastEventAt ?? now);
+    if (quiet < o.quietMs || quiet > o.maxQuietMs || now - receivedAt > o.recentMs || now - sentAt < o.everyMs) return;
+    sentAt = now;
+    turn.events.push({ type: 'system', subtype: 'status', status: 'agy_generating', quiet_seconds: Math.round(quiet / 1000) });
+    if (now - loggedAt >= 60_000) { loggedAt = now; process.stderr.write(`[v-antigravity] agy quiet ${Math.round(quiet / 1000)}s while receiving its model stream: keepalive\n`); }
+  }, o.sampleMs);
+  timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 // The host's live-session capability needs a registered (and, per turn,
@@ -432,6 +474,7 @@ export function createAntigravityExecutor(config = {}, deps = {}) {
     clearTimeout(session.idleTimer);
     const turn = { events: new PushQueue(), translator: createClaudeStreamTranslator(), pendingSteers: 0, inputsSeen: 0, results: 0, aborted: false };
     session.currentTurn = turn;
+    let stopLiveness = () => {};
     const abort = () => session.handle.close('abort');
     ctx.abortSignal?.addEventListener('abort', abort, { once: true });
     try {
@@ -446,7 +489,9 @@ export function createAntigravityExecutor(config = {}, deps = {}) {
       }
       // A resumed conversation has no init event: tell the host its id first.
       if (session.conversationId) yield* turn.translator.translate({ event: 'init', conversation_id: session.conversationId });
+      session.lastEventAt = Date.now();
       writeUser(session, prompt);
+      stopLiveness = startLiveness(session, turn, { ...(deps.readRchar ? { readRchar: deps.readRchar } : {}), ...(config.liveness ?? {}) });
       let sawResult = false;
       for await (const record of turn.events) {
         if (record.type === 'result') sawResult = true;
@@ -458,6 +503,7 @@ export function createAntigravityExecutor(config = {}, deps = {}) {
       if (!session.closed) session.handle.close('abort');
       throw error;
     } finally {
+      stopLiveness();
       ctx.abortSignal?.removeEventListener('abort', abort);
     }
   };

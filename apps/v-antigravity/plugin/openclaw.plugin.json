@@ -43,6 +43,37 @@
       },
       "workspaceDir": {
         "type": "string"
+      },
+      "liveness": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Keep a quiet turn alive while agy still receives its model stream (defaults in runtime.js LIVENESS).",
+        "properties": {
+          "sampleMs": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "quietMs": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "everyMs": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minBytes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "recentMs": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "maxQuietMs": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
       }
     }
   }

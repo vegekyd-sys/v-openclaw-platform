@@ -96,6 +96,7 @@ const blue = png([0, 0, 220]).toString("base64");
 // ---- private Gateway ----
 const env = { ...process.env, OPENCLAW_GATEWAY_PORT: String(port) };
 const lines = [];
+const RUNTIME_LOG = process.env.LIVE_RUNTIME_LOG ?? "/var/lib/agy-lab/live-antigravity.log";
 let gateway, client;
 const runs = new Map();
 function startGateway() {
@@ -103,7 +104,11 @@ function startGateway() {
   for (const s of [gateway.stdout, gateway.stderr]) {
     s.setEncoding("utf8");
     s.on("data", (chunk) => {
-      for (const line of chunk.split(/\r?\n/u).filter(Boolean)) lines.push({ at: Date.now(), line });
+      for (const line of chunk.split(/\r?\n/u).filter(Boolean)) {
+        lines.push({ at: Date.now(), line });
+        // The runtime's own lines (process start, tools, steer, keepalive) carry no secrets.
+        if (line.includes("[v-antigravity]")) fs.appendFileSync(RUNTIME_LOG, `${new Date().toISOString()} ${line}\n`);
+      }
       if (lines.length > 80_000) lines.splice(0, lines.length - 80_000);
     });
   }

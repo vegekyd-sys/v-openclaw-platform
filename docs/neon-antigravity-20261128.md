@@ -40,7 +40,9 @@ Google 的账号接口（relay 用的同一个）会精确匹配 OpenClaw 默认
 | 输出是 Claude stream-json，core 用 Claude 解析器处理：工具调用前写的话算 commentary（飞书卡片上的过程），回复只取最后一次工具调用之后的文字 | agy 的事件在 runtime 里转成同样的 Claude stream-json 记录（`createClaudeStreamTranslator`），backend 声明 `jsonlDialect: claude-stream-json`，由 core 的同一套代码解析。agy 自己的 `result.response` 会把 commentary 也拼进去，不用它 |
 | 飞书卡片显示过程：`channels.feishu.visibleProgressRuntimes` 里有 `claude-cli`（插件默认值） | 加入 `antigravity-cli` |
 
-运行日志（Gateway 日志，带 `[v-antigravity]` 前缀）记录：进程启动和原因、MCP 工具数、每次工具调用、steer 入队。设置 `V_ANTIGRAVITY_TRACE=1` 会逐步记录。
+**长时间不输出（看门狗）：** core 对插件执行的回合有「180 s 没有任何记录就停掉」的看门狗。Claude Code 生成工具参数时也会逐字流式输出，所以不会触发。agy 不会：模型在生成一个很长的步骤时（例如一次 `write_to_file` 写完整份 HTML deck），stdout 一个事件都没有。11/28 16:56–16:59 Tianyi 的「查 makaron.app 做 3D HTML deck」就是这样被停掉的：搜索和抓取都已完成，16:56:48 开始生成最后一步，179 s 后被看门狗杀掉。VLab 上单独复现，一次写大文件 stdout 静默 176 s。这段时间 agy 进程的读取字节数（`/proc/<pid>/io` 的 rchar，含 socket）每 5 s 增加 2–3 KB，空闲时只有约 90 B。runtime 据此判断模型仍在输出：静默超过 30 s 且最近 15 s 仍在收数据时，每 30 s 交给 core 一条 `system/status`（`agy_generating`）记录，回合不会被停掉。agy 没在收数据，或静默超过 15 min，就不再发这条记录，看门狗照常生效。这条记录不改变回复内容（已用 VLab 的 core 解析器核对）。飞书卡片在这段时间里保留之前的过程和工具行；agy 不报告思考和工具参数的进度，我们也不编造进度文字。
+
+运行日志（Gateway 日志，带 `[v-antigravity]` 前缀）记录：进程启动和原因、MCP 工具数、每次工具调用、steer 入队，以及静默生成期间的保活（每分钟最多一行）。设置 `V_ANTIGRAVITY_TRACE=1` 会逐步记录。
 
 **没有对齐的地方：**
 - `nativeToolMode` 是 `always-on`。如果某个回合要求精确的工具集合（例如带 `toolsAllow` 的 cron、子 agent），core 会拒绝，这和 `/vcc` 的 selectable 不同。
@@ -64,6 +66,12 @@ Google 的账号接口（relay 用的同一个）会精确匹配 OpenClaw 默认
 - 17:14:47–17:14:57：卡片上逐条出现三句过程说明（「我将先执行…」「下面先执行 `sleep 10 && hostname`…」「主机名已拿到，接下来执行 `uptime`…」），下面一行显示当前工具（🧩 Run Command / Manage Task）；
 - 17:15:00：最终答案到达，过程说明被收起，卡片只留一行汇总，和 `/vcc` 一样。
 - 第一条带工具的测试（17:12:52 发出）：卡片在 18 s 时出现，最终答案的首字在 35 s，比答案早 16 s 就能看到过程。修之前卡片要等到答案出来才出现（Tianyi 那两次分别是 60 s 和 237 s）。
+
+**长任务复测（11/28 17:33–17:46 CST，同一个 live candidate）：** 原样重发 Tianyi 的「你网上查下makaron.app 然后做个汇报deck给我 html形式 要有3D内容」。
+- 第 16 s 出卡片。之后一直有过程：agent 自己的计划清单（调研 → 梳理大纲 → 开发 3D Deck → 验证）逐项打勾，下面一行显示当前工具（Web Search / Web Fetch / Read File / Run Command / Write File / Edit File）。
+- 写 deck 那一步 agy 静默了 4 分 43 秒（17:36:45–17:41:28）。保活一直在发（日志最长「quiet 250s」），没有被看门狗停掉。
+- 787 s 跑完，产出 `makaron-deck.html`（709 KB 单文件，内联 Three.js，10 页，每页一个 3D 场景，agent 自己用无头 Chrome 渲染核对过）。卡片最终显示完整的总结。
+- **附件没发出去：** 卡片最后一行是「⚠️ makaron-deck.html: Delivery failed」。原因是 core 的本地读取策略（`hostReadCapability permits only … trusted generated HTML reports`）：回复里的 `MEDIA:` 只放行 OpenClaw 临时目录里的 HTML，或者带来源记录的 outbound 暂存文件，workspace 里的 HTML 一律拒绝。这和 runtime 无关：不经过任何 harness、直接调用 core 的 `createReplyMediaPathNormalizer`，用同一个文件也是同样的失败，`/vcc`、`/deepseek` 也会遇到。本 PR 不改这条策略，作为后续单独处理。
 
 **首字为什么之前慢、现在为什么是这个数：**
 - 11/19 量到的 12–33 s，大部分来自测试隧道（VLab → 上海 → V）上传 188 KB 请求体的时间，不是 Google 慢。同一条真实请求（5 万 token、129 个工具）在 V 上直接重放，首字 medium 3.8–4.2 s，high 5.8 s。
