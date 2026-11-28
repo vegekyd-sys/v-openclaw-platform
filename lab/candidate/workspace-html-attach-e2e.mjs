@@ -11,7 +11,9 @@
 //      workspace). PASS: no file message with that name; the reply carries "Delivery failed".
 // EXPECT_PATCHED=0 runs the same turns on V's unpatched bytes (turn 1 must then fail the same way).
 // A PNG already in the workspace rides in the same reply as a control for the harness's reply path.
-// Env: RELAY_HARNESS (worker | vcc | vds), EXPECT_PATCHED (1 | 0), WHA_OUTSIDE=0 skips turn 2.
+// The plan carries both patches: workspace-html-attach-v1 (core) and feishu-block-media-v1 (Feishu).
+// Env: RELAY_HARNESS (worker | vcc | vds), EXPECT_PATCHED (1 | 0), WHA_OUTSIDE=0 skips turn 2,
+//      WHA_TRACE=1 logs the reply-media path (candidate-only dist edits, recorded with hashes).
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -82,8 +84,37 @@ async function main() {
   summary.workspace = workspace;
   summary.notes.push(...cand.notes);
 
+  // Candidate-only trace (WHA_TRACE=1): where reply media go between the final payload build and the
+  // Feishu deliver. Recorded with before/after hashes; never part of a release.
+  if (env.WHA_TRACE === "1") {
+    summary.trace = [];
+    const patchOnce = (file, anchor, insert, where = "after") => {
+      const before = fs.readFileSync(file, "utf8");
+      assert.equal(before.split(anchor).length, 2, `trace anchor in ${path.basename(file)}`);
+      const after = before.replace(anchor, where === "after" ? anchor + insert : insert + anchor);
+      fs.writeFileSync(file, after);
+      summary.trace.push({ file: path.basename(file), before: S.sha256(before), after: S.sha256(after) });
+    };
+    const mc = "((p) => (Array.isArray(p?.mediaUrls) ? p.mediaUrls.length : p?.mediaUrl ? 1 : 0))";
+    patchOnce(path.join(cand.dist, "agent-runner.runtime-CAdsMsQt.js"), "\treturn {\n\t\treplyPayloads: (blockSentMediaUrls.length > 0",
+      `\tconsole.error("[wha-trace] buildReplyPayloads " + JSON.stringify({ blockStreamingEnabled: Boolean(params.blockStreamingEnabled), didStream: Boolean(params.blockReplyPipeline?.didStream?.()), drop: shouldDropFinalPayloads, inPayloads: params.payloads.map(${mc}), deduped: dedupedPayloads.map(${mc}), suppressed: contentSuppressedPayloads.map(${mc}), blockSentMedia: blockSentMediaUrls.length, directlySent: (params.directlySentBlockPayloads ?? []).length }));\n`, "before");
+    const feishuDir = cand.config.plugins.load.paths.find((p) => p.endsWith("/@openclaw/feishu"));
+    patchOnce(path.join(feishuDir, "dist", "monitor.account-WFdlCDhR.js"), `if (info?.kind === "final") params.vInterSession?.captureFinal(payload, reply);`,
+      `\n\t\t\t\tconsole.error("[wha-trace] feishu-deliver " + JSON.stringify({ kind: info?.kind, inputMedia: ${mc}(inputPayload), media: reply.mediaUrls.length, textLen: String(reply.text ?? "").length }));`);
+    const monitor = path.join(feishuDir, "dist", "monitor.account-WFdlCDhR.js");
+    patchOnce(monitor, `if (hasPresentationFallback || info?.kind === "block" && !useStreamingCard) {`,
+      `console.error("[wha-trace] feishu-branch " + JSON.stringify({ kind: info?.kind, hasMedia, shouldDeliverText, useStaticCard, useStreamingCard, useCard, coreBlockStreamingEnabled, renderMode, streamingEnabled, presentationFallback: hasPresentationFallback, streamingActive: Boolean(streaming?.isActive?.()), ownerGeneration: activeStreamingGeneration ?? null }));\n\t\t\t\t\t`, "before");
+    patchOnce(monitor, "\t\tconst mediaUrls = resolveSendableOutboundReplyParts(payload).mediaUrls;",
+      `\n\t\tconsole.error("[wha-trace] sendMediaReplies " + JSON.stringify({ count: mediaUrls.length }));`);
+    patchOnce(monitor, "if (result?.voiceIntentDegradedToFile && options?.fallbackText",
+      `console.error("[wha-trace] media-sent " + JSON.stringify({ messageId: result?.messageId ?? null }));\n\t\t\t\t\t`, "before");
+    patchOnce(monitor, "throw createFeishuPartialReplyDeliveryError(error, mergeFeishuReplyDeliveryResults([...results, ...partial ? [partial] : []]));",
+      `console.error("[wha-trace] media-error " + String(error?.stack ?? error).slice(0, 600));\n\t\t\t`, "before");
+  }
   const webMedia = fs.readFileSync(path.join(cand.dist, "web-media-BGCgwB8q.js"), "utf8");
   check("runtime-bytes", webMedia.includes("workspace-html-attach-v1") === PATCHED, { sha256: S.sha256(webMedia) });
+  const feishuMonitor = fs.readFileSync(path.join(cand.config.plugins.load.paths.find((p) => p.endsWith("/@openclaw/feishu")), "dist", "monitor.account-WFdlCDhR.js"), "utf8");
+  check("feishu-bytes", feishuMonitor.includes("feishu-block-media-v1") === PATCHED, { sha256: S.sha256(feishuMonitor) });
 
   // The page outside the workspace: in the candidate's private OpenClaw state dir.
   const outside = path.join(cand.stateDir, "agents", S.AGENT, `whattach-outside-${TAG}.html`);
@@ -106,7 +137,7 @@ async function main() {
     const deckFile = deck.messages.find((m) => m.type === "file" && m.fileName === deckName);
     const deckFailed = /Delivery failed/u.test(JSON.stringify(deck.messages)) || /Delivery failed/u.test(deck.replyText ?? "");
     deck.result = { fileOnDisk: deck.fileOnDisk, feishuFile: Boolean(deckFile), deliveryFailedReceipt: deckFailed, controlPngDelivered: deck.pngMessage };
-    check("control-png-delivered", deck.pngMessage, { optional: "harness reply-path control" });
+    check("control-png-delivered", deck.pngMessage, PATCHED ? undefined : { optional: "baseline: lost with the deck" });
     if (PATCHED) check("deck-delivered-to-feishu", deck.fileOnDisk && deckFile && !deckFailed, deck.result);
     else check("baseline-deck-refused", deck.fileOnDisk && !deckFile && deckFailed, deck.result);
 

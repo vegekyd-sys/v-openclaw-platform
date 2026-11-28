@@ -12,6 +12,11 @@
       "source": "lab/release-files/workspace-html-attach/web-media-BGCgwB8q.js",
       "target": "openclaw/dist/web-media-BGCgwB8q.js",
       "before": "432442da9fae4748dd0efa32ef2f8a8cee26fbe7189017a9b3c0c8a50d8febeb"
+    },
+    {
+      "source": "lab/release-files/feishu-block-media/monitor.account-WFdlCDhR.js",
+      "target": "npm/projects/openclaw-feishu-dc69f44688__openclaw-generation__g-f7df18f5e5ab9a05/node_modules/@openclaw/feishu/dist/monitor.account-WFdlCDhR.js",
+      "before": "46711745f606535264faace8c25d38844be6fc1eaa30c0c4c413b0518ec75b5c"
     }
   ],
   "command": [

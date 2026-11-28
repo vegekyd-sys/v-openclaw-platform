@@ -2326,6 +2326,13 @@
       "note": "workspace-html-attach-v1 (2026-11-28, Gateway + Worker): host-read HTML that the agent wrote into its own workspace is trusted as a reply attachment like temp-root output (a workspace that is / or contains the OpenClaw config dir vouches for nothing; links and paths outside stay refused); 2026-11-28 VLab /neon DM: makaron-deck.html in the workspace came back as 'Delivery failed' on every harness; versa/port-workspace-html-attach-20261128; not yet on V"
     },
     {
+      "layer": "feishu",
+      "path": "dist/monitor.account-WFdlCDhR.js",
+      "sha256": "1058bb83ce91d1a17d1f0f9ae679fd0babde1c33f17f30998679315bca090030",
+      "source": "versa:9d4e383b30c",
+      "note": "feishu-block-media-v1 (2026-11-28, Gateway): a reply block that carries media is sent at once when block streaming is off and its text is not a streaming card (core already counts that media as sent and drops it from the final); renderMode auto + streaming.block.enabled false on V lost the files of every plain-text reply with a MEDIA: line; versa/port-feishu-block-media-20261128 (on V's Feishu lineage f73ee277c7e); not yet on V"
+    },
+    {
       "layer": "core",
       "path": "cli-live-session-registry-Bux1JHPe.js",
       "sha256": "83fe2b9f43ec2d5f98e95fe00db477e4f6a22e9f94e2ab5fed12cf2b301c9a98",
