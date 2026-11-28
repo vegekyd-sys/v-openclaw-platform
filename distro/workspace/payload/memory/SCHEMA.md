@@ -88,7 +88,8 @@ Librarian 只整理记忆，不制造记忆。新租户没有日志、没有 ref
 - 编译：按 `file` + `lines` 读那一片原文 → 合并进已有的项目 main.md 或 concept 页，确实没有合适的主题页才新建 → 按「页面规范」和「检索友好的首段规范」写 → 结论后面的来源写 `memory-archive/imports/...` 的相对路径，让人能下钻到原文 → `mark`。
 - 分流：`source=ai-memory` 的原料，主人的身份和偏好进 `USER.md`（只写主人自己说过的，一条一行，先查重），人进 `people/`，项目进 `projects/`。别人的电话、住址、证件号不进记忆。
 - **原文不抄进 daily log，也不在真人轮里当场编译。** 抄进日志会被编译两遍；当场写会和夜间编译写出两套说法。唯一例外：主人在对话里亲口说的关于自己的事实，可以当场写进 `USER.md` 或项目页。
-- `log.md` 记一条 `import`；`librarian/runs/` 记一条 `kind: import` 的 run。
+- `log.md` 记一条 `import`；`librarian/runs/` 记一条 `kind: import` 的 run。凌晨的补编每一轮也要记，质检靠它看过程。
+- **表格和清单不许截断**：结算、名单、报价、排期这类一行一条的内容，整张原样搬进项目目录下的子页，一行不少；`main.md` 只写「共 N 条，见子页」。旧版本的整张表挪进 `history.md`。
 
 ### Reflection 编译
 `memory/reflections/YYYY-MM-DD.jsonl` 是原始层，只读。进度记在 `librarian/reflections-cursor.json`：`{"new_since": "<ISO 时间>", "backlog": {}, "done_ids": [...]}`，每条 reflection 用 `文件名#行号` 作为 id。处理 `created_at`（或 `ts`）晚于 `new_since` 的条目，处理完把 `new_since` 推到最后一条的时间。每条分流到**一个**去处：

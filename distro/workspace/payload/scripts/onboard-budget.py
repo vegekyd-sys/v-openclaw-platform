@@ -195,7 +195,24 @@ def main() -> None:
             verdict = "warn"
         reasons.append(f"发现 {len(bins)} 个非文本文件；二进制进了 workspace 就永久计入每轮备份")
 
+    # What a single import batch is judged on (onboard-collect blocks only on this): the batch
+    # itself carrying binaries or being too big, or the backup already past the hard limit.
+    # Binaries that were already in the workspace (chat attachments, screenshots) and a backup
+    # between the warn and stop marks are reported for the owner, but they do not block a
+    # text-only batch: blocking it does not make the workspace any smaller.
+    pend_bins = pend["binaries"] if pend else []
+    batch_reasons = []
+    if est_tgz > STOP_TGZ:
+        batch_reasons.append(f"预估备份 {human(est_tgz)} > {human(STOP_TGZ)}")
+    if pending_bytes > WARN_BATCH:
+        batch_reasons.append(f"单批增量 {human(pending_bytes)} > {human(WARN_BATCH)}")
+    if pend_bins:
+        batch_reasons.append(f"这一批里有 {len(pend_bins)} 个非文本文件")
+    batch_verdict = "stop" if batch_reasons else "ok"
+    advisories = [r for r in reasons if r not in batch_reasons and not r.startswith("单批增量")]
+
     report = {
+        "batch_verdict": batch_verdict, "batch_reasons": batch_reasons, "advisories": advisories,
         "workspace_bytes": ws["total"], "git_bytes": gb, "est_tgz_bytes": est_tgz,
         "est_chunks": -(-memory_chars(root) // CHUNK_CHARS), "pending_bytes": pending_bytes,
         "verdict": verdict, "reasons": reasons,
