@@ -5,6 +5,7 @@
 #   v-ctl pair <code>             approve the owner's first Feishu DM (dmPolicy=pairing)
 #   v-ctl reconfigure             apply keys or options added to /etc/v/*.env after the install
 #   v-ctl workspace-update [--dry-run]   bring the workspace's system files to this release
+#   v-ctl backup [--keep N]       online backup to /var/backups/v/archives (0600); restore-backup <archive> --root DIR | --live
 set -euo pipefail
 PREFIX="${V_PREFIX:-/opt/v}"
 NODE="$PREFIX/node/current/bin/node"
