@@ -1,0 +1,28 @@
+{
+  "support": [
+    "apps/v-antigravity/plugin/index.js",
+    "apps/v-antigravity/plugin/backend.js",
+    "apps/v-antigravity/plugin/runtime.js",
+    "apps/v-antigravity/plugin/openclaw.plugin.json",
+    "apps/v-antigravity/plugin/package.json",
+    "scripts/gemini-neon-alias.mjs",
+    "lab/candidate/neon-antigravity-live.mjs"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/v-identity-line/system-prompt-params-B645JcX8.js",
+      "target": "openclaw/dist/system-prompt-params-B645JcX8.js"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/neon-antigravity-live.mjs"
+  ],
+  "timeoutSeconds": 0,
+  "user": "lab-db91-parity",
+  "env": {
+    "AGY_BIN": "/opt/agy-lab/bin/agy",
+    "AGY_HOME": "/var/lib/agy-lab/home",
+    "LIVE_MAX_MINUTES": "180"
+  }
+}
