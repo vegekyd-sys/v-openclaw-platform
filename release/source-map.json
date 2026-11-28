@@ -2345,6 +2345,13 @@
       "sha256": "2cb9b0e9ba7706db85dd322a3b98e48740cfbe68c2db283a0046778ef6b419d5",
       "source": "versa:bfcb8cbe429",
       "note": "cli-subagent-progress-v1 (2026-11-25, Gateway): claude-cli turns report foreground Agent subagent activity (parent_tool_use_id records) as turn progress, so a /vcc turn waiting on working subagents is no longer reclaimed as stuck after the 900 s floor (2026-11-25 16:29 group oc_2ab0b5b3: two V Voice subagents killed mid-work); versa/port-cli-subagent-progress-20261125; PR #649; on V since v-batch-20261125"
+    },
+    {
+      "layer": "core",
+      "path": "server-context.lifecycle-D0RhNtWT.js",
+      "sha256": "c67a67568fab9b94f5f7946c464276904ebb62c68985ba23881afc0731bcd69c",
+      "source": "versa:9c0bc742323",
+      "note": "browser-lifecycle-unwedge-v1 (2026-11-28): every link of a browser profile's lifecycle tail settles on its own clock (a transition waits for aborted leases at most 15 s, a start owns the tail at most 120 s, cleanup and afterCleanup at most 60 s each), so one operation that ignores cancellation no longer blocks the profile until the Gateway restarts; 2026-11-27 ~17:56 the managed openclaw profile stopped answering for 8+ h (browser.request UNAVAILABLE 45 s, secret fill failed) while its Chrome answered CDP; versa/port-browser-lifecycle-unwedge-20261128; PR #684; on V since browser-attach-20261128"
     }
   ]
 }
