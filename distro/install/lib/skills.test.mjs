@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { verifySkillDir, larkSkillFiles, installSkills } from './skills.mjs';
+import { verifySkillDir, larkSkillFiles, installSkills, skillSources, skillTarballName } from './skills.mjs';
 
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const tmpdir = (t, p) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), p)); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
@@ -85,4 +85,31 @@ test('install: npm, lark and GitHub skills land in ~/.openclaw/skills; a tampere
   assert.match(r.failed.makaron, /not installed by v-distro/);
   assert.equal(fs.readFileSync(path.join(skills, 'makaron/SKILL.md'), 'utf8'), 'the owner wrote this');
   assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(skills, '.v-distro-skills.json'), 'utf8'))).sort(), ['good', 'lark-im']);
+});
+
+test('offline bundle: with V_SKILLS_TARBALL_DIR the pinned tarball is used instead of GitHub, and still checked', (t) => {
+  const root = tmpdir(t, 'v-skills-bundle-');
+  const release = path.join(root, 'release');
+  const home = path.join(root, 'home');
+  const bundle = path.join(root, 'bundle');
+  const upstream = path.join(root, 'upstream');
+  write(path.join(upstream, 'skills/good/SKILL.md'), 'good');
+  const spec = { target: '.openclaw/skills', github: [{ name: 'good', repo: 'o/r', commit: 'b'.repeat(40), path: 'skills/good', files: { 'SKILL.md': sha('good') } }] };
+  write(path.join(release, 'runtime/skills.json'), JSON.stringify(spec));
+  write(path.join(release, 'runtime/tools.json'), JSON.stringify({ npm: {} }));
+  assert.deepEqual(skillSources(spec), [{ repo: 'o/r', commit: 'b'.repeat(40), file: skillTarballName('o/r', 'b'.repeat(40)) }]);
+  fs.mkdirSync(bundle, { recursive: true });
+  spawnSync('tar', ['-czf', path.join(bundle, skillTarballName('o/r', 'b'.repeat(40))), '-C', root, 'upstream']);
+  const run = (cmd, args) => {
+    if (cmd === 'curl') throw new Error('no GitHub here');
+    if (cmd === 'chown') return '';
+    const r = spawnSync(cmd, args, { encoding: 'utf8' });
+    if (r.status !== 0) throw new Error(`${cmd}: ${r.stderr}`);
+    return r.stdout;
+  };
+  const r = installSkills({ releaseDir: release, toolsRoot: path.join(root, 'tools'), home, user: 'nobody', uid: process.getuid(), gid: process.getgid(), nodeBin: path.dirname(process.execPath), run, tarballDir: bundle });
+  assert.deepEqual(r.installed, ['good']);
+  assert.deepEqual(r.failed, {});
+  const without = installSkills({ releaseDir: release, toolsRoot: path.join(root, 'tools'), home: path.join(root, 'home2'), user: 'nobody', uid: process.getuid(), gid: process.getgid(), nodeBin: path.dirname(process.execPath), run });
+  assert.match(without.failed.good, /no GitHub here/, 'without the bundle the failure is reported, not fatal');
 });

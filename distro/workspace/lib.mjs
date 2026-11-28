@@ -76,8 +76,9 @@ export const SANITISE = [
   [/\/home\/openclaw\/\.openclaw/g, "@@STATE_DIR@@"],
   [/agent:makaron:/g, "agent:@@AGENT_ID@@:"],
   [/agent:mirror-v-full:/g, "agent:@@AGENT_ID@@:"],
-  [/Tianyi's/g, "the owner's"],
-  [/Tianyi/g, "the owner"],
+  // Whole words only: an identifier such as allowTianyiOverride is code, and rewriting it breaks the script.
+  [/(?<![A-Za-z0-9_$])Tianyi's/g, "the owner's"],
+  [/(?<![A-Za-z0-9_$])Tianyi(?![A-Za-z0-9_$])/g, "the owner"],
   [/天翊|天懿/g, "主人"],
   [/https:\/\/[a-z0-9-]+\.(feishu\.cn|larksuite\.com)\/(docx|docs|wiki|base|sheets|file|drive|minutes|mindnotes)\/[A-Za-z0-9_?=&#-]+/g, "（V 内部飞书文档，未随附）"],
   [/\bou_[0-9a-f]{20,}\b/g, "ou_xxx"],

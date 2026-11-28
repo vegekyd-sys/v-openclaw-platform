@@ -245,6 +245,19 @@ def budget_gate(ws: Path, batch: Path) -> None:
             reason += f"（workspace {h.get('workspace')} / .git {h.get('git')} / 估算备份 {h.get('est_tgz')}）"
     except (json.JSONDecodeError, TypeError):
         pass
+    # Block on the batch's own problems only (batch_verdict). Older onboard-budget.py without it:
+    # fall back to the overall verdict, as before.
+    try:
+        batch_verdict = str(data.get("batch_verdict") or "")
+        if batch_verdict:
+            if batch_verdict != "ok":
+                raise BudgetBlocked("体积闸门拦下了这一批：" + "；".join(data.get("batch_reasons") or []))
+            if data.get("advisories"):
+                print("体积提示（不拦这一批，汇报时告诉主人，不要自己挪或删主人的文件）："
+                      + "；".join(data["advisories"]), file=sys.stderr)
+            return
+    except NameError:
+        pass
     if verdict != "ok" or r.returncode != 0:
         raise BudgetBlocked(f"体积闸门拦下了这一批（verdict={verdict}）：{reason}")
 

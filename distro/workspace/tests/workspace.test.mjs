@@ -58,6 +58,10 @@ test("the scanner really fires: planted samples of every shape are caught", () =
   assert.ok(lib.scanDir(dir, lib.loadDenyFile(deny)).some((h) => h.file === "b.md" && h.label === "private deny list"));
 });
 
+test("sanitise leaves identifiers that contain the owner's name alone (rewriting them breaks code)", () => {
+  assert.equal(lib.sanitise("if (job.allowTianyiOverride) x = 'Tianyi';"), "if (job.allowTianyiOverride) x = 'the owner';");
+});
+
 test("sanitise rewrites V's paths, ids, names and doc links into neutral text", () => {
   const out = lib.sanitise([
     "cd /home/openclaw/makaron-openclaw/.openclaw-local/workspace && ls /home/openclaw/.openclaw/logs",
@@ -269,6 +273,15 @@ test("the 2026-11-27 decisions hold: VSync, A2A and computer use ship and follow
   assert.ok(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8").includes("skills/computer-use"));
 });
 
+test("task room: the skill ships, takes the owner and app from this machine, and AGENTS.md points at it", () => {
+  const s = fs.readFileSync(path.join(PAYLOAD, "skills/feishu-task-room-router/SKILL.md"), "utf8");
+  assert.match(s, /agent:@@AGENT_ID@@:feishu:group:<chat_id>/);
+  assert.match(s, /v-schedule\.py owner/);
+  assert.match(s, /feishu-docs\.py status/);
+  assert.doesNotMatch(s, /\b(ou|cli)_[0-9a-f]{6,}/);
+  assert.ok(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8").includes("skills/feishu-task-room-router"));
+});
+
 test("2026-11-28: no Scene; Night Shift ships generic and says it needs the service; public links say they need Vercel or Cloudflare", () => {
   const read = (rel) => fs.readFileSync(path.join(PAYLOAD, rel), "utf8");
   for (const rel of lib.walk(PAYLOAD)) {
@@ -299,15 +312,6 @@ test("temporary previews: one script, closed automatically, said to be temporary
     if (!/\.md$/.test(rel)) continue;
     assert.doesNotMatch(read(rel), /通过 ?Portal|Portal 生成/, rel);
   }
-});
-
-test("task room: the skill ships, takes the owner and app from this machine, and AGENTS.md points at it", () => {
-  const s = fs.readFileSync(path.join(PAYLOAD, "skills/feishu-task-room-router/SKILL.md"), "utf8");
-  assert.match(s, /agent:@@AGENT_ID@@:feishu:group:<chat_id>/);
-  assert.match(s, /v-schedule\.py owner/);
-  assert.match(s, /feishu-docs\.py status/);
-  assert.doesNotMatch(s, /\b(ou|cli)_[0-9a-f]{6,}/);
-  assert.ok(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8").includes("skills/feishu-task-room-router"));
 });
 
 function renderedWorkspace() {
@@ -371,4 +375,143 @@ test("update policy: every payload file is system, sectioned or the owner's; the
     assert.match(outside, /^## /m, `${f}: an owner area after the system sections`);
   }
   assert.match(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8"), /系统文件不要直接改/);
+});
+
+test("cross-session: the receiver writes its result once in the final reply; the requester says it is checking before an empty wait", () => {
+  const agents = fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8");
+  assert.match(agents, /完整结果写在最终回复里，只写这一次/);
+  assert.match(agents, /不要再用 `message` 工具把同样的结果另发一遍/);
+  assert.match(agents, /最终回复不能是 NO_REPLY/);
+  assert.match(agents, /我核对一下再报给你/);
+  assert.match(fs.readFileSync(path.join(PAYLOAD, "skills/feishu-task-room-router/SKILL.md"), "utf8"), /结果只写在你的最终回复里/);
+});
+
+test("comments and messages that would show as the owner are never sent as the owner; doc comment replies go out as the final reply", () => {
+  const tools = fs.readFileSync(path.join(PAYLOAD, "TOOLS.md"), "utf8");
+  assert.match(tools, /会显示成主人在说话的，不用主人身份发/);
+  assert.match(tools, /把回复直接写成你的最终回复/);
+  assert.match(tools, /更不能 `--as user`/);
+  assert.match(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8"), /不超过 160 字节/);
+  for (const rel of lib.walk(path.join(PAYLOAD, "skills"))) {
+    if (!rel.endsWith("SKILL.md")) continue;
+    const m = fs.readFileSync(path.join(PAYLOAD, "skills", rel), "utf8").match(/^description:\s*"?(.*?)"?\s*$/m);
+    if (m) assert.ok(Buffer.byteLength(m[1]) <= 1024, `${rel}: description is ${Buffer.byteLength(m[1])} bytes`);
+  }
+});
+
+test("VSync: the broker client ships, says when it has no identity, and the skill's receiving side covers any installed V", () => {
+  const s = fs.readFileSync(path.join(PAYLOAD, "skills/vsync/SKILL.md"), "utf8");
+  assert.match(s, /## On an installed V \(receiving side\)/);
+  assert.match(s, /NEXUS_VSYNC_URL/);
+  assert.match(s, /mirror-vsync\.py whoami/);
+  assert.doesNotMatch(s, /keeps lark-cli read-only/);
+  const r = spawnSync("python3", [path.join(PAYLOAD, "scripts/mirror-vsync.py"), "whoami"], { encoding: "utf8",
+    env: { ...process.env, NEXUS_VSYNC_URL: "", NEXUS_VSYNC_AGENT: "", NEXUS_VSYNC_TOKEN: "" } });
+  assert.equal(r.status, 3, r.stderr);
+});
+
+test("doc comment sessions: the final reply is the comment, posted by the plugin as the bot; posting comments yourself is forbidden", () => {
+  const a = fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8");
+  const sec = a.slice(a.indexOf("<!-- v-distro:begin doc-comments -->"), a.indexOf("<!-- v-distro:end doc-comments -->"));
+  assert.match(sec, /你的最终回复就是评论回复/);
+  assert.match(sec, /不调用 `lark-cli drive \+add-comment`、`\+add-reply`/);
+  assert.match(sec, /最终回复不能是空的或 `NO_REPLY`/);
+});
+
+test("speaking as the owner: only with --owner-approved and the owner's own words, never for comments, and reported back", () => {
+  const tools = fs.readFileSync(path.join(PAYLOAD, "TOOLS.md"), "utf8");
+  assert.match(tools, /--owner-approved "<主人的原话>"/);
+  assert.match(tools, /在当前对话里明确/);
+  assert.match(tools, /lark-owner-voice\.log/);
+  assert.match(tools, /发完在单聊里告诉主人发了什么、发给了谁/);
+  assert.match(tools, /文档评论和回复评论不能这样发/);
+});
+
+test("Makaron cards: the Feishu part and the card runner ship; one owner's key serves every chat, never printed", () => {
+  for (const rel of ["skills/makaron/parts/feishu/SKILL.md", "scripts/makaron-card-runner/visible-parent-flow.cjs", "scripts/makaron-card-runner/run.cjs"])
+    assert.ok(fs.existsSync(path.join(PAYLOAD, rel)), rel);
+  const ws = tmp("mk");
+  fs.mkdirSync(path.join(ws, "onboarding"), { recursive: true });
+  fs.writeFileSync(path.join(ws, "onboarding/owner.json"), JSON.stringify({ open_id: "ou_ownerownerowner" }));
+  const home = tmp("mkhome");
+  const route = path.join(PAYLOAD, "scripts/makaron-card-runner/account-routing.cjs");
+  const run = (chat, key) => spawnSync("node", [route, chat], { encoding: "utf8",
+    env: { PATH: process.env.PATH, HOME: home, OPENCLAW_WORKSPACE_DIR: ws, ...(key ? { MAKARON_API_KEY: key } : {}) } });
+  for (const chat of ["ou_ownerownerowner", "oc_someroomsomeroom", "user:ou_ownerownerowner"]) {
+    const r = run(chat, "mk-test-key-123");
+    assert.equal(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.ok, true);
+    assert.equal(out.action, "use_key");
+    assert.doesNotMatch(r.stdout, /mk-test-key-123/, "the key never reaches stdout");
+  }
+  const none = run("oc_someroomsomeroom", "");
+  assert.equal(none.status, 3);
+  assert.match(none.stdout, /owner_key_unavailable/);
+  const skill = fs.readFileSync(path.join(PAYLOAD, "skills/makaron/parts/feishu/SKILL.md"), "utf8");
+  assert.doesNotMatch(skill, /v-avatar|makaron-key-bind-secret|VERSION\.md\]/);
+});
+
+test("every script in the payload still parses after sanitising (node --check, python compile)", () => {
+  const bad = [];
+  for (const rel of lib.walk(PAYLOAD)) {
+    const abs = path.join(PAYLOAD, rel);
+    if (/\.(cjs|mjs)$/.test(rel) || (/\.js$/.test(rel) && !rel.includes("/vendor/"))) {
+      const r = spawnSync("node", ["--check", abs], { encoding: "utf8" });
+      if (r.status !== 0) bad.push(`${rel}: ${r.stderr.split("\n").slice(0, 2).join(" ")}`);
+    } else if (rel.endsWith(".py")) {
+      const r = spawnSync("python3", ["-c", "import ast,sys; ast.parse(open(sys.argv[1],encoding='utf-8').read())", abs], { encoding: "utf8" });
+      if (r.status !== 0) bad.push(`${rel}: ${r.stderr.trim().split("\n").pop()}`);
+    }
+  }
+  assert.deepEqual(bad, []);
+});
+
+test("v-capabilities.py: switched-off capabilities become one plain sentence for the owner; the technical part stays for the deployer", () => {
+  const dir = tmp("caps");
+  const file = path.join(dir, "v-capabilities.json");
+  fs.writeFileSync(file, JSON.stringify({ at: "2026-11-28T10:00:00Z",
+    memoryVectorSearch: { on: false, reason: "google is unreachable from this machine (preflight)", howTo: "semantic memory search: needs a network path to google" },
+    makaron: { on: true }, groupChats: { on: false, reason: "owner open_id not set", howTo: "v-ctl feishu-owner --mobile <phone> --write" },
+    feishu: { on: true }, unreachable: ["google"] }));
+  const script = path.join(PAYLOAD, "scripts/v-capabilities.py");
+  const r = spawnSync("python3", [script], { encoding: "utf8", env: { ...process.env, V_CAPABILITIES_FILE: file } });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.deepEqual(out.off, ["memoryVectorSearch", "groupChats"]);
+  assert.deepEqual(out.on, ["makaron", "feishu"]);
+  assert.match(out.tellOwner, /按关键词找/);
+  assert.match(out.tellOwner, /群聊还没打开/);
+  assert.doesNotMatch(out.tellOwner, /[A-Za-z]{4,}/, "no technical words for the owner");
+  assert.equal(out.forDeployer[1].howTo, "v-ctl feishu-owner --mobile <phone> --write");
+  const missing = spawnSync("python3", [script], { encoding: "utf8", env: { ...process.env, V_CAPABILITIES_FILE: path.join(dir, "none.json") } });
+  assert.equal(missing.status, 3);
+});
+
+test("size gate: attachments already in the workspace do not block a text batch; a batch carrying binaries does", () => {
+  const ws = tmp("budget");
+  fs.writeFileSync(path.join(ws, "AGENTS.md"), "x");
+  fs.mkdirSync(path.join(ws, "media/inbound"), { recursive: true });
+  fs.writeFileSync(path.join(ws, "media/inbound/photo.png"), Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0]), Buffer.alloc(2048)]));
+  const text = tmp("batch-text"); fs.writeFileSync(path.join(text, "doc.md"), "正文".repeat(200));
+  const bin = tmp("batch-bin"); fs.writeFileSync(path.join(bin, "scan.pdf"), Buffer.concat([Buffer.from("%PDF-1.4\0"), Buffer.alloc(1024)]));
+  const gate = (pending) => JSON.parse(spawnSync("python3", [path.join(PAYLOAD, "scripts/onboard-budget.py"), "--workspace", ws, "--pending", pending], { encoding: "utf8" }).stdout);
+  const t1 = gate(text);
+  assert.equal(t1.batch_verdict, "ok");
+  assert.ok(t1.advisories.length > 0, "the existing attachment is still reported");
+  assert.equal(gate(bin).batch_verdict, "stop");
+});
+
+test("cold start pace: catch-up runs every hour 0:15–7:15 with 60 slices, records each run, and keeps tables whole", () => {
+  const items = JSON.parse(fs.readFileSync(path.join(PAYLOAD, "schedules.json"), "utf8"));
+  const c = items.find((s) => s.key === "memory-import-catchup");
+  assert.equal(c.cron, "15 0-7 * * *");
+  assert.match(c.prompt, /最多 60 片、写运行记录/);
+  const ref = fs.readFileSync(path.join(PAYLOAD, "skills/memory-cold-start/references/import-catchup.md"), "utf8");
+  assert.match(ref, /--limit 60/);
+  assert.match(ref, /librarian\/runs\/<今天>\.json/);
+  assert.match(ref, /表格和清单不许截断/);
+  assert.match(fs.readFileSync(path.join(PAYLOAD, "skills/memory-cold-start/SKILL.md"), "utf8"), /import_pending ÷ 450/);
+  assert.ok(fs.existsSync(path.join(PAYLOAD, "memory/projects/_TEMPLATE/history.md")), "the template's history link resolves");
+  assert.match(fs.readFileSync(path.join(PAYLOAD, "AGENTS.md"), "utf8"), /不为了通过体积检查或腾空间去挪、删主人的文件/);
 });

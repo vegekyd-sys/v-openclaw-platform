@@ -1,6 +1,9 @@
 tmp/
 # 平台仓库根的 .gitignore 忽略所有 artifacts/；这里重新纳入，下面再只放行图谱库原件
 !artifacts/
+# 运行产物（浏览器截图、Makaron 出片等）不进 git，只有记忆图谱的库原件进（见下面）
+artifacts/*
+!artifacts/memory-graph/
 *.log
 __pycache__/
 # 记忆页是每晚重建的产物（index.html、graph.json、graph-lib.js、days/、history.jsonl），不进 git；只有随模板带的图谱库原件进
@@ -30,3 +33,10 @@ links.json
 .v/previews.json
 .v/previews/
 .v/*.tmp
+
+# 运行时装的 node 依赖（例如 sharp），不进 git
+node_modules/
+
+# 聊天附件（OpenClaw 收到的图片、文件存在工作区 media/ 下）和授权二维码：运行状态，不是记忆
+media/
+*-auth.png

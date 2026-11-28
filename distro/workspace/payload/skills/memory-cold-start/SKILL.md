@@ -12,7 +12,7 @@ description: 记忆冷启动：主人的记忆是空的时候，把他已有的�
 | **你（真人轮里）** | 找原料、让主人选、把原料**原样**落盘 |
 | **采集器** `scripts/onboard-collect.py` | 原文进 `memory-archive/imports/`（不进检索索引）、脱敏、记 MANIFEST、体积闸门、git 提交 |
 | **Librarian 队列** `scripts/librarian-daily-queue.py` | `kind=import` 把 MANIFEST 里 pending 的文档切成 ≤3500 字的片 |
-| **夜间 Librarian**（21:00） | 每晚编译最多 20 片成 wiki 页，标完最后一片自动在 MANIFEST 结账，汇报进度 |
+| **夜间 Librarian**（21:00）和**凌晨补编**（0:15–7:15 每小时，每轮最多 60 片，只在队列不空时干活） | 每晚编译最多 20 片成 wiki 页，标完最后一片自动在 MANIFEST 结账，汇报进度 |
 
 **冷启动期间不要自己把原料编译成 wiki。** 同一份东西被你和 Librarian 各写一遍，就会出现两套说法。唯一例外：主人在对话里**亲口**说的关于自己的事实，当场写进 `USER.md` 或项目页。
 
@@ -90,7 +90,7 @@ python3 scripts/onboard-collect.py status            # 份数、字数、消化�
 python3 scripts/librarian-daily-queue.py stats       # import_pending = 还剩几片
 ```
 
-`import_pending ÷ 20` 就是还要几个晚上，跟主人说这个数，**不要拍脑袋估**。原料多到主人觉得太慢，可以减原料，或者主人同意的话把夜间上限调高。
+还要几个晚上 = `import_pending ÷ 450`，向上取整（每晚 21:00 一轮加凌晨 0:15–7:15 八轮补编，每轮最多 60 片，按九成算）。跟主人说这个数，**不要拍脑袋估**；例如 562 片是 2 个晚上。原料多到主人觉得太慢，可以减原料。
 
 ## 验收：看结果，不看过程
 
