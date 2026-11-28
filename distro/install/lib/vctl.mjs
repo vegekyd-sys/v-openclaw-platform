@@ -822,15 +822,17 @@ async function cmdConfigure(opts) {
 export function capabilities(env, { unreachable = new Set() } = {}) {
   const has = (k) => typeof env[k] === 'string' && env[k].length > 0;
   const cap = (on, offReason, howTo) => (on ? { on: true } : { on: false, reason: offReason, howTo });
-  const keyed = (key, service, what) => {
-    if (has(key) && unreachable.has(service)) return cap(false, `${service} is unreachable from this machine (preflight)`, `${what}: needs a network path to ${service}; then remove ${service} from V_UNREACHABLE and run v-ctl reconfigure`);
-    return cap(has(key), `no ${key}`, `${what}: put ${key} into /etc/v/secrets.env, then v-ctl reconfigure`);
+  const keyed = (keys, service, what) => {
+    const names = [keys].flat();
+    const present = names.some(has);
+    if (present && unreachable.has(service)) return cap(false, `${service} is unreachable from this machine (preflight)`, `${what}: needs a network path to ${service}; then remove ${service} from V_UNREACHABLE and run v-ctl reconfigure`);
+    return cap(present, `no ${names.join(' or ')}`, `${what}: put ${names[0]} into /etc/v/secrets.env (sudo v-ctl put-secrets), then v-ctl reconfigure`);
   };
   return {
     memoryVectorSearch: keyed('GOOGLE_API_KEY', 'google', 'semantic memory search (keyword search works without it)'),
     imageUnderstandingXai: keyed('XAI_API_KEY', 'xai', 'xAI image understanding and generation (DeepSeek Flash still reads images)'),
     makaron: keyed('MAKARON_API_KEY', 'makaron', 'Makaron image/video creation'),
-    socialSearch: keyed('APIFY_API_KEY', 'apify', 'social-media and image search skills'),
+    socialSearch: keyed(['APIFY_API_KEY', 'APIFY_TOKEN'], 'apify', 'social-media and image search skills'),
     voiceTranscription: keyed('VOLCENGINE_API_KEY', 'volcengine', 'voice messages to text'),
     feishu: cap(has('FEISHU_APP_ID') && has('FEISHU_APP_SECRET'), 'no Feishu app', 'FEISHU_APP_ID in install.env, FEISHU_APP_SECRET in secrets.env'),
     groupChats: cap(has('V_OWNER_FEISHU_OPEN_ID'), 'owner open_id not set', 'v-ctl feishu-owner --mobile <phone> --write, then v-ctl reconfigure'),

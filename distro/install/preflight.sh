@@ -56,6 +56,7 @@ probe xai https://api.x.ai/ && xai=1 || xai=0
 probe deepseek https://api.deepseek.com/ && deepseek=1 || deepseek=0
 probe vercel-ai-gateway https://ai-gateway.vercel.sh/ && aigw=1 || aigw=0
 probe feishu https://open.feishu.cn/ && feishu=1 || feishu=0
+probe lark https://open.larksuite.com/ && lark=1 || lark=0
 probe makaron https://www.makaron.app/ && makaron=1 || makaron=0
 probe volcengine-asr https://openspeech.bytedance.com/ && volc=1 || volc=0
 probe apify https://api.apify.com/ && apify=1 || apify=0
@@ -67,6 +68,7 @@ flags=()
 # Mainland China: Google blocked but Feishu reachable. npmjs.org and nodejs.org often still answer
 # there, but slowly and unreliably, so the mirrors are used whenever they answer.
 mainland=0; [ "$googledl" = 0 ] && [ "$googleapi" = 0 ] && [ "$feishu" = 1 ] && mainland=1
+[ "$mainland" = 0 ] && line INFO region "Google reachable: overseas network, official sources (no mirrors, no kit needed when everything above is OK)"
 [ "$mainland" = 1 ] && line INFO region "Google unreachable, Feishu reachable: treating this as mainland China (mirrors preferred)"
 if { [ "$npmjs" = 0 ] || [ "$mainland" = 1 ]; } && [ "$npmmirror" = 1 ]; then flags+=("--registry https://registry.npmmirror.com"); npm_mirror_used=1; else npm_mirror_used=0; fi
 if { [ "$nodejs" = 0 ] || [ "$mainland" = 1 ]; } && [ "$nodemirror" = 1 ]; then flags+=("--node-mirror https://npmmirror.com/mirrors/node/v22.23.1/"); fi
@@ -77,7 +79,8 @@ if { [ "$nodejs" = 0 ] || [ "$mainland" = 1 ]; } && [ "$nodemirror" = 1 ]; then 
 [ "$googledl" = 0 ] && bundles+=("chrome (only with V_DESKTOP=1): run install/lib/fetch-chrome-deb.sh OUTDIR where dl.google.com works, copy it over, set V_CHROME_DEB=OUTDIR/google-chrome-stable.deb")
 [ "$deepseek" = 0 ] && [ "$aigw" = 0 ] && block+=("model: neither api.deepseek.com nor ai-gateway.vercel.sh answers")
 [ "$deepseek" = 0 ] && [ "$aigw" = 1 ] && warn+=("model: api.deepseek.com unreachable; use V_MODEL_PRESET=vercel with AI_GATEWAY_API_KEY")
-[ "$feishu" = 0 ] && block+=("feishu: open.feishu.cn unreachable")
+[ "$feishu" = 0 ] && [ "$lark" = 0 ] && block+=("feishu/lark: neither open.feishu.cn nor open.larksuite.com answers")
+[ "$feishu" = 0 ] && [ "$lark" = 1 ] && warn+=("feishu: open.feishu.cn unreachable, open.larksuite.com fine: only an international Lark app (FEISHU_DOMAIN=lark) will work")
 [ "$apt" = 0 ] && warn+=("apt: the Ubuntu mirror did not answer; install.sh apt-get will fail (or use --skip-apt with packages present)")
 [ "$googleapi" = 0 ] && unreach+=(google)
 [ "$xai" = 0 ] && unreach+=(xai)

@@ -16,8 +16,14 @@
 
 ## 你不做的事（红线）
 
-1. **不经手任何密钥原文。** App Secret、DeepSeek key 和其他 key，都由客户（或 Tianyi）自己写进客户机的 `/etc/v/secrets.env`。你只核对「有没有写」，见第 3.4 步，不读值，不复制，也不让对方把值发给你。
-2. **不替任何人输入密码或验证码。** 登录客户机只用 SSH 密钥；老板的飞书授权由老板自己在手机或电脑上点。
+1. **任何密钥都不显示原文。**
+   - 我们的 key 用管道从 V 的主机直接写进客户机的 `/etc/v/secrets.env`（第 3.3 步）。
+   - 客户的 App Secret 由客户自己写。
+   - 原文不出现在你的屏幕输出、命令行参数、聊天、交接记录和报告里。
+   - 你只核对「有没有、有几行、文件权限」（第 3.4 步）：不 `cat`，不 `echo`，不复制。
+2. **不替任何人输入密码或验证码，也不记录客户的密码。**
+   - 登录客户机只用你自己的 SSH 密钥（第 0 步）。
+   - 老板的飞书授权由老板自己在手机或电脑上点。
 3. **不在老板的真实会话、记忆里留测试内容。** 验收用 `v-ctl probe`，它用独立的探针会话。如果必须在老板的会话里说话（第 7 步的飞书项），只问不会写进记忆的问题；验收后检查 `memory/` 里有没有测试留下的事实，有就删掉那一段，并告诉 Tianyi。
 4. **不在客户机上跑压测，不改 `/opt/v` 下的文件。** 改配置只改 `/etc/v/*.env`，然后 `v-ctl reconfigure`。
 5. **不以老板的名义对别人发消息或评论。** 包里的 lark-cli 会拦住，见「已知问题」第 3 条。
@@ -33,24 +39,41 @@
 | 客户名、老板称呼 | 某公司，王总 | `V_OWNER_NAME` |
 | 老板的时区 | Asia/Shanghai | `TZ` |
 | 老板在飞书里的手机号或邮箱（或管理后台里的「用户 ID」） | 138… | 第 5 步换 open_id |
+| 客户用的是飞书（中国版）还是 Lark（国际版） | 飞书 | 第 3、4 步 |
 | 客户飞书管理员是谁，能不能当天建应用、发版本 | 李工 | 第 3 步 |
-| 机器：云厂商、地域、公网 IP、SSH 端口、登录用户 | 腾讯云上海，203.0.113.5:22，ubuntu | 第 1、2 步 |
+| 机器：云厂商、地域、公网 IP、SSH 端口、登录用户 | AWS 东京，203.0.113.5:22，ubuntu | 第 1、2 步 |
 | 系统、CPU、内存、磁盘 | Ubuntu 24.04，4C/8G，80G | 第 1 步 |
-| 网络：在中国大陆吗？有没有出口代理？ | 大陆，无代理 | 第 1 步 |
+| 网络：海外还是中国大陆？有没有出口代理？ | 海外（默认），无代理 | 第 1 步 |
 | 要打开的可选能力 | 桌面接管、语音转文字、Makaron、公网链接、VSync | 第 4 步 |
-| 哪些 key 由谁提供 | DeepSeek：客户自己的；xAI：无 | 第 3.4 步 |
+| 哪些 key 用我们的（默认全部用我们的） | 全部用我们的 | 第 3.3 步 |
 | 本次部署的版本号和包的 sha256 | 2026.11.30-…，`ab12…` | 第 2 步 |
 
-**登录方式**：
-1. 你在自己的机器上为这个客户单独生成一把密钥：`ssh-keygen -t ed25519 -N '' -f ~/.ssh/v-deploy-<客户简称> -C v-deploy-<客户简称>`。
-2. 把公钥（`.pub` 文件的内容）发给客户管理员，请他加到客户机上一个能免密 sudo 的用户的 `~/.ssh/authorized_keys` 里。
-3. 在 `~/.ssh/config` 里给这台机器起个别名，比如 `Host cust-<客户简称>`。
+**登录方式**：客户会给 SSH。拿到以后先做下面四件事。
 
-**通过**：`ssh cust-<客户简称> 'sudo -n true && echo sudo-ok'` 打印 `sudo-ok`。
+1. **用你自己的密钥。** 在你自己的机器上为这个客户单独生成一把：
+
+   ```bash
+   ssh-keygen -t ed25519 -N '' -f ~/.ssh/v-deploy-<客户简称> -C v-deploy-<客户简称>
+   ```
+
+   - 把公钥（`.pub` 文件的内容）发给客户管理员，请他加到客户机上一个能 sudo 的用户的 `~/.ssh/authorized_keys` 里。
+   - 如果客户给的是用户名加密码：不要用密码登录，也不要把密码写进任何记录。请管理员用他自己的方式把你的公钥加进去，比如在他电脑上 `ssh-copy-id`，或在云控制台里加。
+   - 在 `~/.ssh/config` 里给这台机器起个别名，比如 `Host cust-<客户简称>`，写上 `IdentityFile ~/.ssh/v-deploy-<客户简称>`。
+2. **确认能连上，确认系统和 sudo：**
+
+   ```bash
+   ssh cust-<客户简称> '. /etc/os-release; echo "$PRETTY_NAME $(uname -m)"; nproc; free -g | sed -n 2p; df -h / | tail -1; sudo -n true && echo sudo-ok'
+   ```
+
+3. **核对机器指纹**：第一次连接时 ssh 会显示主机指纹。如果客户能在控制台看到指纹，请他确认一致。
+4. 把系统版本、架构、CPU、内存、磁盘记进交接记录。
+
+**通过**：打印 `Ubuntu 24.04… x86_64`（或 aarch64），最后一行是 `sudo-ok`。
 
 **不通过**：
 - `Permission denied (publickey)`：公钥没加对用户，或文件权限不对（`~/.ssh` 700，`authorized_keys` 600）。请管理员检查。
 - `sudo: a password is required`：请管理员给这个用户配免密 sudo（`/etc/sudoers.d/` 下一行 `<用户> ALL=(ALL) NOPASSWD:ALL`）。**不要**请他把密码告诉你。
+- 不是 Ubuntu 24.04：可以继续，但第 1 步会报 `WARN os`。请 Tianyi 决定要不要装。
 
 ---
 
@@ -63,27 +86,32 @@ scp <包目录>/install/preflight.sh cust-<客户简称>:/tmp/v-preflight.sh
 ssh cust-<客户简称> 'sudo bash /tmp/v-preflight.sh --out /tmp/v-preflight.txt'
 ```
 
-**看到**：每项一行，`OK` / `WARN` / `FAIL` / `BLOCK` / `INFO`，最后是 `== summary`。
+**看到**：每项一行，`OK` / `WARN` / `FAIL` / `BLOCK` / `INFO`，最后是 `== summary`。海外机器的正常结果：
 
 ```
 OK     os                           Ubuntu 24.04.1 LTS
 OK     memory                       7941 MB
-OK     net:npmmirror                http 200 in 0.31s
-FAIL   net:google-api               no answer from https://generativelanguage.googleapis.com/
-INFO   region                       Google unreachable, Feishu reachable: treating this as mainland China (mirrors preferred)
+OK     net:npmjs                    http 200 in 0.21s
+OK     net:github                   http 200 in 0.35s
+OK     net:google-api               http 404 in 0.12s
+INFO   region                       Google reachable: overseas network, official sources (no mirrors, no kit needed when everything above is OK)
 == summary
-install flags : --registry https://registry.npmmirror.com --node-mirror https://npmmirror.com/mirrors/node/v22.23.1/
-bundle needed : skills: ...
-leave off     : GOOGLE_API_KEY: ...
-V_UNREACHABLE : google,xai
+install flags : (none)
+V_UNREACHABLE : (none)
 ```
 
 **通过**：退出码 0，summary 里没有 `BLOCK` 行。
 
-把这三类结论原样抄进交接记录：
+海外机器的默认路径是：
+- 全部走官方源（npm、nodejs.org、GitHub、Google、Chrome 的 apt 源）；
+- 没有 `install flags`，不需要部署包。
+
+如果 summary 里出现了 `install flags`、`bundle needed` 或 `leave off`，说明有服务不通。把它们原样抄进交接记录：
 - `install flags`：第 4 步装的时候要加的参数；
-- `bundle needed`：第 2 步需要部署包（kit）；
+- `bundle needed`：需要部署包（kit），见附录 A；
 - `leave off`：哪些能力因为网络不通会关掉，第 6 步要告诉老板。
+
+出现 `INFO region … mainland China` 时，按附录 A「大陆网络（备用）」做。
 
 **不通过**（有 `BLOCK`）：
 
@@ -95,9 +123,9 @@ V_UNREACHABLE : google,xai
 | `systemd` | 不是正常的 Ubuntu 虚机（比如容器），换机器 |
 | `npm` | 两个 npm 源都不通：请客户开放出网，或配出口代理后重跑预检 |
 | `model` | DeepSeek 和 Vercel AI Gateway 都不通：同上 |
-| `feishu` | open.feishu.cn 不通：同上，V 离不开飞书 |
+| `feishu/lark` | 飞书和 Lark 的开放平台都不通：同上，V 离不开飞书 |
 
-`WARN memory`（4–7 GB）可以装，但不要打开桌面接管。`WARN apt` 表示 Ubuntu 软件源不通：请客户修好 apt 源，或者确认系统包已经装齐，第 4 步加 `--skip-apt`。
+`WARN memory`（4–7 GB）可以装，但不要打开桌面接管。`WARN feishu … only an international Lark app` 表示只能连 Lark 国际版：客户用的必须是 Lark，见第 3.1 步。`WARN apt` 表示 Ubuntu 软件源不通：请客户修好 apt 源，或者确认系统包已经装齐，第 4 步加 `--skip-apt`。
 
 ---
 
@@ -110,18 +138,7 @@ V_UNREACHABLE : google,xai
 一个正式版本包含两部分：
 
 - 安装包：`v-distro-<版本>.tgz` 和 `.sha256`，由 `distro/build/build.mjs` 从批准的提交构建。同样的输入构建出来字节完全相同。
-- 部署包（kit），可选：`distro/build/offline-kit.sh` 生成的目录，打成一个 tar。里面有 Node、GitHub 技能、Chrome 和 cloudflared，供连不上 nodejs.org、GitHub、dl.google.com 的机器用。第 1 步出现 `bundle needed` 就要用它。
-
-如果要你自己做 kit：在能访问这些站点的机器上（比如 V 自己的服务器），
-
-```bash
-bash distro/build/offline-kit.sh v-distro-<版本>.tgz ./kit-<版本> --arch x64        # 客户机是 aarch64 就用 --arch arm64
-tar -cf kit-<版本>.tar -C ./kit-<版本> .
-```
-
-**看到**：`== package`、`== node`、`== skills`、`== chrome`、`== cloudflared`、`== SHA256SUMS` 依次出现，最后是 `kit size: …`（大约 450 MB，带 Chrome）。
-
-**通过**：退出码 0。中途任何一个文件的 sha256 对不上，脚本会停下并报 `sha256 mismatch`。
+- 部署包（kit）：海外机器**不需要**。只有第 1 步出现 `bundle needed` 时才用，做法见附录 A。
 
 ### 2.2 校验
 
@@ -135,8 +152,8 @@ sha256sum v-distro-<版本>.tgz          # 必须等于 Tianyi 给的 sha256
 
 任选一种：
 
-- **直接 SSH**（默认）：`rsync -P v-distro-<版本>.tgz* kit-<版本>.tar cust-<客户简称>:/tmp/`。`-P` 断了可以续传。
-- **跨境很慢时**（V 在新加坡，客户机在大陆）：用 vrelay 生成免令牌链接 `vrelay link <id> --hours 24`，在客户机上 `curl -fLo /tmp/<文件> '<链接>'` 下载。链接 24 小时后失效，用完 `vrelay rm <id>`。
+- **直接 SSH**（默认）：`rsync -P v-distro-<版本>.tgz* cust-<客户简称>:/tmp/`。`-P` 断了可以续传。
+- **传得很慢时**（比如跨境）：用 vrelay 生成免令牌链接 `vrelay link <id> --hours 24`，在客户机上 `curl -fLo /tmp/<文件> '<链接>'` 下载。链接 24 小时后失效，用完 `vrelay rm <id>`。
 - **客户机完全不能出网下载**：请客户管理员用他自己的方式（内网文件服务器、U 盘）放到 `/tmp/`。
 
 然后在客户机上：
@@ -144,13 +161,9 @@ sha256sum v-distro-<版本>.tgz          # 必须等于 Tianyi 给的 sha256
 ```bash
 cd /tmp && sha256sum v-distro-<版本>.tgz                   # 再核对一次，必须等于 Tianyi 给的
 tar -xzf v-distro-<版本>.tgz                               # 得到 /tmp/v-distro-<版本>/
-sudo mkdir -p /opt/v-kit/<版本> && sudo tar -xf kit-<版本>.tar -C /opt/v-kit/<版本>     # 有 kit 时
-cd /opt/v-kit/<版本> && sha256sum -c --quiet SHA256SUMS && echo kit-ok                    # 有 kit 时
 ```
 
-**通过**：两个 sha256 都一致；有 kit 时打印 `kit-ok`。
-
-kit 解到 `/opt/v-kit/<版本>` 以后**不要删**：之后补开桌面接管（Chrome）和升级，都会用到它。安装器会把这个位置记成 `V_KIT_DIR`。
+**通过**：sha256 一致，`/tmp/v-distro-<版本>/install/install.sh` 存在。
 
 ---
 
@@ -158,7 +171,9 @@ kit 解到 `/opt/v-kit/<版本>` 以后**不要删**：之后补开桌面接管�
 
 ### 3.1 发给客户管理员的操作说明
 
-把下面这段原样发给客户的飞书管理员，再附上包里的 `install/feishu-app-scopes.json`：
+把下面这段原样发给客户的飞书管理员，再附上包里的 `install/feishu-app-scopes.json`。
+
+客户用 **Lark（国际版）** 时，把说明里的 `https://open.feishu.cn/app` 换成 `https://open.larksuite.com/app`，其余步骤相同，第 4.1 步要多写一行 `FEISHU_DOMAIN=lark`。
 
 > 请在飞书开发者后台（https://open.feishu.cn/app）建一个「企业自建应用」，名字可以叫「V」，然后：
 > 1. **添加应用能力** → 机器人。
@@ -168,7 +183,7 @@ kit 解到 `/opt/v-kit/<版本>` 以后**不要删**：之后补开桌面接管�
 > 4. **事件与回调 → 回调配置**：同样选长连接，添加 `card.action.trigger`（卡片回传交互）。
 > 5. **可用范围**：至少包含老板本人（以后要用 V 的人也加上）。
 > 6. **版本管理与发布**：创建版本 → 申请发布，并在管理后台审核通过。
-> 7. 把 **App ID**（`cli_` 开头）发给我们。**App Secret 不要发给任何人**：等我们把机器准备好，请您自己登录服务器写进一个文件（我们会告诉您具体怎么做）。
+> 7. 把 **App ID**（`cli_` 开头）发给我们。**App Secret 不要发在聊天里**：等我们把机器准备好，请您自己登录服务器写进去（我们会告诉您一条命令）。
 
 注意：第 3 步「长连接」那一项，要等第 4 步装好、V 已经在线之后才能保存成功。飞书后台保存长连接订阅时，会检查有没有客户端连上。管理员可以先完成其余各项，等你通知再保存。
 
@@ -176,37 +191,69 @@ kit 解到 `/opt/v-kit/<版本>` 以后**不要删**：之后补开桌面接管�
 
 把 `FEISHU_APP_ID=cli_…` 记进交接记录。第 4 步的 `v.env` 里写它。
 
-### 3.3 准备 secrets.env 让客户自己写
+### 3.3 把 key 写进 secrets.env（不显示原文）
 
-在客户机上建一个只有 root 能读的空模板：
+客户机上 key 只放在一个文件里：`/etc/v/secrets.env`，root:root，权限 600。写入只用包里的 `install/put-secrets.py`：
+- 它从标准输入读 `KEY=值`，同名的替换，其余的追加，文件里原有的其他行保留；
+- 文件权限固定为 600 root；
+- 只打印 key 的名字和 `added`/`replaced`，从不打印值。
 
-```bash
-sudo install -d -m 0755 /etc/v
-sudo test -e /etc/v/secrets.env || sudo install -m 0600 /dev/null /etc/v/secrets.env
-sudo tee -a /etc/v/secrets.env >/dev/null <<'EOF'
-# 每行 KEY=值，等号两边不要空格。写完保存即可，不要发给任何人。
-FEISHU_APP_SECRET=
-DEEPSEEK_API_KEY=
-EOF
-```
-
-其他 key 按第 0 步的约定加上空行，变量名见 DEPLOY.md「可选能力」表。比如 `XAI_API_KEY=`、`GOOGLE_API_KEY=`、`MAKARON_API_KEY=`、`VOLCENGINE_API_KEY=`、`APIFY_API_KEY=`；预检里 `leave off` 的那些不要加。
-
-然后把这段发给客户管理员（或者提供 key 的人）：
-
-> 请用您自己的账号登录服务器，运行 `sudo nano /etc/v/secrets.env`，在 `FEISHU_APP_SECRET=` 后面粘贴应用的 App Secret，在 `DEEPSEEK_API_KEY=` 后面粘贴 DeepSeek 的 key（其他留空的行也照此填写），按 Ctrl+O、回车保存，Ctrl+X 退出。填好后告诉我「写好了」即可，不要把内容发给我。
-
-### 3.4 核对（只看有没有写，不看值）
+**a. 我们的 key（默认全部用我们的）。** 在 V 自己的主机上，以 V 的身份运行。值从 V 的文件经管道直接进客户机，不经过屏幕：
 
 ```bash
-sudo awk -F= '/^[A-Z_]+=/{print $1, (length($2)>0 ? "已填" : "空")}' /etc/v/secrets.env
-sudo stat -c '%a %U' /etc/v/secrets.env
+{ grep -hE '^(MAKARON_API_KEY|GOOGLE_API_KEY|XAI_API_KEY|VOLCENGINE_API_KEY|APIFY_TOKEN)=' ~/.openclaw/gateway.systemd.env
+  grep -h '^DEEPSEEK_API_KEY=' ~/.openclaw/vds-codex.env
+} | ssh cust-<客户简称> 'sudo python3 /tmp/v-distro-<版本>/install/put-secrets.py --only DEEPSEEK_API_KEY,MAKARON_API_KEY,GOOGLE_API_KEY,XAI_API_KEY,VOLCENGINE_API_KEY,APIFY_TOKEN'
 ```
 
-**通过**：要用的 key 都是「已填」；权限 `600 root`。
+**看到**：
+
+```
+added    APIFY_TOKEN
+added    DEEPSEEK_API_KEY
+added    GOOGLE_API_KEY
+added    MAKARON_API_KEY
+added    VOLCENGINE_API_KEY
+added    XAI_API_KEY
+file     /etc/v/secrets.env mode 600 uid 0
+```
+
+- 有 `not on stdin: <名字>`：V 的文件里没有这个 key，记进交接记录，第 6 步告诉老板这项没开。
+- 第 1 步判定不通的服务（`V_UNREACHABLE`）：它的 key 写进去也不会被用，可以从 `--only` 里去掉。
+- `APIFY_TOKEN` 就用这个名字：安装器会同时提供 `APIFY_API_KEY`。
+- 不要把这条命令改成先存到中间文件、`echo` 或 `cat` 到屏幕。
+
+**b. VSync 身份。** 向 VSync 会话要这台机器的身份文件（三行：`NEXUS_VSYNC_URL`、`NEXUS_VSYNC_AGENT`、`NEXUS_VSYNC_TOKEN`），它会告诉你文件在 V 主机上的位置。同样用管道写进 `/etc/v/vsync.env`，不进 secrets.env：
+
+```bash
+ssh cust-<客户简称> 'sudo python3 /tmp/v-distro-<版本>/install/put-secrets.py --file /etc/v/vsync.env --only NEXUS_VSYNC_URL,NEXUS_VSYNC_AGENT,NEXUS_VSYNC_TOKEN' < <VSync 会话给的文件>
+```
+
+**c. 客户的 App Secret（客户自己写）。** 把这段发给客户管理员：
+
+> 请用您自己的账号登录服务器，运行
+> `sudo python3 /tmp/v-distro-<版本>/install/put-secrets.py --only FEISHU_APP_SECRET`
+> 然后粘贴一行 `FEISHU_APP_SECRET=<应用的 App Secret>`，回车，再按 Ctrl+D。看到 `added FEISHU_APP_SECRET` 就好了，告诉我「写好了」即可，不要把内容发给我。
+
+如果客户坚持让你代填：
+- 请他把那一行放进一个文件，用他自己的方式传到客户机，比如 `scp` 到 `/tmp/feishu.env`。
+- 你运行 `sudo python3 /tmp/v-distro-<版本>/install/put-secrets.py --only FEISHU_APP_SECRET < /tmp/feishu.env && sudo shred -u /tmp/feishu.env`，全程不打开那个文件。
+- 如果他已经把 Secret 贴在聊天里：不要复述它，提醒他部署完在开发者后台重置一次 Secret，再按 c 写入新的；在交接记录里注明。
+
+### 3.4 核对（只看有没有、几行、权限）
+
+```bash
+ssh cust-<客户简称> 'for k in FEISHU_APP_SECRET DEEPSEEK_API_KEY MAKARON_API_KEY GOOGLE_API_KEY XAI_API_KEY VOLCENGINE_API_KEY APIFY_TOKEN; do printf "%-20s %s\n" $k "$(sudo grep -c "^$k=." /etc/v/secrets.env)"; done; sudo stat -c "%a %U" /etc/v/secrets.env; sudo test -f /etc/v/vsync.env && sudo grep -c "^NEXUS_VSYNC_[A-Z]*=." /etc/v/vsync.env'
+```
+
+**通过**：
+- 要用的 key 每个都是 `1`；
+- `secrets.env` 权限 `600 root`；
+- 有 VSync 时，最后一行是 `3`。
 
 **不通过**：
-- 是「空」：请对方再写一次。
+- 是 `0`：没写进去，重做 3.3 对应那一项。
+- 大于 1：同一个 key 写了多行，请客户用 `sudo nano /etc/v/secrets.env` 删掉多余的一行（你不要打开文件）。
 - 权限不对：`sudo chmod 600 /etc/v/secrets.env && sudo chown root:root /etc/v/secrets.env`。
 
 ---
@@ -220,10 +267,10 @@ sudo cp /tmp/v-distro-<版本>/install/v.env.example /root/v.env && sudo chmod 6
 ```
 
 在 `/root/v.env` 里填：
-- `V_OWNER_NAME=<老板称呼>`、`TZ=<时区>`、`V_MODEL_PRESET=deepseek`、`FEISHU_APP_ID=cli_…`；
+- `V_OWNER_NAME=<老板称呼>`、`TZ=<时区>`、`V_MODEL_PRESET=deepseek`、`FEISHU_APP_ID=cli_…`；客户用 Lark 国际版时再加 `FEISHU_DOMAIN=lark`；
 - `V_OWNER_FEISHU_OPEN_ID` 先留空，第 5 步再填；
 - 要打开的可选能力：`V_DESKTOP=1`（预检内存 OK 且是 x86_64 才开）；公网地址 `V_PUBLIC_ORIGIN=…`（有隧道或反向代理才填）；
-- `DEEPSEEK_API_KEY=` 这类 key 行**留空或删掉**：key 已经在 `/etc/v/secrets.env` 里，安装器会保留它们。
+- 所有 key 行（`DEEPSEEK_API_KEY=` 等）**留空或删掉**：key 已经在 `/etc/v/secrets.env` 里，安装器会保留它们。v.env 里不能有任何密钥。
 
 然后把预检的结论写进去：
 
@@ -232,19 +279,17 @@ sudo bash /tmp/v-distro-<版本>/install/preflight.sh --env-file /root/v.env --o
 grep -E '^(V_UNREACHABLE|V_NPM_REGISTRY)=' /root/v.env
 ```
 
-**通过**：`V_UNREACHABLE=` 一行列出预检判定不通的服务（可以为空），大陆机器上还有 `V_NPM_REGISTRY=https://registry.npmmirror.com`。
+**通过**：有一行 `V_UNREACHABLE=`。海外机器上它是空的；不为空时，列出的是预检判定不通的服务。大陆机器上还会有 `V_NPM_REGISTRY=…`，见附录 A。
 
 `V_UNREACHABLE` 里的服务，即使 secrets.env 里有它的 key，配置也不会用它：`google` 关掉记忆向量检索，`xai` 关掉 xAI 看图和生图。这样 V 不会一直撞不通的接口。
 
 ### 4.2 安装
 
-把预检给的 `install flags` 原样加上。有 kit 就加 `--kit`：
-
 ```bash
-sudo /tmp/v-distro-<版本>/install/install.sh --env-file /root/v.env --probe \
-  [--registry https://registry.npmmirror.com --node-mirror https://npmmirror.com/mirrors/node/v22.23.1/] \
-  [--kit /opt/v-kit/<版本>] 2>&1 | sudo tee /root/v-install-<版本>.log
+sudo /tmp/v-distro-<版本>/install/install.sh --env-file /root/v.env --probe 2>&1 | sudo tee /root/v-install-<版本>.log
 ```
+
+第 1 步给了 `install flags`，或者要用部署包时，把它们加在 `--probe` 后面，见附录 A。
 
 要 10–25 分钟，建议在 `tmux` 里跑，或者放到后台、等它结束时通知你。不要中途 Ctrl+C。
 
@@ -267,14 +312,14 @@ sudo /tmp/v-distro-<版本>/install/install.sh --env-file /root/v.env --probe \
 
 | 报错 | 处理 |
 | --- | --- |
-| `missing DEEPSEEK_API_KEY` / `FEISHU_APP_ID and FEISHU_APP_SECRET together` | 回第 3.4 步，请客户补写 secrets.env |
-| `could not download node-v…` | 加 `--node-mirror` 或 `--kit` |
-| npm 超时、`ETIMEDOUT`、`ECONNRESET` | 加 `--registry https://registry.npmmirror.com` 重跑（重跑是安全的，已装的部分会复核、不会重建） |
+| `missing DEEPSEEK_API_KEY` / `FEISHU_APP_ID and FEISHU_APP_SECRET together` | 回第 3.4 步，核对后按第 3.3 步补写 |
+| `could not download node-v…` | 重跑一次；还不行按附录 A 加 `--node-mirror` 或 `--kit` |
+| npm 超时、`ETIMEDOUT`、`ECONNRESET` | 直接重跑（重跑是安全的，已装的部分会复核、不会重建）；反复超时再按附录 A 换源 |
 | `kit: files in … do not match` | kit 传坏了，重新传，回第 2.3 步 |
 | `sha256 mismatch` | 包或 kit 被改过，不要继续，报告 Tianyi |
-| `warning: global skills were not all installed` | 不阻塞。多半是 GitHub 不通：用 kit 重跑 `sudo V_SKILLS_TARBALL_DIR=/opt/v-kit/<版本>/skills v-ctl install-skills` |
+| `warning: global skills were not all installed` | 不阻塞。先重跑 `sudo v-ctl install-skills`；GitHub 一直不通时用附录 A 的部署包 |
 | health 一直等到超时 | `journalctl -u openclaw-gateway -n 80 --no-pager`，按「已知问题」排查 |
-| probe `ok:false` | 看 probe 输出里的 `error`；最常见的是模型 key 无效（DeepSeek 返回 401），请客户核对 key |
+| probe `ok:false` | 看 probe 输出里的 `error`；最常见的是模型 key 无效（DeepSeek 返回 401）：回第 3.3 步重写 DeepSeek 那一行 |
 
 ### 4.3 能力清单
 
@@ -297,7 +342,7 @@ sudo v-ctl feishu-check
 **看到**：`{"step":"feishu-check","ok":true,"appId":"cli_…","secretAccepted":true,"bot":{"name":"V","openId":"ou_…","activateStatus":2}}`
 
 **不通过**：
-- `token refused`：App ID 或 App Secret 不对。请客户核对后重写 secrets.env（`sudo nano /etc/v/secrets.env`），再 `sudo v-ctl reconfigure`。
+- `token refused`：App ID 或 App Secret 不对。App ID 改 `/etc/v/install.env`；Secret 请客户按第 3.3 步 c 重写一次。然后 `sudo v-ctl reconfigure`。
 - `activateStatus` 不是 2：应用还没发布，或没加机器人能力。回第 3.1 步的 1 和 6。
 
 ### 5.2 换出老板的 open_id
@@ -353,6 +398,8 @@ sudo journalctl -u openclaw-gateway --since "-5 min" --no-pager -o cat | grep -E
 ## 第 6 步 老板上手
 
 上手引导是 V 自己带的：老板第一次私聊（第 5.4 步）时它就开始了，你主要是在旁边看着、帮老板点对地方、核对结果。引导会话里不要替老板回话，也不要往这个会话里发测试消息。老板那边每一步看到什么、交付后头几天会怎样，细节在 [`workspace/OWNER-ONBOARDING.md`](workspace/OWNER-ONBOARDING.md)；本节只写你要做和要核对的。
+
+进入上手引导之前要满足：第 4 步 probe 通过；第 5.3 步看到 `ws client ready`；第 5.4 步老板私聊有回复。
 
 ### 6.1 确认主人记对了
 
@@ -523,17 +570,17 @@ sudo rm -rf /tmp/v-distro-<版本>        # /opt/v 里已经有一份；/opt/v-k
 
 - 你登录客户机用的是第 0 步那把专用密钥。客户随时可以从 `authorized_keys` 删掉它，收回权限。
 - 常用排查命令：`v-ctl status`、`v-ctl health`、`journalctl -u openclaw-gateway --since "-30 min" --no-pager`、`cat /home/openclaw/.openclaw/v-capabilities.json`。
-- 要客户补 key 或改配置：请他写 `/etc/v/secrets.env` 或 `/etc/v/install.env`，然后你运行 `sudo v-ctl reconfigure`。它只重启网关一次，会话、记忆、工作区都不动。
+- 要补 key 或改配置：key 按 8.6 写，普通配置改 `/etc/v/install.env`，然后运行 `sudo v-ctl reconfigure`。它只重启网关一次，会话、记忆、工作区都不动。
 
 ### 8.5 以后更新和回滚
 
-拿到新版本后，同样做第 2 步（新版本有 kit 就用新的 kit），然后：
+拿到新版本后，同样做第 2 步，然后：
 
 ```bash
-sudo /tmp/v-distro-<新版本>/install/update.sh --probe [--kit /opt/v-kit/<新版本>]
+sudo /tmp/v-distro-<新版本>/install/update.sh --probe
 ```
 
-- `--registry` 不用再加：安装时记下的 `V_NPM_REGISTRY` 会自动沿用。
+- 大陆机器：安装时记下的 `V_NPM_REGISTRY` 会自动沿用，有新版本的部署包时加 `--kit /opt/v-kit/<新版本>`（附录 A）。
 - 选一个老板不用 V 的时间做。update 会停网关，正在跑的回合会被打断（「已知问题」第 7 条）。
 - 任何一步失败，update 会自动放回旧版本和停机前的状态快照。
 - 跑完核对第 7 步的 1–5、11、12 项。
@@ -545,6 +592,131 @@ sudo /opt/v/current/install/rollback.sh
 ```
 
 如果提示两个版本的数据库结构不同，要用 `--latest-snapshot`。这会回到升级前的状态，升级之后的对话会丢失，先问 Tianyi。
+
+### 8.6 之后换成客户自己的 key
+
+先全部用我们的 key，之后逐个换成客户的。每换一个都是同样三步：
+
+1. **写入**（客户自己做，原文不经过你）：请客户登录客户机，运行 `sudo v-ctl put-secrets`，粘贴一行 `<KEY>=<客户的 key>`，回车，再按 Ctrl+D。看到 `replaced <KEY>` 就好。
+2. **生效**：你运行 `sudo v-ctl reconfigure`。它会重启一次网关，选老板不用 V 的时候做。
+3. **确认**：按下表核对。通过后在交接记录里把这一项标成「客户自己的」。
+
+| key | 是什么 | 确认方法 |
+| --- | --- | --- |
+| `DEEPSEEK_API_KEY` | 主模型 | `sudo v-ctl probe` 返回 `"ok":true` |
+| `GOOGLE_API_KEY` | 记忆向量检索 | `sudo v-ctl memory-check` 返回 `"ok":true`（换 key 不换模型时不会重建索引） |
+| `XAI_API_KEY` | xAI 看图、生图 | 请老板发一张图问「图里有什么」，回复正确 |
+| `MAKARON_API_KEY` | Makaron 创作 | 请老板让 V「用 Makaron 生成一张图」，收到图 |
+| `VOLCENGINE_API_KEY` | 语音转文字 | 老板发一条语音，V 按语音内容回复 |
+| `APIFY_TOKEN`（或 `APIFY_API_KEY`） | 社媒、图片搜索 | 请老板让 V 搜一条公开的社媒内容，有结果 |
+| `FEISHU_APP_SECRET` | 飞书应用 | `sudo v-ctl feishu-check` 通过；再按「已知问题」第 1 条重写 lark-cli 配置，请老板重新授权一次 |
+| VSync 三项 | VSync 身份 | 写 `/etc/v/vsync.env`（`sudo v-ctl put-secrets --file /etc/v/vsync.env`），然后 `sudo systemctl restart openclaw-gateway`；`sudo v-ctl as-agent python3 scripts/mirror-vsync.py whoami` 返回自己的 agent id |
+
+所有 key 都换成客户的以后，告诉 Tianyi，这台机器就不再用我们的额度了。
+
+---
+
+## 卸载（重装前）
+
+V 要从零重装同一台机器时（比如演练），先卸载。卸载只删安装器建的东西，不碰机器上不属于 V 的服务和文件（比如首尔测试机上的旧服务、`/root/pre-distro-state`）。
+
+**a. 先决定要不要保留老板的数据。**
+- 工作区、记忆、会话、老板的飞书授权都在 openclaw 用户的家目录里，卸载会删掉。
+- 卸载前会自动做一次完整备份，放在 `/root/v-uninstall-<时间>/`，所以删掉以后也能恢复（DEPLOY.md「卸载」）。
+- 要不要保留、重装后要不要恢复，**先问 Tianyi**。
+- 飞书应用不用动：重装后用同一个 App ID 和 Secret。
+
+**b. 先看计划，不改任何东西：**
+
+```bash
+sudo v-ctl uninstall --dry-run --keep-config
+```
+
+**看到**：`== Plan`，一行一个 `remove …`，以及 `keep /etc/v`、`backup first, into /root/v-uninstall-…`、`stop …`，最后是 `dry run: nothing changed`。
+
+核对两点：
+- 列出的路径只有 `/opt/v`、`/var/lib/v-distro`、`/var/lib/v-desktop-handoff`、`/tmp/.v-desktop-99`、`/usr/local/bin/v-ctl`、`/etc/tmpfiles.d/v-x11-unix.conf`、`/etc/cron.d/v-backup`、`/var/backups/v`、`/etc/systemd/system/` 下 V 的单元，以及 openclaw 用户和它的家目录；
+- 没有别的东西。
+
+**c. 卸载：**
+
+```bash
+sudo v-ctl uninstall --yes --keep-config 2>&1 | sudo tee /root/v-uninstall.log
+```
+
+- `--keep-config`：保留 `/etc/v`。重装时 `install.env` 可以复用，secrets 要按第 3.4 步重新核对。
+- 要连 `/etc/v` 一起删，就去掉它。
+- `--keep-backups`：保留 `/var/backups/v`（升级快照和之前的每日备份）。
+- `--no-backup`：不做卸载前备份。只在 Tianyi 明确说不要老板的数据时用。
+
+**看到**：`== Backup`（列出备份文件）→ `== Stop units` → `== Stop what is left of openclaw` → `== Remove files` → `== Check` → `V removed` 和 `backup: /root/v-uninstall-…`。
+
+**通过**：最后一行之前是 `V removed`；再确认一遍：
+
+```bash
+id openclaw; pgrep -u openclaw | wc -l; ss -ltn | grep -E ':(18789|23950) ' ; ls /etc/systemd/system | grep -E 'openclaw|v-' ; ls /etc/cron.d | grep v-
+```
+
+应该是 `id: 'openclaw': no such user`，进程数 0，其余没有输出。
+
+**不通过**：
+- `backup failed; nothing removed`：备份没做成，什么都没删。看报错，修好后重跑。如果 Tianyi 确认不要数据，用 `--no-backup`。
+- 有 `LEFT …` 行：照着那一行手动处理（比如某个进程不退出，就 `sudo kill -9 <pid>`），然后重跑 `sudo v-ctl uninstall --yes --keep-config`。它可以重复跑。
+- 卸载后 `v-ctl` 已经不在：要重跑，直接用包里的脚本，`sudo bash /tmp/v-distro-<版本>/install/uninstall.sh --yes --keep-config`。
+
+卸载完从第 1 步开始重装。如果保留了 `/etc/v`，第 3 步只做 3.4 核对，缺什么补什么。
+
+---
+
+## 附录 A 大陆网络（备用）
+
+只有第 1 步出现 `INFO region … mainland China`、`bundle needed` 或 `install flags` 时才用这一节。
+
+**1. 安装参数**：把预检给的 `install flags` 原样加到 `install.sh` 后面，通常是：
+
+```
+--registry https://registry.npmmirror.com --node-mirror https://npmmirror.com/mirrors/node/v22.23.1/
+```
+
+- `--registry` 会被记成 `V_NPM_REGISTRY`，agent 之后自己装 npm 包、升级时都沿用。
+- `--node-mirror` 下载的是同一个文件，同样按 tools.json 的 sha256 校验。
+
+**2. 部署包（kit）**：GitHub、nodejs.org、dl.google.com 不通时需要。在能访问这些站点的机器上（比如 V 自己的服务器）生成：
+
+```bash
+bash distro/build/offline-kit.sh v-distro-<版本>.tgz ./kit-<版本> --arch x64        # 客户机是 aarch64 就用 --arch arm64
+tar -cf kit-<版本>.tar -C ./kit-<版本> .
+```
+
+**看到**：`== package`、`== node`、`== skills`、`== chrome`、`== cloudflared`、`== SHA256SUMS` 依次出现，最后是 `kit size: …`（带 Chrome 大约 450 MB）。
+
+**通过**：退出码 0。中途任何一个文件的 sha256 对不上，脚本都会停下并报 `sha256 mismatch`。
+
+kit 里有：
+- Node；
+- skills.json 钉住的 GitHub 技能源码包；
+- Chrome：核对 Google 签名钥指纹、apt 元数据签名和 .deb 的 sha256 后下载；
+- cloudflared。
+
+传到客户机（同第 2.3 步），解开并核对：
+
+```bash
+sudo mkdir -p /opt/v-kit/<版本> && sudo tar -xf /tmp/kit-<版本>.tar -C /opt/v-kit/<版本>
+cd /opt/v-kit/<版本> && sha256sum -c --quiet SHA256SUMS && echo kit-ok
+```
+
+安装时加 `--kit /opt/v-kit/<版本>`：
+- 安装器会再核对一次，然后用 kit 里的文件代替联网下载；
+- 位置记成 `V_KIT_DIR`，之后补开桌面接管、升级都会沿用。
+
+所以 `/opt/v-kit/<版本>` **不要删**。单独补装技能：`sudo V_SKILLS_TARBALL_DIR=/opt/v-kit/<版本>/skills v-ctl install-skills`。
+
+**3. 连不上的服务**：
+- 第 4.1 步 `preflight.sh --env-file` 已经把它们写进 `V_UNREACHABLE`：
+  - `google`：记忆只按关键词检索；
+  - `xai`：看图由 DeepSeek Flash 做；
+  - `makaron`、`volcengine`、`apify`：对应 skill 如实说没开通。
+- 第 6 步要告诉老板。
 
 ---
 
@@ -616,9 +788,9 @@ sudo /opt/v/current/install/rollback.sh
     - 部署包统一用 `--kit` 传，不要靠环境变量。
     - 例外：单独补装技能时，用第 4.2 步表里写的 `sudo V_SKILLS_TARBALL_DIR=… v-ctl install-skills`。
 
-14. **客户换了某个 key。**
-    - 请客户改 `/etc/v/secrets.env`，然后 `sudo v-ctl reconfigure`。
-    - 安装和升级不会清掉 secrets.env 里已有的 key（env 文件里写了同名 key 时，以 env 文件为准）。要删掉一个 key，直接编辑 secrets.env。
+14. **换某个 key。** 按第 8.6 步：`sudo v-ctl put-secrets` 写入，`sudo v-ctl reconfigure` 生效。
+    - 安装和升级不会清掉 secrets.env 里已有的 key（env 文件里写了同名 key 时，以 env 文件为准）。
+    - 要删掉一个 key：请客户用 `sudo nano /etc/v/secrets.env` 删掉那一行，再 `sudo v-ctl reconfigure`。
 
 15. **飞书后台保存长连接订阅失败。** 要先有客户端连上：先装好 V，看到 `ws client ready`，再请管理员保存（第 3.1 步的注意）。
 

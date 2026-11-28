@@ -6,6 +6,8 @@
 #   v-ctl feishu-check            App ID + Secret accepted and the bot published (prints no secret)
 #   v-ctl feishu-owner --mobile N | --email A | --user-id ID | --union-id ID [--write]   the owner's open_id under this app
 #   v-ctl reconfigure             apply keys or options added to /etc/v/*.env after the install
+#   v-ctl uninstall --dry-run | --yes [--keep-config] [--keep-backups]   remove V (backs up first)
+#   v-ctl put-secrets             read KEY=VALUE lines on stdin into /etc/v/secrets.env (prints names only)
 #   v-ctl as-agent <cmd...>       run a command as the service user in the Gateway's environment, in the workspace
 #   v-ctl workspace-update [--dry-run]   bring the workspace's system files to this release
 #   v-ctl backup [--keep N]       online backup to /var/backups/v/archives (0600); restore-backup <archive> --root DIR | --live
@@ -19,6 +21,8 @@ case "${1:-}" in
     [ "$sub" = pair ] && set -- pairing approve feishu "$@"
     exec python3 "$PREFIX/current/runtime/ops/v-memory-indexer-run.py" --cli "$@" ;;
   reconfigure) shift; exec bash "$(readlink -f "$PREFIX/current")/install/reconfigure.sh" "$@" ;;
+  uninstall) shift; exec bash "$(readlink -f "$PREFIX/current")/install/uninstall.sh" "$@" ;;
+  put-secrets) shift; exec python3 "$(readlink -f "$PREFIX/current")/install/put-secrets.py" "$@" ;;
   as-agent)
     [ "$(id -u)" -eq 0 ] || { echo "v-ctl as-agent: run as root" >&2; exit 1; }
     shift; [ $# -gt 0 ] || { echo "usage: v-ctl as-agent <command> [args...]" >&2; exit 2; }
@@ -28,6 +32,6 @@ case "${1:-}" in
     while IFS= read -r f; do [ -n "$f" ] && props+=(-p "EnvironmentFile=$f"); done < <(systemctl show openclaw-gateway.service -p EnvironmentFiles --value | sed -n 's#^\(/[^ ]*\) (ignore_errors=yes)$#-\1#p; s#^\(/[^ ]*\) (ignore_errors=no)$#\1#p')
     u="$(systemctl show openclaw-gateway.service -p User --value)"; h="$(getent passwd "$u" | cut -d: -f6)"
     exec systemd-run --quiet --wait --pipe --collect --uid="$u" --gid="$u" -p WorkingDirectory="$h/.openclaw/workspace" "${props[@]}" -- "$@" ;;
-  ""|-h|--help) sed -n '2,11p' "$0" ;;
+  ""|-h|--help) sed -n '2,13p' "$0" ;;
   *) exec "$NODE" "$PREFIX/current/install/lib/vctl.mjs" "$@" ;;
 esac

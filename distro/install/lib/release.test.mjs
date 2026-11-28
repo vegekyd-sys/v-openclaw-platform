@@ -528,3 +528,33 @@ test('mergeSecrets: keys the customer wrote into secrets.env survive an env file
   const merged = mergeSecrets(['XAI_API_KEY=new', 'DEEPSEEK_API_KEY=override'], prior);
   assert.deepEqual(merged, ['XAI_API_KEY=new', 'DEEPSEEK_API_KEY=override', 'FEISHU_APP_SECRET=customer2', 'OPENCLAW_GATEWAY_TOKEN=gw']);
 });
+
+test('capabilities: V\'s APIFY_TOKEN counts for social search', async () => {
+  const { capabilities } = await import('./vctl.mjs');
+  assert.equal(capabilities({ APIFY_TOKEN: 't' }).socialSearch.on, true);
+});
+
+test('put-secrets.py: replaces in place, adds the rest, keeps other lines, prints names only, 0600', (t) => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'v-put-'));
+  t.after(() => fs.rmSync(d, { recursive: true, force: true }));
+  const f = path.join(d, 'secrets.env');
+  fs.writeFileSync(f, '# customer wrote this\nFEISHU_APP_SECRET=cust\nDEEPSEEK_API_KEY=\n');
+  const r = spawnSync('python3', [fileURLToPath(new URL('../put-secrets.py', import.meta.url)), '--file', f, '--only', 'DEEPSEEK_API_KEY,APIFY_TOKEN', '--rename', 'APIFY_API_KEY=APIFY_TOKEN'],
+    { input: 'export DEEPSEEK_API_KEY="ds-value"\nAPIFY_API_KEY=ap-value\nOTHER_KEY=nope\n', encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(fs.readFileSync(f, 'utf8'), '# customer wrote this\nFEISHU_APP_SECRET=cust\nDEEPSEEK_API_KEY=ds-value\nAPIFY_TOKEN=ap-value\n');
+  assert.equal(fs.statSync(f).mode & 0o777, 0o600);
+  assert.ok(!r.stdout.includes('ds-value') && !r.stdout.includes('ap-value'), 'values never printed');
+  assert.match(r.stdout, /replaced DEEPSEEK_API_KEY/);
+  assert.match(r.stdout, /added +APIFY_TOKEN/);
+  const empty = spawnSync('python3', [fileURLToPath(new URL('../put-secrets.py', import.meta.url)), '--file', f], { input: 'X_KEY=\n', encoding: 'utf8' });
+  assert.equal(empty.status, 1, 'nothing with a value: refused');
+});
+
+test('uninstall.sh: valid bash; refuses without --yes or --dry-run; never removes paths outside V\'s', () => {
+  const file = fileURLToPath(new URL('../uninstall.sh', import.meta.url));
+  assert.equal(spawnSync('bash', ['-n', file]).status, 0);
+  const sh = fs.readFileSync(file, 'utf8');
+  for (const p of ['/opt/v-kit', '/root/pre-distro-state', '/etc/default/google-chrome']) assert.ok(!new RegExp(`rm -rf[^\\n]*${p.replace(/[/-]/g, '\\$&')}`).test(sh), `does not remove ${p}`);
+  assert.match(sh, /--yes to remove V/);
+});
