@@ -148,6 +148,10 @@ test('desktop only with V_DESKTOP=1: host display, headed Chrome, takeover plugi
   assert.equal(h.adminTokenFile, '/etc/v/desktop-handoff/admin-token');
 });
 
+test('Skill Workshop as on V: auto-applied proposals, no autonomous review', () => {
+  assert.deepEqual(make({}).skills.workshop, { approvalPolicy: 'auto', maxSkillBytes: 100000, autonomous: { mode: 'off' } });
+});
+
 test('image understanding is DeepSeek Flash by default; xAI only as a fallback when its key exists', () => {
   assert.deepEqual(make({ XAI_API_KEY: '' }).agents.defaults.imageModel, { primary: 'deepseek/deepseek-flash' });
   assert.deepEqual(make({}).agents.defaults.imageModel, { primary: 'deepseek/deepseek-flash', fallbacks: ['xai/grok-4.7'] });
