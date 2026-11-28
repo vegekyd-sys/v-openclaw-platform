@@ -1,10 +1,10 @@
 {
   "version": 1,
   "layout": "official-plus-feishu-parts",
-  "releaseId": "v1.28.16-cli0.17.16-20261109",
+  "releaseId": "v1.28.17-cli0.17.25-20261119",
   "effectiveName": "makaron",
   "officialName": "makaron",
   "feishuPartName": "makaron-feishu",
-  "officialHash": "3e225811261a0d133df56561f1d548a8900d3063f0972fdaf97b1e1bc9af6141",
-  "feishuHash": "8145b00f7d6375c12cd69e841e28898d9e57861313256317e91a5273edec0ee4"
+  "officialHash": "c70354a4debd1b2c9c4fe58f041164043abeb2d89cf6cb9e8d4c69c0b0e7db95",
+  "feishuHash": "a6934aeef1fdae5f93d15f1fefdcba4026bf1134d1170ad4d1ad16374f10c4da"
 }

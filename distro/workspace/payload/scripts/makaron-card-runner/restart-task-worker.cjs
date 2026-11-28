@@ -1,13 +1,6 @@
 #!/usr/bin/env node
 
-// 环境里没有 MAKARON_API_KEY 时，从 OpenClaw 凭据库的镜像文件读主人的 key（只读，不打印）。
-try {
-  const fsx = require('fs');
-  const p = '@@STATE_DIR@@/secrets/store/MAKARON_API_KEY';
-  if (!process.env.MAKARON_API_KEY && fsx.existsSync(p)) {
-    process.env.MAKARON_API_KEY = fsx.readFileSync(p, 'utf8').trim();
-  }
-} catch (e) {}
+// Makaron key 由 account-routing.cjs 解析（这台机器上就是主人的 key），这里不另读凭据。
 'use strict';
 
 /**

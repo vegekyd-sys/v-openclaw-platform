@@ -1,13 +1,6 @@
 #!/usr/bin/env node
 
-// 环境里没有 MAKARON_API_KEY 时，从 OpenClaw 凭据库的镜像文件读主人的 key（只读，不打印）。
-try {
-  const fsx = require('fs');
-  const p = '@@STATE_DIR@@/secrets/store/MAKARON_API_KEY';
-  if (!process.env.MAKARON_API_KEY && fsx.existsSync(p)) {
-    process.env.MAKARON_API_KEY = fsx.readFileSync(p, 'utf8').trim();
-  }
-} catch (e) {}
+// Makaron key 由 account-routing.cjs 解析（这台机器上就是主人的 key），这里不另读凭据。
 'use strict';
 
 /**
@@ -181,7 +174,7 @@ function usage() {
   console.error(`Usage:
 node scripts/makaron-card-runner/visible-parent-flow.cjs \\
   --chat <oc_xxx> --prompt-file <brief.md> --title <title> --brief <brief> \\
-  [--image <path>] [--video <path>] [--audio <path>] [--media-manifest <manifest.json>] [--expected video,image] [--slug slug] [--project <id>] [--skill <id|label>] [--agent-model <id>] [--no-launch]
+  [--image <path>] [--video <path>] [--audio <path>] [--media-manifest <manifest.json>] [--expected video,image] [--slug slug] [--project auto] [--skill <id|label>] [--agent-model <id>] [--no-launch]
   [--worker generic|v14-staged|v15-supervisor] [--review-sidecar] [--request-id <trusted inbound message_id>]
   [--parent-task-id <durable parent id> --child-id <unique child id>]
 
@@ -206,9 +199,13 @@ Notes:
   const slug = take(argv, '--slug', 'makaron-visible-task');
   const expected = take(argv, '--expected', 'video');
   const projectId = take(argv, '--project');
+  if (projectId && projectId !== 'auto') {
+    throw new Error('新卡必须使用独立项目（--project auto）；继续原项目请在原卡使用 restart-task-worker.cjs。');
+  }
   const skill = take(argv, '--skill');
   const agentModel = take(argv, '--agent-model');
   const requestId = take(argv, '--request-id');
+  const originalUserRequest = take(argv, '--user-request');
   const parentTaskId = take(argv, '--parent-task-id');
   const childId = take(argv, '--child-id');
   if (Boolean(parentTaskId) !== Boolean(childId)) throw new Error('parent-task-id and child-id must be paired');
@@ -310,6 +307,11 @@ Notes:
     if (agentModel) createArgs.push('--agent-model', agentModel);
     if (reviewSidecar) createArgs.push(workerMode === 'v15-supervisor' ? '--sidecar-supervisor-v15' : '--review-sidecar');
     const job = JSON.parse(run(process.execPath, createArgs));
+    if(originalUserRequest){
+      const savedJob=JSON.parse(fs.readFileSync(job.jobPath,'utf8'));
+      savedJob.originalUserRequest=originalUserRequest;
+      fs.writeFileSync(job.jobPath,JSON.stringify(savedJob,null,2));
+    }
     event('job_created', {jobPath:job.jobPath});
     await ctrl.log('任务已交接');
 

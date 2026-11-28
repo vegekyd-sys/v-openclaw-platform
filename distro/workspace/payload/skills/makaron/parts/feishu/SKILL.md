@@ -40,7 +40,7 @@ For every Feishu/Lark media request, including natural-language retry, continuat
 For user-visible Makaron production:
 
 1. Download any inbound Feishu media first when necessary.
-2. Create the Makaron task card immediately.
+2. Create the Makaron task card immediately. Use a fresh project for every new card, including parallel language variants: omit `--project` or pass `--project auto`; never pass an existing project ID. For revisions and continuations, use the original card and project via `restart-task-worker.cjs`. Immediate delivery is unchanged.
 3. Put inspection, account policy, brief preparation, job creation, and worker handoff on that same card.
 4. Launch the detached worker. End the turn for media-only tasks; retain the current session for composite tasks.
 5. Let the worker update the original card and deliver final media.

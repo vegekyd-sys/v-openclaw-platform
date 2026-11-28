@@ -361,7 +361,6 @@ async function withChannel(chatId, fn){
  */
 async function streamCard(channel, chatId, opts={}){
   assertMakaronWorker('streamCard() realtime Makaron task card');
-  const previousTask=activeTasks.getActiveTask(chatId);
   let cardState={
     title:opts.title||'Makaron 任务',
     subtitle:opts.subtitle||'',
@@ -420,7 +419,6 @@ async function streamCard(channel, chatId, opts={}){
             cardState.cardId=cardState.cardId||streamMessageId;
             cardState.messageId=cardState.messageId||streamMessageId;
             try{activeTasks.upsertActiveTask(chatId,{...cardState,messageId:streamMessageId,source:'streamCard'});}catch(e){console.error('active task registry write failed:',e.message);}
-            await closeSupersededTask(channel,chatId,previousTask,streamMessageId);
           }
           await opts.producer(ctrlForUser());
         },
@@ -661,6 +659,35 @@ function eventIsDone(ev){
   return ev.type==='done'||ev.event==='done'||ev.status==='completed';
 }
 
+// Some Suno runs report the generated takes only as tool-result rows in text.
+// Recover the default take, not arbitrary links or the alternate take.
+function recoverSunoDefaultTake(text, projectId){
+  if(!projectId)return null;
+  let inAudioResult=false;
+  for(const line of String(text||'').split(/\r?\n/)){
+    if(line.trim()==='🎵 Audio generated'){
+      inAudioResult=true;
+      continue;
+    }
+    if(!inAudioResult)continue;
+    if(!line.startsWith('music:')){
+      inAudioResult=false;
+      continue;
+    }
+    const [take,,,tags,url,duplicateUrl]=line.split('|');
+    const labels=tags?.split(',')||[];
+    if(take!=='music:0'||!labels.includes('suno-v6')||!labels.includes('take:1/2')||!url||url!==duplicateUrl)continue;
+    let parsed;
+    try{parsed=new URL(url);}catch{continue;}
+    const parts=parsed.pathname.split('/');
+    if(parsed.origin!=='https://cdn.makaron.app'||parsed.username||parsed.password||
+        !parsed.pathname.startsWith('/storage/v1/object/public/images/')||
+        parts.length!==10||!parts[6]||parts[7]!==projectId||parts[8]!=='audio'||!/^[a-f0-9]+-0\.mp3$/i.test(parts[9]))continue;
+    return {type:'music',url:parsed.href,status:'completed'};
+  }
+  return null;
+}
+
 // Credit usage is the customer-visible cost signal for a Makaron run. CLI 0.15.0
 // reports it per run; keep the parse defensive so an older CLI or a run without
 // usage simply renders nothing instead of breaking the card.
@@ -818,7 +845,8 @@ async function sendLocalAssetViaLarkCli({chatId, assetType, filePath, replyTo, i
 /**
  * Download and send a normalized Makaron asset as a Feishu attachment/media.
  * Videos use the existing video+cover path. Images/designs are sent as native
- * images. Music/audio/files are sent as attachments so the group receives the
+ * images unless they exceed the inline limit. Oversized images and
+ * music/audio/files are sent as attachments so the group receives the
  * actual intermediate deliverable, not just a card note.
  */
 async function downloadAndSendAsset(channel, chatId, asset, outDir='output', outPrefix='makaron-asset', sendOptions){
@@ -834,18 +862,31 @@ async function downloadAndSendAsset(channel, chatId, asset, outDir='output', out
     try{fs.unlinkSync(out);}catch{}
     return {duplicate:true,localPath:out,transport:'content-dedupe'};
   }
+  const isImage=asset.type==='image'||asset.type==='design';
+  const oversizedImage=isImage&&fs.statSync(out).size>5_000_000;
   let sent,transport='lark-cli';
   try{
-    sent=await sendLocalAssetViaLarkCli({chatId,assetType:asset.type,filePath:out,replyTo,idempotencyKey});
-  }catch(e){
-    if(asset.type==='image'||asset.type==='design'){
-      console.error('[downloadAndSendAsset] lark-cli image send failed, falling back to Channel SDK image:',e.message);
-      sent={raw:await channel.send(chatId,{image:{source:out}}, sendOptions)};
-      sent.messageId=outboundMessageId(sent.raw);
-      transport='channel-sdk';
+    if(oversizedImage){
+      transport='lark-cli-image-file';
+      sent=await sendLocalAssetViaLarkCli({
+        chatId,assetType:'file',filePath:out,replyTo,idempotencyKey:`makaron-file-${hash}`,
+      });
     }else{
-      throw e;
+      try{
+        sent=await sendLocalAssetViaLarkCli({chatId,assetType:asset.type,filePath:out,replyTo,idempotencyKey});
+      }catch(e){
+        if(!isImage)throw e;
+        console.error('[downloadAndSendAsset] lark-cli image send failed, falling back to Channel SDK image:',e.message);
+        sent={raw:await channel.send(chatId,{image:{source:out}}, sendOptions)};
+        sent.messageId=outboundMessageId(sent.raw);
+        transport='channel-sdk';
+      }
     }
+  }catch(e){
+    if(!isImage)throw e;
+    throw Object.assign(new Error('图片已生成，但飞书发送失败。可从原 Makaron 项目取图，无需重新生成。',{cause:e}),{
+      code:'MAKARON_IMAGE_DELIVERY_FAILED',
+    });
   }
   return {localPath:out,messageId:sent?.messageId||outboundMessageId(sent?.raw),transport,raw:sent?.raw||sent};
 }
@@ -923,7 +964,7 @@ function createAssetDeliveryTracker({channel,chatId,ctrl,outDir='output',outPref
     }else{
       console.error('[delivered-media] outbound asset sent without messageId; reply routing will be unavailable for this asset');
     }
-    ctrl?.output?.(`${label}已发送到群`);
+    ctrl?.output?.(delivery?.transport==='lark-cli-image-file' ? `${label}原图已作为文件发送到群` : `${label}已发送到群`);
     return {...asset,delivered:true,localPath,messageId};
   };
   deliver.wasDelivered=(assetOrUrl)=>delivered.has(keyOf(assetOrUrl))||delivered.has(assetOrUrl?.url||'')||Boolean(idKeyOf(assetOrUrl)&&delivered.has(idKeyOf(assetOrUrl)));
@@ -1074,44 +1115,6 @@ function normalizeCardState(state={}){
   };
 }
 
-function getCardId(task={}){task=task||{};return task.cardId||task.messageId||task.openMessageId||'';}
-
-function stateForSupersededTask(task={}, replacementMessageId=''){
-  const logs=Array.isArray(task.logs)?task.logs.slice(-4):[];
-  logs.push({t:now(),text:'已被新卡替代，自动关闭'});
-  return normalizeCardState({
-    ...task,
-    status:'已被新卡替代',
-    progress:100,
-    done:true,
-    failed:false,
-    phase:'superseded',
-    superseded:true,
-    supersededBy:replacementMessageId,
-    supersededAt:Date.now(),
-    makaronSay:'这张旧卡已自动关闭；新任务已转到最新卡片。',
-    logs,
-  });
-}
-
-async function closeSupersededTask(channel, chatId, task, replacementMessageId, opts={}){
-  const previousCardId=getCardId(task);
-  if(!channel||!chatId||!previousCardId||previousCardId===replacementMessageId)return {ok:true,skipped:true};
-  const state=stateForSupersededTask(task,replacementMessageId);
-  const attempts=opts.attempts||[{delay:0,level:0},{delay:600,level:1},{delay:1800,level:2}];
-  const r=await updateCardWithRetry(channel,previousCardId,state,{chatId,context:'supersededAutoClose',attempts});
-  try{
-    activeTasks.upsertActiveTask(chatId,{
-      ...state,
-      messageId:previousCardId,
-      cardId:previousCardId,
-      source:'supersededAutoClose',
-    });
-  }catch(e){console.error('active task registry supersede write failed:',e.message);}
-  if(!r.ok)console.error('superseded card close failed; pending record written:',r.pendingPath||r.error?.message||r.error);
-  return r;
-}
-
 /**
  * Create the visible bootstrap card immediately. This is intentionally safe to
  * run in the inbound Feishu session because it only sends one card; it does not
@@ -1120,7 +1123,6 @@ async function closeSupersededTask(channel, chatId, task, replacementMessageId, 
  * updates the returned messageId.
  */
 async function createCard(channel, chatId, state={}, sendOptions){
-  const previousTask=activeTasks.getActiveTask(chatId);
   const cardState=normalizeCardState(state);
   const sent=await channel.send(chatId,{card:renderCard(cardState)},sendOptions);
   const messageId=normalizeMessageId(sent);
@@ -1128,8 +1130,6 @@ async function createCard(channel, chatId, state={}, sendOptions){
   cardState.cardId=cardState.cardId||messageId;
   cardState.messageId=cardState.messageId||messageId;
   try{activeTasks.upsertActiveTask(chatId,{...cardState,messageId,source:'createCard'});}catch(e){console.error('active task registry write failed:',e.message);}
-  if (!(cardState.parentTaskId && previousTask?.parentTaskId === cardState.parentTaskId && previousTask?.childId !== cardState.childId))
-    await closeSupersededTask(channel,chatId,previousTask,messageId);
   return {messageId, message_id:messageId, raw:sent, state:cardState};
 }
 
@@ -1175,7 +1175,7 @@ module.exports={
   connect, disconnect, withChannel, streamCard,
   // Makaron primitives
   submitChat, normalizeMediaAssets, buildMakaronChatArgs, watchEvents, eventText, eventVideo, eventAsset, eventIsDone, getRunOutput, assertMakaronCliRuntime,
-  downloadAndSend, downloadAndSendAsset, createAssetDeliveryTracker,
+  downloadAndSend, downloadAndSendAsset, createAssetDeliveryTracker, recoverSunoDefaultTake,
   // Feishu delivery helpers
   makeVideoCover, sendVideoWithCoverViaLarkCli, sendLocalAssetViaLarkCli, outboundMessageId, updateCardWithRetry,
   larkCliNetworkFailure, runLarkCliWithNetworkRetry,
