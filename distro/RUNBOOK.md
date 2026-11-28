@@ -548,7 +548,7 @@ sudo v-ctl as-agent python3 scripts/v-capabilities.py
 | 7 | 飞书授权 | 第 6 步的 `feishu-docs.py status` | 授权正常 |
 | 8 | 写文档 | 请老板在私聊里说「帮我建一个飞书文档，标题叫 V 部署验收，正文写今天的日期」 | 回复里有链接，老板能打开，内容对 |
 | 9 | 不以老板名义评论 | `sudo v-ctl as-agent lark-cli drive +add-comment --doc test --content test; echo exit=$?` | 输出 `V_OWNER_VOICE_BLOCKED`，`exit=3`（被拦在本机，不会发出去） |
-| 10 | 定时任务 | `sudo v-ctl openclaw cron list --json --all --agent makaron` | 条目数等于 `python3 -c "import json;print(len(json.load(open('/opt/v/current/workspace/schedules.json'))))"`。条目数是固定的，和凌晨补编每晚跑几轮无关：#700 起「Memory 导入补编」在 0:15–7:15 每小时一轮、每轮最多 60 片，但它仍是一条定时任务 |
+| 10 | 定时任务 | `sudo v-ctl openclaw cron list --json --all --agent makaron | python3 -c "import json,sys; j=json.load(sys.stdin)['jobs']; d=[x for x in j if str(x.get('declarationKey','')).startswith('distro:')]; print(len(d), all(x.get('enabled') for x in d))"` | 输出 `9 True`：`declarationKey` 以 `distro:` 开头的条目数等于 `schedules.json` 的条目数（`python3 -c "import json;print(len(json.load(open('/opt/v/current/workspace/schedules.json'))))"`），且都启用。列表里另外两条 `heartbeat:makaron`、`skill-collection-review:makaron` 是 OpenClaw 自带的、默认关闭，不算。条目数和凌晨补编每晚跑几轮无关：#700 起「Memory 导入补编」0:15–7:15 每小时一轮、每轮最多 60 片，仍是一条 |
 | 11 | 全局技能 | `sudo v-ctl install-skills` | `failed` 为空（GitHub 不通且没用 kit 时会有，记下来） |
 | 12 | 记忆索引 | `sudo v-ctl memory-check` | `"ok":true` |
 | 13 | 备份可恢复 | `sudo v-ctl backup` 后 `sudo v-ctl restore-backup <刚生成的文件> --root /tmp/v-restore-check`，最后 `sudo rm -rf /tmp/v-restore-check` | 两条都 `"ok":true` |
