@@ -11,7 +11,7 @@
 
 约定：
 - `客户机` 指要装 V 的那台机器。在它上面执行的命令都以 root 身份跑：用 `sudo`，或者先 `sudo -i`。
-- `<包目录>` 指客户机上解开的 `v-distro-<版本>/`。`<kit>` 指客户机上的部署包目录（第 2 步），推荐放在 `/opt/v-kit/<版本>`。
+- `<包目录>` 指客户机上解开的 `v-distro-<版本>/`。`<kit>` 指客户机上的部署包目录（只在大陆网络时用，附录 A），推荐放在 `/opt/v-kit/<版本>`。
 - 所有输出里的 key、secret、token 一律不要贴进聊天或交接记录。本手册的命令都不会打印它们，如果某个输出里出现了，先打码再转述。
 
 ## 你不做的事（红线）
@@ -46,7 +46,7 @@
 | 网络：海外还是中国大陆？有没有出口代理？ | 海外（默认），无代理 | 第 1 步 |
 | 要打开的可选能力 | 桌面接管、语音转文字、Makaron、公网链接、VSync | 第 4 步 |
 | 哪些 key 用我们的（默认全部用我们的） | 全部用我们的 | 第 3.3 步 |
-| 本次部署的版本号和包的 sha256 | 2026.11.30-…，`ab12…` | 第 2 步 |
+| 本次部署的正式版本：tag 和期望的 tarSha256 | `distro-2026.11.30-…`，`1a96…` | 第 2 步 |
 
 **登录方式**：客户会给 SSH。拿到以后先做下面四件事。
 
@@ -79,10 +79,11 @@
 
 ## 第 1 步 预检
 
-**做**：`preflight.sh` 在包里，第 2 步之前它还不在客户机上，所以先只把这一个文件送过去跑：
+**做**：`preflight.sh` 在包里，但第 2 步之前客户机上还没有包，所以先只把这一个文件从 tag 里取出来送过去跑（在 V 的主机上）：
 
 ```bash
-scp <包目录>/install/preflight.sh cust-<客户简称>:/tmp/v-preflight.sh
+curl -fsSL -o /tmp/v-preflight.sh "https://raw.githubusercontent.com/vegekyd-sys/v-openclaw-platform/<tag>/distro/install/preflight.sh"
+scp /tmp/v-preflight.sh cust-<客户简称>:/tmp/v-preflight.sh
 ssh cust-<客户简称> 'sudo bash /tmp/v-preflight.sh --out /tmp/v-preflight.txt'
 ```
 
@@ -131,39 +132,73 @@ V_UNREACHABLE : (none)
 
 ## 第 2 步 把安装包送到客户机
 
-### 2.1 拿到正式版本
+### 2.1 在 V 的主机上从 tag 构建正式版本
 
-正式版本由 Tianyi 指定，你会收到三样东西：**版本号**、包的 **sha256**、文件的取法（一般是一个 vrelay id）。sha256 以 Tianyi 消息里的为准，不以文件旁边的 `.sha256` 为准。
+正式版本不是一个发过来的文件，而是仓库 `vegekyd-sys/v-openclaw-platform`（public）里的一个 git tag。你会收到两样东西：
 
-一个正式版本包含两部分：
+- **tag**，形如 `distro-2026.11.30-db91-lifecycle-proof.1`。规则是 `distro-<版本号>`，版本号 = `<日期 YYYY.MM.DD>-<V release 名去掉日期后缀>.<当天第几个>`。
+- **期望的 tarSha256**：64 位十六进制。以给你的那条消息为准。
 
-- 安装包：`v-distro-<版本>.tgz` 和 `.sha256`，由 `distro/build/build.mjs` 从批准的提交构建。同样的输入构建出来字节完全相同。
-- 部署包（kit）：海外机器**不需要**。只有第 1 步出现 `bundle needed` 时才用，做法见附录 A。
+**你的主机要有**（V 的主机上都已具备，2026-11-28 只读核对过）：
+- `git`（2.43）、`node`（22.23.1；任何 Node 22 及以上都可以）；
+- 能访问 github.com（公开仓库，不需要登录）；
+- 约 1 GB 空闲磁盘。
 
-### 2.2 校验
-
-```bash
-sha256sum v-distro-<版本>.tgz          # 必须等于 Tianyi 给的 sha256
-```
-
-**不通过**：不一致就**不要装**。重新取一次；还不一致，报告 Tianyi。
-
-### 2.3 传到客户机
-
-任选一种：
-
-- **直接 SSH**（默认）：`rsync -P v-distro-<版本>.tgz* cust-<客户简称>:/tmp/`。`-P` 断了可以续传。
-- **传得很慢时**（比如跨境）：用 vrelay 生成免令牌链接 `vrelay link <id> --hours 24`，在客户机上 `curl -fLo /tmp/<文件> '<链接>'` 下载。链接 24 小时后失效，用完 `vrelay rm <id>`。
-- **客户机完全不能出网下载**：请客户管理员用他自己的方式（内网文件服务器、U 盘）放到 `/tmp/`。
-
-然后在客户机上：
+**做**（在 V 的主机上，以 V 自己的用户运行。第一次会做一个只用于构建的镜像克隆，以后每次只 fetch；`~/src` 下的工作目录不碰）：
 
 ```bash
-cd /tmp && sha256sum v-distro-<版本>.tgz                   # 再核对一次，必须等于 Tianyi 给的
-tar -xzf v-distro-<版本>.tgz                               # 得到 /tmp/v-distro-<版本>/
+curl -fsSL -o /tmp/release-build.sh "https://raw.githubusercontent.com/vegekyd-sys/v-openclaw-platform/<tag>/distro/build/release-build.sh"
+bash /tmp/release-build.sh --tag <tag> --expect-tar <tarSha256>
 ```
 
-**通过**：sha256 一致，`/tmp/v-distro-<版本>/install/install.sh` 存在。
+它会做这些事：
+- 把镜像克隆放在 `~/distro-build/v-openclaw-platform.git`，不碰你的工作目录；
+- 构建脚本取自 tag 本身；
+- 从 tag 那个提交里的 `distro/release.json` 读出 V release 名和 captured-store 提交；
+- 只读 git 对象来构建，再比对 tar 的 sha256。
+
+**看到**：
+
+```
+source <提交>  version <版本号>  release <V release>  captured-store <提交>
+file /home/openclaw/distro-build/out/v-distro-<版本号>.tgz
+tarSha256 <和给你的一样>
+tgzSha256 <另一个 sha256>
+tarSha256 OK
+```
+
+**通过**：最后一行是 `tarSha256 OK`，退出码 0。把 `tgzSha256` 记进交接记录，第 2.3 步在客户机上核对的是它。
+
+为什么比对 tar 而不是 tgz：
+- tar 的字节只由 tag 决定：文件排序固定，mtime 用提交时间，不带属主、主机名和时钟。2026-11-28 实测，Mac（arm64，Node 24）和首尔测试机（x86_64，Node 22）构建同一个提交，tarSha256 完全一样。
+- 外面那层 gzip 在不同 zlib 版本下可能不同，同一次实测两边的 tgz 就不一样。所以批准用 tar 的 sha256，传输核对用你这次构建出来的 tgz 的 sha256。
+
+**不通过**：
+- `tarSha256 MISMATCH`：**不要装**。把 tag、两个 sha256 和完整输出报告 Tianyi。
+- `no tag …`：tag 还没推上去或名字写错，核对后再问。
+- `no distro/release.json`：这个提交不是按规则打的正式版本，报告 Tianyi。
+
+部署包（kit）：海外机器**不需要**。只有第 1 步出现 `bundle needed` 时才用，做法见附录 A。
+
+### 2.2 传到客户机
+
+默认直接 SSH：
+
+```bash
+rsync -P ~/distro-build/out/v-distro-<版本号>.tgz cust-<客户简称>:/tmp/        # -P 断了可以续传
+```
+
+客户机完全不能从你这里接收时，请客户管理员用他自己的方式把文件放到 `/tmp/`。
+
+### 2.3 在客户机上核对并解开
+
+```bash
+ssh cust-<客户简称> 'cd /tmp && sha256sum v-distro-<版本号>.tgz && tar -xzf v-distro-<版本号>.tgz && ls v-distro-<版本号>/install/install.sh'
+```
+
+**通过**：sha256 等于第 2.1 步记下的 `tgzSha256`；最后打印出 `install.sh` 的路径。
+
+**不通过**：sha256 不一致说明传坏了，重传一次；还不一致，报告 Tianyi。
 
 ---
 
@@ -315,7 +350,7 @@ sudo /tmp/v-distro-<版本>/install/install.sh --env-file /root/v.env --probe 2>
 | `missing DEEPSEEK_API_KEY` / `FEISHU_APP_ID and FEISHU_APP_SECRET together` | 回第 3.4 步，核对后按第 3.3 步补写 |
 | `could not download node-v…` | 重跑一次；还不行按附录 A 加 `--node-mirror` 或 `--kit` |
 | npm 超时、`ETIMEDOUT`、`ECONNRESET` | 直接重跑（重跑是安全的，已装的部分会复核、不会重建）；反复超时再按附录 A 换源 |
-| `kit: files in … do not match` | kit 传坏了，重新传，回第 2.3 步 |
+| `kit: files in … do not match` | kit 传坏了，按附录 A 重新传 |
 | `sha256 mismatch` | 包或 kit 被改过，不要继续，报告 Tianyi |
 | `warning: global skills were not all installed` | 不阻塞。先重跑 `sudo v-ctl install-skills`；GitHub 一直不通时用附录 A 的部署包 |
 | health 一直等到超时 | `journalctl -u openclaw-gateway -n 80 --no-pager`，按「已知问题」排查 |
@@ -574,7 +609,7 @@ sudo rm -rf /tmp/v-distro-<版本>        # /opt/v 里已经有一份；/opt/v-k
 
 ### 8.5 以后更新和回滚
 
-拿到新版本后，同样做第 2 步，然后：
+拿到新版本（新的 tag 和 tarSha256）后，同样做第 2 步，然后：
 
 ```bash
 sudo /tmp/v-distro-<新版本>/install/update.sh --probe
@@ -698,7 +733,7 @@ kit 里有：
 - Chrome：核对 Google 签名钥指纹、apt 元数据签名和 .deb 的 sha256 后下载；
 - cloudflared。
 
-传到客户机（同第 2.3 步），解开并核对：
+传到客户机（同第 2.2 步），解开并核对：
 
 ```bash
 sudo mkdir -p /opt/v-kit/<版本> && sudo tar -xf /tmp/kit-<版本>.tar -C /opt/v-kit/<版本>
@@ -778,7 +813,7 @@ cd /opt/v-kit/<版本> && sha256sum -c --quiet SHA256SUMS && echo kit-ok
       - 把 open_id 写进 `groupAllowFrom` 会挡住所有群。
 
 11. **网关起不来，日志里有 `web_search provider "deepseek"` 未知（已修）。**
-    - 包里带了 v-deepseek-web 插件。还出现，说明装的不是正式包，回第 2 步核对 sha256。
+    - 包里带了 v-deepseek-web 插件。还出现，说明装的不是正式包，回第 2 步从 tag 重新构建并核对 tarSha256。
 
 12. **v-desktop-handoff 反复重启（已修）。**
     - `systemctl show -p NRestarts --value v-desktop-handoff` 不是 0 时：`journalctl -u v-desktop-handoff -n 30 --no-pager`。

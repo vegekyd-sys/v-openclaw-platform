@@ -14,7 +14,7 @@
 
 | 角色 | 做什么 | 不做什么 |
 | --- | --- | --- |
-| Tianyi | 指定版本号和包的 sha256；决定用哪些我们的 key | — |
+| Tianyi（或他指定的 session） | 核对后打正式版本的 tag，给出 tag 和期望的 tarSha256；决定用哪些我们的 key | — |
 | 执行部署的 agent（V） | 预检、送包、用管道写入我们的 key、安装、接飞书、验收、写交接 | 不显示任何密钥原文；不用密码登录、不记录客户密码；不在老板的会话和记忆里留测试内容 |
 | 客户管理员 | 给 SSH（加我们的公钥）；建飞书企业自建应用、导入权限、配事件和回调、发布；自己把 App Secret 写进客户机 | 不把 Secret 发在聊天里 |
 | 老板 | 第一次私聊机器人；在上手引导里点一次飞书授权 | — |
@@ -25,7 +25,7 @@
 | --- | --- | --- | --- |
 | 0 | 现场信息收集 | 一张信息表；用我们自己的专用 SSH 密钥登录、确认系统和免密 sudo | 15 分钟 |
 | 1 | 预检 | `preflight.sh` 确认系统和出网；海外机器全部走官方源 | 2 分钟 |
-| 2 | 送包 | 安装包在客户机上，sha256 与 Tianyi 给的一致 | 5–15 分钟 |
+| 2 | 送包 | V 在自己主机上从 tag 构建，tarSha256 与批准的一致；传到客户机后 tgz 的 sha256 一致 | 5–15 分钟 |
 | 3 | 客户飞书应用和 key | 应用发布；App ID 交给我们；我们的 key 用管道写进 secrets.env；客户自己写 App Secret | 30 分钟，主要等管理员 |
 | 4 | 安装 | `install.sh --probe` 通过；能力清单 `v-capabilities.json` | 10–25 分钟 |
 | 5 | 接飞书和主人 | `feishu-check` 通过；老板的 open_id 已配置；`ws client ready`；老板私聊有回复 | 10 分钟 |
@@ -34,6 +34,15 @@
 | 8 | 收尾 | 每日备份、清理、交接记录、远程支持方式；之后换成客户自己的 key | 10 分钟 |
 
 装完、飞书接通（第 5 步）之后，老板上手的部分看 B 线的 [OWNER-ONBOARDING.md](workspace/OWNER-ONBOARDING.md)：主人 open_id、授权链接、上手引导每一步看到什么、交付后头几天的预期。
+
+## 正式版本
+
+- 正式版本是公开仓库 `vegekyd-sys/v-openclaw-platform` 上的 git tag `distro-<版本号>`。
+  - 版本号规则：`<YYYY.MM.DD>-<V release 名去掉日期后缀>.<当天第几个>`，例如 `distro-2026.11.30-db91-lifecycle-proof.1`。
+  - tag 指向的提交里有 `distro/release.json`，写明 V release 名和 captured-store 提交。打 tag 前先更新它。
+- **不发 GitHub Release 资产，不用 vrelay 传包。** 部署的 V 在自己主机上运行 `distro/build/release-build.sh --tag <tag> --expect-tar <tarSha256>`：从 git 对象重新构建，tar 的 sha256 一致才往客户机传。
+- 构建可复现：tar 字节只由提交决定（排序、提交时间作 mtime、不带属主和主机信息）。2026-11-28 实测，arm64/Node 24 和 x86_64/Node 22 构建结果相同。gzip 层随 zlib 版本可能不同，所以批准的是 **tarSha256**；tgz 的 sha256 只用来核对传输。
+- 打 tag、合并 dev 在观察期结束、协调人核对以后再做。
 
 ## 网络
 
@@ -131,10 +140,11 @@ sudo v-ctl uninstall --yes --keep-config          # 先在线备份到 /root/v-u
 
 ## 这次新加的工具
 
-除 `offline-kit.sh` 在仓库的 `distro/build/` 里，其余都在发行包里。
+除 `release-build.sh`、`offline-kit.sh` 在仓库的 `distro/build/` 里，其余都在发行包里。
 
 | 工具 | 做什么 |
 | --- | --- |
+| `distro/build/release-build.sh --tag … --expect-tar …` | 在部署者主机上从 tag 重新构建正式版本并核对 tarSha256（仓库里，不在包里） |
 | `install/preflight.sh [--out FILE] [--env-file v.env]` | 系统和出网预检（含飞书、Lark）；判断海外或大陆；给出安装参数、需要的部署包、要关掉的能力；`--env-file` 把 `V_UNREACHABLE` 和 `V_NPM_REGISTRY` 写进 env 文件 |
 | `install/put-secrets.py`、`v-ctl put-secrets` | 从标准输入把 `KEY=值` 写进 secrets.env（或 `--file /etc/v/vsync.env`），只打印 key 名 |
 | `v-ctl uninstall --dry-run \| --yes [--keep-config] [--keep-backups]` | 先备份、再卸载，只删安装器建的东西 |
