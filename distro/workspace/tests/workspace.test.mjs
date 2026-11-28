@@ -466,3 +466,24 @@ test("every script in the payload still parses after sanitising (node --check, p
   }
   assert.deepEqual(bad, []);
 });
+
+test("v-capabilities.py: switched-off capabilities become one plain sentence for the owner; the technical part stays for the deployer", () => {
+  const dir = tmp("caps");
+  const file = path.join(dir, "v-capabilities.json");
+  fs.writeFileSync(file, JSON.stringify({ at: "2026-11-28T10:00:00Z",
+    memoryVectorSearch: { on: false, reason: "google is unreachable from this machine (preflight)", howTo: "semantic memory search: needs a network path to google" },
+    makaron: { on: true }, groupChats: { on: false, reason: "owner open_id not set", howTo: "v-ctl feishu-owner --mobile <phone> --write" },
+    feishu: { on: true }, unreachable: ["google"] }));
+  const script = path.join(PAYLOAD, "scripts/v-capabilities.py");
+  const r = spawnSync("python3", [script], { encoding: "utf8", env: { ...process.env, V_CAPABILITIES_FILE: file } });
+  assert.equal(r.status, 0, r.stderr);
+  const out = JSON.parse(r.stdout);
+  assert.deepEqual(out.off, ["memoryVectorSearch", "groupChats"]);
+  assert.deepEqual(out.on, ["makaron", "feishu"]);
+  assert.match(out.tellOwner, /按关键词找/);
+  assert.match(out.tellOwner, /群聊还没打开/);
+  assert.doesNotMatch(out.tellOwner, /[A-Za-z]{4,}/, "no technical words for the owner");
+  assert.equal(out.forDeployer[1].howTo, "v-ctl feishu-owner --mobile <phone> --write");
+  const missing = spawnSync("python3", [script], { encoding: "utf8", env: { ...process.env, V_CAPABILITIES_FILE: path.join(dir, "none.json") } });
+  assert.equal(missing.status, 3);
+});

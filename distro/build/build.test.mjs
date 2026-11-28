@@ -247,3 +247,14 @@ test('a vplugin pinned to an older commit ships those bytes only when they match
   setPin('0'.repeat(64));
   assert.throws(() => build(repo), /old-plugin: files differ from the pinned sha256s: index.js/);
 });
+
+test('release.json names a captured V release and a full captured-store commit; release-build.sh is valid bash', async () => {
+  const fsm = await import('node:fs');
+  const { spawnSync } = await import('node:child_process');
+  const rel = JSON.parse(fsm.readFileSync(new URL('../release.json', import.meta.url), 'utf8'));
+  assert.deepEqual(Object.keys(rel).sort(), ['capturedStore', 'release']);
+  assert.match(rel.capturedStore, /^[0-9a-f]{40}$/);
+  assert.ok(fsm.existsSync(new URL(`../../release/captured/${rel.release}/manifest.json`, import.meta.url)), `release/captured/${rel.release}/manifest.json`);
+  const sh = new URL('./release-build.sh', import.meta.url).pathname;
+  assert.equal(spawnSync('bash', ['-n', sh]).status, 0);
+});

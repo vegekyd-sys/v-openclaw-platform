@@ -15,6 +15,9 @@ VCTL=("$NODE" "$PKG/install/lib/vctl.mjs")
 say() { printf '\n== %s\n' "$*"; }
 [ "$(id -u)" -eq 0 ] || { echo "reconfigure: run as root (sudo)" >&2; exit 1; }
 
+. "$PKG/install/lib/kit.sh"
+KIT="$(v_recorded_kit)"
+if [ -n "$KIT" ]; then v_use_kit "$KIT"; fi
 DESKTOP=0; grep -qx 'V_DESKTOP=1' /etc/v/install.env && DESKTOP=1
 TUNNEL=0; grep -q '^CLOUDFLARE_TUNNEL_TOKEN=.' /etc/v/secrets.env && TUNNEL=1
 if [ "$DESKTOP" -eq 1 ] && ! command -v Xtigervnc >/dev/null; then

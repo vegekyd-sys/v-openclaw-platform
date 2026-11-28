@@ -107,6 +107,9 @@ function modelSetup(preset, env, codex) {
  * @param {string|null} [o.codexCommand] native codex binary, when the codex CLI is installed
  * @param {string} [o.etcDir]     /etc/v (desktop handoff admin token)
  */
+/** install.env V_UNREACHABLE: comma-separated service names preflight could not reach. */
+export const unreachableServices = (env) => new Set(String(env?.V_UNREACHABLE ?? '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean));
+
 export function createConfig(o) {
   if (!PROFILES.includes(o.profile)) throw new Error(`profile must be one of ${PROFILES.join(', ')}`);
   const env = o.env ?? {};
@@ -118,8 +121,11 @@ export function createConfig(o) {
   const feishu = standalone && has('FEISHU_APP_ID') && has('FEISHU_APP_SECRET');
   const ownerOpenId = env.V_OWNER_FEISHU_OPEN_ID || '';
   if (ownerOpenId && !/^ou_[0-9a-zA-Z]+$/.test(ownerOpenId)) throw new Error('V_OWNER_FEISHU_OPEN_ID must look like ou_...');
-  const embeddings = has('GOOGLE_API_KEY');
-  const xai = has('XAI_API_KEY');
+  // Services preflight found unreachable from this machine (install.env V_UNREACHABLE=google,xai):
+  // their key, if given, is left unused so V does not keep failing on them.
+  const unreachable = unreachableServices(env);
+  const embeddings = has('GOOGLE_API_KEY') && !unreachable.has('google');
+  const xai = has('XAI_API_KEY') && !unreachable.has('xai');
   const maxWorkers = Math.max(1, Math.min(48, Number(env.V_WORKERS_MAX || 4) || 4));
   const plugin = (p) => path.join(o.releaseDir, p);
 
