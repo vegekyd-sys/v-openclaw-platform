@@ -607,6 +607,24 @@ export function larkEnvFile({ appId, secret, configDir }) {
   return `# lark-cli's view of the Feishu app (v-distro configure; line B's interface). Root only.\nLARKSUITE_CLI_APP_ID=${appId}\nLARKSUITE_CLI_APP_SECRET=${secret}\nLARKSUITE_CLI_CONFIG_DIR=${configDir}\n`;
 }
 
+/**
+ * Whether lark-cli's config must be (re)written. `config init` rewrites config.json and drops
+ * apps[].users, i.e. the owner's Feishu login; so it runs only when there is no config yet or it
+ * names another app (whose login could not be used for this one anyway).
+ */
+export function larkInitNeeded(configText, appId) {
+  if (configText == null) return { init: true, reason: 'no config yet' };
+  let data;
+  try { data = JSON.parse(configText); } catch { return { init: true, reason: 'config unreadable' }; }
+  const apps = Array.isArray(data?.apps) ? data.apps : [data];
+  const configured = apps.map((a) => a?.appId).filter(Boolean);
+  if (configured.includes(appId)) {
+    const users = apps.find((a) => a?.appId === appId)?.users;
+    return { init: false, reason: 'same app already configured', users: Array.isArray(users) ? users.length : null };
+  }
+  return { init: true, reason: configured.length ? `configured for ${configured.join(', ')}` : 'no app in config' };
+}
+
 function configureLarkCli(env, bin) {
   const envFile = path.join(P.etc, 'lark.env');
   if (!env.FEISHU_APP_ID || !env.FEISHU_APP_SECRET) { fs.rmSync(envFile, { force: true }); return 'no-feishu'; }
@@ -616,10 +634,21 @@ function configureLarkCli(env, bin) {
   if (!bin || !fs.existsSync(bin)) return 'not-installed';
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   run('chown', [`${P.user}:${P.user}`, dir]);
+  const cfgFile = path.join(dir, 'config.json');
+  const need = larkInitNeeded(fs.existsSync(cfgFile) ? fs.readFileSync(cfgFile, 'utf8') : null, env.FEISHU_APP_ID);
+  // Same app: leave the config (and the owner's login in it) alone. A rotated App Secret is not
+  // picked up this way; lark-cli then reports an auth error and `rm ~/.lark-cli/config.json; v-ctl configure` rewrites it.
+  if (!need.init) return { configured: 'kept', reason: need.reason, users: need.users };
+  if (fs.existsSync(cfgFile)) {
+    const backup = `${cfgFile}.before-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+    fs.copyFileSync(cfgFile, backup);
+    run('chown', [`${P.user}:${P.user}`, backup]);
+    fs.chmodSync(backup, 0o600);
+  }
   run('runuser', ['-u', P.user, '--', 'env', '-i', `HOME=${P.home}`, `PATH=${path.dirname(process.execPath)}:/usr/bin:/bin`, `LARKSUITE_CLI_CONFIG_DIR=${dir}`,
     'LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1', 'LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1', bin, ...larkCliInitArgs(env.FEISHU_APP_ID, env.FEISHU_DOMAIN)], { input: env.FEISHU_APP_SECRET, stdio: ['pipe', 'pipe', 'pipe'] });
-  if (!fs.existsSync(path.join(dir, 'config.json'))) throw new Error(`lark-cli config init did not write ${path.join(dir, 'config.json')}`);
-  return 'configured';
+  if (!fs.existsSync(cfgFile)) throw new Error(`lark-cli config init did not write ${cfgFile}`);
+  return { configured: 'written', reason: need.reason };
 }
 
 async function cmdSeedWorkspace() {
