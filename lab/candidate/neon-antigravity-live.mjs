@@ -158,6 +158,25 @@ async function stopGateway() {
 }
 
 
+// Channel plugins (Feishu) need their official install record to be trusted. It lives in the
+// state database (config_machine_state "plugins.installedIndex") with shared VLab's runtime path;
+// this candidate's copy of that database is pointed at the candidate runtime. Copy only.
+{
+  const { DatabaseSync } = await import("node:sqlite");
+  const stateDb = path.join(stateDir, "state", "openclaw.sqlite");
+  assert(fs.existsSync(stateDb), "plan must copy state/openclaw.sqlite (plugin install records)");
+  const sharedRuntime = "/srv/vlab-production-mirror/labs/instances/db91-parity/runtime";
+  const db = new DatabaseSync(stateDb);
+  try {
+    const row = db.prepare("SELECT value_json FROM config_machine_state WHERE state_key = ?").get("plugins.installedIndex");
+    if (row) {
+      const next = row.value_json.replaceAll(sharedRuntime, runtime);
+      db.prepare("UPDATE config_machine_state SET value_json = ? WHERE state_key = ?").run(next, "plugins.installedIndex");
+      console.log(`install records rebased to the candidate runtime: ${row.value_json !== next}`);
+    }
+  } finally { db.close(); }
+}
+
 const STOP = process.env.LIVE_STOP_FILE ?? "/var/lib/agy-lab/live-stop";
 const READY = process.env.LIVE_READY_FILE ?? "/var/lib/agy-lab/live-ready";
 const MAX_MS = Number(process.env.LIVE_MAX_MINUTES ?? 180) * 60_000;

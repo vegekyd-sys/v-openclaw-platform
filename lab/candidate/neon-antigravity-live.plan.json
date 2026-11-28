@@ -24,5 +24,8 @@
     "AGY_BIN": "/opt/agy-lab/bin/agy",
     "AGY_HOME": "/var/lib/agy-lab/home",
     "LIVE_MAX_MINUTES": "180"
-  }
+  },
+  "databases": [
+    "state/openclaw.sqlite"
+  ]
 }

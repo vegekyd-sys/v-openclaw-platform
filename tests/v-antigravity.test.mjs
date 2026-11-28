@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { buildAntigravityCliBackend, parseAgyJsonlEvent } from '../apps/v-antigravity/plugin/backend.js';
-import { accountModel, readHostArgs, toAgyMcpConfig, composePrompt } from '../apps/v-antigravity/plugin/runtime.js';
+import { buildAntigravityCliBackend } from '../apps/v-antigravity/plugin/backend.js';
+import { accountModel, readHostArgs, toAgyMcpConfig, composePrompt, createClaudeStreamTranslator } from '../apps/v-antigravity/plugin/runtime.js';
 
 // A stand-in for `agy --input-format stream-json --output-format stream-json`
 // that behaves like agy 1.5.18 did on VLab (2026-11-28): init once, then per
@@ -74,17 +74,43 @@ function setup(t) {
   return { dir, ctx, run, logs, capability, handles };
 }
 
-const parsed = (records) => records.flatMap((r) => [].concat(parseAgyJsonlEvent(JSON.stringify(r)) ?? []));
+// What OpenClaw's Claude stream-json parser reads from the yielded records.
+const view = (records) => ({
+  text: records.filter((r) => r.type === 'stream_event' && r.event.type === 'content_block_delta' && r.event.delta.type === 'text_delta').map((r) => r.event.delta.text),
+  results: records.filter((r) => r.type === 'result').map((r) => r.result),
+  sessions: records.filter((r) => r.type === 'system' && r.subtype === 'init').map((r) => r.session_id),
+});
+
+// The rule core applies to Claude stream-json when the channel shows progress
+// (2026.9.1 createCliJsonlStreamingParser, classifyClaudeCommentary): text still
+// pending when a tool_use block starts is commentary; text pending at
+// message_stop or result is the reply.
+function classify(records) {
+  const commentary = []; const tools = []; const toolResults = []; let pending = ''; let reply = '';
+  for (const r of records) {
+    if (r.type === 'stream_event') {
+      const e = r.event;
+      if (e.type === 'content_block_delta' && e.delta.type === 'text_delta') pending += e.delta.text;
+      else if (e.type === 'content_block_start' && e.content_block.type === 'tool_use') {
+        if (pending.trim()) commentary.push(pending.trim());
+        pending = '';
+        tools.push([e.content_block.name, e.content_block.input]);
+      } else if (e.type === 'message_stop') { reply += pending; pending = ''; }
+    } else if (r.type === 'user') toolResults.push(r.message.content.map((c) => [c.tool_use_id, c.is_error]));
+    else if (r.type === 'result') { reply += pending; pending = ''; }
+  }
+  return { commentary, tools, toolResults: toolResults.flat(), reply: reply.trim() };
+}
 
 test('a turn runs in a live agy with V\'s prompt as the agent and OpenClaw tools over MCP', async (t) => {
   const { ctx, run, logs, handles } = setup(t);
   const records = await run(ctx());
   assert(records.every((r) => typeof r.type === 'string'), 'every record has a host type');
   assert.equal(records.at(-1).type, 'result');
-  const events = parsed(records);
-  assert.deepEqual(events.filter((e) => e.kind === 'text').map((e) => e.text), ['ANS<hello>']);
-  assert.equal(events.find((e) => e.kind === 'sessionId').sessionId.startsWith('conv-'), true);
-  assert.equal(events.find((e) => e.kind === 'result').text, 'ANS<hello>', 'the result carries the turn\'s text');
+  const v = view(records);
+  assert.deepEqual(v.text, ['ANS<hello>']);
+  assert.equal(v.sessions[0].startsWith('conv-'), true);
+  assert.deepEqual(v.results, ['ANS<hello>']);
   const [start] = logs();
   assert.deepEqual(start.args.slice(0, 4), ['--input-format', 'stream-json', '--output-format', 'stream-json']);
   assert.equal(start.args[start.args.indexOf('--agent') + 1], 'v');
@@ -108,9 +134,9 @@ test('the next turn reuses the process and still reports the conversation id', a
   await run(ctx());
   const second = await run(ctx({ prompt: 'again' }));
   assert.equal(logs().length, 1, 'one agy process for both turns');
-  const events = parsed(second);
-  assert(events.some((e) => e.kind === 'sessionId'));
-  assert.deepEqual(events.filter((e) => e.kind === 'text').map((e) => e.text), ['ANS<again>']);
+  const v = view(second);
+  assert.equal(v.sessions.length > 0, true, 'a reused process still reports the conversation id');
+  assert.deepEqual(v.text, ['ANS<again>']);
   const h = handles.get('k'); h.close('test'); await h.waitForExit();
 });
 
@@ -122,10 +148,10 @@ test('a steer during the turn is answered in the same turn', async (t) => {
   assert.equal(h.canQueueMessage(), true);
   await h.queueMessage('STEER kiwi');
   const records = await pending;
-  const texts = parsed(records).filter((e) => e.kind === 'text').map((e) => e.text);
-  assert.deepEqual(texts, ['ANS<SLOW main>', 'ANS<STEER kiwi>']);
-  assert.equal(records.filter((r) => r.type === 'result').length, 2);
-  assert.equal(parsed(records).filter((e) => e.kind === 'result').at(-1).text, 'ANS<SLOW main>ANS<STEER kiwi>', 'the last result is the whole reply');
+  const v = view(records);
+  assert.deepEqual(v.text, ['ANS<SLOW main>', 'ANS<STEER kiwi>']);
+  // Two results in one host turn: core joins them into one reply, as for /vcc.
+  assert.deepEqual(v.results, ['ANS<SLOW main>', 'ANS<STEER kiwi>']);
   assert.equal(h.isIdle(), true);
   assert.equal(h.canQueueMessage(), false);
   await assert.rejects(h.queueMessage('late'), /no running turn/);
@@ -136,7 +162,7 @@ test('a new process resumes the stored conversation', async (t) => {
   const { ctx, run, logs, handles } = setup(t);
   const records = await run(ctx({ useResume: true, sessionId: 'conv-old' }));
   assert.equal(logs()[0].args[logs()[0].args.indexOf('--conversation') + 1], 'conv-old');
-  assert(parsed(records).some((e) => e.kind === 'sessionId' && e.sessionId === 'conv-old'));
+  assert(view(records).sessions.includes('conv-old'));
   const h = handles.get('k'); h.close('test'); await h.waitForExit();
 });
 
@@ -164,8 +190,67 @@ test('helpers', () => {
   assert.deepEqual(readHostArgs(['--image', '/w/a.png', '--effort', 'low', '--image', '/w/b.jpg']), { images: ['/w/a.png', '/w/b.jpg'], disallowed: [], effort: 'low' });
   assert.equal(composePrompt({ prompt: 'q', promptContext: { prependContext: 'ctx' }, images: ['/w/a.png'] }), 'ctx\n\nq\n\n@/w/a.png');
   assert.deepEqual(toAgyMcpConfig({ mcpServers: { s: { command: 'x', args: ['y'] }, junk: {} } }), { mcpServers: { s: { command: 'x', args: ['y'], timeoutSeconds: 3600 } } });
-  const toolError = parseAgyJsonlEvent(JSON.stringify({ event: 'step_update', step_update: { conversation_id: 'c', step_index: 4, state: 'ERROR', step_type: 'tool', tool_info: { name: 'mcp_openclaw_memory_search', error: { type: 'TOOL_ERROR', message: 'index metadata is missing' } } } }));
-  assert.deepEqual(toolError.map((e) => [e.kind, e.isError ?? null]), [['toolStart', null], ['toolResult', true]], 'a tool step that ends in ERROR still closes the tool');
-  const failed = parseAgyJsonlEvent(JSON.stringify({ type: 'result', event: 'result', result: { status: 'ERROR', error: 'quota' } }));
-  assert.match(failed.errorText, /error: quota/);
+});
+
+// agy 1.5.18 on VLab, 2026-11-28 17:02 CST: "say what you will do, run hostname, run date, answer".
+const TOOL_TURN = [
+  { event: 'init', conversation_id: 'c' },
+  ['user_input', 'DONE'],
+  ['agent_response', 'ACTIVE', 'I will run `hostname` first, '], ['agent_response', 'ACTIVE', 'then `date`.'], ['agent_response', 'DONE', '\n'],
+  ['tool', 'ACTIVE', { name: 'run_command', parameters: { CommandLine: 'hostname' } }],
+  ['tool', 'DONE', { name: 'run_command', parameters: { CommandLine: 'hostname' }, output: 'VM-0-4-ubuntu' }],
+  ['agent_response', 'ACTIVE', 'I will now run `date`.'], ['agent_response', 'DONE', '\n'],
+  ['tool', 'ACTIVE', { name: 'run_command', parameters: { CommandLine: 'date' } }],
+  ['tool', 'DONE', { name: 'run_command', parameters: { CommandLine: 'date' }, output: 'Sat Nov 28' }],
+  ['agent_response', 'ACTIVE', 'Hostname: `VM-0-4-ubuntu`, '], ['agent_response', 'ACTIVE', 'Date: `Sat Nov 28`.'], ['agent_response', 'DONE', '\n'],
+  { event: 'result', result: { conversation_id: 'c', status: 'SUCCESS', response: 'I will run `hostname` first, then `date`.\nI will now run `date`.\nHostname: `VM-0-4-ubuntu`, Date: `Sat Nov 28`.\n', usage: { input_tokens: 7, output_tokens: 3, thinking_tokens: 2 } } },
+];
+function agyEvents(list) {
+  let index = 0; let last = null;
+  return list.map((e) => {
+    if (!Array.isArray(e)) return e;
+    const [type, state, x] = e;
+    if (type !== last || type === 'user_input' || (type === 'tool' && state === 'ACTIVE')) index += 1;
+    last = type;
+    const step = { conversation_id: 'c', step_index: index, state, step_type: type };
+    if (type === 'agent_response') step.text_delta = x;
+    if (type === 'tool') { step.tool_name = x.name; step.tool_info = x; }
+    return { event: 'step_update', step_update: step };
+  });
+}
+
+test('agy text before a tool call becomes commentary and the reply is the text after the last tool', () => {
+  const tr = createClaudeStreamTranslator();
+  const records = agyEvents(TOOL_TURN).flatMap((e) => tr.translate(e));
+  assert(records.every((r) => typeof r.type === 'string'));
+  const c = classify(records);
+  assert.deepEqual(c.commentary, ['I will run `hostname` first, then `date`.', 'I will now run `date`.'], 'the card shows the process');
+  assert.deepEqual(c.tools, [['run_command', { CommandLine: 'hostname' }], ['run_command', { CommandLine: 'date' }]]);
+  assert.deepEqual(c.toolResults, [['agy-c-3', false], ['agy-c-5', false]]);
+  assert.equal(c.reply, 'Hostname: `VM-0-4-ubuntu`, Date: `Sat Nov 28`.');
+  const result = records.at(-1);
+  assert.equal(result.result, 'Hostname: `VM-0-4-ubuntu`, Date: `Sat Nov 28`.', 'not agy\'s response, which repeats the commentary');
+  assert.deepEqual(result.usage, { input_tokens: 7, output_tokens: 5, cache_read_input_tokens: 0 });
+  assert.equal(records.filter((r) => r.type === 'stream_event' && r.event.type === 'message_start').length, 3, 'one message per model call, as Claude Code reports');
+});
+
+test('a tool step that fails, and a failed result', () => {
+  const tr = createClaudeStreamTranslator();
+  const records = [
+    { event: 'init', conversation_id: 'c' },
+    { event: 'step_update', step_update: { conversation_id: 'c', step_index: 4, state: 'ERROR', step_type: 'tool', tool_info: { name: 'mcp_openclaw_memory_search', error: { type: 'TOOL_ERROR', message: 'index metadata is missing' } } } },
+    { event: 'result', result: { conversation_id: 'c', status: 'ERROR', error: 'quota' } },
+  ].flatMap((e) => tr.translate(e));
+  const toolResult = records.find((r) => r.type === 'user').message.content[0];
+  assert.deepEqual([toolResult.is_error, toolResult.content], [true, 'index metadata is missing'], 'a tool step that ends in ERROR still closes the tool');
+  const failed = records.at(-1);
+  assert.equal(failed.is_error, true);
+  assert.match(failed.errors[0], /error: quota/);
+});
+
+test('the backend is parsed as Claude stream-json', () => {
+  const backend = buildAntigravityCliBackend({});
+  assert.equal(backend.config.jsonlDialect, 'claude-stream-json');
+  assert.equal(backend.parseJsonlEvent, undefined, 'no custom parser: core\'s Claude parser classifies commentary');
+  assert.deepEqual(backend.config.sessionIdFields, ['session_id']);
 });

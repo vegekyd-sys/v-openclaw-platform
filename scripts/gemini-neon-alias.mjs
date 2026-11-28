@@ -12,13 +12,17 @@
 //   agents.defaults.modelPolicy.allow += antigravity/*
 //   agents.defaults.models + agents.entries.makaron.models:
 //     antigravity/gemini-4-neon = {alias: neon, agentRuntime: antigravity-cli, thinking: high}
+//   channels.feishu.visibleProgressRuntimes += antigravity-cli (from the plugin's
+//     default codex/vlab-worker/claude-cli when unset), so the Feishu reply card
+//     shows /neon's process (commentary, tool lines) the way it does for /vcc
 //
 //   node gemini-neon-alias.mjs plan   <config.json> [--plugin-dir D] [--agy-bin B] [--agy-home H]
 //   node gemini-neon-alias.mjs verify <config.json> [same options]
 //   node gemini-neon-alias.mjs revert <config.json>
 //   node gemini-neon-alias.mjs apply  <config.json> --cli <openclaw.mjs> [same options]
 //
-// plugins.load.paths and plugins.entries need a Gateway restart on V (run apply
+// plugins.load.paths, plugins.entries and the Feishu list (read when the channel
+// starts) need a Gateway restart on V (run apply
 // inside v-self-restart --while-stopped). No secrets are read or printed.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -36,6 +40,14 @@ export const DEFAULTS = Object.freeze({
   agyBin: '/opt/agy/current/agy',
   agyHome: '/home/openclaw/.agy-home',
 });
+
+// V's Feishu plugin (worker-visible-progress-v4) when the key is unset.
+export const FEISHU_PROGRESS_DEFAULTS = Object.freeze(['codex', 'vlab-worker', 'claude-cli']);
+const FEISHU_PROGRESS_PATH = 'channels.feishu.visibleProgressRuntimes';
+const feishuProgress = (config) => {
+  const cur = config.channels?.feishu?.visibleProgressRuntimes;
+  return Array.isArray(cur) && cur.length ? cur : [...FEISHU_PROGRESS_DEFAULTS];
+};
 
 export const ROW = {
   id: 'gemini-4-neon', name: 'Gemini 4 Neon (Antigravity)', api: 'google-generative-ai', reasoning: true,
@@ -81,6 +93,7 @@ export function plan(config, opts = {}) {
     const want = { alias: ALIAS, agentRuntime: { id: RUNTIME }, params: { thinking: THINKING } };
     if (JSON.stringify(map[REF]) !== JSON.stringify(want)) sets.push({ path: where, value: { [REF]: want } });
   }
+  if (config.channels?.feishu && !feishuProgress(config).includes(RUNTIME)) sets.push({ path: FEISHU_PROGRESS_PATH, value: [...feishuProgress(config), RUNTIME] });
   return { sets };
 }
 
@@ -96,6 +109,12 @@ export function revert(config, opts = {}) {
   if (config.plugins?.entries?.[PLUGIN_ID]) sets.push({ path: `plugins.entries.${PLUGIN_ID}`, value: { enabled: false } });
   const paths = config.plugins?.load?.paths;
   if (Array.isArray(paths) && paths.some((p) => norm(p) === norm(o.pluginDir))) sets.push({ path: 'plugins.load.paths', value: paths.filter((p) => norm(p) !== norm(o.pluginDir)) });
+  const progress = config.channels?.feishu?.visibleProgressRuntimes;
+  if (Array.isArray(progress) && progress.includes(RUNTIME)) {
+    const rest = progress.filter((r) => r !== RUNTIME);
+    if (JSON.stringify(rest) === JSON.stringify(FEISHU_PROGRESS_DEFAULTS)) unset.push(FEISHU_PROGRESS_PATH);
+    else sets.push({ path: FEISHU_PROGRESS_PATH, value: rest });
+  }
   return { unset, sets };
 }
 
@@ -108,6 +127,7 @@ export function verify(config, opts = {}) {
   if (Array.isArray(allowPlugins) && allowPlugins.length && !allowPlugins.includes(PLUGIN_ID)) problems.push('plugins.allow lacks the plugin');
   if (JSON.stringify(config.models?.providers?.[PROVIDER]) !== JSON.stringify(providerBlock())) problems.push('model provider differs');
   if (!config.agents?.defaults?.modelPolicy?.allow?.includes(`${PROVIDER}/*`)) problems.push('modelPolicy.allow lacks the provider');
+  if (config.channels?.feishu && !feishuProgress(config).includes(RUNTIME)) problems.push('Feishu visibleProgressRuntimes lacks the runtime');
   const aliases = {};
   for (const [where, map] of scopeMaps(config)) {
     const owners = Object.entries(map).filter(([, v]) => lower(v?.alias) === ALIAS).map(([k]) => k);

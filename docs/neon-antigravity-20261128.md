@@ -37,6 +37,8 @@ Google 的账号接口（relay 用的同一个）会精确匹配 OpenClaw 默认
 | 图片：工作区路径 | 主机传来的 `--image` 路径转成 `@路径` 提及，agy 用 `read_file` 读图 |
 | 思考档位转成环境变量 | 转成账号模型档位，默认 high，即 `gemini-4-neon-high` |
 | 同一会话串行；原生压缩归 CLI | 同样 |
+| 输出是 Claude stream-json，core 用 Claude 解析器处理：工具调用前写的话算 commentary（飞书卡片上的过程），回复只取最后一次工具调用之后的文字 | agy 的事件在 runtime 里转成同样的 Claude stream-json 记录（`createClaudeStreamTranslator`），backend 声明 `jsonlDialect: claude-stream-json`，由 core 的同一套代码解析。agy 自己的 `result.response` 会把 commentary 也拼进去，不用它 |
+| 飞书卡片显示过程：`channels.feishu.visibleProgressRuntimes` 里有 `claude-cli`（插件默认值） | 加入 `antigravity-cli` |
 
 运行日志（Gateway 日志，带 `[v-antigravity]` 前缀）记录：进程启动和原因、MCP 工具数、每次工具调用、steer 入队。设置 `V_ANTIGRAVITY_TRACE=1` 会逐步记录。
 
@@ -58,12 +60,17 @@ Google 的账号接口（relay 用的同一个）会精确匹配 OpenClaw 默认
 | 附件图片（纯蓝 PNG） | 「蓝色」，11.5 s | — |
 | steer：`sleep 25` 进行到第 10 s 时插话「加上 KIWI」 | `steer queued into the live turn`，同一条回复：`MAIN-DONE\nMAIN-DONE KIWI` | — |
 
+**飞书过程流式（11/28 17:1x CST，VLab 飞书上的 live candidate）：** Tianyi 第一次试 `/neon` 时卡片只有结果，没有过程：一是 `antigravity-cli` 不在飞书的过程白名单里，二是 agy 的中间文字被当成回复，最后的回复把「我先执行…」也拼了进去。改成 Claude stream-json 并加进白名单之后，发了一条「先说要做什么，执行 `sleep 10 && hostname`、`uptime`，再汇总」，每 2 秒读一次卡片：
+- 17:14:47–17:14:57：卡片上逐条出现三句过程说明（「我将先执行…」「下面先执行 `sleep 10 && hostname`…」「主机名已拿到，接下来执行 `uptime`…」），下面一行显示当前工具（🧩 Run Command / Manage Task）；
+- 17:15:00：最终答案到达，过程说明被收起，卡片只留一行汇总，和 `/vcc` 一样。
+- 第一条带工具的测试（17:12:52 发出）：卡片在 18 s 时出现，最终答案的首字在 35 s，比答案早 16 s 就能看到过程。修之前卡片要等到答案出来才出现（Tianyi 那两次分别是 60 s 和 237 s）。
+
 **首字为什么之前慢、现在为什么是这个数：**
 - 11/19 量到的 12–33 s，大部分来自测试隧道（VLab → 上海 → V）上传 188 KB 请求体的时间，不是 Google 慢。同一条真实请求（5 万 token、129 个工具）在 V 上直接重放，首字 medium 3.8–4.2 s，high 5.8 s。
 - agy 路线下，同一进程上的热回合首字 3.4–4.3 s，基本就是 Neon high 处理 5 万 token 上下文的时间。首轮多出约 2 s 的 agy 启动和冷缓存。
 - `/deepseek` 仍然更快（1.3–2.4 s）。
 
-单元测试：`tests/v-antigravity.test.mjs` 7 个，用一个模拟 agy 常驻模式的假 agy，覆盖 live 进程、跨轮复用、steer 并进同一条回复、续接、进程中途退出、指纹变化重启，以及工具 `ERROR` 状态；`scripts/gemini-neon-alias.test.mjs` 4 个；`lab/v-identity-line.test.mjs` 4 个。
+单元测试：`tests/v-antigravity.test.mjs` 10 个，用一个模拟 agy 常驻模式的假 agy，覆盖 live 进程、跨轮复用、steer 并进同一条回复、续接、进程中途退出、指纹变化重启；另用 agy 1.5.18 在 VLab 上的真实工具回合检查转换结果：commentary、工具、回复各归其位，工具 `ERROR` 和失败的结果也覆盖到。同一份真实记录也直接喂给 VLab 的 core 解析器（`createCliJsonlStreamingParser`）核对过：设了 `onCommentaryText` 时两句说明成为 commentary，回复只有最后一行；没设时（非飞书渠道）整段拼在一起，和 `/vcc` 一致。`scripts/gemini-neon-alias.test.mjs` 5 个；`lab/v-identity-line.test.mjs` 4 个。
 
 ## 配置改动（`scripts/gemini-neon-alias.mjs`）
 
@@ -76,8 +83,9 @@ Google 的账号接口（relay 用的同一个）会精确匹配 OpenClaw 默认
 | `models.providers.antigravity` | `gemini-4-neon` 的目录条目（1M 上下文，`input: [text, image]`，cost 0）。没有 key，也不会被直接调用 |
 | `agents.defaults.modelPolicy.allow` | 追加 `antigravity/*` |
 | `agents.defaults.models`、`agents.entries.makaron.models` | `antigravity/gemini-4-neon` = `{alias: neon, agentRuntime: antigravity-cli, thinking: high}` |
+| `channels.feishu.visibleProgressRuntimes` | V 和 VLab 都没设，插件默认是 `codex, vlab-worker, claude-cli`；改为默认值加 `antigravity-cli`。已经设了就在原列表后追加。回退时去掉它；剩下的等于默认值就直接 unset |
 
-不改默认模型，也不改其他别名。`plugins.*` 的改动需要重启。
+不改默认模型，也不改其他别名。`plugins.*` 的改动需要重启；飞书的列表在渠道启动时读取，也要重启才生效。
 
 ## 上线步骤（等 Tianyi 批准后由监控 session 执行）
 

@@ -6,6 +6,7 @@ function config() {
   return {
     plugins: { load: { paths: ['/x/other'] }, allow: ['feishu', 'codex'], entries: { feishu: { enabled: true } } },
     models: { providers: { deepseek: { api: 'openai-completions', apiKey: 'literal-ds' } } },
+    channels: { feishu: { enabled: true, renderMode: 'auto' } },
     agents: {
       defaults: {
         modelPolicy: { allow: ['openai/*', 'deepseek/deepseek-flash'] },
@@ -38,6 +39,7 @@ test('plan adds the plugin, the provider row and /neon on the Antigravity runtim
   assert.deepEqual(sets.map((s) => s.path), [
     'plugins.load.paths', 'plugins.allow', `plugins.entries.${PLUGIN_ID}`, `models.providers.${PROVIDER}`,
     'agents.defaults.modelPolicy.allow', 'agents.defaults.models', 'agents.entries.makaron.models',
+    'channels.feishu.visibleProgressRuntimes',
   ]);
   applySets(cfg, sets);
   const v = verify(cfg);
@@ -49,6 +51,8 @@ test('plan adds the plugin, the provider row and /neon on the Antigravity runtim
   assert.equal(cfg.models.providers[PROVIDER].apiKey, undefined, 'no credential in the provider row');
   assert.deepEqual(cfg.plugins.entries[PLUGIN_ID].config, { agyBin: '/opt/agy/current/agy', agyHome: '/home/openclaw/.agy-home', runRoot: '/home/openclaw/.agy-home/openclaw-runs', defaultEffort: 'high', modelProvider: PROVIDER });
   assert.equal(cfg.models.providers.deepseek.apiKey, 'literal-ds');
+  assert.deepEqual(cfg.channels.feishu.visibleProgressRuntimes, ['codex', 'vlab-worker', 'claude-cli', RUNTIME], 'the card shows /neon\'s process like /vcc\'s');
+  assert.equal(cfg.channels.feishu.renderMode, 'auto');
   assert.deepEqual(plan(cfg).sets, [], 'second run is a no-op');
   assert.equal(JSON.stringify(plan(config())).includes('literal-ds'), false, 'plan never echoes other secrets');
 });
@@ -70,10 +74,23 @@ test('refuses to steal an alias that points elsewhere', () => {
 test('revert removes the alias and provider, switches the plugin off and drops its load path', () => {
   const cfg = applySets(config(), plan(config()).sets);
   const r = revert(cfg);
-  assert.deepEqual(r.unset, [`agents.defaults.models["${REF}"]`, `agents.entries.makaron.models["${REF}"]`, `models.providers.${PROVIDER}`]);
+  assert.deepEqual(r.unset, [`agents.defaults.models["${REF}"]`, `agents.entries.makaron.models["${REF}"]`, `models.providers.${PROVIDER}`, 'channels.feishu.visibleProgressRuntimes']);
   assert.deepEqual(r.sets, [
     { path: 'agents.defaults.modelPolicy.allow', value: ['openai/*', 'deepseek/deepseek-flash'] },
     { path: `plugins.entries.${PLUGIN_ID}`, value: { enabled: false } },
     { path: 'plugins.load.paths', value: ['/x/other'] },
   ]);
+});
+
+test('an existing Feishu progress list is extended and restored, and no Feishu means no change', () => {
+  const cfg = config();
+  cfg.channels.feishu.visibleProgressRuntimes = ['codex', 'claude-cli'];
+  const set = plan(cfg).sets.find((s) => s.path === 'channels.feishu.visibleProgressRuntimes');
+  assert.deepEqual(set.value, ['codex', 'claude-cli', RUNTIME]);
+  applySets(cfg, plan(cfg).sets);
+  assert.deepEqual(revert(cfg).sets.find((s) => s.path === 'channels.feishu.visibleProgressRuntimes').value, ['codex', 'claude-cli']);
+  const noFeishu = config();
+  delete noFeishu.channels;
+  assert.equal(plan(noFeishu).sets.some((s) => s.path.startsWith('channels.')), false);
+  assert.equal(verify(applySets(noFeishu, plan(noFeishu).sets)).ok, true);
 });

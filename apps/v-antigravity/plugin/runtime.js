@@ -161,17 +161,113 @@ export function buildAgyArgv({ model, effort, conversation, workspaceDir, runDir
   return argv;
 }
 
-/** OpenClaw requires each yielded record to have a `type`; agy events use `event`. */
-export function toHostRecord(event, { replyText } = {}) {
-  if (event.event === 'init') return { type: 'system', subtype: 'init', ...event };
-  if (event.event === 'result') {
-    // The host keeps the last result's text as the reply, so a result carries
-    // everything this turn has said (a steered follow-on answer included).
-    const result = { ...event.result };
-    if (typeof replyText === 'string' && replyText) result.response = replyText;
-    return { type: 'result', is_error: result.status !== 'SUCCESS', event: 'result', result };
-  }
-  return { type: `agy_${event.event}`, ...event };
+/**
+ * agy events -> Claude Code stream-json records, so OpenClaw's own Claude parser
+ * (backend jsonlDialect "claude-stream-json") handles the turn exactly as it
+ * handles /vcc: text written before a tool call becomes channel commentary (the
+ * Feishu card's process), tool calls become tool events, and the reply is the
+ * text after the last tool. agy itself reports every text segment of the turn,
+ * commentary included, in result.response, so that field is not used.
+ *
+ *   agy                                        Claude Code record
+ *   init                                       system/init (session_id)
+ *   agent_response text_delta                  stream_event text block (message_start on a new message)
+ *   tool step (first update)                   stream_event tool_use block (start + stop, input = parameters)
+ *   tool step DONE / ERROR                     user tool_result
+ *   agent_response after a tool                message_stop, then a new message
+ *   user_input (a consumed steer)              message_stop
+ *   result                                     message_stop, result (text after the last tool)
+ */
+export function createClaudeStreamTranslator() {
+  const s = { conv: undefined, open: false, seq: 0, index: 0, textIndex: null, afterTool: false, tools: new Set(), done: new Set(), segment: '' };
+  const evt = (event) => ({ type: 'stream_event', event });
+  const start = () => {
+    s.seq += 1; s.open = true; s.index = 0; s.textIndex = null; s.afterTool = false;
+    return [evt({ type: 'message_start', message: { id: `agy-${s.conv ?? 'turn'}-${s.seq}`, role: 'assistant' } })];
+  };
+  const stopText = () => {
+    if (s.textIndex === null) return [];
+    const index = s.textIndex; s.textIndex = null;
+    return [evt({ type: 'content_block_stop', index })];
+  };
+  const stop = () => {
+    if (!s.open) return [];
+    const out = [...stopText(), evt({ type: 'message_stop' })];
+    s.open = false; s.afterTool = false;
+    return out;
+  };
+  const toolId = (step) => `agy-${step.conversation_id ?? s.conv ?? 'turn'}-${step.step_index}`;
+  return {
+    translate(event) {
+      if (event.event === 'init') {
+        if (event.conversation_id) s.conv = event.conversation_id;
+        return s.conv ? [{ type: 'system', subtype: 'init', session_id: s.conv }] : [];
+      }
+      if (event.event === 'result') {
+        const result = event.result ?? {};
+        const u = result.usage ?? {};
+        const ok = result.status === 'SUCCESS';
+        const out = stop();
+        const record = {
+          type: 'result', subtype: ok ? 'success' : 'error_during_execution', is_error: !ok,
+          session_id: result.conversation_id || s.conv,
+          usage: { input_tokens: u.input_tokens ?? 0, output_tokens: (u.output_tokens ?? 0) + (u.thinking_tokens ?? 0), cache_read_input_tokens: u.cache_read_tokens ?? 0 },
+        };
+        if (ok) record.result = s.segment.trim();
+        else {
+          const message = `Antigravity CLI ${String(result.status ?? 'ERROR').toLowerCase()}: ${result.error ?? 'no response'}`;
+          record.result = message; record.errors = [message];
+        }
+        s.segment = '';
+        out.push(record);
+        return out;
+      }
+      if (event.event !== 'step_update') return [];
+      const step = event.step_update ?? {};
+      if (step.step_type === 'user_input') return step.state === 'DONE' ? stop() : [];
+      if (step.step_type === 'agent_response') {
+        const out = [];
+        if (s.afterTool) out.push(...stop());
+        if (!s.open) out.push(...start());
+        if (typeof step.thinking_delta === 'string' && step.thinking_delta) {
+          out.push(evt({ type: 'content_block_delta', index: s.textIndex ?? s.index, delta: { type: 'thinking_delta', thinking: step.thinking_delta } }));
+        }
+        if (typeof step.text_delta === 'string' && step.text_delta) {
+          if (s.textIndex === null) {
+            s.textIndex = s.index++;
+            out.push(evt({ type: 'content_block_start', index: s.textIndex, content_block: { type: 'text', text: '' } }));
+          }
+          out.push(evt({ type: 'content_block_delta', index: s.textIndex, delta: { type: 'text_delta', text: step.text_delta } }));
+          s.segment += step.text_delta;
+        }
+        return out;
+      }
+      if (step.step_type === 'tool') {
+        const out = [];
+        const id = toolId(step);
+        const info = step.tool_info ?? {};
+        const name = info.name ?? step.tool_name ?? 'tool';
+        if (!s.tools.has(id)) {
+          s.tools.add(id);
+          if (!s.open) out.push(...start());
+          out.push(...stopText());
+          const index = s.index++;
+          out.push(evt({ type: 'content_block_start', index, content_block: { type: 'tool_use', id, name, input: info.parameters ?? {} } }));
+          out.push(evt({ type: 'content_block_stop', index }));
+          s.afterTool = true;
+          s.segment = '';
+        }
+        if ((step.state === 'DONE' || step.state === 'ERROR') && !s.done.has(id)) {
+          s.done.add(id);
+          const isError = Boolean(info.error) || step.state === 'ERROR';
+          const content = info.error ? (info.error.message ?? String(info.error.type ?? 'error')) : String(info.output ?? '');
+          out.push({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content, is_error: isError }] } });
+        }
+        return out;
+      }
+      return [];
+    },
+  };
 }
 
 class PushQueue {
@@ -205,7 +301,6 @@ function acceptEvent(session, event) {
     if (turn.inputsSeen > 0 && turn.pendingSteers > 0) turn.pendingSteers -= 1;
     turn.inputsSeen += 1;
   }
-  if (event.event === 'step_update' && step?.step_type === 'agent_response' && step.text_delta) turn.text += step.text_delta;
   if (process.env.V_ANTIGRAVITY_TRACE && event.event === 'step_update') {
     process.stderr.write(`[v-antigravity] trace step=${step?.step_index} ${step?.step_type} ${step?.state} ${step?.tool_info?.name ?? step?.tool_name ?? ''} out=${String(step?.tool_info?.output ?? '').slice(0, 80).replace(/\s+/g, ' ')} err=${JSON.stringify(step?.tool_info?.error ?? null).slice(0, 300)}\n`);
   }
@@ -213,7 +308,7 @@ function acceptEvent(session, event) {
     const info = step.tool_info ?? {};
     process.stderr.write(`[v-antigravity] tool ${info.name ?? step.tool_name ?? '?'}${info.error || step.state === 'ERROR' ? ' error' : ''}${step.duration_seconds ? ` ${step.duration_seconds}s` : ''}\n`);
   }
-  turn.events.push(toHostRecord(event, { replyText: turn.text }));
+  for (const record of turn.translator.translate(event)) turn.events.push(record);
   if (event.event === 'result') {
     turn.results += 1;
     clearTimeout(turn.followOnTimer);
@@ -335,7 +430,7 @@ export function createAntigravityExecutor(config = {}, deps = {}) {
     if (fresh) session = createSession(capability, { conversation, idleTimeoutMs: config.idleTimeoutMs, followOnTimeoutMs: config.followOnTimeoutMs });
     if (session.currentTurn) throw new Error('Antigravity live session is already handling another turn.');
     clearTimeout(session.idleTimer);
-    const turn = { events: new PushQueue(), pendingSteers: 0, inputsSeen: 0, results: 0, text: '', aborted: false };
+    const turn = { events: new PushQueue(), translator: createClaudeStreamTranslator(), pendingSteers: 0, inputsSeen: 0, results: 0, aborted: false };
     session.currentTurn = turn;
     const abort = () => session.handle.close('abort');
     ctx.abortSignal?.addEventListener('abort', abort, { once: true });
@@ -350,7 +445,7 @@ export function createAntigravityExecutor(config = {}, deps = {}) {
         process.stderr.write(`[v-antigravity] process start: reason=${why || 'new'} resume=${conversation ? 'yes' : 'no'} model=${accountModel(model, effort)}\n`);
       }
       // A resumed conversation has no init event: tell the host its id first.
-      if (session.conversationId) yield { type: 'system', subtype: 'init', event: 'init', conversation_id: session.conversationId };
+      if (session.conversationId) yield* turn.translator.translate({ event: 'init', conversation_id: session.conversationId });
       writeUser(session, prompt);
       let sawResult = false;
       for await (const record of turn.events) {
