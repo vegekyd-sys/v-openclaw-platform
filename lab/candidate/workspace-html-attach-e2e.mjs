@@ -13,6 +13,7 @@
 // A PNG already in the workspace rides in the same reply as a control for the harness's reply path.
 // The plan carries both patches: workspace-html-attach-v1 (core) and feishu-block-media-v1 (Feishu).
 // Env: RELAY_HARNESS (worker | vcc | vds), EXPECT_PATCHED (1 | 0), WHA_OUTSIDE=0 skips turn 2,
+//      WHA_FEISHU_PROFILE (v | vlab) pins the Feishu render/streaming settings,
 //      WHA_TRACE=1 logs the reply-media path (candidate-only dist edits, recorded with hashes).
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -79,6 +80,15 @@ async function main() {
   if (workerConfig.agents?.entries?.[S.AGENT]) workerConfig.agents.entries[S.AGENT].workspace = workspace;
   if (workerConfig.agents?.defaults?.workspace) workerConfig.agents.defaults.workspace = workspace;
   fs.writeFileSync(workerConfigPath, `${JSON.stringify(workerConfig, null, 2)}\n`, { mode: 0o600 });
+  // WHA_FEISHU_PROFILE pins the Feishu reply branch: "v" = V's renderMode auto with block streaming off
+  // (plain-text blocks bypass the streaming card), "vlab" = shared VLab's card mode with block streaming on.
+  const profile = { v: { renderMode: "auto", streaming: { mode: "partial", block: { enabled: false } } }, vlab: { renderMode: "card", streaming: { mode: "partial", block: { enabled: true } } } }[env.WHA_FEISHU_PROFILE ?? ""];
+  if (profile) {
+    const feishu = cand.config.channels.feishu;
+    for (const target of [feishu, ...Object.values(feishu.accounts ?? {})]) Object.assign(target, structuredClone(profile));
+    fs.writeFileSync(cand.configPath, `${JSON.stringify(cand.config, null, 2)}\n`, { mode: 0o600 });
+    summary.feishuProfile = { name: env.WHA_FEISHU_PROFILE, ...profile };
+  }
   fs.mkdirSync(workspace, { recursive: true });
   for (const [name, text] of Object.entries(MINIMAL_DOCS)) fs.writeFileSync(path.join(workspace, name), text);
   summary.workspace = workspace;
