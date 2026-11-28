@@ -178,6 +178,8 @@ export function buildPackage(opts) {
   if (wsFiles.length) {
     if (!fileExists(repo, workspaceCommit, 'distro/workspace/render.mjs')) throw new Error('distro/workspace/payload/ without distro/workspace/render.mjs: the installer could not fill its placeholders');
     add('runtime/workspace-render.mjs', readFile(repo, workspaceCommit, 'distro/workspace/render.mjs'));
+    // Which workspace files are the system's (updated with the release) and which the owner's (never).
+    if (fileExists(repo, workspaceCommit, 'distro/workspace/update-policy.json')) add('runtime/workspace-policy.json', readFile(repo, workspaceCommit, 'distro/workspace/update-policy.json'));
     if (fileExists(repo, workspaceCommit, 'distro/workspace/V_CORE_COMMIT')) vCoreCommit = readFile(repo, workspaceCommit, 'distro/workspace/V_CORE_COMMIT').toString('utf8').trim();
   } else add('workspace/.empty', 'distro/workspace/payload/ did not exist at the workspace commit; the installer seeds nothing.\n');
 
@@ -186,12 +188,19 @@ export function buildPackage(opts) {
     const target = f.rel.startsWith('config/') ? f.rel : `install/${f.rel}`;
     add(target, f.data, f.mode);
   }
-  // V's own plugins kept as source in this repo (byte-identical to V's /opt copies):
-  // v-deepseek-web gives web_search / web_fetch the 'deepseek' provider V uses.
-  const vPlugins = { 'deepseek-web': 'apps/v-deepseek-web/plugin' };
-  for (const [name, dir] of Object.entries(vPlugins)) {
-    const files = filesUnder(repo, sourceCommit, dir, { exclude: (p) => /(^|\/)(tests|node_modules)\//.test(p) });
-    if (!files.length) throw new Error(`${dir}/ is missing at the source commit`);
+  // V's own plugins kept as source in this repository (components.json "vplugins"). A plugin may be
+  // pinned to an older commit of this repository with per-file sha256s (nightshift-feishu predates
+  // Night Shift's move to its own repository); tests stay behind.
+  for (const [name, v] of Object.entries(components.vplugins ?? {})) {
+    const at = v.commit ? resolveCommit(repo, v.commit) : sourceCommit;
+    const files = filesUnder(repo, at, v.dir, { exclude: (p) => /(^|\/)(tests|node_modules)\//.test(p) || /\.test\.m?js$/.test(p) });
+    if (!files.length) throw new Error(`vplugin ${name}: ${v.dir}/ is missing at ${at}`);
+    if (v.sha256) {
+      const got = Object.fromEntries(files.map((f) => [f.rel, sha256(f.data)]));
+      const want = v.sha256;
+      const bad = [...new Set([...Object.keys(got), ...Object.keys(want)])].filter((f) => got[f] !== want[f]);
+      if (bad.length) throw new Error(`vplugin ${name}: files differ from the pinned sha256s: ${bad.join(', ')}`);
+    }
     for (const f of files) add(`vplugins/${name}/${f.rel}`, f.data, f.mode);
   }
 

@@ -92,14 +92,14 @@ Tianyi 定了三条：VSync 要带、桌面接管要带、每日复盘要开；�
 | `computer-use` | **带**（carry） | Tianyi 定。判断和流程原样随 V；V 自己的环境（V 的 Chrome 与主人 Mac Chrome 的分流表、profile 名、V 的邮箱、支付宝 AI 付）改写成通用说法；V 的实测记录 `references/session-evidence-*` 不带。AGENTS.md 指向它 |
 | `background-worker-contract` | **带**（carry） | A 线的客户运行时带 Worker 池；夜班一节和 V 的客户 CLI 例子去掉 |
 | `qcc-company-lookup` | **带**（carry） | 通用，主人自己配企查查 token 就能用，没配会说明怎么配 |
-| `scene-*` | 官方 `scene-cli` 作为**全局 skill 装**（`global-skills.json`）；工作区的 `scene-*` 不带 | Scene CLI 是公开的，主人建个人 key 就能用；V 的飞书搜索站卡片、产线 helper 依赖 V 的服务 |
+| `scene-*`（含官方 `scene-cli`） | **不带**（Tianyi 2026-11-28 定） | 工作区和全局都不装；Makaron 技能里转交 Scene 的那句已删 |
 | `makaron-ad-creator` | 作为**全局 skill 装**（随 makaron-cli） | 和其余 makaron 全局 skill 一起 |
 | `browser-fast-run` | 不带 | 写死 V 的 Chrome 端口和 V 的决策模型账号，客户机上跑不起来 |
 | `meeting-co-pilot` | 不带 | 依赖 V 自己的飞书会议接入服务 |
 | `lark-user-routing` | 不带 | 多人共用一个 V 的身份路由，客户版只有一位主人 |
 | `youtube-video-download`、`meshy-image-to-3d`、`skill-inventory-export`、`openclaw-disk-full-recovery` | 暂不带 | V 上从未进 git、v-core 里没有，跟不了 V 的更新；要带先在 V 上提交、进 v-core 的 scope，再移进 `carry.txt` |
 | 主动推进 · 每日复盘 | **默认开** | Tianyi 定。发到主人私聊，过去 24 小时没发过提醒就 `NO_REPLY` |
-| 全局：演示 / 网页类（`frontend-design`、`frontend-slides`、`pptx`、`remotion-best-practices`）、hyperframes 一组 | **装**（钉版本） | 和 V 一致；hyperframes 需要 Chrome 和 ffmpeg |
+| 全局：`frontend-design`、`frontend-slides`、`remotion-best-practices`、hyperframes 一组 | **装**（`global-skills.json` 写了确切的上游提交，按 git 对象 hash 与 V 的文件对过） | 和 V 一致；hyperframes 需要 Chrome 和 ffmpeg。`pptx` 不装：Anthropic 的 pptx 不是开源许可，不能随客户包分发 |
 | 全局：V 自己的副本（`image-generation`、`ppt-template-batch` 等六个） | 不带 | 从未进任何仓库 |
 
 ## 五、Heartbeat V2 的通用版
@@ -124,6 +124,33 @@ V 的 Heartbeat V2（「V 先知」）由三个从未提交的脚本加一个放
 3. **Heartbeat V2 本体**（`heartbeat-personal-assistant.py`、`heartbeat-v2-choice.py`、`heartbeat-v2-stream-guard*.mjs` 和记忆目录里的引擎）属于 V 的个人部分，进不进 V 自己的 git 由用户定；客户版不依赖它们。
 4. `skills/tiktok-publish-copy/references/cases.md` 是客户真实文案，建议加进 V 服务器上 v-core 同步的私有排除表（本线看不到也不改那个文件）。
 
+## 夜班（Tianyi 2026-11-28 定：可以装）
+
+工作区这边带通用的部分，服务和插件由 A 线装；**需要部署方配置夜班服务地址才生效**。
+
+| V 上的东西 | 客户版 |
+|---|---|
+| `night-shift-operator`（夜班对话入口兼操作手册，含 4 份参考） | **带，工作区自带的通用改写版**：开头先 `nightshiftctl health`，没通就如实说「要请部署方开通」；去掉星擎的正式线、V 的记忆路径、V 的代码维护流程、`base-buffer-contract`（星擎的 Base 表）；交付网页改成「要主人的 Vercel / Cloudflare 账号，没有就先发飞书」；agent id 用占位符。V 上这份不在 v-core，不随 V 同步 |
+| `night-shift-d` | 不带：V 客户的开工入口 |
+| `nightshift-audit-canary` | 不带：夜班引擎自己的测试夹具 |
+| `cdn-upload` | 不带：用的是 Makaron 的存储服务密钥。客户版改成 TOOLS.md「公网链接」的规则 |
+| AGENTS.md / TOOLS.md | V 上没有夜班专节；客户版在 AGENTS.md「夜班与公网链接」和 TOOLS.md「可选能力」各加一句 |
+| 定时任务 | 不带：V 上和夜班有关的都是 V 自己的（某同事的客户停机提醒、GeeLark、星擎看板）。「需要你」和完工通知由夜班引擎自己发 |
+| `nightshift-feishu`、`workboard` 插件和夜班服务 | A 线负责 |
+
+## 公网链接（Vercel / Cloudflare，Tianyi 2026-11-28：之后让客户自己补）
+
+装机时没有公网托管。下面这些要主人补 Vercel 或 Cloudflare 账号；技能里都写明了：缺凭据时直接告诉主人「这项需要你补 Vercel 或 Cloudflare 账号」，先用飞书交付，不静默失败、不编链接。规则统一在 TOOLS.md「公网链接」。
+
+| 技能 | 要公网的地方 |
+|---|---|
+| `night-shift-operator` | 交付网页、视频的公开下载链接 |
+| `html-poster-design`、`html-executive-pitch-deck-iteration` | 主人要一个能直接打开的网页 / 演示链接 |
+| `meshy-3d-agent` | 网页 / iPhone AR 预览 |
+| 全局 `frontend-slides` | 「部署成链接」一步用 Vercel CLI（第三方技能，不改它，按 TOOLS.md 的规则处理） |
+
+V 上依赖 Vercel / Cloudflare、客户版没带的：`frontend-deploy`（部署到某客户自己的系统）、`cdn-upload`（Makaron 的存储）、`report-web`（V 的报告站）、`3d-asset-ar-showcase`、各个客户看板和报告。
+
 ## 七、已知缺口
 
 - 写飞书的用户身份权限名（`docx:document`、`calendar:calendar`、`task:task:write` 等）按飞书惯例写，以客户租户上 `lark-cli auth scopes` 的结果为准；没开通不挡上手，只是那一类写不了。
@@ -131,3 +158,19 @@ V 的 Heartbeat V2（「V 先知」）由三个从未提交的脚本加一个放
 - `computer-use` 和 `vsync` 在工作区里改写过几段：V 以后改到同一段时同步会报冲突，要人按第四节的原则合。
 - `v-browser-device` 仍是 Mirror 的版本（V 的全局 skill，依赖 V Browser 服务）。
 - 依赖检查只看 skill 正文：`social-search-apify-first` 提到 V 上的 `apify-douyin-search.py`、`weixin-sph-download.py`、`bilibili-browser-download.mjs`，客户机上没有，skill 会退回别的路径。
+
+## 八、协作：task room、会话协调、workboard 与夜班、跨会话路由（2026-11-28 盘点）
+
+V 上的现状（只读核对）和客户版的处理：
+
+| 能力 | V 上是什么 | 客户版 |
+|---|---|---|
+| 会话协调规则 | AGENTS.md「跨会话协作」：协调者不固定，`sessions_send(timeoutSeconds=0)` 异步交办、结果自动交回、收到结果自己验收 | **已同步**（payload AGENTS.md 同名一节） |
+| 跨会话通信 | 原生 `sessions_send` + `v-session-relay` 插件（可见请求、同轮收齐只唤醒一次、轮询闸）+ 核心补丁；`tools.sessions.visibility=all` | **已同步**（A 线运行时：relay 插件、`ownerName` 用 `V_OWNER_NAME`、visibility all）。V Clone 测试机实测：A 交办给 B，B 回结果，A 自动被唤醒并核对通过 |
+| task room | `feishu-task-room-router`：用主人身份建只有主人和 V 的私有群，`sessions.patch` 设模型，`sessions_send` 交办，结果交回发起会话 | **已补上**：`skills/feishu-task-room-router`，主人 id 取 `v-schedule.py owner`、应用 id 取 `feishu-docs.py status`，agent id 用占位符，没指定模型就用默认。V 上这份在 `.agents/skills/`，被 `.git/info/exclude` 排除，从未进 git，所以是工作区自带的改写版，不随 V 同步 |
+| task room 的群路由 | V：`channels.feishu.groupPolicy=open`、`requireMention=false`、`groupAllowFrom=["*"]`，群里靠 AGENTS.md 的群聊规则保持安静；V 的几个 task room 群另有 `bindings` 指到不同 agent | **A 线已改**（原来是 `groupPolicy=disabled`，主人在房间里说话进不来）：有主人 open_id 时 `groupPolicy=open`、`groupSenderAllowFrom=[主人]`、`requireMention=false`，群里只有主人的消息进来、不用 @；没填主人时群聊仍关。注意 `groupAllowFrom` 按群的 chat_id 放行，不是按发送人。单 agent，不需要 `bindings` 和 `tools.agentToAgent` |
+| 建群的用户权限 | `im:chat:create_by_user` | 在 `feishu-user-scopes.txt` 里，上手时一次授权（#669） |
+| workboard | OpenClaw 自带插件，V 上开着，给夜班的卡片用 | 不带（运行时里有，默认不开）：没有夜班就用不上 |
+| 夜班（Night Shift） | `nightshift-feishu` 插件 + V 的夜班服务（`baseUrl` 指 V 自己的服务）+ `vegekyd-sys/v-nightshift` 仓库 | 不带：V 自己的内容生产线，依赖 V 的服务和账号 |
+| 钉钉、企微的跨会话 | V Experience 的 `patch-inter-session` | 不带：客户版只接飞书 |
+| `feishu-link-guard` | V 上已停用 | 不带 |

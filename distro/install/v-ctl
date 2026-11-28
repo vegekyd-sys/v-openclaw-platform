@@ -3,6 +3,9 @@
 #   v-ctl status | health | probe [--check-history] | configure | units
 #   v-ctl openclaw <args...>      the installed OpenClaw CLI as the service user, with its environment
 #   v-ctl pair <code>             approve the owner's first Feishu DM (dmPolicy=pairing)
+#   v-ctl reconfigure             apply keys or options added to /etc/v/*.env after the install
+#   v-ctl workspace-update [--dry-run]   bring the workspace's system files to this release
+#   v-ctl backup [--keep N]       online backup to /var/backups/v/archives (0600); restore-backup <archive> --root DIR | --live
 set -euo pipefail
 PREFIX="${V_PREFIX:-/opt/v}"
 NODE="$PREFIX/node/current/bin/node"
@@ -12,6 +15,7 @@ case "${1:-}" in
     sub="$1"; shift
     [ "$sub" = pair ] && set -- pairing approve feishu "$@"
     exec python3 "$PREFIX/current/runtime/ops/v-memory-indexer-run.py" --cli "$@" ;;
-  ""|-h|--help) sed -n '2,6p' "$0" ;;
+  reconfigure) shift; exec bash "$(readlink -f "$PREFIX/current")/install/reconfigure.sh" "$@" ;;
+  ""|-h|--help) sed -n '2,7p' "$0" ;;
   *) exec "$NODE" "$PREFIX/current/install/lib/vctl.mjs" "$@" ;;
 esac

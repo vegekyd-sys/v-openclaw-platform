@@ -32,6 +32,8 @@ EnvironmentFile=@ETC@/secrets.env
 EnvironmentFile=-@ETC@/vsync.env
 # lark-cli's view of the Feishu app (written by configure when Feishu is set).
 EnvironmentFile=-@ETC@/lark.env
+# The same keys under other names some tools read (configure).
+EnvironmentFile=-@ETC@/aliases.env
 # Paths scripts look up at run time (configure): MAKARON_CLI_ROOT, OPENCLAW_LARK_SDK_PATH.
 EnvironmentFile=-@ETC@/runtime.env
 ExecStartPre=/usr/bin/python3 @PREFIX@/current/runtime/ops/v-codex-orphan-cleanup.py

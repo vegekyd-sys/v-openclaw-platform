@@ -44,6 +44,8 @@ systemctl start openclaw-gateway.service
 "$NODE" "$SELF_VCTL" overlay-plugins --restart
 "${VCTL[@]}" probe --check-history --history-only
 [ -n "$RESTORE" ] || "$NODE" "$SELF_VCTL" fingerprint --compare "$FP"
+# The workspace's system files go back with the code (the newer vctl knows how; the older may not).
+"$NODE" "$SELF_VCTL" workspace-update --target "$PREFIX/current" || echo "warning: workspace not rolled back; run: v-ctl workspace-update" >&2
 "${VCTL[@]}" desktop-services 2>/dev/null || "$NODE" "$SELF_VCTL" desktop-services || true
 systemctl start v-memory-indexer.service || true
 "${VCTL[@]}" status

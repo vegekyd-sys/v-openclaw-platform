@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { applyOverlay, replacePackage, verifyCapture, verifyPackage, linkNpmProjects, overlayStatePlugins, installRelease, installTools, installLibs } from './release.mjs';
-import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, runtimeEnv } from './vctl.mjs';
+import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, runtimeEnv, larkInitNeeded, memoryNeedsRebuild, parseCliJson, keyAliases } from './vctl.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
@@ -355,4 +355,112 @@ for (const [k, files] of Object.entries(lock.fake || {})) for (const [f, d] of O
   const real = JSON.parse(fs.readFileSync(new URL('../../runtime/locks/sharp/package-lock.json', import.meta.url), 'utf8')).packages;
   assert.equal(real['node_modules/sharp'].version, '0.34.5', 'same version as V');
   assert.match(real['node_modules/@img/sharp-linux-x64'].integrity, /^sha512-/);
+});
+
+test('lark-cli shim never speaks as the owner: comments, replies, messages and reactions need --as bot; reads and doc edits pass', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'v-distro-voice-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const fake = path.join(dir, 'real-lark');
+  // The stand-in fails with 2 when asked to (FAIL in the args), like a send the API rejects.
+  fs.writeFileSync(fake, '#!/bin/sh\necho "RAN $*"\ncase "$*" in *FAIL*) echo "api said no" >&2; exit 2 ;; esac\n', { mode: 0o755 });
+  const lark = JSON.parse(fs.readFileSync(new URL('../../runtime/tools.json', import.meta.url), 'utf8')).npm['lark-cli'];
+  assert.deepEqual(lark.guards, ['owner-voice']);
+  const shim = path.join(dir, 'lark-cli');
+  fs.writeFileSync(shim, toolShim(fake, lark.env, { unset: lark.unsetEnv, unsetPrefixes: lark.unsetEnvPrefixes, guards: lark.guards }), { mode: 0o755 });
+  const call = (...args) => spawnSync(shim, args, { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', HOME: dir } });
+  const blocked = [
+    ['drive', '+add-comment', '--doc', 'x', '--as', 'user'],
+    ['drive', '+add-reply', '--comment', 'c'],
+    ['im', '+messages-send', '--chat-id', 'oc_x', '--text', 'hi'],
+    ['im', '+messages-reply', '--message-id', 'om_x', '--as=user'],
+    ['im', '+reactions-create', '--message-id', 'om_x'],
+    ['api', 'POST', '/open-apis/drive/v1/files/abc/comments', '--data', '{}'],
+    ['api', 'PATCH', '/open-apis/im/v1/messages/om_x'],
+  ];
+  for (const args of blocked) {
+    const r = call(...args);
+    assert.equal(r.status, 3, args.join(' '));
+    assert.equal(JSON.parse(r.stdout).error.code, 'V_OWNER_VOICE_BLOCKED', args.join(' '));
+  }
+  const allowed = [
+    ['drive', '+add-comment', '--doc', 'x', '--as', 'bot'],
+    ['im', '+messages-send', '--chat-id', 'oc_x', '--as=bot'],
+    ['im', '+messages-mget', '--message-ids', 'om_x'],
+    ['docs', '+update', '--doc', 'x', '--as', 'user'],
+    ['im', '+chat-create', '--name', 'room'],
+    ['api', 'GET', '/open-apis/drive/v1/files/abc/comments'],
+    ['contact', '+user-get', '--as', 'user'],
+  ];
+  for (const args of allowed) {
+    const r = call(...args);
+    assert.equal(r.status, 0, args.join(' '));
+    assert.equal(r.stdout.trim(), `RAN ${args.join(' ')}`);
+  }
+  // "Send this as me": --owner-approved lets a message or reaction through as the owner, leaves an audit
+  // line without the text, and is removed before lark-cli runs. Comments never go as the owner.
+  const audit = path.join(dir, 'audit.log');
+  const callA = (...args) => spawnSync(shim, args, { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', HOME: dir, V_OWNER_VOICE_AUDIT: audit } });
+  const ok = callA('im', '+messages-send', '--chat-id', 'oc_team', '--text', 'the secret plan', '--owner-approved', '主人说：替我跟团队说明天十点开会');
+  assert.equal(ok.status, 0);
+  assert.equal(ok.stdout.trim(), 'RAN im +messages-send --chat-id oc_team --text the secret plan', 'the flag never reaches lark-cli');
+  const line = fs.readFileSync(audit, 'utf8').trim().split('\t');
+  assert.match(line[0], /^\d{4}-\d\d-\d\dT/);
+  assert.deepEqual(line.slice(1), ['im +messages-send', '--chat-id=oc_team', '主人说：替我跟团队说明天十点开会', 'mode=send', 'result=ok']);
+  assert.ok(!fs.readFileSync(audit, 'utf8').includes('secret plan'), 'the text sent is not logged');
+  assert.equal(callA('im', '+reactions-create', '--message-id', 'om_x', '--owner-approved=主人让我点个赞').status, 0);
+  const comment = callA('drive', '+add-comment', '--doc', 'x', '--owner-approved', '主人说的');
+  assert.equal(comment.status, 3, 'comments never go as the owner');
+  assert.match(JSON.parse(comment.stdout).error.message, /文档评论只能用机器人身份/);
+  assert.equal(callA('api', 'POST', '/open-apis/drive/v1/files/abc/comments', '--owner-approved', 'x').status, 3);
+  assert.equal(fs.readFileSync(audit, 'utf8').trim().split('\n').length, 2, 'only the two approved sends were logged');
+  // A dry run is logged as one; a failed send keeps its exit code and output, and says so in the audit.
+  assert.equal(callA('im', '+messages-send', '--chat-id', 'oc_team', '--dry-run', '--owner-approved', '主人说的').status, 0);
+  const failed = callA('im', '+messages-send', '--chat-id', 'oc_team', '--text', 'FAIL', '--owner-approved', '主人说的');
+  assert.equal(failed.status, 2);
+  assert.match(failed.stderr, /api said no/);
+  const rows = fs.readFileSync(audit, 'utf8').trim().split('\n').map((l) => l.split('\t'));
+  assert.deepEqual(rows.slice(-2).map((r) => r.slice(4)), [['mode=dry-run', 'result=ok'], ['mode=send', 'result=failed:2']]);
+  // Help is never blocked and never logged.
+  const help = callA('im', '+messages-send', '--help');
+  assert.equal(help.status, 0);
+  assert.equal(help.stdout.trim(), 'RAN im +messages-send --help');
+  assert.equal(callA('drive', '+add-comment', '-h').status, 0);
+  assert.equal(fs.readFileSync(audit, 'utf8').trim().split('\n').length, 4);
+  assert.throws(() => toolShim(fake, {}, { guards: ['nope'] }), /unknown shim guard/);
+});
+
+test('lark-cli config init runs only when there is no config or it names another app: it would drop the owner\'s login', () => {
+  const withOwner = JSON.stringify({ apps: [{ appId: 'cli_a', appSecret: { source: 'file', id: 'x' }, brand: 'feishu', users: [{ openId: 'ou_owner' }] }] });
+  assert.deepEqual(larkInitNeeded(withOwner, 'cli_a'), { init: false, reason: 'same app already configured', users: 1 });
+  assert.equal(larkInitNeeded(withOwner, 'cli_b').init, true, 'another app: its login would not work for this one');
+  assert.equal(larkInitNeeded(null, 'cli_a').init, true);
+  assert.equal(larkInitNeeded('{broken', 'cli_a').init, true);
+  assert.equal(larkInitNeeded(JSON.stringify({ appId: 'cli_a' }), 'cli_a').init, false, 'older flat layout');
+});
+
+test('memory-check: an index built for another embedding model, an incomplete vector index or a dirty one is rebuilt', () => {
+  const agent = (custom, vector, dirty = false) => ({ agentId: 'makaron', status: { dirty, vector, custom } });
+  assert.deepEqual(memoryNeedsRebuild([agent({ indexIdentity: { status: 'valid' } }, { enabled: true, index: { state: 'complete' } })]), []);
+  assert.equal(memoryNeedsRebuild([agent({ indexIdentity: { status: 'mismatch' } }, { enabled: true, index: { state: 'complete' } })]).length, 1, 'fts-only index, gemini configured');
+  assert.equal(memoryNeedsRebuild([agent({ indexIdentity: { status: 'valid' } }, { enabled: true, index: { state: 'missing' } })]).length, 1);
+  assert.equal(memoryNeedsRebuild([agent({ indexIdentity: { status: 'valid' } }, { enabled: false }, true)]).length, 1, 'dirty');
+  assert.deepEqual(memoryNeedsRebuild([agent({ indexIdentity: { status: 'valid' } }, { enabled: false })]), [], 'keyword-only memory without vectors is fine');
+  assert.deepEqual(parseCliJson('(node) ExperimentalWarning\n[memory-preparation] {"pid":1}\n[{"agentId":"makaron"}]\n'), [{ agentId: 'makaron' }]);
+});
+
+test('key aliases: one Apify name set gives the other; both or neither set, nothing is added', () => {
+  assert.deepEqual(keyAliases({ APIFY_TOKEN: 't' }), { APIFY_API_KEY: 't' });
+  assert.deepEqual(keyAliases({ APIFY_API_KEY: 'k' }), { APIFY_TOKEN: 'k' });
+  assert.deepEqual(keyAliases({ APIFY_API_KEY: 'k', APIFY_TOKEN: 't' }), {});
+  assert.deepEqual(keyAliases({}), {});
+});
+
+test('cloudflared is pinned per architecture to a GitHub release asset and its sha256', () => {
+  const t = JSON.parse(fs.readFileSync(new URL('../../runtime/tools.json', import.meta.url), 'utf8'));
+  for (const arch of ['linux-x64', 'linux-arm64']) {
+    const a = t.cloudflared[arch];
+    assert.match(a.url, new RegExp(`^https://github\\.com/cloudflare/cloudflared/releases/download/${t.cloudflared.version}/cloudflared-linux-(amd64|arm64)\\.deb$`));
+    assert.match(a.sha256, /^[0-9a-f]{64}$/);
+  }
+  assert.ok(!t.npm['scene-cli'], 'Scene is not installed (Tianyi, 2026-11-28)');
 });
