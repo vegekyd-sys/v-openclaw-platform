@@ -1,0 +1,338 @@
+{
+ "measuredAt": "2026-11-29 CST",
+ "script": "lab/candidate/restart-time.mjs",
+ "note": "VLab candidate, private Gateway on V's bytes (plus plan files), V-scale fixture built from VLab data only; marks are seconds after spawn",
+ "runs": {
+  "v-bytes": {
+   "candidate": "candidate-72dfa9b2-7407-4d5d-8a8c-7bd0b2b28439",
+   "sourceCommit": "8a6c34cdbd15bac34e471299e4700cbaddfd6e2a",
+   "dirty": true,
+   "files": [],
+   "fixture": {
+    "sessions": {
+     "templates": 4,
+     "cloned": 30086,
+     "sessions": 33900,
+     "entryMb": 3082,
+     "avgEntryKb": 93,
+     "orphanWindows": 8,
+     "orphanEvents": 0,
+     "transcriptMb": 0,
+     "dbMb": 3399
+    },
+    "runs": {
+     "before": 24,
+     "rows": 30114,
+     "payloadMb": 241
+    }
+   },
+   "marksS": {
+    "spawn": 0,
+    "config": 18.9,
+    "starting": 18.9,
+    "http": 39.6,
+    "listening": 43.6,
+    "poolReady": 68.7,
+    "outcomes": 69.6,
+    "ready": 154.2
+   },
+   "pingMaxMs": 2074,
+   "peakRssMb": 6035,
+   "windows": [
+    {
+     "name": "boot->listening",
+     "fromS": 0,
+     "lengthS": 43.6,
+     "peakRssMb": 1219,
+     "busyMs": 36447,
+     "gcMs": 1098,
+     "top": [
+      "15179 executeSqliteQuerySync kysely-sync:174",
+      "15166 executeWithCachedStatement kysely-sync:99",
+      "15166 executeCompiledSqliteQuerySync kysely-sync:142",
+      "14679 withOpenClawAgentDatabaseReadOnly openclaw-agent-db-readonly:82",
+      "14389 runSessionStartupMigration startup-migration:117",
+      "14265 listLegacyWorktreeSessionEntries startup-migration:46"
+     ]
+    },
+    {
+     "name": "listening->outcomes",
+     "fromS": 43.6,
+     "lengthS": 26,
+     "peakRssMb": 1468,
+     "busyMs": 10118,
+     "gcMs": 265,
+     "top": [
+      "6701 createWorkerPlacementSessionEvidenceResolver server-worker-placement-startup:2958",
+      "6636 withOpenClawAgentDatabaseReadOnly openclaw-agent-db-readonly:82",
+      "6446 readSessionIdentityEvidenceBatch session-accessor:471",
+      "6414 readSessionIdentityAbsenceRows session-accessor:402",
+      "6389 assertCanonicalSqliteSessionKeysCurrent session-accessor.sqlite-transcript-state:442",
+      "6368 scanCanonicalSqliteSessionEntries session-accessor.sqlite-transcript-state:386"
+     ]
+    },
+    {
+     "name": "outcomes->ready",
+     "fromS": 69.6,
+     "lengthS": 84.6,
+     "peakRssMb": 5851,
+     "busyMs": 84640,
+     "gcMs": 18827,
+     "top": [
+      "65790 activateSubagentRegistry subagent-registry:5518",
+      "65700 activateRestoredRuns subagent-registry:3907",
+      "65547 loadSubagentSessionEntry subagent-completion-admission.store:176",
+      "64752 get session-accessor.sqlite-entry:574",
+      "64740 getEntry session-accessor.sqlite-entry:540",
+      "64564 readEntry session-accessor.sqlite-entry:532"
+     ]
+    },
+    {
+     "name": "ready->+90s",
+     "fromS": 154.2,
+     "lengthS": 90,
+     "peakRssMb": 6035,
+     "busyMs": 16920,
+     "gcMs": 2479,
+     "top": [
+      "8188 resolveWorkspacePath server-worker-placement-startup:7386",
+      "8184 resolveWorkerPlacementSessionTarget server-worker-placement-startup:2554",
+      "7296 resolveGatewaySessionStoreTargetWithStore session-utils-store:311",
+      "7214 withOpenClawAgentDatabaseReadOnly openclaw-agent-db-readonly:82",
+      "7212 resolveGatewaySessionStoreLookup session-utils-store:165",
+      "6874 loadStore session-utils-store:176"
+     ]
+    }
+   ]
+  },
+  "activate-settled": {
+   "candidate": "candidate-9aca20c4-ea77-452e-8fcb-19ff52d00ce6",
+   "sourceCommit": "8a6c34cdbd15bac34e471299e4700cbaddfd6e2a",
+   "dirty": true,
+   "files": [
+    "openclaw/dist/subagent-registry-C24yr_PF.js"
+   ],
+   "fixture": {
+    "sessions": {
+     "templates": 4,
+     "cloned": 30086,
+     "sessions": 33900,
+     "entryMb": 3082,
+     "avgEntryKb": 93,
+     "orphanWindows": 8,
+     "orphanEvents": 0,
+     "transcriptMb": 0,
+     "dbMb": 3399
+    },
+    "runs": {
+     "before": 24,
+     "rows": 30114,
+     "payloadMb": 241
+    }
+   },
+   "marksS": {
+    "spawn": 0,
+    "config": 11.5,
+    "starting": 11.5,
+    "http": 22.3,
+    "listening": 24.3,
+    "poolReady": 46.5,
+    "outcomes": 47.2,
+    "ready": 47.2
+   },
+   "pingMaxMs": 3434,
+   "peakRssMb": 1481,
+   "windows": [
+    {
+     "name": "boot->listening",
+     "fromS": 0,
+     "lengthS": 24.3,
+     "peakRssMb": 1219,
+     "busyMs": 20685,
+     "gcMs": 1068,
+     "top": [
+      "5953 executeSqliteQuerySync kysely-sync:174",
+      "5943 executeWithCachedStatement kysely-sync:99",
+      "5943 executeCompiledSqliteQuerySync kysely-sync:142",
+      "5528 withOpenClawAgentDatabaseReadOnly openclaw-agent-db-readonly:82",
+      "5224 runSessionStartupMigration startup-migration:117",
+      "5093 listLegacyWorktreeSessionEntries startup-migration:46"
+     ]
+    },
+    {
+     "name": "listening->outcomes",
+     "fromS": 24.3,
+     "lengthS": 22.9,
+     "peakRssMb": 1475,
+     "busyMs": 9208,
+     "gcMs": 190,
+     "top": [
+      "6717 createWorkerPlacementSessionEvidenceResolver server-worker-placement-startup:2958",
+      "6650 withOpenClawAgentDatabaseReadOnly openclaw-agent-db-readonly:82",
+      "6463 readSessionIdentityEvidenceBatch session-accessor:471",
+      "6428 readSessionIdentityAbsenceRows session-accessor:402",
+      "6405 assertCanonicalSqliteSessionKeysCurrent session-accessor.sqlite-transcript-state:442",
+      "6390 scanCanonicalSqliteSessionEntries session-accessor.sqlite-transcript-state:386"
+     ]
+    },
+    {
+     "name": "outcomes->ready",
+     "fromS": 47.2,
+     "lengthS": 0.1,
+     "peakRssMb": 1475,
+     "busyMs": 51,
+     "gcMs": 4,
+     "top": [
+      "40 activateSubagentRegistry subagent-registry:5523",
+      "21 activateRestoredRuns subagent-registry:3911",
+      "10 isSettledRunWithNothingToResume subagent-registry:3879",
+      "6 bindGatewayContextResolver gateway-request-scope:8",
+      "4 (garbage collector) :0",
+      "4 read :0"
+     ]
+    },
+    {
+     "name": "ready->+90s",
+     "fromS": 47.2,
+     "lengthS": 90,
+     "peakRssMb": 1481,
+     "busyMs": 5983,
+     "gcMs": 844,
+     "top": [
+      "3319 resolveWorkspacePath server-worker-placement-startup:7386",
+      "3306 resolveWorkerPlacementSessionTarget server-worker-placement-startup:2554",
+      "2680 resolveGatewaySessionStoreTargetWithStore session-utils-store:311",
+      "2598 resolveGatewaySessionStoreLookup session-utils-store:165",
+      "2202 withOpenClawAgentDatabaseReadOnly openclaw-agent-db-readonly:82",
+      "2187 loadStore session-utils-store:176"
+     ]
+    },
+    {
+     "name": "stall1",
+     "fromS": 84.4,
+     "lengthS": 3.4,
+     "peakRssMb": 1027,
+     "busyMs": 3435,
+     "gcMs": 121,
+     "top": [
+      "3250 resolveWorkspacePath server-worker-placement-startup:7386",
+      "3239 resolveWorkerPlacementSessionTarget server-worker-placement-startup:2554",
+      "2628 resolveGatewaySessionStoreTargetWithStore session-utils-store:311",
+      "2549 resolveGatewaySessionStoreLookup session-utils-store:165",
+      "2145 loadStore session-utils-store:176",
+      "2143 loadGatewaySessionLookupStore session-utils-store:125"
+     ]
+    }
+   ]
+  },
+  "codex-cron-activate-settled": {
+   "candidate": "candidate-49f19ca3-9d21-448a-a9d1-5cd02d2c242c",
+   "sourceCommit": "8a6c34cdbd15bac34e471299e4700cbaddfd6e2a",
+   "dirty": true,
+   "files": [
+    "openclaw/dist/subagent-registry-C24yr_PF.js"
+   ],
+   "fixture": {
+    "sessions": {
+     "templates": 4,
+     "cloned": 30086,
+     "sessions": 33900,
+     "entryMb": 3082,
+     "avgEntryKb": 93,
+     "orphanWindows": 8,
+     "orphanEvents": 0,
+     "transcriptMb": 0,
+     "dbMb": 3399
+    },
+    "runs": {
+     "before": 24,
+     "rows": 30114,
+     "payloadMb": 241
+    },
+    "codexBindings": {
+     "before": 359,
+     "rows": 15171,
+     "mb": 618
+    }
+   },
+   "marksS": {
+    "spawn": 0,
+    "config": 21.1,
+    "starting": 21.2,
+    "http": 38.1,
+    "listening": 40.4,
+    "poolReady": 63.8,
+    "outcomes": 64.8,
+    "ready": 64.9
+   },
+   "pingMaxMs": 2877,
+   "peakRssMb": 1506,
+   "windows": [
+    {
+     "name": "boot->listening",
+     "fromS": 0,
+     "lengthS": 40.4,
+     "peakRssMb": 1241,
+     "busyMs": 25337,
+     "gcMs": 1067,
+     "top": [
+      "6364 runWithOpenClawStateWriteAccess openclaw-state-db:3561",
+      "6337 runWithSqliteCoordinator state-database-coordinator:19",
+      "6123 assertSqliteIntegrity sqlite-integrity:13",
+      "6120 runSqliteCheck sqlite-integrity:111",
+      "5984 executeSqliteQuerySync kysely-sync:174",
+      "5978 executeWithCachedStatement kysely-sync:99"
+     ]
+    },
+    {
+     "name": "listening->outcomes",
+     "fromS": 40.4,
+     "lengthS": 24.5,
+     "peakRssMb": 1504,
+     "busyMs": 9752,
+     "gcMs": 186,
+     "top": [
+      "6656 createWorkerPlacementSessionEvidenceResolver server-worker-placement-startup:2958",
+      "6595 withOpenClawAgentDatabaseReadOnly openclaw-agent-db-readonly:82",
+      "6396 readSessionIdentityEvidenceBatch session-accessor:471",
+      "6365 readSessionIdentityAbsenceRows session-accessor:402",
+      "6338 assertCanonicalSqliteSessionKeysCurrent session-accessor.sqlite-transcript-state:442",
+      "6317 scanCanonicalSqliteSessionEntries session-accessor.sqlite-transcript-state:386"
+     ]
+    },
+    {
+     "name": "outcomes->ready",
+     "fromS": 64.8,
+     "lengthS": 0.1,
+     "peakRssMb": 1504,
+     "busyMs": 54,
+     "gcMs": 6,
+     "top": [
+      "39 activateSubagentRegistry subagent-registry:5523",
+      "19 activateRestoredRuns subagent-registry:3911",
+      "15 isSettledRunWithNothingToResume subagent-registry:3879",
+      "10 bindGatewayContextResolver gateway-request-scope:8",
+      "6 (garbage collector) :0",
+      "4 getModuleJobForImport loader:319"
+     ]
+    },
+    {
+     "name": "ready->+90s",
+     "fromS": 64.9,
+     "lengthS": 90,
+     "peakRssMb": 1506,
+     "busyMs": 6142,
+     "gcMs": 900,
+     "top": [
+      "3413 resolveWorkspacePath server-worker-placement-startup:7386",
+      "3411 resolveWorkerPlacementSessionTarget server-worker-placement-startup:2554",
+      "2772 resolveGatewaySessionStoreTargetWithStore session-utils-store:311",
+      "2720 resolveGatewaySessionStoreLookup session-utils-store:165",
+      "2333 loadStore session-utils-store:176",
+      "2323 loadGatewaySessionLookupStore session-utils-store:125"
+     ]
+    }
+   ]
+  }
+ }
+}
