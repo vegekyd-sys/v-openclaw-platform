@@ -79,5 +79,22 @@
       "reason": "V's own Feishu group (GPT Live personal task room) hard-coded in V's voice lifecycle; voice is not part of the distro, so the key can never match"
     }
   ],
-  "redactionsNote": "Personal identifiers in V's captured bytes are replaced at build time; distro/build checks each still matches. Other V-specific defaults are overridden by config instead (v-session-relay ownerName)."
+  "redactionsNote": "Personal identifiers in V's captured bytes are replaced at build time; distro/build checks each still matches. Other V-specific defaults are overridden by config instead (v-session-relay ownerName).",
+  "vplugins": {
+    "deepseek-web": {
+      "dir": "apps/v-deepseek-web/plugin",
+      "note": "web_search / web_fetch 'deepseek' provider; same bytes as V's /opt/v-deepseek-web/plugin"
+    },
+    "nightshift-feishu": {
+      "dir": "extensions/nightshift-feishu",
+      "commit": "733022a01caa29520eab1bfba50a01abecc81af4",
+      "sha256": {
+        "index.js": "06165aa2d7602d4e8113761fe710c8d3ec3c1154b49aa1dcab300708425b1598",
+        "openclaw.plugin.json": "f0ef90e67df7bdbfc28ff7ee7b0c3bab681248d3e16993baae47419f150387eb",
+        "package.json": "907be08983386f39cc059c02a570b8004e62767de65159e2defddf40c2e3d478",
+        "review-command.js": "1428feb4a9ba175287879cd8dc8a5228a5d3a62d695ae75f60dee8a2efb11fed"
+      },
+      "note": "Night Shift's Feishu review-card commands, 0.1.4. Source is this repository before Night Shift moved to vegekyd-sys/v-nightshift (2026-10-02); neither repository carries it now. These four files equal V's ~/.openclaw/extensions/nightshift-feishu (2026-11-28). Loaded only when V_NIGHTSHIFT_URL is set."
+    }
+  }
 }

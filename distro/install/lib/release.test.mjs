@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { applyOverlay, replacePackage, verifyCapture, verifyPackage, linkNpmProjects, overlayStatePlugins, installRelease } from './release.mjs';
-import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, memoryNeedsRebuild, parseCliJson } from './vctl.mjs';
+import { splitEnv, schemaCompatible, fingerprintLoss, toolShim, openclawShim, larkCliInitArgs, parseVsyncEnv, desktopHandoffConfig, cuaNodeConfig, cuaPendingRequests, CUA_NODE_NAME, larkEnvFile, memoryNeedsRebuild, parseCliJson, keyAliases } from './vctl.mjs';
 import { execFileSync } from 'node:child_process';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
@@ -307,4 +307,21 @@ test('memory-check: an index built for another embedding model, an incomplete ve
   assert.equal(memoryNeedsRebuild([agent({ indexIdentity: { status: 'valid' } }, { enabled: false }, true)]).length, 1, 'dirty');
   assert.deepEqual(memoryNeedsRebuild([agent({ indexIdentity: { status: 'valid' } }, { enabled: false })]), [], 'keyword-only memory without vectors is fine');
   assert.deepEqual(parseCliJson('(node) ExperimentalWarning\n[memory-preparation] {"pid":1}\n[{"agentId":"makaron"}]\n'), [{ agentId: 'makaron' }]);
+});
+
+test('key aliases: one Apify name set gives the other; both or neither set, nothing is added', () => {
+  assert.deepEqual(keyAliases({ APIFY_TOKEN: 't' }), { APIFY_API_KEY: 't' });
+  assert.deepEqual(keyAliases({ APIFY_API_KEY: 'k' }), { APIFY_TOKEN: 'k' });
+  assert.deepEqual(keyAliases({ APIFY_API_KEY: 'k', APIFY_TOKEN: 't' }), {});
+  assert.deepEqual(keyAliases({}), {});
+});
+
+test('cloudflared is pinned per architecture to a GitHub release asset and its sha256', () => {
+  const t = JSON.parse(fs.readFileSync(new URL('../../runtime/tools.json', import.meta.url), 'utf8'));
+  for (const arch of ['linux-x64', 'linux-arm64']) {
+    const a = t.cloudflared[arch];
+    assert.match(a.url, new RegExp(`^https://github\\.com/cloudflare/cloudflared/releases/download/${t.cloudflared.version}/cloudflared-linux-(amd64|arm64)\\.deb$`));
+    assert.match(a.sha256, /^[0-9a-f]{64}$/);
+  }
+  assert.ok(!t.npm['scene-cli'], 'Scene is not installed (Tianyi, 2026-11-28)');
 });

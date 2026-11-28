@@ -10,6 +10,46 @@
 流程见 `docs/vlab-v-sync-flow.md`。
 
 ---
+## browser-attach-20261128
+
+上线：2026-11-28 23:46 CST（promote-to-v 23:3x 装好文件；v-self-restart 23:41:36 提交、按 Tianyi 要求跳过空闲等待，23:41:42 停机，161 s 就绪，workers 5/5、4 条渠道流全在）  ·  tag `browser-attach-20261128`
+
+**摘要**：两个用户可感知的修复一起上线，一次重启。
+- #684：Gateway 自管的 `openclaw` 浏览器 profile 有一个在途操作不响应中止时，整条 profile 永久卡死（11-27 17:56 起安全填密、browser 工具全部 45 s 超时，只能重启）。现在转换最多等 15 s 就继续，卡死自愈。源码 versa（见 PR）。
+- #697：飞书发不出附件，两处。① core 只放行临时目录里的 HTML，agent workspace 里的 HTML 一律 `Delivery failed`；按 Tianyi 选的方案 A 放行 agent 自己的 workspace（与上游 `0bed68a6009` 有意分歧，PR 里写了升级时的处理）。② 飞书插件在 `renderMode auto` + block 关时，把纯文本回复里 block 带的附件和文本一起留到 final，附件丢失（上游原有缺陷）；现在附件立即发出。
+
+V 验收（重启后）：
+- 飞书时间线：23:41:42 停机 → 23:42:50 长连接建好（68 s）→ 23:44:20 `[gateway] ready`（158 s）→ 就绪后主线程停顿 46 s、54 s → 23:46:34 settled。23:46:18 在 Tianyi 私聊发探测，1.7 s 收到、40 s 出回复（codex 冷启动，runStart 等了 30 s）。
+- #684：23:48–23:50 以 openclaw 身份 CLI 调 browser.request：status 245 ms、tabs []、open about:blank 1.8 s（拉起托管 Chrome）、snapshot 400 ms、status running/cdpReady/pageReady 全 true、close ok；重启以来 `browser.request … UNAVAILABLE` 0 条。卡死自愈由 candidate 证明（基线 45 s×3 卡死，补丁 17.7 s 自愈后安全填密登录成功）。
+- #697：23:48:51 Tianyi 私聊（codex / gpt-6.2-sol）请 V 用一句纯文本回复附 HTML + PNG，23:49:08 文本卡片、23:49:09 file、23:49:10 image 都收到（lark-cli 回读）；Gateway 日志 `Delivery failed` 0 条。测试文件留在 `workspace/tmp/attach-accept-20261128/`。
+
+相对上一版 `db91-lifecycle-proof-20261127`：3 个文件变化。
+
+**经 VLab 发版 `browser-attach-20261128`**（monitor-v-production-70a57a，dev `8a6c34cd`）
+> 验收：Shared VLab release browser-attach-20261128 (dev 8a6c34cd, PRs #684+#697), Gateway pid 2325732. #684: 2026-11-28 23:23 CST real CLI browser.request on openclaw profile: status 566ms, tabs [], open about:blank 8.3s (launched managed Chrome), snapshot 801ms ok, status running/cdpReady/pageReady true, close ok; no timeouts. Unwedge proven in candidate: base candidate-22091f5c wedged (45s x3), patched…
+- `core` server-context.lifecycle-D0RhNtWT.js  8f0cd4f4 → c67a6756
+- `core` web-media-BGCgwB8q.js  432442da → 5551c0b8
+- `feishu` dist/monitor.account-WFdlCDhR.js  46711745 → 1058bb83
+
+**这期间合入 dev 的 PR**（17 个，不一定都部署到了 V；V 上实际变化以上面的文件为准）：
+- #697 fix: deliver workspace HTML and block-borne reply attachments to Feishu
+- #684 fix(browser): a stuck operation no longer wedges a browser profile until restart
+- #689 storage: COS 冷归档（v-archive）+ 每晚分层流转
+- #693 egress: 腾讯内网流量（COS 内网）不再经过 55 Mbit 整形
+- #672 发行包：飞书群只收主人的消息，用于 task room（distro A 线）
+- #668 发行包全局 skill：frontend-slides 改用 V 实际用的提交；GitHub skill 只取清单列出的文件（distro A 线）
+- #667 发行包：安装 V 的全局 skill（distro A 线）
+- #666 发行包探针：读取 Codex harness 的工具结果（distro A 线）
+- #665 发行包：带上 V 的 v-deepseek-web 插件；接管链接服务用真实发行版路径启动（distro A 线）
+- #663 发行包可选组件：桌面接管与 computer use、语音转写、VSync，lark-cli 配置（distro A 线）
+- #662 distro(workspace): 客户版带上 VSync、A2A、桌面接管，每日复盘默认开
+- #661 可安装的 V 发行包：构建、一键安装、升级、回退（distro A 线）
+- #660 distro(workspace): installable V workspace — generic payload, v-core sync with review gate, generic Heartbeat V2
+- #659 fix(autogrow): 用 ext4 superblock 判断是否需要扩文件系统
+- #658 fix(storage): installer 用 sudo 清理临时目录
+- #657 storage: V 存储方案 + 数据盘自动扩容 v2 + 流转监控
+- #656 release: capture db91-lifecycle-proof-20261127 (#655)
+
 ## db91-lifecycle-proof-20261127
 
 上线：2026-11-27 00:51 CST（promote-to-v 00:4x 装好文件；v-self-restart 00:45:52 提交、00:48:38 判定空闲停机，201 s 就绪，清掉 2 个 Codex 孤儿登记，workers 5/5、4 条渠道流全在）  ·  tag `db91-lifecycle-proof-20261127`

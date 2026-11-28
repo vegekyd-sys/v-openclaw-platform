@@ -16,7 +16,8 @@
 #   --vsync-env FILE      the VSync identity file the Portal issued for this machine (NEXUS_VSYNC_*)
 #
 # Optional parts are switched on in the env file: V_DESKTOP=1 (desktop takeover and computer use),
-# VOLCENGINE_API_KEY (voice-message transcription). See install/v.env.example.
+# VOLCENGINE_API_KEY (voice-message transcription), CLOUDFLARE_TUNNEL_TOKEN (public links),
+# V_NIGHTSHIFT_URL (Night Shift). See install/v.env.example; added later: sudo v-ctl reconfigure.
 #
 # Re-running is safe: an installed release is re-verified, never rebuilt, and an
 # existing workspace or state is never overwritten. To move to a new package, use
@@ -123,6 +124,12 @@ if [ -n "$ENV_FILE" ]; then "${VCTL[@]}" split-env "$ENV_FILE"; fi
 if [ -n "$REGISTRY" ] && ! grep -q '^V_NPM_REGISTRY=' /etc/v/install.env; then echo "V_NPM_REGISTRY=$REGISTRY" >> /etc/v/install.env; fi
 if [ -n "$VSYNC_ENV" ]; then "${VCTL[@]}" vsync-env "$VSYNC_ENV"; fi
 DESKTOP=0; grep -qx 'V_DESKTOP=1' /etc/v/install.env && DESKTOP=1
+TUNNEL=0; grep -q '^CLOUDFLARE_TUNNEL_TOKEN=.' /etc/v/secrets.env && TUNNEL=1
+if [ "$TUNNEL" -eq 1 ]; then
+  say "cloudflared (Cloudflare tunnel)"
+  . "$PKG_DIR/install/lib/cloudflared-package.sh"
+  v_cloudflared_package "$PKG_DIR"
+fi
 if [ "$DESKTOP" -eq 1 ] && [ "$SKIP_APT" -eq 0 ]; then
   say "Desktop packages (TigerVNC, XFCE, Google Chrome from Google's signed apt repository)"
   . "$PKG_DIR/install/lib/desktop-packages.sh"
@@ -164,7 +171,8 @@ if [ "$DESKTOP" -eq 1 ]; then
   say "Desktop: share-link service and the host node for computer use"
   "${VCTL[@]}" desktop-services
 fi
-say "Global skills (lark-*, makaron, scene, pinned GitHub skills)"
+if [ "$TUNNEL" -eq 1 ]; then systemctl enable -q v-cloudflared.service; systemctl restart v-cloudflared.service; fi
+say "Global skills (lark-*, makaron, pinned GitHub skills)"
 # Needs GitHub and npm reachable; a skill that cannot be fetched is reported, not fatal.
 "${VCTL[@]}" install-skills || echo "warning: global skills were not all installed; rerun: v-ctl install-skills" >&2
 if [ "$PROBE" -eq 1 ]; then

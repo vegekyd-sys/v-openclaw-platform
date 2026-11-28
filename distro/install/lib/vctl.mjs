@@ -206,6 +206,41 @@ function placeVPlugins(dest) {
   }
 }
 
+// Keys that tools read under different names: when only one name is set, the Gateway (and the
+// agent's exec through it) also gets the other, from /etc/v/aliases.env (0600). Line B's skills
+// read both APIFY_API_KEY and APIFY_TOKEN.
+export const KEY_ALIASES = [['APIFY_API_KEY', 'APIFY_TOKEN']];
+export function keyAliases(env) {
+  const out = {};
+  for (const names of KEY_ALIASES) {
+    const have = names.find((n) => typeof env[n] === 'string' && env[n].length > 0);
+    if (!have) continue;
+    for (const n of names) if (!env[n]) out[n] = env[have];
+  }
+  return out;
+}
+
+function configureAliases(env) {
+  const file = path.join(P.etc, 'aliases.env');
+  const a = keyAliases(env);
+  if (!Object.keys(a).length) { fs.rmSync(file, { force: true }); return []; }
+  fs.writeFileSync(file, `# v-distro configure: the same keys under the other names some tools read\n${Object.entries(a).map(([k, v]) => `${k}=${v}`).join('\n')}\n`, { mode: 0o600 });
+  fs.chmodSync(file, 0o600);
+  return Object.keys(a);
+}
+
+export const cloudflareEnabled = (env) => typeof env.CLOUDFLARE_TUNNEL_TOKEN === 'string' && env.CLOUDFLARE_TUNNEL_TOKEN.length > 0;
+
+/** cloudflared reads its token from TUNNEL_TOKEN; it never goes on a command line. */
+function configureCloudflare(env) {
+  const file = path.join(P.etc, 'cloudflared.env');
+  if (!cloudflareEnabled(env)) { fs.rmSync(file, { force: true }); return false; }
+  if (/\s/.test(env.CLOUDFLARE_TUNNEL_TOKEN)) throw new Error('CLOUDFLARE_TUNNEL_TOKEN must be the token alone (the long string after --token)');
+  fs.writeFileSync(file, `# v-distro configure: the Cloudflare tunnel token for v-cloudflared.service\nTUNNEL_TOKEN=${env.CLOUDFLARE_TUNNEL_TOKEN}\n`, { mode: 0o600 });
+  fs.chmodSync(file, 0o600);
+  return true;
+}
+
 export const DESKTOP_UNITS = ['openclaw-desktop.service', 'v-desktop-handoff.service', 'openclaw-cua-node.service'];
 export const desktopEnabled = (env) => env.V_DESKTOP === '1';
 
@@ -436,7 +471,9 @@ async function cmdConfigure(opts) {
   run('chown', ['-R', `${P.user}:${P.user}`, path.join(P.home, '.npm-global')]);
   const lark = configureLarkCli(env, tools['lark-cli']);
   const desktop = configureDesktop(env);
-  out({ step: 'configure', profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, larkCli: lark, desktop, audio: !!cfg.tools.media, primary: cfg.agents.defaults.model.primary });
+  const tunnel = configureCloudflare(env);
+  const aliases = configureAliases(env);
+  out({ step: 'configure', profile, file, agentId, plugins: cfg.plugins.allow, feishu: !!cfg.channels?.feishu, larkCli: lark, desktop, tunnel, aliases, audio: !!cfg.tools.media, nightshift: !!cfg.plugins.entries['nightshift-feishu'], primary: cfg.agents.defaults.model.primary });
 }
 
 // lark-cli talks to Feishu as the same app as the channel (line B's skills and scripts use it).
@@ -550,8 +587,20 @@ function cmdUnits() {
     fs.rmSync(dropIn, { force: true });
     if (!process.env.V_NO_SYSTEMCTL) for (const name of DESKTOP_UNITS) spawnSync('systemctl', ['disable', '--now', name], { stdio: 'ignore' });
   }
+  // The Cloudflare tunnel exists only while CLOUDFLARE_TUNNEL_TOKEN is set.
+  const tunnel = cloudflareEnabled(allEnv());
+  const tunnelTpl = path.join(tpl, 'cloudflare', 'v-cloudflared.service');
+  if (tunnel && fs.existsSync(tunnelTpl)) {
+    let text = fs.readFileSync(tunnelTpl, 'utf8');
+    for (const [k, v] of Object.entries(vars)) text = text.split(k).join(v);
+    fs.writeFileSync(path.join(P.units, 'v-cloudflared.service'), text, { mode: 0o644 });
+    written.push('v-cloudflared.service');
+  } else if (fs.existsSync(path.join(P.units, 'v-cloudflared.service'))) {
+    if (!process.env.V_NO_SYSTEMCTL) spawnSync('systemctl', ['disable', '--now', 'v-cloudflared.service'], { stdio: 'ignore' });
+    fs.rmSync(path.join(P.units, 'v-cloudflared.service'), { force: true });
+  }
   if (!process.env.V_NO_SYSTEMCTL) run('systemctl', ['daemon-reload']);
-  out({ step: 'units', written, desktop, heapMb: vars['@HEAP_MB@'] });
+  out({ step: 'units', written, desktop, tunnel, heapMb: vars['@HEAP_MB@'] });
 }
 
 function gatewayOpts() {
