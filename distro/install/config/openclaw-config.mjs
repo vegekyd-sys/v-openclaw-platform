@@ -156,7 +156,9 @@ export function createConfig(o) {
         model: m.model,
         models: m.models,
         modelPolicy: { allow: Object.keys(m.models) },
-        ...(xai ? { imageModel: { primary: 'xai/grok-4.7' } } : {}),
+        // Image understanding on DeepSeek Flash (Tianyi, 2026-11-28; V itself uses grok): no extra key needed.
+        // xAI, when its key is there, is only the fallback.
+        imageModel: { primary: m.fastModel, ...(xai ? { fallbacks: ['xai/grok-4.7'] } : {}) },
         thinkingDefault: 'high',
         typingMode: 'instant',
         reasoningDefault: 'off',
@@ -197,7 +199,9 @@ export function createConfig(o) {
       // A sandbox has no channel to answer an approval or a detached result on (Mirror V's list).
       // `message` too: with no channel the agent's message tool posts to internal-ui and the
       // image or text is lost (Mirror V, 2026-11-27). Standalone has Feishu and keeps it.
-      deny: standalone ? [] : ['gateway', 'cron', 'ask_user', 'sessions_yield', 'message', 'image_generate', 'video_generate', 'music_generate'],
+      // portal (core) only mounts a local port into this machine's Control UI Portals: the owner never
+      // sees that page, and the agent took it for a shareable link. V does not use it either.
+      deny: standalone ? ['portal'] : ['gateway', 'cron', 'ask_user', 'sessions_yield', 'message', 'image_generate', 'video_generate', 'music_generate', 'portal'],
       sessions: { visibility: 'all' },
       web: m.webProvider ? { search: { enabled: true, provider: m.webProvider }, fetch: { provider: m.webProvider } } : { search: { enabled: true } },
       elevated: { enabled: false },
@@ -266,6 +270,18 @@ export function createConfig(o) {
       audio: { enabled: true, timeoutSeconds: 60, maxBytes: 26214400, maxChars: 8000, language: 'zh', echoTranscript: false },
       models: [{ type: 'cli', command: path.join(prefix, 'node/current/bin/node'), args: [plugin('install/lib/v-asr-volcengine.mjs'), '{{MediaPath}}'], timeoutSeconds: 60, language: 'zh', capabilities: ['audio'] }],
     };
+  }
+
+  // Night Shift, only when its service is known: the Gateway's workboard (bundled with core) and
+  // V's nightshift-feishu plugin, which turns Feishu review-card clicks into calls to the service.
+  if (has('V_NIGHTSHIFT_URL')) {
+    let url;
+    try { url = new URL(env.V_NIGHTSHIFT_URL); } catch { throw new Error('V_NIGHTSHIFT_URL must be a URL such as http://127.0.0.1:24879'); }
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('V_NIGHTSHIFT_URL must use http or https');
+    pluginAllow.push('workboard', 'nightshift-feishu');
+    loadPaths.push(plugin('plugins/nightshift-feishu'));
+    cfg.plugins.entries.workboard = { enabled: true };
+    cfg.plugins.entries['nightshift-feishu'] = { enabled: true, config: { baseUrl: env.V_NIGHTSHIFT_URL } };
   }
 
   // Desktop takeover and computer use (V's v-desktop-handoff + cua node), only when asked for:

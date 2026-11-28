@@ -65,6 +65,58 @@ VSync 身份文件也可以直接放到 `/etc/v/vsync.env`（root 0600，只含 
 - 控制链接是不记名的，谁拿到都能接管桌面。所以客户版用 `controlAnywhere:false`：主人在群里要链接时，链接通过私聊发给他（V 本身是 true）。
 - Chrome 只从 Google 官方 apt 源装：先核对签名钥主指纹 `EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796`，apt 用 `signed-by` 只信这把钥匙。机器上已有的 chromium 和 playwright 浏览器不会被用到。
 
+## 客户之后可以自己补的
+
+很多功能在 V 上依赖 Vercel、Cloudflare 或别的账号。安装器的原则是「有凭据就启用，没有就跳过」：缺了不会报错，补上之后跑一条命令就生效。
+
+做法都一样：把值写进 `/etc/v/install.env`（普通配置）或 `/etc/v/secrets.env`（以 `_KEY`、`_SECRET`、`_TOKEN` 结尾的密钥，root 0600），然后运行
+
+```bash
+sudo v-ctl reconfigure
+```
+
+它会补装新打开的组件需要的系统包，重新生成配置和 systemd 单元，只重启一次网关，再把可选服务拉起来。会话、记忆、工作区都不动。
+
+| 功能 | 要什么 | 写到哪 | 备注 |
+| --- | --- | --- | --- |
+| 模型（默认） | DeepSeek API key | `secrets.env`：`DEEPSEEK_API_KEY` | 主模型 vds 走 Codex，回落到 Worker |
+| 模型（Vercel AI Gateway） | Vercel 账号的 AI Gateway key | `install.env`：`V_MODEL_PRESET=vercel`；`secrets.env`：`AI_GATEWAY_API_KEY` | 可选，不是默认 |
+| 飞书 | 客户在飞书开发者后台自建的企业应用 | `install.env`：`FEISHU_APP_ID`、`V_OWNER_FEISHU_OPEN_ID`；`secrets.env`：`FEISHU_APP_SECRET` | 没填 open_id 时第一次私聊走配对码：`v-ctl pair <code>` |
+| 公网链接（Cloudflare 隧道） | Cloudflare 账号、一个域名、Zero Trust 里建的 tunnel 的 token | `secrets.env`：`CLOUDFLARE_TUNNEL_TOKEN`；`install.env`：`V_PUBLIC_ORIGIN=https://<域名>` | 在 Cloudflare 后台给 tunnel 加路由：`<域名>/desktop-handoff` → `http://127.0.0.1:23950`。cloudflared 用 V 上的版本（2026.7.2），按 sha256 校验。也可以用自己的反向代理，不用 Cloudflare，只设 `V_PUBLIC_ORIGIN` |
+| 桌面接管 + computer use | 无账号；amd64、多约 1 GB 内存 | `install.env`：`V_DESKTOP=1` | 接管链接要让外面能打开，需要上一行的公网链接 |
+| 语音消息转文字 | 火山引擎新版控制台的 key，开通「录音文件识别极速版」 | `secrets.env`：`VOLCENGINE_API_KEY` | |
+| 夜班 | 一个在跑的夜班服务（`vegekyd-sys/v-nightshift`） | `install.env`：`V_NIGHTSHIFT_URL=http://127.0.0.1:24879` | 打开 workboard 和 nightshift-feishu 插件。夜班服务本身目前不在发行包里 |
+| VSync | Portal 签发的身份文件 | `sudo v-ctl vsync-env <文件>`，然后 `sudo v-ctl reconfigure` | 只用 HTTPS 访问 mirror-v-portal.vercel.app |
+| 记忆向量检索 | Google AI key | `secrets.env`：`GOOGLE_API_KEY` | 没有时只用关键词检索 |
+| 看图、生图 | xAI key | `secrets.env`：`XAI_API_KEY` | |
+| 创作、社媒检索等 skill | 各 skill 自己的 key，比如 `MAKARON_API_KEY`、`APIFY_API_KEY` | `secrets.env` | `secrets.env` 里的变量 agent 运行命令时都拿得到，skill 没有 key 时会如实说没开通 |
+| 把网页或应用部署到 Vercel | Vercel token | `secrets.env`：`VERCEL_TOKEN` | 包里没有任何 skill 依赖它（V 的 report-web 部署 skill 不带）；有了以后 agent 可以用 `npx vercel --token "$VERCEL_TOKEN"` |
+
+V 上依赖 Cloudflare 或 Vercel、但不在客户版里的：
+- Control UI 和语音入口的公网地址（V 的 cloudflared）：客户版网关只听回环。
+- 夜班看板的公网地址加 basic auth（nightshift.tianyi.live）。
+- Mirror V 的 Portal（Vercel）：沙盒版用，客户单独部署不需要。
+
+## 客户自己建飞书应用
+
+安装器不建应用。客户在飞书开发者后台（open.feishu.cn）建一个企业自建应用，然后：
+
+1. **添加应用能力**：机器人。
+2. **事件与回调 → 事件配置**：订阅方式选「使用长连接接收事件」，订阅以下事件：
+   - 接收消息 `im.message.receive_v1`
+   - 用户进入与机器人的会话 `im.chat.access_event.bot_p2p_chat_entered_v1`
+   - 机器人进群 `im.chat.member.bot.added_v1`、机器人被移出群 `im.chat.member.bot.deleted_v1`
+   - 消息被添加、取消表情回复 `im.message.reaction.created_v1`、`im.message.reaction.deleted_v1`
+   - 云文档新增评论 `drive.notice.comment_add_v1`
+   - 审批评论新增、删除 `approval.instance.comment.created_v4`、`approval.instance.comment.deleted_v4`
+3. **事件与回调 → 回调配置**：同样用长连接，订阅卡片回传交互 `card.action.trigger`。
+4. **权限管理 → 批量处理 → 批量导入/导出权限**：导入包里的 `install/feishu-app-scopes.json`，一次开通应用身份 170 项、用户身份 257 项。
+   这份清单是 V 自己的应用（V - Makaron）2026-11-27 导出的权限，再加上两种身份的 `bitable:app`、`sheets:spreadsheet`。用户身份覆盖了 V 本人授权过的 245 项（B 线的 `distro/workspace/feishu-user-scopes.txt`），只有 `auth:user.id:read` 不在里面：它是 OAuth 登录时默认附带的，后台批量导入不认它，放进去会让整份导入卡住。
+   开齐之后，主人在上手引导里点一次授权，就能像 V 一样读写文档、日历、任务、多维表格和表格。应用上没有开通的权限，脚本不会去申请，也不会报错。
+5. **人事和薪酬类权限**（导入后会提示设置数据范围）：数据范围选「全部」。
+6. **版本管理与发布**：创建版本并发布（企业内部应用一般由管理员审核）。
+7. 把 App ID、App Secret 写进安装用的 env 文件（`FEISHU_APP_ID`、`FEISHU_APP_SECRET`）。主人的 open_id 不知道也没关系，私聊时会走配对码。
+
 ## 飞书、lark-cli 与 agent 名字
 
 - lark-cli 用 `~/.lark-cli/config.json` 独立运行；configure 用 `config init --app-secret-stdin` 写这个文件，运行时不带任何 OpenClaw 环境变量。
@@ -74,6 +126,39 @@ VSync 身份文件也可以直接放到 `/etc/v/vsync.env`（root 0600，只含 
 - 群聊（主人的 task room）：填了 `V_OWNER_FEISHU_OPEN_ID` 时，群里只有主人的消息会进来，不用 @（`groupPolicy: open` + `groupSenderAllowFrom: [主人]` + `requireMention: false`）。
   注意：这个插件里 `groupAllowFrom` 按群的 chat_id 放行、`groupSenderAllowFrom` 按发送人放行，把 open_id 写进 `groupAllowFrom` 会挡住所有群。没填主人时群聊关闭。
 - 卡片页脚显示的名字来自 `V_AGENT_NAME`（默认 `V`）。内部 agent id 仍是 makaron（见 CONTRACT 第 4 节）；`V_OWNER_NAME` 等配置不受影响。
+
+## 备份与恢复
+
+`sudo v-ctl backup` 在 V 运行中做一次完整备份，不停服务：
+
+- 内容：`~/.openclaw`（工作区和记忆、agent 与会话数据库、配置）、lark-cli 的配置和令牌（`~/.lark-cli`、`~/.local/share/lark-cli`）、`/etc/v`（包括 `secrets.env`）、`/var/lib/v-distro`。
+  不包括能重新生成的部分：OpenClaw 自己从 npm 装的插件、缓存、日志、临时锁，以及浏览器的缓存目录（浏览器的登录资料在备份里）。
+- 数据库用 SQLite 的在线备份复制，运行中的网关不会读到写了一半的文件；每个库都做 `integrity_check`，并记录各表行数。
+- 结果是一个文件 `/var/backups/v/archives/v-backup-<版本>-<时间>.tar.gz`，权限 0600 root，旁边有 `.sha256`。里面的 `v-backup-manifest.json` 记了每个文件的 sha256。
+  **这个文件包含密钥**，只存本机或客户自己的加密存储，不要发到聊天或公共位置。
+
+**定时备份**（例：每天 03:17，保留最近 7 份）：
+
+```bash
+echo '17 3 * * * root /usr/local/bin/v-ctl backup --keep 7 >> /var/log/v-backup.log 2>&1' | sudo tee /etc/cron.d/v-backup
+```
+
+想放到别的盘：`v-ctl backup --out-dir /mnt/backup/v --keep 14`。
+
+**核对一份备份**（不碰正在运行的 V）：
+
+```bash
+sudo v-ctl restore-backup /var/backups/v/archives/v-backup-….tar.gz --root /tmp/v-restore-check
+```
+
+它会把备份解到那个目录，逐个文件核对 sha256，每个数据库做 integrity_check 并核对行数，通过才算成功。
+
+**在新机器上恢复**：
+
+1. 用同一个版本的发行包装好 V：`install.sh --env-file <备份里的 etc/v/install.env 和 secrets.env 合在一起>`。新机器的 env 也可以重新填写。
+2. 停服务：`sudo systemctl stop openclaw-gateway v-memory-indexer`。
+3. 恢复：`sudo v-ctl restore-backup <备份文件> --live`。它先核对，再把现在的 `~/.openclaw` 移到 `~/.openclaw.replaced-<时间>`（不删除），然后放回备份里的所有内容。
+4. 让配置和服务对齐：`sudo v-ctl reconfigure`（会重新生成配置、启动网关、装回插件和技能、检查记忆索引）。
 
 ## 依赖与 V 一致的证据（2026-11-27）
 

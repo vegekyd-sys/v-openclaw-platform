@@ -1,7 +1,0 @@
-{
-  "name": "v-distro-scene-cli",
-  "private": true,
-  "dependencies": {
-    "scene-cli": "0.7.1"
-  }
-}
