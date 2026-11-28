@@ -207,7 +207,9 @@ export function createConfig(o) {
       // image or text is lost (Mirror V, 2026-11-27). Standalone has Feishu and keeps it.
       // portal (core) only mounts a local port into this machine's Control UI Portals: the owner never
       // sees that page, and the agent took it for a shareable link. V does not use it either.
-      deny: standalone ? ['portal'] : ['gateway', 'cron', 'ask_user', 'sessions_yield', 'message', 'image_generate', 'video_generate', 'music_generate', 'portal'],
+      // terminal: a customer machine has no operator-opened shared terminal; the agent uses exec. A first
+      // call to terminal fails and the run is then recorded as failed although it recovered (2026-11-28 02:30, 20:00).
+      deny: standalone ? ['portal', 'terminal'] : ['gateway', 'cron', 'ask_user', 'sessions_yield', 'message', 'image_generate', 'video_generate', 'music_generate', 'portal'],
       sessions: { visibility: 'all' },
       web: m.webProvider ? { search: { enabled: true, provider: m.webProvider }, fetch: { provider: m.webProvider } } : { search: { enabled: true } },
       elevated: { enabled: false },

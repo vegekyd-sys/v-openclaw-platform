@@ -48,7 +48,7 @@ test('standalone deepseek is V: /vds Codex first, Worker pool fallback, V model 
   assert.equal(cfg.plugins.entries['vlab-agent-worker-isolation'].config.fastCompactionMaxQualityRetries, 1);
   assert.equal(cfg.agents.list, undefined);
   assert.equal(cfg.channels, undefined, 'no Feishu app, no channel');
-  assert.deepEqual(cfg.tools.deny, ['portal'], 'portal only mounts ports into the local Control UI; not a link for the owner');
+  assert.deepEqual(cfg.tools.deny, ['portal', 'terminal'], 'portal only mounts ports into the local Control UI; no shared terminal on a customer machine (exec instead)');
   assert.equal(cfg.memory.search.provider, 'gemini');
 });
 
