@@ -352,18 +352,102 @@ sudo journalctl -u openclaw-gateway --since "-5 min" --no-pager -o cat | grep -E
 
 ## 第 6 步 老板上手
 
-（本章由 B 线（工作区）撰写，PR 合入前补全。B 线会写清：怎么请老板点飞书授权（`scripts/feishu-docs.py connect`）、上手引导里老板应该看到什么、做到哪一步算完成、`v-capabilities.json` 里关掉的能力怎么跟老板说。）
+上手引导是 V 自己带的：老板第一次私聊（第 5.4 步）时它就开始了，你主要是在旁边看着、帮老板点对地方、核对结果。引导会话里不要替老板回话，也不要往这个会话里发测试消息。老板那边每一步看到什么、交付后头几天会怎样，细节在 [`workspace/OWNER-ONBOARDING.md`](workspace/OWNER-ONBOARDING.md)；本节只写你要做和要核对的。
 
-你在这一步至少要做到：
+### 6.1 确认主人记对了
 
-1. 把第 4.3 步 `on:false` 的能力，用老板听得懂的话告诉他。例如：「这台机器连不上 Google，所以记忆只能按关键词找，不能按意思找。」再告诉他以后怎么打开（`howTo`）。
-2. 授权完成后核对：
+```bash
+sudo v-ctl as-agent python3 scripts/v-schedule.py owner
+```
+
+**看到**：`{"ok": true, "open_id": "ou_…", "channel": "feishu", "recorded_at": "…"}`
+
+**通过**：`open_id` 和第 5.2 步查到的是同一个。
+
+**不通过**：
+- 退出码 1、`no owner recorded yet`：老板还没私聊过，回第 5.4 步。
+- 是别人的 open_id（同事先私聊了）：停下，告诉 Tianyi。不能在聊天里改，要按第 5.2 步重新配置主人。
+
+### 6.2 老板点飞书授权
+
+**做**：老板在第 5.4 步发了「你好」之后，V 的回复里会有一段开场白、一个授权链接和二维码。请老板**用自己的飞书**点链接（或扫码），在打开的页面上按**「授权」/「确认授权」**，然后回 V「好了」。
+
+**看到**：
+- 授权页列出这次要的权限（读写文档、日历、任务、多维表格、表格、云空间、消息等），一页就能确认完。
+- 老板回「好了」以后，V 说它开始读文档。
+
+**通过**：
 
 ```bash
 sudo v-ctl as-agent python3 scripts/feishu-docs.py status
 ```
 
-**通过**：输出里授权状态正常（字段含义以 B 线本章为准）。
+输出里同时满足：`"installed": true`、`"boundApp": "cli_…"`（和第 5.1 步的 appId 一样）、`"identity": "user"`、`"authorized": true`、`"user": "<老板姓名>"`。这也是第 7 步第 7 项的判断标准。
+
+**不通过**：
+
+| 现象 | 处理 |
+|---|---|
+| 老板说点了，`authorized` 还是 false | 多半点的是旧链接，或打开了没按确认。链接 10 分钟有效。请老板跟 V 说「重新发一下授权」，你看着他点确认 |
+| V 发的不是授权链接，而是「开通权限」的链接（`grant`） | 应用上读文档的权限还没开或要管理员审批。请管理员按第 3.1 步补开权限、**发布新版本**，再让老板回 V「好了」 |
+| 授权页报 `too many scopes` | 不应该出现（一次最多申请 250 项，见「已知问题」第 2 条）。出现就把 `sudo v-ctl as-agent python3 scripts/feishu-docs.py scopes` 的输出发给 Tianyi |
+| 授权页说应用不可用、没有权限使用 | 老板不在应用的可用范围里。请管理员把他加进去，发布一次 |
+| `boundApp` 为空 | 机器没拿到应用：回第 5.1 步 |
+| 老板不想授权 | 让他回 V「跳过」，引导改走官网和粘贴资料。记进交接记录 |
+
+授权已经做过、后来应用上又开了新权限：`sudo v-ctl as-agent python3 scripts/feishu-docs.py connect --rescope` 会让 V 重新发一个包含新权限的链接（只在老板要用到新权限时做）。
+
+### 6.3 看着引导走完
+
+**做**：不用跑命令，在老板旁边看。每一步 V 的消息最后都会告诉老板下一步做什么。
+
+**看到**（按顺序，整体 15–30 分钟，看文档多少）：
+1. 「我在读你的文档……」，几分钟内说读了哪些空间、多少份；超过 5 分钟会说「我在后台接着做」，过几分钟再发结果。
+2. 一份「我对你的理解」初稿（飞书文档链接）。请老板看一遍，哪里不对直接改正 V，改到满意或说「可以了」。
+3. 依次问官网网址、别的 AI 助手里的记忆、其他资料。老板都可以回「跳过」。
+4. 收尾：报一共接进来多少份资料、还要几个晚上整理完；说数据只存在这台机器上；说这台机器现在还做不了什么（来自能力清单，见 6.4）；问要不要给 V 起名字。
+5. 最后一句：「好了，从现在开始有什么事直接跟我说。」
+
+**通过**：
+
+```bash
+sudo v-ctl as-agent python3 scripts/onboard-progress.py get
+sudo v-ctl as-agent python3 scripts/v-schedule.py list
+```
+
+`step` 是 `done`；`list` 里的任务数等于 `schedules.json` 的条目数（第 7 步第 10 项）。
+
+**不通过**：
+- 引导停在某一步不动：请老板随便发一句话，V 会从记下的那一步接着。还不动，看 `sudo journalctl -u openclaw-gateway --since "-10 min" --no-pager -o cat | grep -iE "error|feishu" | tail -20`。
+- V 说「后台任务没登记上」：`sudo v-ctl as-agent python3 scripts/v-schedule.py install`；报 `record the owner first` 就回 6.1。
+- 老板没时间走完：可以停在任何一步，他下次私聊时 V 从原地接上。交接记录写停在哪一步。
+
+### 6.4 跟老板说哪些能力没开
+
+V 在收尾时会自己说（它读的是第 4.3 步的同一份清单）。你核对一下说得对不对：
+
+```bash
+sudo v-ctl as-agent python3 scripts/v-capabilities.py
+```
+
+**看到**：`{"ok": true, "off": [...], "tellOwner": "先说清楚这台机器现在还做不了的：……", "forDeployer": [{"capability": …, "reason": …, "howTo": …}]}`
+
+**通过**：V 跟老板说的和 `tellOwner` 意思一致；`off` 里每一项都抄进了交接记录，连同 `forDeployer` 里的 `howTo`（那是给你和 Tianyi 看的，不要念给老板）。
+
+**不通过**：
+- 退出码 3（没有清单）：先 `sudo v-ctl reconfigure` 生成，再跑一次。
+- V 没提，或者说的和清单不一致：由你当面用 `tellOwner` 的话补一句，记进交接记录。
+
+### 6.5 提前跟老板说的事
+
+当面讲一遍，交接记录写「已告知」：
+
+1. 每天零点会收到一条当天总结，不想要可以跟 V 说关掉。
+2. 头几天主动提醒可能不准或偏多，每天中午 V 会自己复盘调整；觉得多余直接跟 V 说。
+3. V 可以替他建和改飞书文档、日程、任务、表格；以他的名义给别人发消息之前会先问他；文档评论里的回复是机器人发的，不会显示成他本人。
+4. 资料还要几个晚上整理完（V 收尾时报的数）；没整理到的，问 V 时它会当场去读原文。
+5. 现在用的 key 和账号是我们的，以后会换成他们自己的。
+6. 有问题找谁（写上联系方式）。
 
 ---
 
@@ -537,3 +621,24 @@ sudo /opt/v/current/install/rollback.sh
     - 安装和升级不会清掉 secrets.env 里已有的 key（env 文件里写了同名 key 时，以 env 文件为准）。要删掉一个 key，直接编辑 secrets.env。
 
 15. **飞书后台保存长连接订阅失败。** 要先有客户端连上：先装好 V，看到 `ws client ready`，再请管理员保存（第 3.1 步的注意）。
+
+16. **升级后工作区里多了 `xxx.new` 文件。**
+    - 工作区随升级更新：系统文件（`scripts/`、随安装带的 `skills/`、`schedules.json`、AGENTS.md 和 TOOLS.md 的系统段等）没被改过就直接换新；被 V 或老板改过的保留原样，新版另存成 `<文件>.new`，并写进升级报告。
+    - 处理：看升级报告列了哪些，告诉 Tianyi；不要自己用 `.new` 覆盖。V 也被要求不改系统文件，出现 `.new` 多半说明它改过。
+    - 归老板的（`memory/`、`USER.md`、`IDENTITY.md`、老板自己加的技能）升级从不动。
+
+17. **出图时没有 Makaron 任务卡片，只直接回了图或报错。**
+    - 先看能力清单里 `makaron` 是不是 `on`（`MAKARON_API_KEY` 在不在）。
+    - 再确认运行环境里有 `MAKARON_CLI_ROOT` 和 `OPENCLAW_LARK_SDK_PATH`：`sudo grep -cE '^(MAKARON_CLI_ROOT|OPENCLAW_LARK_SDK_PATH)=' /etc/v/runtime.env` 应该是 2。少了就 `sudo v-ctl reconfigure`。
+    - 超大图片压缩要 `sharp`，当前包没带：只有超过上限的图片会失败，其他照常。
+
+18. **整篇文档的评论，V 的回复是新开的一条评论，不在原评论下面。**
+    - 飞书不支持回复「整篇文档」的评论，插件只能用机器人身份新开一条，这是预期。划词评论的回复会在原讨论串里。
+    - 回复人必须是机器人。显示成老板本人就是出了问题，按第 3 条查。
+
+19. **老板问「你怎么还不知道 X」。**
+    - 资料是分几个晚上整理进记忆的（V 收尾时报过还要几晚）。没整理到的文档，V 被问到时会当场去读原文。
+    - 老板只授权了部分空间、或者某些文档在别人的空间里没分享给他，V 也读不到：请老板把那份文档分享给自己或机器人。
+
+20. **`v-capabilities.py` 退出码 3（没有能力清单）。**
+    - 装的版本还没写这个文件，或者还没 configure 过：`sudo v-ctl reconfigure` 之后再跑。仍然没有，就按第 4.3 步手工核对，跟老板只说已经确认能用的。
