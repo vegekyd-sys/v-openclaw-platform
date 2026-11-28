@@ -2320,6 +2320,13 @@
     },
     {
       "layer": "core",
+      "path": "web-media-BGCgwB8q.js",
+      "sha256": "5551c0b8239713b3e004f1b50ee12132571133536cca5532e60946e4919c1fb0",
+      "source": "versa:3e59df1d46e",
+      "note": "workspace-html-attach-v1 (2026-11-28, Gateway + Worker): host-read HTML that the agent wrote into its own workspace is trusted as a reply attachment like temp-root output (a workspace that is / or contains the OpenClaw config dir vouches for nothing; links and paths outside stay refused); 2026-11-28 VLab /neon DM: makaron-deck.html in the workspace came back as 'Delivery failed' on every harness; versa/port-workspace-html-attach-20261128; not yet on V"
+    },
+    {
+      "layer": "core",
       "path": "cli-live-session-registry-Bux1JHPe.js",
       "sha256": "83fe2b9f43ec2d5f98e95fe00db477e4f6a22e9f94e2ab5fed12cf2b301c9a98",
       "source": "versa:bfcb8cbe429",

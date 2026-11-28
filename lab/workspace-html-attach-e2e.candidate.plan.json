@@ -1,0 +1,29 @@
+{
+  "support": [
+    "lab/candidate/workspace-html-attach-e2e.mjs",
+    "lab/candidate/inter-session-support.mjs",
+    "lab/candidate/feishu-fake-open-api.mjs",
+    "lab/candidate/feishu-no-live.cjs",
+    "lab/candidate/inter-session-workspace.mjs",
+    "lab/candidate/lark-cli-shim/lark-cli"
+  ],
+  "files": [
+    {
+      "source": "lab/release-files/workspace-html-attach/web-media-BGCgwB8q.js",
+      "target": "openclaw/dist/web-media-BGCgwB8q.js",
+      "before": "432442da9fae4748dd0efa32ef2f8a8cee26fbe7189017a9b3c0c8a50d8febeb"
+    }
+  ],
+  "command": [
+    "/opt/vlab/node-v22.23.1-linux-x64/bin/node",
+    "lab/candidate/workspace-html-attach-e2e.mjs"
+  ],
+  "env": {
+    "ISC_FEISHU_MODE": "live",
+    "ISC_ALLOW_LIVE_FEISHU": "1",
+    "RELAY_HARNESS": "worker",
+    "EXPECT_PATCHED": "1"
+  },
+  "timeoutSeconds": 2400,
+  "user": "lab-db91-parity"
+}
