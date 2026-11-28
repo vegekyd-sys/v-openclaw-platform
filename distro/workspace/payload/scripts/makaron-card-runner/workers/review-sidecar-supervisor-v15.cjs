@@ -19,6 +19,7 @@ const path = require('node:path');
 const {spawn} = require('node:child_process');
 
 const ROOT = require('../workspace-root.cjs');
+const {POLICY,applyReworkPolicy}=require('../review-rework-policy.cjs');
 const ALLOWED = new Set(['confirm', 'retry', 'revise', 'stop', 'close', 'request_human']);
 
 function arg(name, fallback = '') {
@@ -270,6 +271,8 @@ function buildReviewPrompt({request, job, taskMode}) {
 
   return `你是 V，the owner 的 AI 伙伴，负责在 Makaron 任务中做判断。Worker 负责快速建卡、执行 CLI、收集事实、第一时间发送图片/视频/文件等非文本产物；你基于完整事件历史做 agent 级决策。
 
+${POLICY}
+
 必须遵守：
 - 只输出 JSON，不要 markdown，不要额外解释。
 - 允许 decision：confirm / retry / revise / stop / close / request_human。
@@ -302,7 +305,10 @@ artifact/finality 判断原则：
 - gate/recovery index: ${request.gateIndex || 0}
 - sidecar mode: ${taskMode || 'required'}
 
-原始 brief：
+用户原话（没有记录时不得将brief当原话）：
+${trim(job.originalUserRequest || job.userRequest || '', 4000) || '未提供；无法核实的要求不能自动触发返修'}
+
+V 转述 brief（含 V 自加建议，不全部是用户硬要求）：
 ${trim(job.prompt || '', 800)}
 
 最近事件历史（worker 上报的 CLI / stream / project media / delivery / error）：
@@ -334,11 +340,14 @@ ${projectMediaDetails && projectMediaDetails !== 'null' ? projectMediaDetails : 
   "prompt": "给 Makaron 的下一轮 prompt；stop/close/request_human 可为空，confirm/retry/revise 通常必须有",
   "humanMessage": "如果 request_human，写给 the owner/用户看的补充问题；否则可为空",
   "action": "可选；账号/key事件可填 self_register_same_card | ask_topup | ask_update_key | use_tianyi_override | retry_existing_key",
+  "reworkBasis": {"kind":"user_requirement|usage_defect", "defectType":"missing_deliverable|unusable_file|incomplete_composition", "userQuote":"", "evidence":"", "impact":""},
+  "optionalSuggestion": "可选优化，不触发续做",
   "confidence": 0.0-1.0
 }`;
 }
 
-function normalizeDecision(raw, request) {
+function normalizeDecision(raw, request, job = {}) {
+  raw=applyReworkPolicy(raw,request,job);
   const decision = String(raw?.decision || '').toLowerCase();
   const d = ALLOWED.has(decision) ? decision : 'stop';
   return {
@@ -352,6 +361,9 @@ function normalizeDecision(raw, request) {
     humanMessage: String(raw?.humanMessage || raw?.human_message || ''),
     action: String(raw?.action || raw?.accountAction || raw?.account_action || ''),
     confidence: Number(raw?.confidence ?? 0),
+    reworkBasis: raw.reworkBasis || null,
+    optionalSuggestion: raw.optionalSuggestion || '',
+    reworkSuppressed: Boolean(raw.reworkSuppressed),
     raw,
   };
 }
@@ -371,7 +383,7 @@ async function askReviewAgent({request, job, sidecarDir, owner, retryAttempt = 0
   const promptFile = path.join(sidecarDir, `prompt-${safeName(request.id)}${isRetry ? `-retry${retryAttempt}` : ''}.txt`);
   fs.writeFileSync(promptFile, prompt);
   if (process.env.MAKARON_SIDECAR_FAKE_DECISION_JSON) {
-    return {...normalizeDecision(JSON.parse(process.env.MAKARON_SIDECAR_FAKE_DECISION_JSON), request), sessionKey, fake:true};
+    return {...normalizeDecision(JSON.parse(process.env.MAKARON_SIDECAR_FAKE_DECISION_JSON), request, job), sessionKey, fake:true};
   }
 
   const args = ['agent', '--agent', job.reviewSidecar?.agentId || 'makaron', '--session-key', sessionKey, '--message', prompt, '--thinking', job.reviewSidecar?.thinking || 'off', '--timeout', timeout, '--json'];
@@ -416,7 +428,7 @@ async function askReviewAgent({request, job, sidecarDir, owner, retryAttempt = 0
     }
     throw new Error(`review agent did not return decision JSON after retry: ${trim(reply || res.stdout, 600)}`);
   }
-  return {...normalizeDecision(decision, request), sessionKey, retried: retryAttempt > 0};
+  return {...normalizeDecision(decision, request, job), sessionKey, retried: retryAttempt > 0};
 }
 
 /* Minimal retry prompt — demands pure JSON only, no context bloat. */
@@ -518,7 +530,7 @@ async function main() {
         // Smart fallback: if review agent fails even after retries, infer decision
         // from context instead of blindly stopping.
         const fallback = inferFallbackDecision(req, e);
-        const decision = normalizeDecision(fallback, req);
+        const decision = normalizeDecision(fallback, req, job);
         writeJson(path.join(decisionsDir, `${safeName(req.id)}.json`), decision);
         appendJsonl(logFile, {event:'decision_error', at:new Date().toISOString(), id:req.id, decision:decision.decision, error:String(e.stack || e)});
       }
@@ -531,7 +543,9 @@ async function main() {
   }
 }
 
-main().catch(e => {
+if (require.main === module) main().catch(e => {
   console.error(e.stack || e);
   process.exit(1);
 });
+
+module.exports={buildReviewPrompt,normalizeDecision};
