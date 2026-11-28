@@ -494,10 +494,9 @@ sudo v-ctl as-agent python3 scripts/feishu-docs.py status
 
 ```bash
 sudo v-ctl as-agent python3 scripts/onboard-progress.py get
-sudo v-ctl as-agent python3 scripts/v-schedule.py list
 ```
 
-`step` 是 `done`；`list` 里的任务数等于 `schedules.json` 的条目数（第 7 步第 10 项）。
+`step` 是 `done`；定时任务按第 7 步第 10 项的命令核对，输出 `9 True`（只数 `declarationKey` 以 `distro:` 开头的条目；OpenClaw 自带的 `heartbeat:makaron`、`skill-collection-review:makaron` 默认关闭，不算）。
 
 **不通过**：
 - 引导停在某一步不动：请老板随便发一句话，V 会从记下的那一步接着。还不动，看 `sudo journalctl -u openclaw-gateway --since "-10 min" --no-pager -o cat | grep -iE "error|feishu" | tail -20`。
