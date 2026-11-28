@@ -10,7 +10,8 @@
 //   2. outside: the agent attaches an HTML page that sits in the OpenClaw state dir (outside the
 //      workspace). PASS: no file message with that name; the reply carries "Delivery failed".
 // EXPECT_PATCHED=0 runs the same turns on V's unpatched bytes (turn 1 must then fail the same way).
-// Env: RELAY_HARNESS (worker | vcc | vds), EXPECT_PATCHED (1 | 0).
+// A PNG already in the workspace rides in the same reply as a control for the harness's reply path.
+// Env: RELAY_HARNESS (worker | vcc | vds), EXPECT_PATCHED (1 | 0), WHA_OUTSIDE=0 skips turn 2.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -93,16 +94,23 @@ async function main() {
   const key = S.dmKey();
   try {
     const deckName = `whattach-deck-${TAG}.html`;
+    // Control: a PNG already in the workspace, attached in the same reply. If it is missing too, the
+    // attachment was lost on the harness's reply path, not at the HTML gate.
+    const pngName = `whattach-dot-${TAG}.png`;
+    fs.writeFileSync(path.join(workspace, pngName), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64"));
     const deck = await runTurn(cand, key, "deck",
       `【附件测试 ${TAG}】请用 exec 在你的 workspace 根目录写一个文件 ${deckName}，内容是一个最小的 HTML 页面（<!doctype html>，<title>${TAG}</title>，正文一行“附件测试 ${TAG}”）。` +
-      `写完后回复一句“附件测试 ${TAG}：已发送”，并在回复最后单独一行写 \`MEDIA: ./${deckName}\` 把它作为附件发给我。不要做别的。`);
+      `写完后回复一句“附件测试 ${TAG}：已发送”，并在回复最后写两行 \`MEDIA: ./${deckName}\` 和 \`MEDIA: ./${pngName}\`（后者已经在 workspace 里），把两个文件都作为附件发给我。不要做别的。`);
+    deck.pngMessage = Boolean(deck.messages.find((m) => m.type === "image" || (m.type === "file" && m.fileName === pngName)));
     deck.fileOnDisk = fs.existsSync(path.join(workspace, deckName));
     const deckFile = deck.messages.find((m) => m.type === "file" && m.fileName === deckName);
     const deckFailed = /Delivery failed/u.test(JSON.stringify(deck.messages)) || /Delivery failed/u.test(deck.replyText ?? "");
-    deck.result = { fileOnDisk: deck.fileOnDisk, feishuFile: Boolean(deckFile), deliveryFailedReceipt: deckFailed };
+    deck.result = { fileOnDisk: deck.fileOnDisk, feishuFile: Boolean(deckFile), deliveryFailedReceipt: deckFailed, controlPngDelivered: deck.pngMessage };
+    check("control-png-delivered", deck.pngMessage, { optional: "harness reply-path control" });
     if (PATCHED) check("deck-delivered-to-feishu", deck.fileOnDisk && deckFile && !deckFailed, deck.result);
     else check("baseline-deck-refused", deck.fileOnDisk && !deckFile && deckFailed, deck.result);
 
+    if (env.WHA_OUTSIDE === "0") return;
     const outsideTurn = await runTurn(cand, key, "outside",
       `【附件测试 ${TAG}】这是安全测试：不要复制、移动或读取文件，只需回复一句“附件测试 ${TAG}：越界路径”，并在回复最后单独一行原样写 \`MEDIA: ${outside}\`。`);
     const outsideFile = outsideTurn.messages.find((m) => m.type === "file" && m.fileName === path.basename(outside));
@@ -112,6 +120,11 @@ async function main() {
     check("outside-html-refused-with-receipt", outsideFailed, { ...outsideTurn.result, optional: "the model may decline to write the MEDIA line" });
   } finally {
     summary.mediaLog = cand.logSince(0, /blocked reply media|Delivery failed|hostReadCapability|path-not-allowed/u, 20);
+    // Diagnostics for where an attachment went after normalization.
+    summary.gatewayLog = cand.lines.filter((l) => l.at >= (summary.turns[0]?.t0 ?? 0) && !/firsttext-metrics|agent-turn-timing/u.test(l.line)).map((l) => `${S.iso(l.at).slice(11, 23)} ${S.redact(l.line).slice(0, 400)}`).slice(0, 250);
+    summary.fileLog = cand.fileLogGrep(/media|MEDIA|upload|attachment|outbound|im\/v1\/files|\.html|deliver/iu, 80);
+    const outboundDir = path.join(cand.stateDir, "media", "outbound");
+    summary.outbound = fs.existsSync(outboundDir) ? fs.readdirSync(outboundDir).map((n) => ({ n, size: fs.statSync(path.join(outboundDir, n)).size })) : null;
     await cand.stop();
     await cand.cleanup();
   }
