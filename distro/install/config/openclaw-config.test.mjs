@@ -147,3 +147,27 @@ test('desktop only with V_DESKTOP=1: host display, headed Chrome, takeover plugi
   assert.equal(h.openclawCommand, '/opt/v/bin/openclaw');
   assert.equal(h.adminTokenFile, '/etc/v/desktop-handoff/admin-token');
 });
+
+test('Feishu app scope import file: the console\'s batch-import format, both identities, covers line B\'s user list', async () => {
+  const fs = await import('node:fs');
+  const file = JSON.parse(fs.readFileSync(new URL('../feishu-app-scopes.json', import.meta.url), 'utf8'));
+  assert.deepEqual(Object.keys(file), ['scopes']);
+  assert.deepEqual(Object.keys(file.scopes).sort(), ['tenant', 'user']);
+  for (const id of ['tenant', 'user']) {
+    const list = file.scopes[id];
+    assert.deepEqual([...list].sort(), list, `${id} sorted`);
+    assert.equal(new Set(list).size, list.length, `${id} has no duplicates`);
+    for (const s of list) assert.match(s, /^[a-z0-9_.:-]+$/, s);
+    for (const s of ['bitable:app', 'sheets:spreadsheet']) assert.ok(list.includes(s), `${id} ${s}`);
+  }
+  // What the channel itself needs from the bot: receive DMs and group @s, send, react, read files.
+  for (const s of ['im:message.p2p_msg:readonly', 'im:message.group_at_msg:readonly', 'im:message:send_as_bot', 'im:message.reactions:write_only', 'im:resource']) assert.ok(file.scopes.tenant.includes(s), s);
+  const bList = new URL('../../workspace/feishu-user-scopes.txt', import.meta.url);
+  if (fs.existsSync(bList)) {
+    const want = fs.readFileSync(bList, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+    // auth:user.id:read comes with every OAuth login; the console refuses it in an import (the whole import then stalls).
+    const oauthDefault = ['auth:user.id:read'];
+    for (const s of oauthDefault) assert.ok(!file.scopes.user.includes(s), `${s} must not be in the import`);
+    assert.deepEqual(want.filter((s) => !file.scopes.user.includes(s) && !oauthDefault.includes(s)), [], 'every user scope V was granted is in the import');
+  }
+});
